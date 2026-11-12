@@ -100,6 +100,8 @@ A menu item or button names its command with `sc:CommandShortcut.Id` (`Helpers/C
 | *(unassigned)* | `folder.collapse` | Collapse Folder — the selected folder and every subfolder in it |
 | *(unassigned)* | `folder.expandAll` | Expand All Folders |
 | *(unassigned)* | `folder.collapseAll` | Collapse All Folders — account headers included |
+| *(unassigned)* | `folder.hide` | Hide Folder — hides the selected folder and everything inside it from the folder tree and Go to Folder |
+| *(unassigned)* | `folder.showHidden` | Show All Hidden Folders |
 | *(unassigned)* | `calendar.calendarAtTopOfFolderList` | Calendar at Top of Folder List |
 | *(unassigned)* | `calendar.calendarAtBottomOfFolderList` | Calendar at Bottom of Folder List |
 

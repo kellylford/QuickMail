@@ -623,6 +623,25 @@ If collapsing hides the folder you were on, the selection moves up to the neares
 
 How you leave the tree is how you find it: a folder you collapse stays collapsed while QuickMail refreshes its folder list, and coming back to the tree with **F6** or **Ctrl+2** leaves it collapsed rather than re-opening the branch holding the folder you are reading. Go to a different folder and the tree opens up to show it again, as it always has. Expansion is not remembered between runs — QuickMail starts each account open, and opens whatever it needs to reach the folder it lands in.
 
+### Hiding Folders
+
+Some accounts come with folders you never use: Conversation History, RSS Feeds, Notes, or a server's own housekeeping folders. You can take them out of the folder tree.
+
+- **Hide Folder** hides the selected folder, and every folder inside it, from the folder tree and from **Go to Folder**. QuickMail says what it hid, for example "Archive and the 2 folders inside it hidden." If you were in the folder tree, focus moves to the folder above.
+- **Show All Hidden Folders** brings back every hidden folder, in every account, and says how many came back.
+
+Both are on the folder tree's context menu (**Shift+F10**), on the **Folder** menu, and in the Command Palette (**Ctrl+Shift+P**). Neither has a shortcut key to begin with; you can assign one in [Keyboard Customization](#keyboard-customization).
+
+Hiding only changes what the folder list shows:
+
+- A hidden folder still syncs, and its mail still appears in **All Mail**, **All Inboxes** and the other combined folders.
+- You can still move or copy messages into a hidden folder, and rules can still file mail there: the folder pickers for **Move to Folder**, **Copy to Folder**, moving and copying folders, and rules list every folder.
+- A folder you added to a saved view stays in that view, because the view lists it by name.
+
+Some things cannot be hidden, and QuickMail says why if you try: an account, the **Inbox** (on some servers every other folder lives inside it), calendars, saved views, and combined folders such as All Mail. To bring back a single folder, choose **Show All Hidden Folders** and hide the others again.
+
+Hidden folders are remembered per account, so they go with the account if you export your settings to another computer.
+
 ### Creating Folders
 
 Create a new folder in any of these ways:
