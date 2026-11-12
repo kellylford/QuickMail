@@ -141,16 +141,32 @@
        build.bat and a plain `dotnet build` work from a fresh clone with no extra step.
        It never touches a file that exists: a release build writes the real values first with
        `write-credential-partials.ps1 -Release`, and CI's placeholder step has already run.
-       Keep the text below in step with that script's placeholder output.
-       WriteLinesToFile rather than calling the script, so it needs no PowerShell and works on
-       Dependabot's Linux build. The files are added to Compile here because the project's
-       glob was evaluated before they existed; the WPF temp project re-evaluates and finds them. -->
+       Keep the text below in step with that script's placeholder output
+       (CredentialPlaceholderTargetTests compares the two).
+       WriteLinesToFile rather than calling the script, so a local build does not shell out to
+       PowerShell (and its execution policy) before it can compile.
+       Not on GitHub Actions: there every workflow writes the files itself first, and a release
+       job that lost that step must still fail loudly rather than ship blank credentials, so
+       CheckCredentialPartials stops the build instead. -->
+  <PropertyGroup>
+    <_QmGoogleCredentials>$(MSBuildProjectDirectory)/Services/GoogleOAuthService.Credentials.cs</_QmGoogleCredentials>
+    <_QmBugReportCredentials>$(MSBuildProjectDirectory)/Services/BugReportService.Credentials.cs</_QmBugReportCredentials>
+  </PropertyGroup>
+
+  <Target Name="CheckCredentialPartials"
+          BeforeTargets="BeforeBuild"
+          Condition="'$(GITHUB_ACTIONS)' == 'true' And (!Exists('$(_QmGoogleCredentials)') Or !Exists('$(_QmBugReportCredentials)'))">
+    <Error Text="A credential partial (Services/GoogleOAuthService.Credentials.cs or Services/BugReportService.Credentials.cs) is missing. On CI run scripts/write-credential-partials.ps1 before building (with -Release in a release job); the build does not write placeholders on GitHub Actions." />
+  </Target>
+
   <Target Name="WriteCredentialPlaceholders"
           BeforeTargets="BeforeBuild"
-          Condition="!Exists('$(MSBuildProjectDirectory)/Services/GoogleOAuthService.Credentials.cs') Or !Exists('$(MSBuildProjectDirectory)/Services/BugReportService.Credentials.cs')">
+          Condition="'$(GITHUB_ACTIONS)' != 'true' And (!Exists('$(_QmGoogleCredentials)') Or !Exists('$(_QmBugReportCredentials)'))">
+    <!-- Decide what is missing before writing anything. A file that already existed is in
+         @(Compile) from the glob; only a file written here needs adding, and adding it once. -->
     <PropertyGroup>
-      <_QmGoogleCredentials>$(MSBuildProjectDirectory)/Services/GoogleOAuthService.Credentials.cs</_QmGoogleCredentials>
-      <_QmBugReportCredentials>$(MSBuildProjectDirectory)/Services/BugReportService.Credentials.cs</_QmBugReportCredentials>
+      <_QmWriteGoogle Condition="!Exists('$(_QmGoogleCredentials)')">true</_QmWriteGoogle>
+      <_QmWriteBugReport Condition="!Exists('$(_QmBugReportCredentials)')">true</_QmWriteBugReport>
     </PropertyGroup>
     <ItemGroup>
       <_QmGoogleLines Include="namespace QuickMail.Services%3B" />
@@ -166,13 +182,13 @@
       <_QmBugReportLines Include="%20%20%20%20private const string RelayKey = &quot;&quot;%3B" />
       <_QmBugReportLines Include="}" />
     </ItemGroup>
-    <Message Importance="high" Text="Writing empty placeholder credentials (no secrets in this build): $(_QmGoogleCredentials)" Condition="!Exists('$(_QmGoogleCredentials)')" />
-    <WriteLinesToFile File="$(_QmGoogleCredentials)" Lines="@(_QmGoogleLines)" Overwrite="true" Condition="!Exists('$(_QmGoogleCredentials)')" />
-    <Message Importance="high" Text="Writing empty placeholder credentials (no secrets in this build): $(_QmBugReportCredentials)" Condition="!Exists('$(_QmBugReportCredentials)')" />
-    <WriteLinesToFile File="$(_QmBugReportCredentials)" Lines="@(_QmBugReportLines)" Overwrite="true" Condition="!Exists('$(_QmBugReportCredentials)')" />
+    <Message Importance="high" Text="Writing empty placeholder credentials (no secrets in this build): $(_QmGoogleCredentials)" Condition="'$(_QmWriteGoogle)' == 'true'" />
+    <WriteLinesToFile File="$(_QmGoogleCredentials)" Lines="@(_QmGoogleLines)" Overwrite="true" Condition="'$(_QmWriteGoogle)' == 'true'" />
+    <Message Importance="high" Text="Writing empty placeholder credentials (no secrets in this build): $(_QmBugReportCredentials)" Condition="'$(_QmWriteBugReport)' == 'true'" />
+    <WriteLinesToFile File="$(_QmBugReportCredentials)" Lines="@(_QmBugReportLines)" Overwrite="true" Condition="'$(_QmWriteBugReport)' == 'true'" />
     <ItemGroup>
-      <Compile Remove="Services/GoogleOAuthService.Credentials.cs;Services/BugReportService.Credentials.cs" />
-      <Compile Include="Services/GoogleOAuthService.Credentials.cs;Services/BugReportService.Credentials.cs" />
+      <Compile Include="Services/GoogleOAuthService.Credentials.cs" Condition="'$(_QmWriteGoogle)' == 'true'" />
+      <Compile Include="Services/BugReportService.Credentials.cs" Condition="'$(_QmWriteBugReport)' == 'true'" />
     </ItemGroup>
   </Target>
 
