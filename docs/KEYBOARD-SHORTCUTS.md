@@ -286,9 +286,13 @@ In **Help → Sound Tutorial**, Space and Enter on an event play its sound. In *
 In the message list and the Conversations, From and To trees, a plain Up or Home with the first row
 focused, or Down or End with the last, moves nothing, so the platform reports nothing. The list's
 `PreviewKeyDown` hands each key press to `Helpers/ListEdgeCue.cs` (a pure decision, unit-tested in
-`ListEdgeCueTests`) and then to `MainViewModel.SignalListEdge`, which plays the **Reached the end of a
-list** sound (`ListEnd`) when it would be heard, or else announces "Top of list" / "Bottom of list" as
-a `Hint`. For a tree, the last row is the last *visible* one: a message when the last group is
+`ListEdgeCueTests`; the focused row's place comes from `Views/ListEdgePosition.cs`, tested in
+`ListEdgePositionTests`) and then to `MainViewModel.SignalListEdge`. That plays the **Reached the end
+of a list** sound (`ListEnd`) through `ISoundService.TryPlayNow`, which refuses unless the sound can
+start at once (sounds on, not muted, a volume, a sound in the scheme, and nothing else playing or
+queued). Otherwise it announces "Top of list" / "Bottom of list" as a `Result`, through
+`QueuedAnnouncementRequested`, which the window sends without interrupting so it doesn't cut off the
+row being read. For a tree, the last row is the last *visible* one: a message when the last group is
 expanded. The handler never marks the key handled and changes no navigation; it only listens, so these
 are still the controls' own keys and not registry commands. A held key cues once, not on every
 auto-repeat; modified keys (Shift, Ctrl, Alt) and Page Up / Page Down never cue.

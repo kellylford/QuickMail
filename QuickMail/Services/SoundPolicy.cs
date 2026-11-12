@@ -36,6 +36,7 @@ public sealed class SoundPolicy(Func<DateTime> utcNow)
         if (quiet && origin is not (SoundOrigin.Direct or SoundOrigin.Navigation)) return false;
 
         // A key press's answer (#923): every press gets one, so no same-sound gap, but never late.
+        // TryPlayNow also refuses while a sound is playing, which the queue count doesn't include.
         if (origin == SoundOrigin.Navigation) return waiting == 0;
 
         lock (_gate)

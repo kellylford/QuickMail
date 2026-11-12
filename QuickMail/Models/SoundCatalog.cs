@@ -45,8 +45,9 @@ public enum SoundOrigin
 
     /// <summary>
     /// Answers a key press while moving around (#923), so it plays even in a presentation, as Direct
-    /// does. A second press a moment later cues again rather than being dropped as a repeat, but it
-    /// never waits behind another sound: late, it would answer a key press already gone.
+    /// does. A second press a moment later cues again rather than being dropped as a repeat. It is
+    /// played with <c>ISoundService.TryPlayNow</c>, which refuses while anything is playing or
+    /// waiting, so the caller can say it in words instead: late, it would answer a key press already gone.
     /// </summary>
     Navigation,
 }

@@ -14,8 +14,9 @@ namespace QuickMail.Tests;
 /// <summary>
 /// Issue #923: Up or Home at the top of the message list, or Down or End at the bottom, moves
 /// nothing, so nothing was said. The decision is <see cref="ListEdgeCue"/>; the cue is
-/// <see cref="MainViewModel.SignalListEdge"/>: the "Reached the end of a list" sound when it would be
-/// heard, else a "Top of list" / "Bottom of list" hint.
+/// <see cref="MainViewModel.SignalListEdge"/>: the "Reached the end of a list" sound when it can start
+/// at once, else "Top of list" / "Bottom of list", said as a result without interrupting.
+/// <see cref="ListEdgePositionTests"/> covers where the focused row is.
 /// </summary>
 public sealed class ListEdgeCueTests
 {
@@ -100,52 +101,74 @@ public sealed class ListEdgeCueTests
         Assert.Equal(ListEdge.Bottom, cue.Next(Key.Down, ModifierKeys.None, 4, 5, isRepeat: true));
     }
 
-    // ── Sound or hint ──────────────────────────────────────────────────────────
+    // ── Sound or speech ────────────────────────────────────────────────────────
 
-    private static (MainViewModel Vm, List<(string Text, AnnouncementCategory Category)> Announced) MakeVm(ISoundService? sounds)
+    /// <summary>What the VM asked to be said: the interrupting announcements, and the ones that wait for speech.</summary>
+    private sealed record Heard(
+        List<(string Text, AnnouncementCategory Category)> Interrupting,
+        List<(string Text, AnnouncementCategory Category)> Queued);
+
+    private static (MainViewModel Vm, Heard Heard) MakeVm(ISoundService? sounds)
     {
         var vm = new MainViewModel(
             new StubImapMailService(), new StubAccountService(), new StubCredentialService(), new StubLocalStoreService(),
             new StubOAuthService(), new StubSyncService(), new StubConfigService(), new StubCommandRegistry(),
             new StubViewService(), new StubRuleService(), new StubSmtpService(), soundService: sounds);
-        var announced = new List<(string, AnnouncementCategory)>();
-        vm.AnnouncementRequested += (_, a) => announced.Add(a);
-        return (vm, announced);
+        var heard = new Heard([], []);
+        vm.AnnouncementRequested += (_, a) => heard.Interrupting.Add(a);
+        vm.QueuedAnnouncementRequested += (_, a) => heard.Queued.Add(a);
+        return (vm, heard);
     }
 
     [Fact]
-    public void WithTheSoundAudibleTheSoundPlaysAndNothingIsSaid()
+    public void WhenTheSoundCanPlayTheSoundPlaysAndNothingIsSaid()
     {
         var sounds = new RecordingSoundService();
         sounds.Audible.Add(SoundEvent.ListEnd);
-        var (vm, announced) = MakeVm(sounds);
+        var (vm, heard) = MakeVm(sounds);
 
         vm.SignalListEdge(ListEdge.Top);
         vm.SignalListEdge(ListEdge.Bottom);
 
         Assert.Equal([SoundEvent.ListEnd, SoundEvent.ListEnd], sounds.Played);
-        Assert.Empty(announced);
+        Assert.Empty(heard.Interrupting);
+        Assert.Empty(heard.Queued);
     }
 
     [Fact]
-    public void WithoutTheSoundTheEdgeIsSaidAsAHint()
+    public void WithoutTheSoundTheEdgeIsSaidAsAResultWithoutInterrupting()
     {
         var sounds = new RecordingSoundService();   // nothing audible
-        var (vm, announced) = MakeVm(sounds);
+        var (vm, heard) = MakeVm(sounds);
 
         vm.SignalListEdge(ListEdge.Top);
         vm.SignalListEdge(ListEdge.Bottom);
 
         Assert.Empty(sounds.Played);
-        Assert.Equal([("Top of list", AnnouncementCategory.Hint), ("Bottom of list", AnnouncementCategory.Hint)], announced);
+        // Queued, not interrupting: it must not cut off the screen reader reading the row just reached.
+        Assert.Empty(heard.Interrupting);
+        Assert.Equal([("Top of list", AnnouncementCategory.Result), ("Bottom of list", AnnouncementCategory.Result)], heard.Queued);
+    }
+
+    [Fact]
+    public void WhileAnotherSoundIsPlayingTheEdgeIsSaidInstead()
+    {
+        var sounds = new RecordingSoundService { Busy = true };
+        sounds.Audible.Add(SoundEvent.ListEnd);
+        var (vm, heard) = MakeVm(sounds);
+
+        vm.SignalListEdge(ListEdge.Bottom);
+
+        Assert.Empty(sounds.Played);
+        Assert.Equal([("Bottom of list", AnnouncementCategory.Result)], heard.Queued);
     }
 
     [Fact]
     public void WithNoSoundServiceTheEdgeIsStillSaid()
     {
-        var (vm, announced) = MakeVm(null);
+        var (vm, heard) = MakeVm(null);
         vm.SignalListEdge(ListEdge.Top);
-        Assert.Equal([("Top of list", AnnouncementCategory.Hint)], announced);
+        Assert.Equal([("Top of list", AnnouncementCategory.Result)], heard.Queued);
     }
 
     [Fact]
@@ -153,104 +176,181 @@ public sealed class ListEdgeCueTests
     {
         var sounds = new RecordingSoundService();
         sounds.Audible.Add(SoundEvent.ListEnd);
-        var (vm, announced) = MakeVm(sounds);
+        var (vm, heard) = MakeVm(sounds);
 
         vm.SignalListEdge(ListEdge.None);
 
         Assert.Empty(sounds.Played);
-        Assert.Empty(announced);
+        Assert.Empty(heard.Interrupting);
+        Assert.Empty(heard.Queued);
     }
 
-    // ── The real sound settings decide which ───────────────────────────────────
+    // ── Through the real SoundService ──────────────────────────────────────────
 
-    private sealed class SilentOutput : ISoundOutput
+    /// <summary>Records what reaches the audio engine; with <see cref="Hold"/> set, a sound "plays" until it is released.</summary>
+    private sealed class RecordingOutput : ISoundOutput
     {
-        public void Play(SoundClip clip, float volume, CancellationToken cancellationToken) { }
+        public System.Collections.Concurrent.ConcurrentQueue<string> Played { get; } = new();
+        public ManualResetEventSlim Entered { get; } = new();
+        public ManualResetEventSlim? Hold { get; set; }
+
+        public void Play(SoundClip clip, float volume, CancellationToken cancellationToken)
+        {
+            Played.Enqueue(clip.Key);
+            Entered.Set();
+            Hold?.Wait(cancellationToken);
+        }
+
         public void Check(string filePath) { }
     }
 
-    /// <summary>What the cue is with these settings, through the real <see cref="SoundService"/>.</summary>
-    private static (bool Played, List<(string Text, AnnouncementCategory Category)> Announced) CueWith(Action<ConfigModel> settings)
+    private sealed class RealSounds : IDisposable
     {
-        var config = new StubConfigService();
-        var cfg = config.Load();
-        cfg.PlayEventSounds = true;
-        settings(cfg);
-        var folder = Path.Combine(Path.GetTempPath(), $"QM-EDGE-{Guid.NewGuid():N}");
-        using var service = new SoundService(config, folder, new SilentOutput(), openBuiltIn: (_, _) => new MemoryStream());
-        var audible = service.IsAudible(SoundEvent.ListEnd);
-        var (vm, announced) = MakeVm(service);
+        public StubConfigService Config { get; } = new();
+        public RecordingOutput Output { get; } = new();
+        public SoundService Service { get; }
+
+        public RealSounds(Action<ConfigModel> settings)
+        {
+            var cfg = Config.Load();
+            cfg.PlayEventSounds = true;
+            settings(cfg);
+            Service = new SoundService(Config, Path.Combine(Path.GetTempPath(), $"QM-EDGE-{Guid.NewGuid():N}"), Output,
+                openBuiltIn: (_, _) => new MemoryStream());
+        }
+
+        /// <summary>Waits for this many sounds to reach the engine, then a moment more for any wrongly queued.</summary>
+        public List<string> PlayedAfterSettling(int expected)
+        {
+            var deadline = DateTime.UtcNow.AddSeconds(5);
+            while (Output.Played.Count < expected && DateTime.UtcNow < deadline) Thread.Sleep(5);
+            Thread.Sleep(200);
+            return [.. Output.Played];
+        }
+
+        public void Dispose()
+        {
+            Output.Hold?.Set();
+            Service.Dispose();
+        }
+    }
+
+    /// <summary>The cue with these settings: what reached the audio engine, and what was said.</summary>
+    private static (List<string> Played, Heard Heard) CueWith(Action<ConfigModel> settings)
+    {
+        using var sounds = new RealSounds(settings);
+        var (vm, heard) = MakeVm(sounds.Service);
         vm.SignalListEdge(ListEdge.Top);
-        return (audible, announced);
+        return (sounds.PlayedAfterSettling(heard.Queued.Count == 0 ? 1 : 0), heard);
     }
 
     [Theory]
     [InlineData("glass")]
     [InlineData("softbell")]
     [InlineData("wood")]
-    public void EveryBuiltInSchemeHasTheSound(string scheme)
+    public void EveryBuiltInSchemePlaysTheEdgeSound(string scheme)
     {
-        var (played, announced) = CueWith(c => c.SoundSchemeId = scheme);
-        Assert.True(played);
-        Assert.Empty(announced);
+        var (played, heard) = CueWith(c => c.SoundSchemeId = scheme);
+        Assert.Equal(["builtin:edge"], played);
+        Assert.Empty(heard.Queued);
     }
 
     [Fact]
     public void ASchemeOfYourOwnMadeBeforeTheEventExistedHasNoSoundSoTheEdgeIsSaid()
     {
         // A scheme made, imported or added from the gallery before #923 has no ListEnd entry at all.
-        var (played, announced) = CueWith(c =>
+        var (played, heard) = CueWith(c =>
         {
             c.SoundSchemes["user-old"] = new SoundScheme("user-old", "Rain", isBuiltIn: false,
                 events: new Dictionary<string, string> { ["NewMail"] = "builtin:arrived", ["MessageSent"] = "builtin:sent" });
             c.SoundSchemeId = "user-old";
         });
-        Assert.False(played);
-        Assert.Equal([("Top of list", AnnouncementCategory.Hint)], announced);
+        Assert.Empty(played);
+        Assert.Equal([("Top of list", AnnouncementCategory.Result)], heard.Queued);
     }
 
     [Fact]
     public void ASchemeOfYourOwnWithASoundChosenForItPlaysIt()
     {
-        var (played, announced) = CueWith(c =>
+        var (played, heard) = CueWith(c =>
         {
             c.SoundSchemes["user-new"] = new SoundScheme("user-new", "Rain", isBuiltIn: false,
                 events: new Dictionary<string, string> { ["ListEnd"] = "builtin:glass/edge" });
             c.SoundSchemeId = "user-new";
         });
-        Assert.True(played);
-        Assert.Empty(announced);
+        Assert.Equal(["builtin:glass/edge"], played);
+        Assert.Empty(heard.Queued);
+    }
+
+    public static TheoryData<string> SilencingSettings => ["event none", "sounds off", "muted", "no volume"];
+
+    [Theory]
+    [MemberData(nameof(SilencingSettings))]
+    public void WhenTheSoundWouldNotBeHeardTheEdgeIsSaid(string setting)
+    {
+        var (played, heard) = CueWith(c =>
+        {
+            switch (setting)
+            {
+                case "event none": c.ActiveSoundEvents()["ListEnd"] = "none"; break;
+                case "sounds off": c.PlayEventSounds = false; break;
+                case "muted": c.MuteSounds = true; break;
+                case "no volume": c.SoundVolume = 0; break;
+            }
+        });
+        Assert.Empty(played);
+        Assert.Equal([("Top of list", AnnouncementCategory.Result)], heard.Queued);
     }
 
     [Fact]
-    public void TheSoundTurnedOffInTheSchemeMeansTheEdgeIsSaid()
+    public void WhileASoundIsPlayingTheEdgeSoundIsNotQueuedAndTheEdgeIsSaid()
     {
-        var (played, announced) = CueWith(c => c.ActiveSoundEvents()["ListEnd"] = "none");
-        Assert.False(played);
-        Assert.Equal([("Top of list", AnnouncementCategory.Hint)], announced);
+        using var sounds = new RealSounds(c => c.SoundSchemeId = "glass");
+        sounds.Output.Hold = new ManualResetEventSlim();
+        var (vm, heard) = MakeVm(sounds.Service);
+
+        sounds.Service.Play(SoundEvent.NewMail);
+        Assert.True(sounds.Output.Entered.Wait(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken), "the first sound never started");
+        Assert.True(sounds.Service.IsBusy);
+
+        vm.SignalListEdge(ListEdge.Bottom);
+
+        Assert.Equal([("Bottom of list", AnnouncementCategory.Result)], heard.Queued);
+        sounds.Output.Hold.Set();   // the first sound ends
+        Assert.Equal(["builtin:arrived"], sounds.PlayedAfterSettling(1));   // and nothing was waiting behind it
     }
 
     [Fact]
-    public void SoundsOffMeansTheEdgeIsSaid()
+    public void OnceTheOtherSoundHasEndedTheEdgeSoundPlaysAgain()
     {
-        var (played, announced) = CueWith(c => c.PlayEventSounds = false);
-        Assert.False(played);
-        Assert.Equal([("Top of list", AnnouncementCategory.Hint)], announced);
+        using var sounds = new RealSounds(c => c.SoundSchemeId = "glass");
+        var (vm, heard) = MakeVm(sounds.Service);
+
+        sounds.Service.Play(SoundEvent.NewMail);
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+        while ((sounds.Output.Played.IsEmpty || sounds.Service.IsBusy) && DateTime.UtcNow < deadline) Thread.Sleep(5);
+        Assert.False(sounds.Service.IsBusy);
+
+        vm.SignalListEdge(ListEdge.Top);
+
+        Assert.Equal(["builtin:arrived", "builtin:edge"], sounds.PlayedAfterSettling(2));
+        Assert.Empty(heard.Queued);
     }
 
     [Fact]
-    public void MutedMeansTheEdgeIsSaid()
+    public void StoppingEverythingLeavesNothingCountedAsPlaying()
     {
-        var (played, announced) = CueWith(c => c.MuteSounds = true);
-        Assert.False(played);
-        Assert.Equal([("Top of list", AnnouncementCategory.Hint)], announced);
-    }
+        using var sounds = new RealSounds(c => c.SoundSchemeId = "glass");
+        sounds.Output.Hold = new ManualResetEventSlim();
+        sounds.Service.Play(SoundEvent.NewMail);
+        Assert.True(sounds.Output.Entered.Wait(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken));
+        sounds.Service.Play(SoundEvent.MessageSent);   // waits behind it
 
-    [Fact]
-    public void NoVolumeMeansTheEdgeIsSaid()
-    {
-        var (played, announced) = CueWith(c => c.SoundVolume = 0);
-        Assert.False(played);
-        Assert.Equal([("Top of list", AnnouncementCategory.Hint)], announced);
+        sounds.Service.StopAll();   // cancels the one playing and drops the one waiting
+
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+        while (sounds.Service.IsBusy && DateTime.UtcNow < deadline) Thread.Sleep(5);
+        Assert.False(sounds.Service.IsBusy);
+        Assert.True(sounds.Service.TryPlayNow(SoundEvent.ListEnd));
     }
 }

@@ -340,6 +340,9 @@ public partial class MainWindow : Window
         vm.AnnouncementRequested += (_, args) =>
             AccessibilityHelper.Announce(_announceTarget ?? this, args.Text,
                                          interrupt: true, category: args.Category);
+        vm.QueuedAnnouncementRequested += (_, args) =>
+            AccessibilityHelper.Announce(_announceTarget ?? this, args.Text,
+                                         interrupt: false, category: args.Category);
         vm.OpenInviteCardStatus += OnOpenInviteCardStatus;
         vm.SearchRequested += (_, _) => OpenSearch();
         vm.SaveViewRequested    += (_, _) => OpenViewManager(createMode: true);
@@ -2946,26 +2949,10 @@ public partial class MainWindow : Window
     };
 
     private static System.Collections.Generic.IEnumerable<object> GetVisibleConversationItems(System.Collections.Generic.IEnumerable<ConversationGroup> groups)
-    {
-        foreach (var group in groups)
-        {
-            yield return group;
-            if (!group.IsExpanded) continue;
-            foreach (var msg in group.Messages)
-                yield return msg;
-        }
-    }
+        => ListEdgePosition.VisibleRows(groups);
 
     private static System.Collections.Generic.IEnumerable<object> GetVisibleSenderItems(System.Collections.Generic.IEnumerable<SenderGroup> groups)
-    {
-        foreach (var group in groups)
-        {
-            yield return group;
-            if (!group.IsExpanded) continue;
-            foreach (var msg in group.Messages)
-                yield return msg;
-        }
-    }
+        => ListEdgePosition.VisibleRows(groups);
 
     private static void FocusTreeItem(TreeView tree, object item)
     {
@@ -3642,27 +3629,11 @@ public partial class MainWindow : Window
         _vm.SignalListEdge(_listEdgeCue.Next(e.Key, modifiers, index, count, e.IsRepeat));
     }
 
-    // Only a focused row counts: with focus on the list itself, the keys go to a row rather than nowhere.
-    private (int Index, int Count) MessageListPosition() =>
-        Keyboard.FocusedElement is ListViewItem row
-            ? (MessageList.ItemContainerGenerator.IndexFromContainer(row), MessageList.Items.Count)
-            : (-1, MessageList.Items.Count);
-
-    // A tree's rows in arrow order: each group, then its messages when it is expanded.
-    private static (int Index, int Count) TreePosition(TreeView tree, List<object> visible)
-    {
-        if (Keyboard.FocusedElement is not TreeViewItem row || !IsDescendantOf(tree, row)) return (-1, visible.Count);
-        var item = row.DataContext;
-        for (var i = 0; i < visible.Count; i++)
-            if (ReferenceEquals(visible[i], item)) return (i, visible.Count);
-        return (-1, visible.Count);
-    }
-
     private async void MessageList_PreviewKeyDown(object sender, KeyEventArgs e)
     {
         _messageListKeyPresses++;
         LogService.Debug($"MessageList_PreviewKeyDown key={e.Key} mod={Keyboard.Modifiers} focused={Keyboard.FocusedElement?.GetType().Name}");
-        CueListEdge(e, MessageListPosition);
+        CueListEdge(e, () => ListEdgePosition.InList(MessageList, Keyboard.FocusedElement));
         if (e.Key == Key.Tab && Keyboard.Modifiers == ModifierKeys.Shift)
         {
             e.Handled = true;
@@ -5469,7 +5440,7 @@ public partial class MainWindow : Window
     private async void ConversationTree_PreviewKeyDown(object sender, KeyEventArgs e)
     {
         LogService.Debug($"[FOCUS] ConvTree KeyDown key={e.Key} mod={Keyboard.Modifiers} {FocusInfo()} items={ConversationTree.Items.Count} selected={ConversationTree.SelectedItem?.GetType().Name ?? "null"}");
-        CueListEdge(e, () => TreePosition(ConversationTree, GetVisibleConversationItems(_vm.Conversations).ToList()));
+        CueListEdge(e, () => ListEdgePosition.InTree(ConversationTree, GetVisibleConversationItems(_vm.Conversations).ToList(), Keyboard.FocusedElement));
         if (e.Key == Key.Tab && Keyboard.Modifiers == ModifierKeys.Shift)
         {
             e.Handled = true;
@@ -6103,7 +6074,7 @@ public partial class MainWindow : Window
     private async void SenderGroupTree_PreviewKeyDown(object sender, KeyEventArgs e)
     {
         LogService.Debug($"[FOCUS] SenderTree KeyDown key={e.Key} mod={Keyboard.Modifiers} {FocusInfo()} items={SenderGroupTree.Items.Count} selected={SenderGroupTree.SelectedItem?.GetType().Name ?? "null"}");
-        CueListEdge(e, () => TreePosition(SenderGroupTree, GetVisibleSenderItems(_vm.SenderGroups).ToList()));
+        CueListEdge(e, () => ListEdgePosition.InTree(SenderGroupTree, GetVisibleSenderItems(_vm.SenderGroups).ToList(), Keyboard.FocusedElement));
         if (e.Key == Key.Tab && Keyboard.Modifiers == ModifierKeys.Shift)
         {
             e.Handled = true;
@@ -6281,7 +6252,7 @@ public partial class MainWindow : Window
     private async void ToGroupTree_PreviewKeyDown(object sender, KeyEventArgs e)
     {
         LogService.Debug($"[FOCUS] ToTree KeyDown key={e.Key} mod={Keyboard.Modifiers} {FocusInfo()} items={ToGroupTree.Items.Count} selected={ToGroupTree.SelectedItem?.GetType().Name ?? "null"}");
-        CueListEdge(e, () => TreePosition(ToGroupTree, GetVisibleSenderItems(_vm.ToGroups).ToList()));
+        CueListEdge(e, () => ListEdgePosition.InTree(ToGroupTree, GetVisibleSenderItems(_vm.ToGroups).ToList(), Keyboard.FocusedElement));
         if (e.Key == Key.Tab && Keyboard.Modifiers == ModifierKeys.Shift)
         {
             e.Handled = true;

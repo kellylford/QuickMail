@@ -152,7 +152,7 @@ public partial class SettingsViewModel
         SelectedSoundScheme is { IsBuiltIn: true }
         && SoundEventRows.Any(r => r.Choice.Stored != SoundRef.BuiltIn(r.Info.BuiltInSound).ToStored());
 
-    /// <summary>How many events in the scheme shown make a sound, such as "4 of 14 events have a sound".</summary>
+    /// <summary>How many events in the scheme shown make a sound, such as "4 of 15 events have a sound".</summary>
     public string SchemeSoundCount
     {
         get

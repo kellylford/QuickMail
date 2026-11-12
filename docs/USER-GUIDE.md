@@ -793,8 +793,8 @@ out is never mistaken for a key that did not register. (That is a **Result** ann
 **Up** and **Down** move one message at a time, and **Home** and **End** go to the first and last
 message, in every view. When you are already on the first message, **Up** and **Home** have nowhere
 to go, and on the last, neither do **Down** and **End**. QuickMail then plays the **Reached the end
-of a list** sound, or, when sounds are off or your sound scheme has none for it, says "Top of list"
-or "Bottom of list". In **Conversations**, **From** and **To**, the bottom is the last row you can
+of a list** sound, or, when sounds are off, your sound scheme has none for it, or another sound is
+still playing, says "Top of list" or "Bottom of list" (a **Result** announcement). In **Conversations**, **From** and **To**, the bottom is the last row you can
 reach, which is a message when the last group is open. See
 [The Top and Bottom of the Message List](#the-top-and-bottom-of-the-message-list) for the details.
 
@@ -2198,7 +2198,7 @@ If you delete or file a lot of mail in a row, you may prefer to set those three 
 When the first message is already selected, **Up** and **Home** have nowhere to go, and when the last is selected, neither do **Down** and **End**. The selection stays where it is, so nothing else tells you that you have reached the end. QuickMail does:
 
 - If sounds are on and the scheme in use has a sound for **Reached the end of a list**, you hear that sound, a short, soft note, and nothing is said.
-- Otherwise, QuickMail says "Top of list" or "Bottom of list". That is a hint, so you hear it only while **Announce hints and instructions** is on, under **Screen Reader Announcements** in **Settings → General**.
+- Otherwise, QuickMail says "Top of list" or "Bottom of list". It also says so, rather than playing the sound late, when another sound is still playing. It waits for your screen reader to finish what it is saying, so you still hear the row you are on. It is an action result, like "No unread messages below", so you hear it while **Announce action results** is on, under **Screen Reader Announcements** in **Settings → General**.
 
 This works in every message list view: the plain message list, Conversations, and the From and To groups, where the end is the last row you can reach, which is a message when the last group is expanded. Each press at the end tells you again. Holding a key down tells you once, when it gets to the end, rather than on every repeat. **Page Up** and **Page Down** are unchanged.
 

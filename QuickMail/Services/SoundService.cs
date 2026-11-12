@@ -36,6 +36,9 @@ public sealed class SoundService : ISoundService
     private CancellationTokenSource? _current;
     private int _disposed;
 
+    /// <summary>Sounds queued or playing: added to when one is queued, taken from when it ends or is dropped from the queue.</summary>
+    private int _outstanding;
+
     /// <param name="config">Settings, read at each sound so a change applies at once.</param>
     /// <param name="soundsFolder">The profile's folder of custom sounds.</param>
     /// <param name="output">The audio engine.</param>
@@ -74,6 +77,26 @@ public sealed class SoundService : ISoundService
             LogService.Log($"Sound for {soundEvent} failed", ex);
         }
     }
+
+    public bool TryPlayNow(SoundEvent soundEvent)
+    {
+        try
+        {
+            var config = _config.Load();
+            if (!config.PlayEventSounds || IsBusy) return false;
+            var info = SoundCatalog.Info(soundEvent);
+            var scheme = SoundCatalog.ActiveScheme(config);
+            return Enqueue(SoundCatalog.Resolve(soundEvent, scheme), info.BuiltInSound, info.Origin, config, scheme, scheme.Id);
+        }
+        catch (Exception ex)
+        {
+            LogService.Log($"Sound for {soundEvent} failed", ex);
+            return false;
+        }
+    }
+
+    /// <summary>A sound is playing or waiting to.</summary>
+    internal bool IsBusy => Volatile.Read(ref _outstanding) > 0;
 
     public void PlayRule(string? storedSound, IEnumerable<string>? messageKeys = null)
     {
@@ -173,7 +196,7 @@ public sealed class SoundService : ISoundService
         try
         {
             if (Volatile.Read(ref _disposed) != 0) return;
-            while (_queue.TryTake(out _)) { }
+            while (_queue.TryTake(out _)) Interlocked.Decrement(ref _outstanding);
             lock (_currentGate) _current?.Cancel();
         }
         catch (Exception ex)
@@ -408,33 +431,39 @@ public sealed class SoundService : ISoundService
         new FileInfo(a).Length == new FileInfo(b).Length && File.ReadAllBytes(a).AsSpan().SequenceEqual(File.ReadAllBytes(b));
 
     /// <param name="folderSchemeId">The scheme whose folder a custom file is in; null for a rule's own (#948).</param>
-    private void Enqueue(SoundRef sound, string fallback, SoundOrigin origin, ConfigModel config, SoundScheme scheme, string? folderSchemeId)
+    /// <returns>Whether the sound was queued to play.</returns>
+    private bool Enqueue(SoundRef sound, string fallback, SoundOrigin origin, ConfigModel config, SoundScheme scheme, string? folderSchemeId)
     {
-        if (Volatile.Read(ref _disposed) != 0) return;
-        if (sound.Kind == SoundRefKind.None || config.SoundVolume <= 0) return;
-        if (!_policy.ShouldPlay(sound.ToStored(), origin, config.MuteSounds, _isQuiet(), _queue.Count)) return;
-        AddRequest(sound, fallback, SoundCatalog.PackFor(SoundRef.None, scheme), folderSchemeId, isPreview: false);
+        if (Volatile.Read(ref _disposed) != 0) return false;
+        if (sound.Kind == SoundRefKind.None || config.SoundVolume <= 0) return false;
+        if (!_policy.ShouldPlay(sound.ToStored(), origin, config.MuteSounds, _isQuiet(), _queue.Count)) return false;
+        return AddRequest(sound, fallback, SoundCatalog.PackFor(SoundRef.None, scheme), folderSchemeId, isPreview: false);
     }
 
     /// <summary>Queues a sound, with the built-in sound to play instead if a custom file turns out not to play.</summary>
-    private void AddRequest(SoundRef sound, string fallback, string schemePack, string? folderSchemeId, bool isPreview, int? volumePercent = null)
+    private bool AddRequest(SoundRef sound, string fallback, string schemePack, string? folderSchemeId, bool isPreview, int? volumePercent = null)
     {
         var clip = ToClip(sound, fallback, schemePack, folderSchemeId);
-        if (clip is null) return;
+        if (clip is null) return false;
         var backup = clip.FilePath is null ? null : BuiltInClip(SoundRef.BuiltIn(fallback), schemePack);
-        TryAdd(new Request(clip, isPreview, backup, volumePercent));
+        return TryAdd(new Request(clip, isPreview, backup, volumePercent));
     }
 
-    private void TryAdd(Request request)
+    private bool TryAdd(Request request)
     {
-        if (Volatile.Read(ref _disposed) != 0) return;
+        if (Volatile.Read(ref _disposed) != 0) return false;
+        // Counted before it is added, so the worker can never finish it and count down first.
+        Interlocked.Increment(ref _outstanding);
         try
         {
             _queue.Add(request);
+            return true;
         }
         catch (InvalidOperationException)
         {
             // Shutting down between the check and the add: nothing left to play it.
+            Interlocked.Decrement(ref _outstanding);
+            return false;
         }
     }
 
@@ -473,7 +502,16 @@ public sealed class SoundService : ISoundService
         try
         {
             foreach (var request in _queue.GetConsumingEnumerable(_shutdown.Token))
-                PlayOne(request);
+            {
+                try
+                {
+                    PlayOne(request);
+                }
+                finally
+                {
+                    Interlocked.Decrement(ref _outstanding);
+                }
+            }
         }
         catch (OperationCanceledException)
         {
