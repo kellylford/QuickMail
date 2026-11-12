@@ -560,7 +560,7 @@ public sealed class SoundSchemeFolderTidySettingsTests : IDisposable
         var update = GalleryFile(sounds, profile);
 
         var vm = MakeSettings(config, sounds);
-        vm.ConfirmRequested = (_, _) => true;
+        vm.UpdateChoiceRequested = _ => SoundSchemeUpdateChoice.ReplaceEverything;
         Assert.True(vm.ImportSchemeFrom(update, new SoundGalleryEntry("rain", "Rain", "Pat", "", "CC0-1.0", "rain.qmsounds", 1, new string('2', 64), null)));
         Assert.True(File.Exists(Path.Combine(rain, "New.wav")));
 
@@ -585,7 +585,7 @@ public sealed class SoundSchemeFolderTidySettingsTests : IDisposable
         var update = GalleryFile(sounds, profile);   // NewMail plays its own New.wav
 
         var vm = MakeSettings(config, sounds);
-        vm.ConfirmRequested = (_, _) => true;
+        vm.UpdateChoiceRequested = _ => SoundSchemeUpdateChoice.ReplaceEverything;
         Assert.True(vm.ImportSchemeFrom(update, new SoundGalleryEntry("rain", "Rain", "Pat", "", "CC0-1.0", "rain.qmsounds", 1, new string('2', 64), null)));
         // After the update, a file of the person's own for another event: it is used, so it stays.
         vm.SelectedSoundEvent = vm.SoundEventRows.Single(r => r.Info.Event == SoundEvent.TrashEmptied);
@@ -612,7 +612,7 @@ public sealed class SoundSchemeFolderTidySettingsTests : IDisposable
         var update = GalleryFile(sounds, profile);
 
         var vm = MakeSettings(config, sounds);
-        vm.ConfirmRequested = (_, _) => true;
+        vm.UpdateChoiceRequested = _ => SoundSchemeUpdateChoice.ReplaceEverything;
         vm.ImportSchemeFrom(update, new SoundGalleryEntry("rain", "Rain", "Pat", "", "CC0-1.0", "rain.qmsounds", 1, new string('2', 64), null));
         vm.DiscardUnsavedSchemeSounds();
 
@@ -630,7 +630,7 @@ public sealed class SoundSchemeFolderTidySettingsTests : IDisposable
         var update = GalleryFile(sounds, profile);
 
         var vm = MakeSettings(config, sounds);
-        vm.ConfirmRequested = (_, _) => true;
+        vm.UpdateChoiceRequested = _ => SoundSchemeUpdateChoice.ReplaceEverything;
         vm.ImportSchemeFrom(update, new SoundGalleryEntry("rain", "Rain", "Pat", "", "CC0-1.0", "rain.qmsounds", 1, new string('2', 64), null));
         vm.SaveCommand.Execute(null);
         vm.DiscardUnsavedSchemeSounds();

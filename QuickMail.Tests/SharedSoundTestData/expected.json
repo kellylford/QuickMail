@@ -1,7 +1,7 @@
 {
   "about": "What each file in this folder must give, read by the app named, with test-key.pub.pem as the gallery key. 'untrusted', 'needsUpdate' and 'unreadable' are the three kinds of refusal; a scheme file's message is given where the spec words it.",
   "indexes": {
-    "index-good.signed": { "thechatplace": { "ids": ["rain-at-night", "bells"], "eventsWithSound": [15, 3] }, "quickmail": "untrusted" },
+    "index-good.signed": { "thechatplace": { "ids": ["rain-at-night", "bells"], "eventsWithSound": [23, 3] }, "quickmail": "untrusted" },
     "index-other-app.signed": { "thechatplace": "untrusted", "quickmail": { "ids": ["wrong-ext"] } },
     "index-no-app.signed": { "thechatplace": "untrusted" },
     "index-format2.signed": { "thechatplace": "needsUpdate" },
@@ -19,7 +19,7 @@
     "tcp-good.tcpsounds": {
       "thechatplace": {
         "name": "Rain at Night", "author": "Test Author", "license": "CC0-1.0", "description": "Soft sounds.",
-        "events": { "ToolRan": "builtin:softbell/tap", "ReplyFinished": "builtin:arrived", "NeedsYou": "custom:knock.wav", "TurnFailed": "none" },
+        "events": { "ToolRan": "builtin:softbell/tool", "ReplyFinished": "builtin:reply", "NeedsYou": "custom:knock.wav", "TurnFailed": "none" },
         "sounds": ["knock.wav"], "dropped": 0
       },
       "quickmail": { "refused": "This is a sound scheme for The Chat Place, so QuickMail can't use it." }
@@ -76,7 +76,7 @@
     "tcp-cases-and-trim.tcpsounds": {
       "thechatplace": {
         "name": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "author": null, "license": null, "description": null,
-        "events": { "ToolRan": "builtin:softbell/tap", "NeedsYou": "none" },
+        "events": { "ToolRan": "builtin:softbell/tool", "NeedsYou": "none" },
         "sounds": [], "dropped": 0
       }
     },

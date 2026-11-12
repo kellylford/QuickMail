@@ -22,6 +22,7 @@ public partial class SettingsDialog : Window
         vm.DiagnosticsAnnouncementRequested += OnDiagnosticsAnnouncement;
         vm.SoundResultAnnounced += OnSoundResult;
         vm.ConfirmRequested ??= Confirm;
+        vm.UpdateChoiceRequested ??= AskAboutUpdate;
         Closing += (_, e) => _closing = !e.Cancel;
         Closed += (_, _) =>
         {
@@ -50,6 +51,25 @@ public partial class SettingsDialog : Window
     // A message box has no editable text, so a modal one is safe here (CLAUDE.md, Modal Dialog Rules).
     private bool Confirm(string question, string title) =>
         MessageBox.Show(this, question, title, MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No) == MessageBoxResult.Yes;
+
+    // A gallery update (#971): a message box, so its text is read as it opens, and with a Cancel
+    // button, so Escape leaves the copy as it is (YesNo alone ignores Escape). With the gallery
+    // version's sounds recorded it is OK or Cancel; without, Yes adds only what's missing and No
+    // replaces everything, as the text says. The first choice, the one that keeps the most, starts focused.
+    private SoundSchemeUpdateChoice AskAboutUpdate(SoundSchemeUpdateQuestion question)
+    {
+        if (question.OffersReplaceEverything)
+        {
+            return MessageBox.Show(this, question.Text, question.Title, MessageBoxButton.YesNoCancel, MessageBoxImage.Question, MessageBoxResult.Yes) switch
+            {
+                MessageBoxResult.Yes => SoundSchemeUpdateChoice.Apply,
+                MessageBoxResult.No => SoundSchemeUpdateChoice.ReplaceEverything,
+                _ => SoundSchemeUpdateChoice.Cancel,
+            };
+        }
+        return MessageBox.Show(this, question.Text, question.Title, MessageBoxButton.OKCancel, MessageBoxImage.Question, MessageBoxResult.OK)
+            == MessageBoxResult.OK ? SoundSchemeUpdateChoice.Apply : SoundSchemeUpdateChoice.Cancel;
+    }
 
     private void ChooseSoundFileButton_Click(object sender, RoutedEventArgs e)
     {

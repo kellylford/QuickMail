@@ -75,7 +75,7 @@
 </div>
 
 <h1>QuickMail Privacy Policy</h1>
-<p class="effective">Effective date: November 6, 2026. Replaces the version dated September 24, 2026.</p>
+<p class="effective">Effective date: November 12, 2026. Replaces the version dated November 6, 2026.</p>
 
 <div class="callout">
   <strong>Short version:</strong> QuickMail is a Windows desktop application with no servers of its own.
@@ -329,8 +329,14 @@
     </tr>
     <tr>
       <td>The Idea Place sound gallery on GitHub Pages (<code>theideaplace.github.io</code>)</td>
-      <td><strong>Only</strong> when you open <strong>Browse schemes</strong> in Settings → Sounds, and when you add a scheme from it</td>
-      <td>A plain request for the gallery's list and for the scheme you chose. No account, mail, or usage data.</td>
+      <td>When you open <strong>Browse schemes</strong> in Settings → Sounds, and when you add or update a scheme from it.
+        Also, if you have added a scheme from the gallery, at most once a day, a couple of minutes after QuickMail
+        starts, to check whether any scheme you added has a newer version. That check is skipped when the computer
+        is offline, and you can turn it off: clear <strong>Check for updates to sound schemes from the gallery</strong>
+        in Settings → Sounds (<code>CheckSoundSchemeUpdates = off</code> in <code>config.ini</code>).</td>
+      <td>A plain request for the gallery's list, and for a scheme only when you add or update it, from your IP
+        address, with QuickMail's user agent. The daily check asks only for the list; which schemes you have
+        is compared on your computer and never sent. No account, mail, or usage data.</td>
     </tr>
     <tr>
       <td>QuickMail's bug-report relay (a Cloudflare Worker)</td>
@@ -430,8 +436,9 @@
 <p>
   QuickMail collects no analytics, usage statistics, crash reporting, or telemetry of any kind. There is no
   identifier assigned to you or to your installation, and nothing reports that QuickMail has been launched
-  or used. The update check asks GitHub for a public list of releases; that is the whole of QuickMail's
-  routine contact with anything the developer runs.
+  or used. The update check asks GitHub for a public list of releases, and, if you have added a sound scheme
+  from the gallery, a daily check asks the gallery for its public list of schemes; that is the whole of
+  QuickMail's routine contact with anything the developer runs.
 </p>
 
 <h2>Data retention and deletion</h2>

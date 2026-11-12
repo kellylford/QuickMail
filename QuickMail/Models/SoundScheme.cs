@@ -14,7 +14,8 @@ public sealed class SoundScheme
 {
     public SoundScheme(string id, string name, bool isBuiltIn, string? pack = null,
         IEnumerable<KeyValuePair<string, string>>? events = null, string? author = null, string? license = null,
-        string? description = null, SoundGalleryOrigin? galleryOrigin = null)
+        string? description = null, SoundGalleryOrigin? galleryOrigin = null,
+        IEnumerable<KeyValuePair<string, string>>? galleryBaseline = null)
     {
         Id = id;
         Name = name;
@@ -26,6 +27,13 @@ public sealed class SoundScheme
         GalleryOrigin = galleryOrigin;
         Events = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         foreach (var (key, value) in events ?? []) Events[key] = value;
+        // Only with an origin: without one there is no gallery version for it to be the sounds of.
+        if (galleryOrigin is not null && galleryBaseline is not null)
+        {
+            var baseline = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var (key, value) in galleryBaseline) baseline[key] = value;
+            GalleryBaseline = baseline;
+        }
     }
 
     /// <summary>Its section in config.ini is <c>[sounds.&lt;Id&gt;]</c>; a built-in scheme's id is its pack.</summary>
@@ -55,6 +63,14 @@ public sealed class SoundScheme
     public SoundGalleryOrigin? GalleryOrigin { get; }
 
     /// <summary>
+    /// Each event's sound in the gallery version this copy was added or last updated from (#971): what
+    /// lets an update tell an event the person changed, which keeps its sound, from one they left alone,
+    /// which takes the new version's. Null for a scheme not from the gallery, and for one added before
+    /// QuickMail 0.8.72, which didn't record it; an update then only adds the events the copy is missing.
+    /// </summary>
+    public IReadOnlyDictionary<string, string>? GalleryBaseline { get; }
+
+    /// <summary>
     /// An event's <see cref="SoundEventInfo.ConfigKey"/> to the <see cref="SoundRef"/> stored for it, as
     /// written. Kept as written, so an entry from a newer QuickMail survives; <see cref="SoundCatalog.Resolve(SoundEvent, SoundScheme)"/>
     /// checks a value when it is used.
@@ -63,7 +79,7 @@ public sealed class SoundScheme
 
     /// <summary>A copy that can be changed without touching this one, which the sound worker may be reading.</summary>
     public SoundScheme With(string? name = null, IEnumerable<KeyValuePair<string, string>>? events = null) =>
-        new(Id, name ?? Name, IsBuiltIn, Pack, events ?? Events, Author, License, Description, GalleryOrigin);
+        new(Id, name ?? Name, IsBuiltIn, Pack, events ?? Events, Author, License, Description, GalleryOrigin, GalleryBaseline);
 
     public override string ToString() => Name;
 }

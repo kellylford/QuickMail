@@ -446,6 +446,15 @@ public class ConfigModel
     public int SoundVolume { get; set; } = 80;
 
     /// <summary>
+    /// Check the sound scheme gallery, at most once a day, for updates to schemes added from it, and
+    /// say when one is waiting (#971). Default on. Only asked when a gallery scheme is here.
+    /// </summary>
+    public bool CheckSoundSchemeUpdates { get; set; } = true;
+
+    /// <summary>When QuickMail last checked the gallery for updates to sound schemes, in UTC; null if never.</summary>
+    public DateTime? LastSoundSchemeUpdateCheck { get; set; }
+
+    /// <summary>
     /// The sound scheme in use (#932): a built-in pack's id ("glass", "softbell", "wood") or a scheme of
     /// the person's own ("user-&lt;guid&gt;"). Replaces 0.8.67's SoundPack, which is read when this is absent.
     /// An id this build doesn't have plays as Glass and is kept, as written, until someone chooses another.

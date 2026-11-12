@@ -805,14 +805,14 @@ public sealed class SoundGalleryTests : IDisposable
         Assert.Equal("Rain, by Pat.", new SoundGalleryEntry("rain", "Rain", "Pat", "", "CC0-1.0", "rain.qmsounds", 1, new string('0', 64), null).ToString());
 
     [Fact]
-    public async Task AddingFromTheGalleryRemembersItAndAnUpdateReplacesTheCopyAfterAsking()
+    public async Task AddingFromTheGalleryRemembersItAndAnUpdateKeepsTheCopysChangesAfterAsking()
     {
         var first = SchemeFile("Rain", TwoSounds);
         var config = new StubConfigService();
         var vm = new SettingsViewModel(config, new StubCommandRegistry(), sounds: new RecordingSoundService());
-        var asked = new List<string>();
-        var answer = true;
-        vm.ConfirmRequested = (question, _) => { asked.Add(question); return answer; };
+        var asked = new List<SoundSchemeUpdateQuestion>();
+        var answer = SoundSchemeUpdateChoice.Apply;
+        vm.UpdateChoiceRequested = question => { asked.Add(question); return answer; };
 
         // Add it.
         var service = Service(Gallery([("rain", first)]));
@@ -822,12 +822,27 @@ public sealed class SoundGalleryTests : IDisposable
         SoundGalleryService.DeleteDownload(path);
         var added = vm.SelectedSoundScheme!;
         Assert.Equal(new SoundGalleryOrigin("rain", Hash(first)), added.GalleryOrigin);
+        // The gallery version's own sounds, every event, recorded with it (#971).
+        Assert.Equal("builtin:wood/arrived", added.GalleryBaseline!["NewMail"]);
+        Assert.Equal("builtin:glass/failed", added.GalleryBaseline["SendFailed"]);
+        Assert.Equal("none", added.GalleryBaseline["MessageSent"]);
+        Assert.Equal(SoundCatalog.Events.Count, added.GalleryBaseline.Count);
         Assert.Empty(asked);
         Assert.Equal(Hash(first), vm.GalleryOrigins()["rain"]);
         vm.RenameScheme(added.Id, "My rain");
+        // The person changes one event the new version also changes, and one it doesn't.
+        vm.SelectedSoundEvent = vm.SoundEventRows.Single(r => r.Info.Event == SoundEvent.SendFailed);
+        vm.SelectedSoundChoice = vm.SoundChoices.Single(c => c.Stored == "builtin:wood/failed");
+        vm.SelectedSoundEvent = vm.SoundEventRows.Single(r => r.Info.Event == SoundEvent.TrashEmptied);
+        vm.SelectedSoundChoice = vm.SoundChoices.Single(c => c.Stored == "builtin:glass/emptied");
 
-        // The gallery's copy changes.
-        var second = SchemeFile("Rain", new Dictionary<string, string> { ["NewMail"] = "builtin:softbell/arrived" });
+        // The gallery's copy changes: NewMail and SendFailed get new sounds, and ListEnd gets one.
+        var second = SchemeFile("Rain", new Dictionary<string, string>
+        {
+            ["NewMail"] = "builtin:softbell/arrived",
+            ["SendFailed"] = "builtin:softbell/failed",
+            ["ListEnd"] = "builtin:glass/edge",
+        });
         var newer = Service(Gallery([("rain", second)]));
         var newerEntry = Assert.Single(await newer.LoadAsync(TestContext.Current.CancellationToken));
         var galleryVm = new SoundGalleryViewModel(new FakeGallery { Entries = [newerEntry] }, vm.GalleryOrigins());
@@ -838,13 +853,19 @@ public sealed class SoundGalleryTests : IDisposable
         try
         {
             // Saying no changes nothing.
-            answer = false;
+            answer = SoundSchemeUpdateChoice.Cancel;
             Assert.False(vm.ImportSchemeFrom(newerPath, newerEntry));
-            Assert.Equal(["Replace your copy of My rain with the gallery's newer version? Any changes you made to it are lost, and its sound files the new version doesn't use are deleted when you save."], asked);
+            var question = Assert.Single(asked);
+            Assert.False(question.OffersReplaceEverything);
+            // NewMail and ListEnd were left as the gallery had them; SendFailed and TrashEmptied were changed.
+            Assert.Equal("Update My rain with the gallery's newer version? 2 events get the new version's sounds, 2 events you changed are kept. Nothing changes until you save Settings.",
+                question.Text);
             Assert.Equal(Hash(first), vm.GalleryOrigins()["rain"]);
+            Assert.Equal("builtin:wood/failed", vm.SoundEventRows.Single(r => r.Info.Event == SoundEvent.SendFailed).Choice.Stored);
 
-            // Saying yes replaces its sounds, keeps its name and place, and remembers the new file.
-            answer = true;
+            // Saying yes keeps the person's changes, takes the rest, keeps its name and place, and
+            // remembers the new file and its sounds.
+            answer = SoundSchemeUpdateChoice.Apply;
             var count = vm.SoundSchemes.Count;
             Assert.True(vm.ImportSchemeFrom(newerPath, newerEntry));
             Assert.Equal(count, vm.SoundSchemes.Count);
@@ -852,8 +873,13 @@ public sealed class SoundGalleryTests : IDisposable
             Assert.Equal(added.Id, updated.Id);
             Assert.Equal("My rain", updated.Name);
             Assert.Equal(new SoundGalleryOrigin("rain", Hash(second)), updated.GalleryOrigin);
-            Assert.Equal("builtin:softbell/arrived", vm.SoundEventRows.Single(r => r.Info.Event == SoundEvent.NewMail).Choice.Stored);
-            Assert.Equal("none", vm.SoundEventRows.Single(r => r.Info.Event == SoundEvent.SendFailed).Choice.Stored);
+            Assert.Equal("builtin:softbell/arrived", updated.GalleryBaseline!["NewMail"]);
+            string Row(SoundEvent e) => vm.SoundEventRows.Single(r => r.Info.Event == e).Choice.Stored;
+            Assert.Equal("builtin:softbell/arrived", Row(SoundEvent.NewMail));    // left alone: the new version's
+            Assert.Equal("builtin:wood/failed", Row(SoundEvent.SendFailed));      // changed: theirs
+            Assert.Equal("builtin:glass/emptied", Row(SoundEvent.TrashEmptied));  // changed, and the gallery didn't: theirs
+            Assert.Equal("builtin:glass/edge", Row(SoundEvent.ListEnd));          // new in this version
+            Assert.Equal("none", Row(SoundEvent.MessageSent));
             Assert.StartsWith("Updated My rain.", vm.SoundSchemeMessage, StringComparison.Ordinal);
         }
         finally
@@ -861,8 +887,66 @@ public sealed class SoundGalleryTests : IDisposable
             SoundGalleryService.DeleteDownload(newerPath);
         }
 
-        // And it's kept with the scheme when Settings saves.
+        // And it's kept with the scheme when Settings saves, with the new version's sounds.
         vm.SaveCommand.Execute(null);
-        Assert.Equal(new SoundGalleryOrigin("rain", Hash(second)), config.Load().SoundSchemes[added.Id].GalleryOrigin);
+        var saved = config.Load().SoundSchemes[added.Id];
+        Assert.Equal(new SoundGalleryOrigin("rain", Hash(second)), saved.GalleryOrigin);
+        Assert.Equal("builtin:softbell/failed", saved.GalleryBaseline!["SendFailed"]);
+        Assert.Equal("builtin:wood/failed", saved.Events["SendFailed"]);
+    }
+
+    [Fact]
+    public async Task AnUpdateToASchemeAddedBeforeBaselinesOnlyAddsWhatsMissingUnlessTheyChooseToReplaceEverything()
+    {
+        // As 0.8.71 saved it: an origin, every event it knew, no recorded sounds.
+        var config = new StubConfigService();
+        var events = SoundCatalog.Events.Where(i => i.ConfigKey != "ListEnd")
+            .ToDictionary(i => i.ConfigKey, _ => "none", StringComparer.OrdinalIgnoreCase);
+        events["NewMail"] = "builtin:wood/arrived";
+        config.Load().SoundSchemes["user-rain"] = new SoundScheme("user-rain", "My rain", false, events: events,
+            galleryOrigin: new SoundGalleryOrigin("rain", new string('1', 64)));
+        var newer = SchemeFile("Rain", new Dictionary<string, string>
+        {
+            ["NewMail"] = "builtin:softbell/arrived",
+            ["ListEnd"] = "builtin:glass/edge",
+        });
+        var service = Service(Gallery([("rain", newer)]));
+        var entry = Assert.Single(await service.LoadAsync(TestContext.Current.CancellationToken));
+        var path = await service.DownloadAsync(entry, TestContext.Current.CancellationToken);
+        try
+        {
+            string Row(SettingsViewModel vm, SoundEvent e) => vm.SoundEventRows.Single(r => r.Info.Event == e).Choice.Stored;
+
+            // The first choice: only what's missing.
+            var vm = new SettingsViewModel(config, new StubCommandRegistry(), sounds: new RecordingSoundService());
+            SoundSchemeUpdateQuestion? asked = null;
+            vm.UpdateChoiceRequested = q => { asked = q; return SoundSchemeUpdateChoice.Apply; };
+            Assert.True(vm.ImportSchemeFrom(path, entry));
+            Assert.True(asked!.OffersReplaceEverything);
+            Assert.Contains("Yes adds only what's missing from your copy: 1 event gets a sound, and nothing else changes.", asked.Text, StringComparison.Ordinal);
+            Assert.Contains("No replaces every sound with the new version's, so any changes you made are lost.", asked.Text, StringComparison.Ordinal);
+            Assert.Equal("builtin:wood/arrived", Row(vm, SoundEvent.NewMail));
+            Assert.Equal("builtin:glass/edge", Row(vm, SoundEvent.ListEnd));
+            Assert.NotNull(vm.SelectedSoundScheme!.GalleryBaseline);   // from now on, changes are tracked
+
+            // The second: everything replaced, as before 0.8.72.
+            var replacing = new SettingsViewModel(config, new StubCommandRegistry(), sounds: new RecordingSoundService());
+            replacing.UpdateChoiceRequested = _ => SoundSchemeUpdateChoice.ReplaceEverything;
+            Assert.True(replacing.ImportSchemeFrom(path, entry));
+            Assert.Equal("builtin:softbell/arrived", Row(replacing, SoundEvent.NewMail));
+            Assert.Equal("builtin:glass/edge", Row(replacing, SoundEvent.ListEnd));
+
+            // Cancel, or no answer at all, changes nothing.
+            var cancelled = new SettingsViewModel(config, new StubCommandRegistry(), sounds: new RecordingSoundService());
+            Assert.False(cancelled.ImportSchemeFrom(path, entry));
+            cancelled.SelectedSoundScheme = cancelled.SoundSchemes.Single(s => s.Id == "user-rain");
+            Assert.Equal("builtin:wood/arrived", Row(cancelled, SoundEvent.NewMail));
+            Assert.Equal("none", Row(cancelled, SoundEvent.ListEnd));
+            Assert.Equal(new string('1', 64), cancelled.GalleryOrigins()["rain"]);
+        }
+        finally
+        {
+            SoundGalleryService.DeleteDownload(path);
+        }
     }
 }

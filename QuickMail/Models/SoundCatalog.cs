@@ -126,6 +126,15 @@ public static class SoundCatalog
         new(SoundEvent.RuleMatched,        "RuleMatched",        "A rule matched",             DefaultRuleSound, SoundOrigin.Rule),
     ];
 
+    /// <summary>
+    /// The events QuickMail 0.8.71 didn't have. It was the last to add gallery schemes without recording
+    /// the gallery version's sounds (#971), so a scheme it added can't have chosen a sound for one of
+    /// these: a None stored for one is only Settings filling the event in, and a gallery update treats
+    /// the event as missing from the copy. Never grows: every later event is judged by the recorded sounds.
+    /// </summary>
+    public static readonly IReadOnlySet<string> EventsNewerThanUntrackedSchemes =
+        new HashSet<string>(["ListEnd"], StringComparer.OrdinalIgnoreCase);
+
     /// <summary>Every built-in sound name, one per event.</summary>
     public static readonly IReadOnlyList<string> BuiltInSounds = [.. Events.Select(e => e.BuiltInSound).Distinct()];
 
