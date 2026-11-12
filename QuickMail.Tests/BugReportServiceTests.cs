@@ -213,6 +213,19 @@ public class BugReportServiceTests
         Assert.DoesNotContain("quickmail.log", text, StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>How a message opens depends on the WebView2 runtime, so a report says which one (#959).</summary>
+    [Fact]
+    public void BuildReportText_NamesTheWebView2Runtime()
+    {
+        var service = MakeService(_ => new HttpResponseMessage(HttpStatusCode.OK), out _);
+
+        var text = service.BuildReportText(SampleReport());
+
+        var line = Assert.Single(text.Split('\n'), l => l.StartsWith("- WebView2 runtime: ", StringComparison.Ordinal));
+        Assert.False(string.IsNullOrWhiteSpace(line["- WebView2 runtime: ".Length..]));
+        Assert.True(text.IndexOf("- .NET runtime:", StringComparison.Ordinal) < text.IndexOf("- WebView2 runtime:", StringComparison.Ordinal));
+    }
+
     [Fact]
     public void BuildReportText_IncludesThemeViewAndSort_WhenContextProvided()
     {

@@ -1,3 +1,8 @@
+using System;
+using System.Threading.Tasks;
+using System.Windows.Threading;
+using QuickMail.Services;
+
 namespace QuickMail.Views;
 
 /// <summary>
@@ -81,6 +86,70 @@ public static class MessageBodyFocus
         "body.focus({preventScroll:true});" +
         "return document.hasFocus()&&document.activeElement===body;" +
         "})()";
+
+    /// <summary>
+    /// <see cref="FocusScript"/> for one render (issue #959): evaluates to the string "stale", and
+    /// touches nothing, when the document on show is not the one carrying <paramref name="renderToken"/>
+    /// (see <see cref="Helpers.MessageBodyHtmlBuilder.WithRenderToken"/>) or has not been parsed yet.
+    /// Run against the previous message's page, which is still on show for a moment after
+    /// NavigateToString, the plain script would report focus that landed in the wrong document.
+    /// </summary>
+    public static string FocusScriptFor(string renderToken) =>
+        "(() => {" +
+        "const want=" + System.Text.Json.JsonSerializer.Serialize(renderToken) + ";" +
+        "const root=document.documentElement;" +
+        "if(!root||root.getAttribute('" + Helpers.MessageBodyHtmlBuilder.RenderTokenAttribute + "')!==want" +
+        "||document.readyState==='loading')return 'stale';" +
+        "return " + FocusScript + ";" +
+        "})()";
+
+    /// <summary>
+    /// Runs the focus script until focus lands in this render's document or the time allowed runs
+    /// out (issue #959). Each attempt is the same pair as before: the host's own focus step, then the
+    /// script. Logs every attempt's result under <c>/debug</c>, and always logs giving up.
+    /// </summary>
+    /// <param name="isCurrent">False once a newer render (or closing the message) has taken over.</param>
+    /// <param name="focusHost">The window's host focus step (<c>TabInto</c>), run on the UI thread.</param>
+    /// <param name="runScript">Runs the script for this render and returns ExecuteScriptAsync's JSON.</param>
+    /// <param name="clock">Started when the document was handed to the WebView2.</param>
+    internal static async Task<Helpers.FocusScriptResult> FocusUntilReadyAsync(
+        Dispatcher dispatcher, Func<bool> isCurrent, Action focusHost, Func<Task<string?>> runScript,
+        System.Diagnostics.Stopwatch clock, string where)
+    {
+        var result = Helpers.FocusScriptResult.Error;
+        var unfocused = 0;
+        for (var attempt = 0; ; attempt++)
+        {
+            if (!isCurrent()) return result;
+
+            await dispatcher.InvokeAsync(focusHost, DispatcherPriority.Input);
+
+            try
+            {
+                result = Helpers.MessageOpenFocusPolicy.Parse(await runScript());
+            }
+            catch (Exception ex)
+            {
+                result = Helpers.FocusScriptResult.Error;
+                LogService.Debug($"[FOCUS] {where}: attempt {attempt} threw: {ex.Message}");
+            }
+
+            if (result is Helpers.FocusScriptResult.NotFocused or Helpers.FocusScriptResult.Error)
+                unfocused++;
+            LogService.Debug($"[FOCUS] {where}: attempt {attempt}, {clock.ElapsedMilliseconds} ms: {result}");
+            switch (Helpers.MessageOpenFocusPolicy.Next(result, attempt, unfocused, clock.Elapsed))
+            {
+                case Helpers.FocusDecision.Focus:
+                    return result;
+                case Helpers.FocusDecision.GiveUp:
+                    LogService.Log($"{where}: focus did not land in the message after {attempt + 1} attempts " +
+                                   $"and {clock.ElapsedMilliseconds} ms (last result {result}).");
+                    return result;
+            }
+
+            await Task.Delay(Helpers.MessageOpenFocusPolicy.RetryDelay);
+        }
+    }
 
     /// <summary>
     /// What the reading pane and the message window announce once focus lands: "Message body. Subject".

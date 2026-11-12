@@ -28,8 +28,6 @@ namespace QuickMail.Views;
 [SuppressMessage("Design", "CA1001", Justification = "_loadCts is cancelled and replaced in OnClosing; WPF never calls Dispose on a Window, so implementing IDisposable would be dead code.")]
 public partial class MessageWindow : Window
 {
-    private static readonly TimeSpan WebViewNavigationTimeout = TimeSpan.FromSeconds(4);
-
     private readonly MessageWindowViewModel _vm;
     private bool _webViewReady;
     private int  _renderVersion;
@@ -569,9 +567,10 @@ public partial class MessageWindow : Window
     /// <summary>
     /// Builds the message document off the UI thread, with the pictures this message may show: its
     /// own (#729) unless that setting is off, and those from the web (#508) when the setting says
-    /// so or the user chose Load Pictures for it. Hands the host the web addresses to serve.
+    /// so or the user chose Load Pictures for it. Hands the host the web addresses to serve. The
+    /// document carries render <paramref name="version"/>'s token, for the focus script (#959).
     /// </summary>
-    private async Task<string> BuildMessageDocumentAsync(MailMessageDetail detail, bool plainText)
+    private async Task<string> BuildMessageDocumentAsync(MailMessageDetail detail, bool plainText, int version)
     {
         var cfg = _configService?.Load();
         var web = (cfg?.LoadWebPictures ?? false) || _webPicturesAllowedFor == PictureKey(detail);
@@ -583,7 +582,7 @@ public partial class MessageWindow : Window
             MessageBodyHtmlBuilder.BuildMessageDocument(detail, themeCss, plainText, _themeService, sources));
         _pictureHost?.ServeWebPictures(sources, document.WebPictures);
         _blockedWebPictures = document.BlockedWebPictures;
-        return document.Html;
+        return MessageBodyHtmlBuilder.WithRenderToken(document.Html, RenderToken(version));
     }
 
     /// <summary>Re-renders the open message in place. Never moves focus.</summary>
@@ -595,7 +594,7 @@ public partial class MessageWindow : Window
         {
             if (!_webViewReady || _vm.MessageDetail is not { } detail) return;
             var version = Interlocked.Increment(ref _renderVersion);
-            var html = await BuildMessageDocumentAsync(detail, ReadAsPlainText());
+            var html = await BuildMessageDocumentAsync(detail, ReadAsPlainText(), version);
             if (version != _renderVersion) return;
             try { MessageBody.CoreWebView2.Stop(); } catch { /* best effort */ }
             MessageBody.CoreWebView2.NavigateToString(html);
@@ -716,7 +715,7 @@ public partial class MessageWindow : Window
             if (_webViewReady && _vm.MessageDetail is { } detail)
             {
                 var version = Interlocked.Increment(ref _renderVersion);
-                var html = await BuildMessageDocumentAsync(detail, cfg.ReadAsPlainText);
+                var html = await BuildMessageDocumentAsync(detail, cfg.ReadAsPlainText, version);
                 if (version != _renderVersion) return;
                 try { MessageBody.CoreWebView2.Stop(); } catch { /* best effort */ }
                 MessageBody.CoreWebView2.NavigateToString(html);
@@ -751,26 +750,21 @@ public partial class MessageWindow : Window
         if (!_webViewReady) return;
 
         var version = Interlocked.Increment(ref _renderVersion);
+        var opened = System.Diagnostics.Stopwatch.StartNew();
         var plainText = ReadAsPlainText();
         // A newly shown message starts with its pictures from the web blocked again.
         if (_webPicturesAllowedFor != PictureKey(detail)) _webPicturesAllowedFor = null;
         // The builder prepends the calendar invite event card when this message is an invitation.
-        var html = await BuildMessageDocumentAsync(detail, plainText);
+        var html = await BuildMessageDocumentAsync(detail, plainText, version);
         if (version != _renderVersion) return;
 
-        var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-        void OnNavigated(object? s, CoreWebView2NavigationCompletedEventArgs ev)
-        {
-            MessageBody.CoreWebView2.NavigationCompleted -= OnNavigated;
-            tcs.TrySetResult(ev.IsSuccess);
-        }
-        MessageBody.CoreWebView2.NavigationCompleted += OnNavigated;
-        try { MessageBody.CoreWebView2.Stop(); } catch { /* best effort */ }
-        MessageBody.CoreWebView2.NavigateToString(html);
-
-        var completed = await Task.WhenAny(tcs.Task, Task.Delay(WebViewNavigationTimeout)) == tcs.Task;
+        // As the reading pane: this render's own completion, or the grace period, then focus
+        // retries until the page on show carries this render's token (#959).
+        LogService.Debug($"[FOCUS] Message window: UID {detail.MessageId}, render {version}, document built in {opened.ElapsedMilliseconds} ms.");
+        using var navigation = MessageBodyNavigation.Navigate(MessageBody.CoreWebView2, html, "MessageWindow.ShowMessageBody");
+        var completed = await navigation.WaitAsync(MessageOpenFocusPolicy.LoadGrace);
         if (!completed)
-            MessageBody.CoreWebView2.NavigationCompleted -= OnNavigated;
+            LogService.Log($"MessageWindow.ShowMessageBody: WebView navigation timed out for UID {detail.MessageId}");
 
         if (version != _renderVersion) return;
 
@@ -785,10 +779,10 @@ public partial class MessageWindow : Window
                 (Application.Current as App)?.ScreenshotCapture?.Capture(this, $"MessageWindow-{detail.Subject}");
             });
 
-        await FocusMessageBodyAsync(version, detail.Subject);
+        await FocusMessageBodyAsync(version, detail.Subject, navigation.Clock);
     }
 
-    private async Task FocusMessageBodyAsync(int version, string? subject)
+    private async Task FocusMessageBodyAsync(int version, string? subject, System.Diagnostics.Stopwatch clock)
     {
         var focusLabel = MessageBodyFocus.Label(subject);
 
@@ -798,25 +792,14 @@ public partial class MessageWindow : Window
             Keyboard.Focus(MessageBody);
         }, DispatcherPriority.Input);
 
-        for (var attempt = 0; attempt < 5; attempt++)
-        {
-            if (version != _renderVersion) return;
-
-            await Dispatcher.InvokeAsync(FocusMessageBodyHost, DispatcherPriority.Input);
-
-            try
-            {
-                if (await TryFocusDocumentAsync())
-                    break;
-            }
-            catch (Exception ex)
-            {
-                if (attempt == 4)
-                    LogService.Log("MessageWindow.FocusMessageBody", ex);
-            }
-
-            await Task.Delay(100);
-        }
+        var token = RenderToken(version);
+        await MessageBodyFocus.FocusUntilReadyAsync(
+            Dispatcher,
+            () => version == _renderVersion,
+            FocusMessageBodyHost,
+            () => RunFocusScriptAsync(token),
+            clock,
+            "MessageWindow.FocusMessageBody");
 
         if (version != _renderVersion) return;
 
@@ -921,13 +904,23 @@ public partial class MessageWindow : Window
         _ = TryFocusDocumentAsync();
     }
 
-    private async Task<bool> TryFocusDocumentAsync()
+    private async Task<bool> TryFocusDocumentAsync() =>
+        MessageOpenFocusPolicy.Parse(await RunFocusScriptAsync(RenderToken(_renderVersion))) == FocusScriptResult.Focused;
+
+    /// <summary>
+    /// Runs the focus script for render <paramref name="renderToken"/>; it answers "stale", touching
+    /// nothing, while another page is on show (#959).
+    /// </summary>
+    private async Task<string?> RunFocusScriptAsync(string renderToken)
     {
-        if (MessageBody.CoreWebView2 == null) return false;
+        if (MessageBody.CoreWebView2 == null) return null;
         // Focus goes to the message's first text so reading starts on open; see MessageBodyFocus.
-        var result = await MessageBody.CoreWebView2.ExecuteScriptAsync(MessageBodyFocus.FocusScript);
-        return string.Equals(result, "true", StringComparison.OrdinalIgnoreCase);
+        return await MessageBody.CoreWebView2.ExecuteScriptAsync(MessageBodyFocus.FocusScriptFor(renderToken));
     }
+
+    /// <summary>The token a document of render <paramref name="version"/> carries (#959).</summary>
+    private static string RenderToken(int version) =>
+        version.ToString(System.Globalization.CultureInfo.InvariantCulture);
 
     // ── F6 focus cycle (issue 53 Bug 1) ──────────────────────────────────────────
     // Three stops: 0 = toolbar, 1 = header fields, 2 = message body.

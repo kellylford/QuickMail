@@ -44,6 +44,71 @@ public class MessageBodyFocusTests
     }
 
     /// <summary>
+    /// The two windows that open messages focus them with the render's token (#959): the plain script,
+    /// run while the previous message's page is still on show, reports focus in the wrong document.
+    /// The Markdown preview shows one document and never replaces it, so it keeps the plain script.
+    /// </summary>
+    [Theory]
+    [InlineData("MainWindow.xaml.cs")]
+    [InlineData("MessageWindow.xaml.cs")]
+    public void EveryMessageWindow_UsesTheRenderTokenScript(string file)
+    {
+        var code = File.ReadAllText(Path.Combine(RepoRoot(), "QuickMail", "Views", file));
+        Assert.Contains("MessageBodyFocus.FocusScriptFor(", code);
+        Assert.Contains("MessageBodyFocus.FocusUntilReadyAsync(", code);
+        Assert.Contains("MessageBodyHtmlBuilder.WithRenderToken(", code);
+        Assert.Contains("MessageBodyNavigation.Navigate(", code);
+        Assert.DoesNotContain("MessageBodyFocus.FocusScript)", code);
+        // The old wait took the first NavigationCompleted to come along, whichever navigation it was.
+        Assert.DoesNotContain("NavigationCompleted +=", code);
+    }
+
+    private static readonly string[] TrueOrFalse = ["true", "false"];
+
+    [Fact]
+    public void FocusScriptFor_EmbedsTheTokenAndTheSharedScript()
+    {
+        var script = MessageBodyFocus.FocusScriptFor("42");
+
+        Assert.Contains("const want=\"42\";", script);
+        Assert.Contains("'" + MessageBodyHtmlBuilder.RenderTokenAttribute + "'", script);
+        Assert.Contains("return 'stale'", script);
+        Assert.Contains(MessageBodyFocus.FocusScript, script);
+    }
+
+    [Fact]
+    public void FocusScriptFor_EncodesTheToken() =>
+        Assert.Contains("const want=\"a\\u0027b\\u0022\";", MessageBodyFocus.FocusScriptFor("a'b\""));
+
+    /// <summary>
+    /// Against a real WebView2 (#959): the script for this render focuses its page; the script for any
+    /// other render answers "stale" and leaves the page untouched.
+    /// </summary>
+    [StaFact]
+    public void ARealWebView2_TokenScript_FocusesThisRender_AndIsStaleForAnother()
+    {
+        var html = MessageBodyHtmlBuilder.WithRenderToken(
+            MessageBodyHtmlBuilder.BuildPlainTextHtmlDocument("Lunch", "Hello Kelly,\nSecond line.", note: null), "5");
+        string? previous = null, previousActive = null, wrapped = null, current = null, active = null;
+
+        WithWebView2(html, async core =>
+        {
+            previous = await core.ExecuteScriptAsync(MessageBodyFocus.FocusScriptFor("4"));
+            previousActive = await core.ExecuteScriptAsync("document.activeElement===document.body||document.activeElement===null");
+            wrapped = await core.ExecuteScriptAsync("document.body.querySelectorAll('span').length");
+            current = await core.ExecuteScriptAsync(MessageBodyFocus.FocusScriptFor("5"));
+            active = await core.ExecuteScriptAsync("document.activeElement.textContent");
+        });
+
+        Assert.Equal("\"stale\"", previous);
+        Assert.Equal("true", previousActive);
+        Assert.Equal("0", wrapped);
+        // true, or false where the test window is never the foreground (document.hasFocus); never stale.
+        Assert.Contains(current, TrueOrFalse);
+        Assert.Equal("\"Hello Kelly,\"", active);
+    }
+
+    /// <summary>
     /// No view gives the body a role or a name: either one brought back the one-paragraph copy (#786),
     /// and it looks like the obvious fix for reading not starting, which is how it came back once.
     /// </summary>

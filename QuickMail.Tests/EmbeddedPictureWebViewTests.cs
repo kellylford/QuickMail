@@ -200,6 +200,145 @@ public class EmbeddedPictureWebViewTests
         }
     }
 
+    /// <summary>
+    /// #959: a picture whose download never finishes must not hold the page. The host has the picture
+    /// request (it is in view, and asked for), and still: this render's NavigationCompleted arrives
+    /// promptly, the page is complete, the focus script for this render focuses it, and the script for
+    /// the previous render answers "stale". Then a second message replaces the first, while its own
+    /// picture also hangs, and the wait on that navigation ends only on its own completion.
+    /// </summary>
+    [StaFact]
+    public void APictureThatNeverArrives_DoesNotHoldThePage()
+    {
+        string? state = null, focused = null, active = null, stale = null, second = null, secondStale = null, visibility = null;
+        long firstMs = -1, secondMs = -1;
+        var pictureRequested = false;
+        WithPictureHost(async (core, env, host) =>
+        {
+            var asked = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var never = new TaskCompletionSource<IReadOnlyDictionary<string, AttachmentModel>>();
+            Func<Task<IReadOnlyDictionary<string, AttachmentModel>>> load = () =>
+            {
+                asked.TrySetResult();
+                return never.Task;
+            };
+
+            var html = Document(host, "first@x", "First message.", "1", load);
+            using (var navigation = MessageBodyNavigation.Navigate(core, html, "test"))
+            {
+                Assert.True(await navigation.WaitAsync(TimeSpan.FromSeconds(10)), "NavigationCompleted never arrived.");
+                firstMs = navigation.Clock.ElapsedMilliseconds;
+            }
+            visibility = await core.ExecuteScriptAsync("document.visibilityState");
+            // The picture is requested (lazy pictures in view still load), and is still pending.
+            pictureRequested = await Task.WhenAny(asked.Task, Task.Delay(5000)) == asked.Task;
+            state = await core.ExecuteScriptAsync("document.readyState");
+            controller!.MoveFocus(CoreWebView2MoveFocusReason.Programmatic);
+            stale = await core.ExecuteScriptAsync(MessageBodyFocus.FocusScriptFor("0"));
+            focused = await core.ExecuteScriptAsync(MessageBodyFocus.FocusScriptFor("1"));
+            active = await core.ExecuteScriptAsync("document.activeElement.textContent");
+
+            var html2 = Document(host, "second@x", "Second message.", "2", load);
+            using (var navigation = MessageBodyNavigation.Navigate(core, html2, "test"))
+            {
+                Assert.True(await navigation.WaitAsync(TimeSpan.FromSeconds(10)), "The second NavigationCompleted never arrived.");
+                secondMs = navigation.Clock.ElapsedMilliseconds;
+                // Its own completion, never the first page's: this page is the one on show.
+                second = await core.ExecuteScriptAsync(MessageBodyFocus.FocusScriptFor("2"));
+                secondStale = await core.ExecuteScriptAsync(MessageBodyFocus.FocusScriptFor("1"));
+            }
+        });
+
+        Assert.True(firstMs is >= 0 and < 3000, $"The page took {firstMs} ms to complete (visibility {visibility}).");
+        Assert.True(pictureRequested, $"The picture was never requested (visibility {visibility}).");
+        Assert.Equal("\"complete\"", state);
+        Assert.Equal("\"stale\"", stale);
+        // true, or false where the test window is never the foreground (document.hasFocus); never stale.
+        Assert.Contains(focused, TrueOrFalse);
+        Assert.Equal("\"First message.\"", active);
+        Assert.True(secondMs is >= 0 and < 3000, $"The second page took {secondMs} ms to complete.");
+        Assert.Contains(second, TrueOrFalse);
+        Assert.Equal("\"stale\"", secondStale);
+    }
+
+    /// <summary>
+    /// #959: the wait for a render's pictures is bounded. When it runs out, the request is answered
+    /// "not found" and the picture shows as missing, rather than holding its request open.
+    /// </summary>
+    [StaFact]
+    public void APictureThatNeverArrives_IsGivenUpOnAtTheRendersBound()
+    {
+        string? pictures = null;
+        WithPictureHost(async (core, env, host) =>
+        {
+            var never = new TaskCompletionSource<IReadOnlyDictionary<string, AttachmentModel>>();
+            var html = Document(host, "stuck@x", "Stuck picture.", "1", () => never.Task, TimeSpan.FromSeconds(1));
+            using var navigation = MessageBodyNavigation.Navigate(core, html, "test");
+            await navigation.WaitAsync(TimeSpan.FromSeconds(10));
+
+            var until = DateTime.UtcNow.AddSeconds(10);
+            do
+            {
+                pictures = await core.ExecuteScriptAsync(
+                    "Array.from(document.images).map(i => i.complete + ':' + i.naturalWidth).join('|')");
+                if (pictures == "\"true:0\"") break;
+                await Task.Delay(100);
+            } while (DateTime.UtcNow < until);
+        });
+
+        Assert.Equal("\"true:0\"", pictures);
+    }
+
+    private static readonly string[] TrueOrFalse = ["true", "false"];
+
+    private CoreWebView2Controller? controller;
+
+    /// <summary>A message showing one embedded picture, with render token <paramref name="token"/>.</summary>
+    private static string Document(EmbeddedPictureHost host, string contentId, string text, string token,
+        Func<Task<IReadOnlyDictionary<string, AttachmentModel>>> load, TimeSpan? pictureWait = null)
+    {
+        var detail = new MailMessageDetail
+        {
+            Subject = text,
+            HtmlBody = $"<p>{text}</p><p><img src=\"cid:{contentId}\" alt=\"Logo\" width=\"40\" height=\"20\"></p>",
+        };
+        var sources = host.BeginMessage(embedded: true, web: false, plainText: false, detail, load,
+            pictureWait ?? TimeSpan.FromSeconds(60));
+        var document = MessageBodyHtmlBuilder.BuildMessageDocument(detail, null, false, null, sources);
+        return MessageBodyHtmlBuilder.WithRenderToken(document.Html, token);
+    }
+
+    private void WithPictureHost(Func<CoreWebView2, CoreWebView2Environment, EmbeddedPictureHost, Task> act)
+    {
+        WpfTestHost.EnsureApplication();
+        var dir = Path.Combine(Path.GetTempPath(), $"QuickMailPics-{Guid.NewGuid():N}");
+        var window = new Window
+        {
+            WindowStyle = WindowStyle.None, ShowInTaskbar = false, ShowActivated = false,
+            Width = 400, Height = 300, Left = -10000, Top = -10000,
+        };
+        window.Show();
+        try
+        {
+            Run(async () =>
+            {
+                var env = await CoreWebView2Environment.CreateAsync(null, dir);
+                controller = await env.CreateCoreWebView2ControllerAsync(new WindowInteropHelper(window).Handle);
+                controller.Bounds = new System.Drawing.Rectangle(0, 0, 400, 300);
+                controller.IsVisible = true;
+                var core = controller.CoreWebView2;
+                var host = EmbeddedPictureHost.Attach(core, env);
+                await act(core, env, host);
+            }, TimeSpan.FromSeconds(90));
+        }
+        finally
+        {
+            controller?.Close();
+            window.Close();
+            try { Directory.Delete(dir, recursive: true); } catch { /* WebView2 may still hold its data folder */ }
+        }
+    }
+
     private static void Run(Func<Task> operation, TimeSpan timeout)
     {
         var previous = SynchronizationContext.Current;
