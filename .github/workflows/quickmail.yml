@@ -88,6 +88,55 @@ jobs:
           include-hidden-files: true
           retention-days: 7
 
+  # A fresh clone must build with no setup step (#859): QuickMail.csproj's
+  # WriteCredentialPlaceholders target writes whichever credential partial is missing. On
+  # GitHub Actions that target is off and CheckCredentialPartials fails the build instead, so
+  # a workflow that loses its write-credential-partials.ps1 step fails loudly; this job checks
+  # that too, then turns the target back on with -p:GITHUB_ACTIONS=false to build the way a
+  # contributor's machine does. Reads no secret. Skipped on tags: nothing here differs there.
+  fresh-clone-build:
+    if: github.ref_type != 'tag'
+    runs-on: windows-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: On CI, a missing partial fails the build
+        shell: pwsh
+        run: |
+          $out = dotnet build QuickMail/QuickMail.csproj -c Release -warnaserror 2>&1 | Out-String
+          if ($LASTEXITCODE -eq 0) { Write-Host $out; throw 'The build succeeded on CI with no credential partials; CheckCredentialPartials should have stopped it.' }
+          if ($out -notmatch 'write-credential-partials\.ps1') { Write-Host $out; throw 'The build failed, but not with the CheckCredentialPartials error.' }
+          if (Test-Path QuickMail/Services/*.Credentials.cs) { throw 'The build wrote a partial on CI.' }
+          Write-Host 'Failed as intended, naming the script.'
+          exit 0  # the runner otherwise exits with the failed build's $LASTEXITCODE
+
+      - name: Build with no partials, as a fresh clone does
+        shell: pwsh
+        run: |
+          dotnet build QuickMail/QuickMail.csproj -c Release -warnaserror -p:GITHUB_ACTIONS=false
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          foreach ($f in 'GoogleOAuthService', 'BugReportService') {
+            if (-not (Test-Path "QuickMail/Services/$f.Credentials.cs")) { throw "$f.Credentials.cs was not written." }
+          }
+
+      - name: Build with one partial present, which must be left alone
+        shell: pwsh
+        run: |
+          $kept = 'QuickMail/Services/GoogleOAuthService.Credentials.cs'
+          Add-Content -Path $kept -Value '// ci-marker: stands in for real values a release build writes'
+          $before = (Get-FileHash $kept).Hash
+          Remove-Item QuickMail/Services/BugReportService.Credentials.cs
+          dotnet build QuickMail/QuickMail.csproj -c Release -warnaserror -p:GITHUB_ACTIONS=false
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if ((Get-FileHash $kept).Hash -ne $before) { throw "$kept was overwritten." }
+          if (-not (Test-Path QuickMail/Services/BugReportService.Credentials.cs)) { throw 'BugReportService.Credentials.cs was not written.' }
+
   build:
     runs-on: windows-latest
     # contents: write creates the GitHub release; id-token: write lets azure/login exchange

@@ -134,6 +134,64 @@
     <PackageReference Include="Velopack" Version="1.2.161" />
   </ItemGroup>
 
+  <!-- Credential partials (#859). GoogleOAuthService.Credentials.cs and
+       BugReportService.Credentials.cs are gitignored, so a fresh clone has neither and the build
+       failed with CS0103 (RelayUrl, ClientId, ...). This writes each MISSING one with the same
+       empty placeholders scripts/write-credential-partials.ps1 writes without -Release, so
+       build.bat and a plain `dotnet build` work from a fresh clone with no extra step.
+       It never touches a file that exists: a release build writes the real values first with
+       `write-credential-partials.ps1 -Release`, and CI's placeholder step has already run.
+       Keep the text below in step with that script's placeholder output
+       (CredentialPlaceholderTargetTests compares the two).
+       WriteLinesToFile rather than calling the script, so a local build does not shell out to
+       PowerShell (and its execution policy) before it can compile.
+       Not on GitHub Actions: there every workflow writes the files itself first, and a release
+       job that lost that step must still fail loudly rather than ship blank credentials, so
+       CheckCredentialPartials stops the build instead. -->
+  <PropertyGroup>
+    <_QmGoogleCredentials>$(MSBuildProjectDirectory)/Services/GoogleOAuthService.Credentials.cs</_QmGoogleCredentials>
+    <_QmBugReportCredentials>$(MSBuildProjectDirectory)/Services/BugReportService.Credentials.cs</_QmBugReportCredentials>
+  </PropertyGroup>
+
+  <Target Name="CheckCredentialPartials"
+          BeforeTargets="BeforeBuild"
+          Condition="'$(GITHUB_ACTIONS)' == 'true' And (!Exists('$(_QmGoogleCredentials)') Or !Exists('$(_QmBugReportCredentials)'))">
+    <Error Text="A credential partial (Services/GoogleOAuthService.Credentials.cs or Services/BugReportService.Credentials.cs) is missing. On CI run scripts/write-credential-partials.ps1 before building (with -Release in a release job); the build does not write placeholders on GitHub Actions." />
+  </Target>
+
+  <Target Name="WriteCredentialPlaceholders"
+          BeforeTargets="BeforeBuild"
+          Condition="'$(GITHUB_ACTIONS)' != 'true' And (!Exists('$(_QmGoogleCredentials)') Or !Exists('$(_QmBugReportCredentials)'))">
+    <!-- Decide what is missing before writing anything. A file that already existed is in
+         @(Compile) from the glob; only a file written here needs adding, and adding it once. -->
+    <PropertyGroup>
+      <_QmWriteGoogle Condition="!Exists('$(_QmGoogleCredentials)')">true</_QmWriteGoogle>
+      <_QmWriteBugReport Condition="!Exists('$(_QmBugReportCredentials)')">true</_QmWriteBugReport>
+    </PropertyGroup>
+    <ItemGroup>
+      <_QmGoogleLines Include="namespace QuickMail.Services%3B" />
+      <_QmGoogleLines Include="public partial class GoogleOAuthService" />
+      <_QmGoogleLines Include="{" />
+      <_QmGoogleLines Include="%20%20%20%20private const string ClientId     = &quot;&quot;%3B" />
+      <_QmGoogleLines Include="%20%20%20%20private const string ClientSecret = &quot;&quot;%3B" />
+      <_QmGoogleLines Include="}" />
+      <_QmBugReportLines Include="namespace QuickMail.Services%3B" />
+      <_QmBugReportLines Include="public partial class BugReportService" />
+      <_QmBugReportLines Include="{" />
+      <_QmBugReportLines Include="%20%20%20%20private const string RelayUrl = &quot;&quot;%3B" />
+      <_QmBugReportLines Include="%20%20%20%20private const string RelayKey = &quot;&quot;%3B" />
+      <_QmBugReportLines Include="}" />
+    </ItemGroup>
+    <Message Importance="high" Text="Writing empty placeholder credentials (no secrets in this build): $(_QmGoogleCredentials)" Condition="'$(_QmWriteGoogle)' == 'true'" />
+    <WriteLinesToFile File="$(_QmGoogleCredentials)" Lines="@(_QmGoogleLines)" Overwrite="true" Condition="'$(_QmWriteGoogle)' == 'true'" />
+    <Message Importance="high" Text="Writing empty placeholder credentials (no secrets in this build): $(_QmBugReportCredentials)" Condition="'$(_QmWriteBugReport)' == 'true'" />
+    <WriteLinesToFile File="$(_QmBugReportCredentials)" Lines="@(_QmBugReportLines)" Overwrite="true" Condition="'$(_QmWriteBugReport)' == 'true'" />
+    <ItemGroup>
+      <Compile Include="Services/GoogleOAuthService.Credentials.cs" Condition="'$(_QmWriteGoogle)' == 'true'" />
+      <Compile Include="Services/BugReportService.Credentials.cs" Condition="'$(_QmWriteBugReport)' == 'true'" />
+    </ItemGroup>
+  </Target>
+
   <ItemGroup>
     <!-- Expose internals to the test assembly so small pure helpers (e.g. WatcherStartGate,
          OAuthService.DefaultScopesFor, MainViewModel.AccountsNeedingConnect) can be unit-tested
