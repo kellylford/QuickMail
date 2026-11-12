@@ -22,6 +22,9 @@ public class WebPictureTests
     private const string Embedded = "https://quickmail-images.invalid/e1/";
     private const string Web = "https://quickmail-images.invalid/w1/";
 
+    /// <summary>What every picture in a displayed message carries, so it does not hold the page's load (#959).</summary>
+    private const string Lazy = " loading=\"lazy\" decoding=\"async\"";
+
     private static MessageDocument Build(string html, bool web, bool note = true, bool embedded = true) =>
         MessageBodyHtmlBuilder.BuildMessageDocument(
             new MailMessageDetail { Subject = "s", HtmlBody = html }, null, false, null,
@@ -68,7 +71,7 @@ public class WebPictureTests
 
         Assert.Equal(["https://news.example/a.png?u=kelly"], doc.WebPictures);
         Assert.Equal(0, doc.BlockedWebPictures);
-        Assert.Contains($"<img src=\"{Web}0\" alt=\"Sale\" width=\"300\" height=\"100\">", doc.Html);
+        Assert.Contains($"<img src=\"{Web}0\" alt=\"Sale\" width=\"300\" height=\"100\"{Lazy}>", doc.Html);
         Assert.DoesNotContain("news.example", doc.Html);
         Assert.DoesNotContain("onerror", doc.Html);
         Assert.DoesNotContain("position:fixed", doc.Html);
@@ -83,9 +86,9 @@ public class WebPictureTests
                         "<img src=\"https://x.example/a.png\" alt=\"3\">", web: true);
 
         Assert.Equal(["https://x.example/a.png", "https://x.example/b.png"], doc.WebPictures);
-        Assert.Contains($"<img src=\"{Web}0\" alt=\"1\">", doc.Html);
-        Assert.Contains($"<img src=\"{Web}1\" alt=\"2\">", doc.Html);
-        Assert.Contains($"<img src=\"{Web}0\" alt=\"3\">", doc.Html);
+        Assert.Contains($"<img src=\"{Web}0\" alt=\"1\"{Lazy}>", doc.Html);
+        Assert.Contains($"<img src=\"{Web}1\" alt=\"2\"{Lazy}>", doc.Html);
+        Assert.Contains($"<img src=\"{Web}0\" alt=\"3\"{Lazy}>", doc.Html);
     }
 
     [Fact]
@@ -93,8 +96,8 @@ public class WebPictureTests
     {
         var doc = Build("<img src=\"cid:logo@x\" alt=\"Logo\"><img src=\"https://x.example/a.png\" alt=\"Web\">", web: true);
 
-        Assert.Contains($"<img src=\"{Embedded}logo%40x\" alt=\"Logo\">", doc.Html);
-        Assert.Contains($"<img src=\"{Web}0\" alt=\"Web\">", doc.Html);
+        Assert.Contains($"<img src=\"{Embedded}logo%40x\" alt=\"Logo\"{Lazy}>", doc.Html);
+        Assert.Contains($"<img src=\"{Web}0\" alt=\"Web\"{Lazy}>", doc.Html);
     }
 
     [Theory]

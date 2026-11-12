@@ -28,8 +28,6 @@ namespace QuickMail.Views;
 [SuppressMessage("Design", "CA1001", Justification = "_loadCts is cancelled and replaced in OnClosing; WPF never calls Dispose on a Window, so implementing IDisposable would be dead code.")]
 public partial class MessageWindow : Window
 {
-    private static readonly TimeSpan WebViewNavigationTimeout = TimeSpan.FromSeconds(4);
-
     private readonly MessageWindowViewModel _vm;
     private bool _webViewReady;
     private int  _renderVersion;
@@ -569,9 +567,10 @@ public partial class MessageWindow : Window
     /// <summary>
     /// Builds the message document off the UI thread, with the pictures this message may show: its
     /// own (#729) unless that setting is off, and those from the web (#508) when the setting says
-    /// so or the user chose Load Pictures for it. Hands the host the web addresses to serve.
+    /// so or the user chose Load Pictures for it. Hands the host the web addresses to serve. The
+    /// document carries render <paramref name="version"/>'s token, for the focus script (#959).
     /// </summary>
-    private async Task<string> BuildMessageDocumentAsync(MailMessageDetail detail, bool plainText)
+    private async Task<string> BuildMessageDocumentAsync(MailMessageDetail detail, bool plainText, int version)
     {
         var cfg = _configService?.Load();
         var web = (cfg?.LoadWebPictures ?? false) || _webPicturesAllowedFor == PictureKey(detail);
@@ -583,7 +582,7 @@ public partial class MessageWindow : Window
             MessageBodyHtmlBuilder.BuildMessageDocument(detail, themeCss, plainText, _themeService, sources));
         _pictureHost?.ServeWebPictures(sources, document.WebPictures);
         _blockedWebPictures = document.BlockedWebPictures;
-        return document.Html;
+        return MessageBodyHtmlBuilder.WithRenderToken(document.Html, RenderToken(version));
     }
 
     /// <summary>Re-renders the open message in place. Never moves focus.</summary>
@@ -595,7 +594,7 @@ public partial class MessageWindow : Window
         {
             if (!_webViewReady || _vm.MessageDetail is not { } detail) return;
             var version = Interlocked.Increment(ref _renderVersion);
-            var html = await BuildMessageDocumentAsync(detail, ReadAsPlainText());
+            var html = await BuildMessageDocumentAsync(detail, ReadAsPlainText(), version);
             if (version != _renderVersion) return;
             try { MessageBody.CoreWebView2.Stop(); } catch { /* best effort */ }
             MessageBody.CoreWebView2.NavigateToString(html);
@@ -716,7 +715,7 @@ public partial class MessageWindow : Window
             if (_webViewReady && _vm.MessageDetail is { } detail)
             {
                 var version = Interlocked.Increment(ref _renderVersion);
-                var html = await BuildMessageDocumentAsync(detail, cfg.ReadAsPlainText);
+                var html = await BuildMessageDocumentAsync(detail, cfg.ReadAsPlainText, version);
                 if (version != _renderVersion) return;
                 try { MessageBody.CoreWebView2.Stop(); } catch { /* best effort */ }
                 MessageBody.CoreWebView2.NavigateToString(html);
@@ -751,26 +750,21 @@ public partial class MessageWindow : Window
         if (!_webViewReady) return;
 
         var version = Interlocked.Increment(ref _renderVersion);
+        var opened = System.Diagnostics.Stopwatch.StartNew();
         var plainText = ReadAsPlainText();
         // A newly shown message starts with its pictures from the web blocked again.
         if (_webPicturesAllowedFor != PictureKey(detail)) _webPicturesAllowedFor = null;
         // The builder prepends the calendar invite event card when this message is an invitation.
-        var html = await BuildMessageDocumentAsync(detail, plainText);
+        var html = await BuildMessageDocumentAsync(detail, plainText, version);
         if (version != _renderVersion) return;
 
-        var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-        void OnNavigated(object? s, CoreWebView2NavigationCompletedEventArgs ev)
-        {
-            MessageBody.CoreWebView2.NavigationCompleted -= OnNavigated;
-            tcs.TrySetResult(ev.IsSuccess);
-        }
-        MessageBody.CoreWebView2.NavigationCompleted += OnNavigated;
-        try { MessageBody.CoreWebView2.Stop(); } catch { /* best effort */ }
-        MessageBody.CoreWebView2.NavigateToString(html);
-
-        var completed = await Task.WhenAny(tcs.Task, Task.Delay(WebViewNavigationTimeout)) == tcs.Task;
+        // As the reading pane: this render's own completion, or the grace period, then focus
+        // retries until the page on show carries this render's token (#959).
+        LogService.Debug($"[FOCUS] Message window: UID {detail.MessageId}, render {version}, document built in {opened.ElapsedMilliseconds} ms.");
+        using var navigation = MessageBodyNavigation.Navigate(MessageBody.CoreWebView2, html, "MessageWindow.ShowMessageBody");
+        var completed = await navigation.WaitAsync(MessageOpenFocusPolicy.LoadGrace);
         if (!completed)
-            MessageBody.CoreWebView2.NavigationCompleted -= OnNavigated;
+            LogService.Log($"MessageWindow.ShowMessageBody: WebView navigation timed out for UID {detail.MessageId}");
 
         if (version != _renderVersion) return;
 
@@ -790,43 +784,56 @@ public partial class MessageWindow : Window
 
     private async Task FocusMessageBodyAsync(int version, string? subject)
     {
-        var focusLabel = MessageBodyFocus.Label(subject);
-
-        await Dispatcher.InvokeAsync(() =>
-        {
-            MessageBody.Focus();
-            Keyboard.Focus(MessageBody);
-        }, DispatcherPriority.Input);
-
-        for (var attempt = 0; attempt < 5; attempt++)
-        {
-            if (version != _renderVersion) return;
-
-            await Dispatcher.InvokeAsync(FocusMessageBodyHost, DispatcherPriority.Input);
-
-            try
-            {
-                if (await TryFocusDocumentAsync())
-                    break;
-            }
-            catch (Exception ex)
-            {
-                if (attempt == 4)
-                    LogService.Log("MessageWindow.FocusMessageBody", ex);
-            }
-
-            await Task.Delay(100);
-        }
-
-        if (version != _renderVersion) return;
-
-        await Dispatcher.InvokeAsync(() =>
+        // One loop per render: a second would announce twice (#959 review).
+        if (!_openFocus.TryBegin(version))
         {
             FocusMessageBodyHost();
-            _f6FocusStop = 2; // body is now focused
-            AccessibilityHelper.Announce(this, focusLabel, interrupt: true, category: AnnouncementCategory.Result);
-        }, DispatcherPriority.Input);
+            return;
+        }
+        try
+        {
+            var focusLabel = MessageBodyFocus.Label(subject);
+
+            await Dispatcher.InvokeAsync(() =>
+            {
+                MessageBody.Focus();
+                Keyboard.Focus(MessageBody);
+            }, DispatcherPriority.Input);
+
+            // Stops quietly if the user moves focus elsewhere while the page arrives.
+            var result = await MessageBodyFocus.FocusUntilReadyAsync(
+                Dispatcher,
+                () => version == _renderVersion && MessageBodyHoldsFocus,
+                FocusMessageBodyHost,
+                ExecuteInMessageBodyAsync,
+                RenderToken(version),
+                "MessageWindow.FocusMessageBody");
+
+            if (version != _renderVersion) return;
+
+            await Dispatcher.InvokeAsync(() =>
+            {
+                // Not into another message's page, and not pulling back a user who moved on.
+                if (!MessageOpenFocusPolicy.ShouldFinish(result, MessageBodyHoldsFocus)) return;
+                FocusMessageBodyHost();
+                _f6FocusStop = 2; // body is now focused
+                AccessibilityHelper.Announce(this, focusLabel, interrupt: true, category: AnnouncementCategory.Result);
+            }, DispatcherPriority.Input);
+        }
+        finally
+        {
+            _openFocus.End(version);
+        }
     }
+
+    /// <summary>The render whose open focus loop is running, if any (#959 review); see <see cref="MessageOpenFocusGate"/>.</summary>
+    private readonly MessageOpenFocusGate _openFocus = new();
+
+    /// <summary>
+    /// True while keyboard focus is on the message body or its host. A null focused element counts:
+    /// it is what WPF reports while the WebView2's own window holds focus.
+    /// </summary>
+    private bool MessageBodyHoldsFocus => MessageBody.IsKeyboardFocusWithin || Keyboard.FocusedElement is null;
 
     /// <summary>Set when the menu bar was entered by an Alt pressed in the message body.</summary>
     private bool _menuEnteredFromBody;
@@ -918,16 +925,32 @@ public partial class MessageWindow : Window
     {
         _f6FocusStop = 2;
 
+        // While a message is opening, its own focus loop raised this (moving focus to the host) and
+        // decides when the page is ready; focusing it here would land in a page still loading (#959).
+        if (_openFocus.IsRunning(_renderVersion)) return;
+
         _ = TryFocusDocumentAsync();
     }
 
-    private async Task<bool> TryFocusDocumentAsync()
+    // The user moved here themselves: a page still loading is focused, only an earlier one is not (#959).
+    private async Task<bool> TryFocusDocumentAsync() =>
+        MessageOpenFocusPolicy.Parse(await ExecuteInMessageBodyAsync(
+            MessageBodyFocus.FocusScriptFor(RenderToken(_renderVersion), waitForLoad: false))) == FocusScriptResult.Focused;
+
+    /// <summary>
+    /// Runs a script in the message body. Focus goes to the message's first text so reading starts on
+    /// open; see MessageBodyFocus. The scripts carry the render's token, so they touch nothing while
+    /// another page is on show (#959).
+    /// </summary>
+    private async Task<string?> ExecuteInMessageBodyAsync(string script)
     {
-        if (MessageBody.CoreWebView2 == null) return false;
-        // Focus goes to the message's first text so reading starts on open; see MessageBodyFocus.
-        var result = await MessageBody.CoreWebView2.ExecuteScriptAsync(MessageBodyFocus.FocusScript);
-        return string.Equals(result, "true", StringComparison.OrdinalIgnoreCase);
+        if (MessageBody.CoreWebView2 == null) return null;
+        return await MessageBody.CoreWebView2.ExecuteScriptAsync(script);
     }
+
+    /// <summary>The token a document of render <paramref name="version"/> carries (#959).</summary>
+    private static string RenderToken(int version) =>
+        version.ToString(System.Globalization.CultureInfo.InvariantCulture);
 
     // ── F6 focus cycle (issue 53 Bug 1) ──────────────────────────────────────────
     // Three stops: 0 = toolbar, 1 = header fields, 2 = message body.
@@ -1026,6 +1049,10 @@ public partial class MessageWindow : Window
             _themeService.ThemeChanged -= OnThemeChanged;
         _loadCts.Cancel();
         _loadCts.Dispose();
+        // A message still opening stops quietly (no "focus did not land", no announcement on a closed
+        // window), and the picture requests it was waiting on are answered now (#959).
+        Interlocked.Increment(ref _renderVersion);
+        _pictureHost?.End();
     }
 
     private void AttachmentList_GotKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)

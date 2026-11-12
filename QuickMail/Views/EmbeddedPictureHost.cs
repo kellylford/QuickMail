@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.Web.WebView2.Core;
@@ -24,10 +25,22 @@ namespace QuickMail.Views;
 ///
 /// One per WebView2. Each new message gets a new key, so a request still in flight for the
 /// previous message is answered "not found" rather than with the wrong message's picture.
+///
+/// Each picture request also has a bound on how long it may wait (issue #959): one stuck socket
+/// must not hold a request open for the life of the page. When <see cref="PictureWait"/> has passed
+/// since that request arrived, or the next message begins (or the message is closed, <see cref="End"/>),
+/// a request still waiting is answered "not found" and that picture simply does not show. The bound
+/// runs from each request, not from the render: pictures are lazy, so one further down is asked for
+/// only when the reader scrolls to it, perhaps minutes later. The download is left to finish, since it
+/// is shared and cached (<see cref="EmbeddedPictureLoader"/>, <see cref="WebPictureFetcher"/>), so the
+/// message shows the picture the next time it is opened.
 /// </summary>
 internal sealed class EmbeddedPictureHost
 {
     public const string Origin = "https://quickmail-images.invalid";
+
+    /// <summary>The longest one picture request may wait, from the moment it arrives.</summary>
+    public static readonly TimeSpan PictureWait = TimeSpan.FromSeconds(10);
 
     private readonly CoreWebView2Environment _environment;
     private string? _key;
@@ -35,6 +48,12 @@ internal sealed class EmbeddedPictureHost
     private Task<IReadOnlyDictionary<string, AttachmentModel>>? _pictures;
     private string? _webKey;
     private IReadOnlyList<string> _webPictures = [];
+
+    // Ended by the next BeginMessage or by End. Together with each request's own deadline, it is what a
+    // picture request stops waiting at. A TaskCompletionSource rather than a CancellationTokenSource,
+    // which would make this class own something to dispose.
+    private TaskCompletionSource _renderEnded = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private TimeSpan _pictureWait = PictureWait;
 
     private EmbeddedPictureHost(CoreWebView2Environment environment) => _environment = environment;
 
@@ -55,8 +74,17 @@ internal sealed class EmbeddedPictureHost
     /// rendering gets nothing, and no notice.
     /// </summary>
     public Helpers.PictureSources BeginMessage(bool embedded, bool web, bool plainText, MailMessageDetail detail,
-        Func<Task<IReadOnlyDictionary<string, AttachmentModel>>> load)
+        Func<Task<IReadOnlyDictionary<string, AttachmentModel>>> load) =>
+        BeginMessage(embedded, web, plainText, detail, load, PictureWait);
+
+    /// <summary>As above, with how long each of this render's picture requests may wait given (for tests).</summary>
+    internal Helpers.PictureSources BeginMessage(bool embedded, bool web, bool plainText, MailMessageDetail detail,
+        Func<Task<IReadOnlyDictionary<string, AttachmentModel>>> load, TimeSpan pictureWait)
     {
+        // Whatever the previous message's page is still waiting for is answered now, "not found".
+        _renderEnded.TrySetResult();
+        _renderEnded = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        _pictureWait = pictureWait;
         _pictures = null;
         _webPictures = [];
         if (plainText)
@@ -83,6 +111,12 @@ internal sealed class EmbeddedPictureHost
     }
 
     /// <summary>
+    /// The message on show has gone (closed, or the window is closing): picture requests still waiting
+    /// are answered now, "not found". The next <see cref="BeginMessage"/> starts afresh.
+    /// </summary>
+    public void End() => _renderEnded.TrySetResult();
+
+    /// <summary>
     /// The web addresses the document built for <paramref name="sources"/> numbers its pictures
     /// by. Ignored when another message has begun since.
     /// </summary>
@@ -102,10 +136,12 @@ internal sealed class EmbeddedPictureHost
                 return; // not ours: the filter should not have sent it
 
             var segments = uri.AbsolutePath.Trim('/').Split('/', 2);
+            // This request's bound, from now, taken before any await: the next message replaces the render.
+            var renderOver = Task.WhenAny(_renderEnded.Task, Task.Delay(_pictureWait));
             if (segments.Length == 2 && _webKey is { } webKey && segments[0] == webKey)
             {
                 deferral = e.GetDeferral();
-                await ServeWebPictureAsync(e, webKey, segments[1]);
+                await ServeWebPictureAsync(e, webKey, segments[1], renderOver);
                 return;
             }
             var key = _key;
@@ -117,7 +153,17 @@ internal sealed class EmbeddedPictureHost
 
             deferral = e.GetDeferral();
             _pictures ??= _load();
-            var pictures = await _pictures;
+            var loading = _pictures;
+            var clock = Stopwatch.StartNew();
+            // Stop waiting at the render's bound, not the download: that is shared, and cached for next time.
+            if (await Task.WhenAny(loading, renderOver) != loading)
+            {
+                LogService.Debug($"[FOCUS] Embedded pictures not ready after {clock.ElapsedMilliseconds} ms; left out of this render.");
+                e.Response = NotFound();
+                return;
+            }
+            var pictures = await loading;
+            LogService.Debug($"[FOCUS] Embedded pictures ready after {clock.ElapsedMilliseconds} ms.");
             var contentId = Uri.UnescapeDataString(segments[1]);
             // The message may have changed while the pictures were fetched.
             if (key == _key && pictures.TryGetValue(contentId, out var picture)
@@ -146,7 +192,8 @@ internal sealed class EmbeddedPictureHost
         }
     }
 
-    private async Task ServeWebPictureAsync(CoreWebView2WebResourceRequestedEventArgs e, string webKey, string number)
+    private async Task ServeWebPictureAsync(CoreWebView2WebResourceRequestedEventArgs e, string webKey, string number,
+        Task renderOver)
     {
         var addresses = _webPictures;
         if (!int.TryParse(number, System.Globalization.NumberStyles.None,
@@ -156,7 +203,13 @@ internal sealed class EmbeddedPictureHost
             e.Response = NotFound();
             return;
         }
-        var picture = await WebPictureFetcher.FetchAsync(addresses[index]);
+        var clock = Stopwatch.StartNew();
+        // As for embedded pictures, only the waiting stops: the fetch is shared and cached, and never throws.
+        var fetch = WebPictureFetcher.FetchAsync(addresses[index]);
+        WebPictureFetcher.WebPicture? picture = null;
+        if (await Task.WhenAny(fetch, renderOver) == fetch)
+            picture = await fetch;
+        LogService.Debug($"[FOCUS] Web picture {index}: {(picture is null ? "not shown" : "fetched")} after {clock.ElapsedMilliseconds} ms.");
         // The message may have changed while the picture was fetched.
         e.Response = picture is not null && webKey == _webKey
             ? Picture(picture.Bytes, picture.ContentType)
