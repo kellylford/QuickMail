@@ -141,7 +141,8 @@ public class ComposeSpellingSpeechTests
 
     // ── #902 ────────────────────────────────────────────────────────────────────
 
-    // Built from misspelled words, so the test bites whether or not the speller looks inside them.
+    // Built from misspelled words. The tests only mean something where the speller flags a word
+    // inside an address, so each checks that it does first and skips visibly if not.
     private const string Url = "https://recieve.example/pacakge";
     private const string Email = "tomorow@pacakge.example";
 
@@ -160,6 +161,7 @@ public class ComposeSpellingSpeechTests
             body.CaretIndex = 0;
             body.Focus();
             Drain();
+            SpellCheckSourceTests.SkipUnlessFlagsInsideAnAddress(body);
             var heard = Listen();
 
             for (int i = 1; i <= text.Length; i++)
@@ -194,9 +196,10 @@ public class ComposeSpellingSpeechTests
             rich.CaretPosition = rich.Document.ContentStart;
             rich.Focus();
             Drain();
+            SpellCheckSourceTests.SkipUnlessFlagsInsideAnAddress(rich);
             var heard = Listen();
 
-            var pos = rich.Document.ContentStart.GetInsertionPosition(LogicalDirection.Forward);
+            var pos =rich.Document.ContentStart.GetInsertionPosition(LogicalDirection.Forward);
             while (pos.GetNextInsertionPosition(LogicalDirection.Forward) is { } next)
             {
                 rich.CaretPosition = pos = next;
@@ -226,6 +229,7 @@ public class ComposeSpellingSpeechTests
             body.CaretIndex = 0;
             body.Focus();
             Drain();
+            SpellCheckSourceTests.SkipUnlessFlagsInsideAnAddress(body);
             var heard = Listen();
 
             window.NavigateSpellingError(forward: true);
@@ -265,12 +269,104 @@ public class ComposeSpellingSpeechTests
             rich.CaretPosition = rich.Document.ContentStart;
             rich.Focus();
             Drain();
+            SpellCheckSourceTests.SkipUnlessFlagsInsideAnAddress(rich);
 
             window.NavigateSpellingError(forward: true);
             Assert.Equal("teh", rich.Selection.Text);
         }
         finally
         {
+            window.Close();
+        }
+    }
+
+    [StaFact]
+    public void MisspelledMarkdownLinkText_IsStillSaid()
+    {
+        ComposeWindowSpellCheckTests.SkipWithoutSpellingEngine();
+        var (window, _) = ComposeWindowSpellCheckTests.NewHeadlessComposeWindowWithVm();
+        var body = (TextBox)window.FindName("BodyBox");
+        window.Show();
+        try
+        {
+            Drain();
+            const string text = "Read [recieve](https://pacakge.example/plan) now";
+            int linkText = text.IndexOf("recieve", StringComparison.Ordinal);
+            body.Text = text;
+            body.CaretIndex = 0;
+            body.Focus();
+            Drain();
+            Assert.SkipUnless(body.GetSpellingError(linkText) != null,
+                "The speller does not flag the text of a Markdown link on this machine.");
+            var heard = Listen();
+
+            body.CaretIndex = linkText + 2;   // arrowed into the link text
+            Drain();
+            Assert.Equal(1, Misspellings(heard));
+
+            body.CaretIndex = 0;
+            Drain();
+            heard.Clear();
+            window.NavigateSpellingError(forward: true);
+            Drain();
+            Assert.Equal(1, Misspellings(heard));
+        }
+        finally
+        {
+            AccessibilityHelper.AnnouncementObserver = null;
+            window.Close();
+        }
+    }
+
+    // ── #901 ────────────────────────────────────────────────────────────────────
+
+    [StaFact]
+    public void AutoSaveNotice_WaitsForAPause_AndIsSaidOnce()
+    {
+        var (window, _) = ComposeWindowSpellCheckTests.NewHeadlessComposeWindowWithVm();
+        var body = (TextBox)window.FindName("BodyBox");
+        var now = new DateTime(2026, 11, 12, 9, 0, 0, DateTimeKind.Utc);
+        window.NoticeClock = () => now;
+        window.Show();
+        try
+        {
+            Drain();
+            body.Text = "Friday? Or Monday.";
+            body.Focus();
+            Drain();
+            var heard = new List<(string Text, AnnouncementCategory Category)>();
+            AccessibilityHelper.AnnouncementObserver = (text, category) => heard.Add((text, category));
+
+            const string notice = "Auto-save is keeping your draft on this computer until you're online.";
+            window.QueueAutoSaveNotice(notice);
+            window.FlushAutoSaveNoticeIfQuiet();
+            Assert.Empty(heard);
+
+            // The user keeps moving through the body: each caret move starts the pause again.
+            for (int i = 1; i <= 5; i++)
+            {
+                now = now.AddSeconds(1.5);
+                body.CaretIndex = i;
+                Drain();
+                window.FlushAutoSaveNoticeIfQuiet();
+                Assert.Empty(heard);
+            }
+
+            now = now.AddSeconds(1.9);
+            window.FlushAutoSaveNoticeIfQuiet();
+            Assert.Empty(heard);
+
+            now = now.AddSeconds(0.2);   // two seconds since the last caret move
+            window.FlushAutoSaveNoticeIfQuiet();
+            Assert.Equal((notice, AnnouncementCategory.Status), Assert.Single(heard));
+
+            now = now.AddSeconds(10);
+            window.FlushAutoSaveNoticeIfQuiet();
+            Assert.Single(heard);
+        }
+        finally
+        {
+            AccessibilityHelper.AnnouncementObserver = null;
             window.Close();
         }
     }

@@ -194,11 +194,20 @@ public class SpellCheckSourceTests
 
     // ── #902: web and email addresses are not misspellings ──────────────────────
     //
-    // The addresses are built from misspelled words, so whether or not the speller checks inside
-    // an address on a given machine, a pass that did not skip them would land on one.
+    // The addresses are built from misspelled words. A test only means something where the speller
+    // flags a word inside an address — otherwise there is nothing to skip and it would pass with
+    // the fix removed — so each one first checks that it does, and skips visibly if not.
 
     private const string AddressText =
         "See https://recieve.example/pacakge or mail tomorow@pacakge.example and teh rest";
+
+    private const string OnlyAddressesText =
+        "Plan at https://recieve.example/pacakge and tomorow@pacakge.example";
+
+    private const string NoEngine = "No Windows spelling engine for the current language on this machine.";
+
+    private const string NothingFlaggedInAddresses =
+        "The speller does not flag words inside addresses on this machine, so there is nothing to skip.";
 
     private static RichTextBox MakeSpellCheckedRichTextBox(string text)
     {
@@ -212,11 +221,39 @@ public class SpellCheckSourceTests
         return box;
     }
 
+    /// <summary>Skips unless the speller works and flags at least one word inside an address.</summary>
+    internal static void SkipUnlessFlagsInsideAnAddress(TextBox box)
+    {
+        Assert.SkipUnless(EngineAvailable(box), NoEngine);
+        var text = box.Text;
+        bool flagged = false;
+        for (int i = 0; i < text.Length && !flagged; i++)
+            flagged = box.GetSpellingError(i) != null
+                      && SpellScan.IsInAddress(text, Math.Max(0, box.GetSpellingErrorStart(i)));
+        Assert.SkipUnless(flagged, NothingFlaggedInAddresses);
+    }
+
+    /// <inheritdoc cref="SkipUnlessFlagsInsideAnAddress(TextBox)"/>
+    internal static void SkipUnlessFlagsInsideAnAddress(RichTextBox box)
+    {
+        var position = box.GetNextSpellingErrorPosition(box.Document.ContentStart, LogicalDirection.Forward);
+        Assert.SkipUnless(position != null, NoEngine);
+        bool flagged = false;
+        for (int guard = 0; position != null && !flagged && guard < 1000; guard++)
+        {
+            var range = box.GetSpellingErrorRange(position);
+            if (range == null) break;
+            flagged = SpellScan.IsInAddress(range);
+            position = box.GetNextSpellingErrorPosition(range.End, LogicalDirection.Forward);
+        }
+        Assert.SkipUnless(flagged, NothingFlaggedInAddresses);
+    }
+
     [StaFact]
     public void SpellScan_FindReportableErrorIndex_SkipsAddresses_BothDirections()
     {
         var box = MakeSpellCheckedTextBox(AddressText);
-        if (!EngineAvailable(box)) return;
+        SkipUnlessFlagsInsideAnAddress(box);
         int teh = AddressText.IndexOf("teh", System.StringComparison.Ordinal);
 
         Assert.Equal(teh, SpellScan.FindReportableErrorIndex(box, 0, forward: true));
@@ -228,9 +265,9 @@ public class SpellCheckSourceTests
     [StaFact]
     public void SpellScan_FindReportableErrorIndex_OnlyAddresses_FindsNothing()
     {
-        var text = "Plan at https://recieve.example/pacakge and tomorow@pacakge.example";
+        var text = OnlyAddressesText;
         var box = MakeSpellCheckedTextBox(text);
-        if (!EngineAvailable(box)) return;
+        SkipUnlessFlagsInsideAnAddress(box);
 
         Assert.Equal(-1, SpellScan.FindReportableErrorIndex(box, 0, forward: true));
         Assert.Equal(-1, SpellScan.FindReportableErrorIndex(box, text.Length, forward: false));
@@ -241,8 +278,7 @@ public class SpellCheckSourceTests
     public void SpellScan_FindErrorRange_SkipsAddresses_BothDirections()
     {
         var box = MakeSpellCheckedRichTextBox(AddressText);
-        if (box.GetNextSpellingErrorPosition(box.Document.ContentStart, LogicalDirection.Forward) == null)
-            return;   // engine unavailable on this runner
+        SkipUnlessFlagsInsideAnAddress(box);
 
         Assert.Equal("teh", SpellScan.FindErrorRange(box, forward: true)?.Range.Text);
         box.CaretPosition = box.Document.ContentEnd;
@@ -252,9 +288,8 @@ public class SpellCheckSourceTests
     [StaFact]
     public void SpellScan_FindErrorRange_OnlyAddresses_FindsNothing()
     {
-        var box = MakeSpellCheckedRichTextBox("Plan at https://recieve.example/pacakge and tomorow@pacakge.example");
-        if (box.GetNextSpellingErrorPosition(box.Document.ContentStart, LogicalDirection.Forward) == null)
-            return;   // the speller does not look inside addresses here; nothing to skip
+        var box = MakeSpellCheckedRichTextBox(OnlyAddressesText);
+        SkipUnlessFlagsInsideAnAddress(box);
 
         Assert.Null(SpellScan.FindErrorRange(box, forward: true));
         box.CaretPosition = box.Document.ContentEnd;
@@ -265,7 +300,7 @@ public class SpellCheckSourceTests
     public void TextBoxSource_SkipsAddresses()
     {
         var box = MakeSpellCheckedTextBox(AddressText);
-        if (!EngineAvailable(box)) return;
+        SkipUnlessFlagsInsideAnAddress(box);
 
         var source = new TextBoxSpellSource(box, "body");
 
@@ -277,8 +312,7 @@ public class SpellCheckSourceTests
     public void RichTextBoxSource_SkipsAddresses()
     {
         var box = MakeSpellCheckedRichTextBox(AddressText);
-        if (box.GetNextSpellingErrorPosition(box.Document.ContentStart, LogicalDirection.Forward) == null)
-            return;   // engine unavailable on this runner
+        SkipUnlessFlagsInsideAnAddress(box);
 
         var source = new RichTextBoxSpellSource(box, "body");
 
@@ -295,7 +329,71 @@ public class SpellCheckSourceTests
         var range = new TextRange(start, start.GetPositionAtOffset("recieve".Length)!);
         Assert.Equal("recieve", range.Text);
 
-        Assert.Equal("https://recieve.example/pacakge", SpellScan.TokenAround(range));
+        Assert.Equal(("https://recieve.example/pacakge", 8), SpellScan.TokenAround(range));
         Assert.True(SpellScan.IsInAddress(range));
+    }
+
+    [StaFact]
+    public void SpellScan_TokenAround_CrossesInlineElements_AndStopsAtWhitespaceAndLineBreaks()
+    {
+        var box = new RichTextBox();
+        box.Document.Blocks.Clear();
+        var linked = new Run("https://recieve.example");
+        box.Document.Blocks.Add(new Paragraph(new Run("Before"))
+        {
+            // "Before", a line break, then the address split across a hyperlink and a run.
+            Inlines = { new LineBreak(), new Hyperlink(linked), new Run("/pacakge today") },
+        });
+        var start = linked.ContentStart.GetPositionAtOffset("https://".Length)!;
+        var range = new TextRange(start, start.GetPositionAtOffset("recieve".Length)!);
+        Assert.Equal("recieve", range.Text);
+
+        Assert.Equal(("https://recieve.example/pacakge", 8), SpellScan.TokenAround(range));
+    }
+
+    [StaFact]
+    public void SpellScan_TokenAround_StopsAtTheParagraphEdge()
+    {
+        var box = new RichTextBox();
+        box.Document.Blocks.Clear();
+        var word = new Run("recieve");
+        box.Document.Blocks.Add(new Paragraph(new Run("first")));
+        box.Document.Blocks.Add(new Paragraph(word));
+        box.Document.Blocks.Add(new Paragraph(new Run("last")));
+
+        Assert.Equal(("recieve", 0), SpellScan.TokenAround(new TextRange(word.ContentStart, word.ContentEnd)));
+    }
+
+    // The text of a Markdown link is the user's own and still checked; only the address is skipped.
+    private const string MarkdownLinkText = "Read [recieve](https://pacakge.example/plan) now";
+
+    [StaFact]
+    public void MisspelledMarkdownLinkText_IsStillFound()
+    {
+        var box = MakeSpellCheckedTextBox(MarkdownLinkText);
+        Assert.SkipUnless(EngineAvailable(box), NoEngine);
+        int linkText = MarkdownLinkText.IndexOf("recieve", StringComparison.Ordinal);
+        Assert.SkipUnless(box.GetSpellingError(linkText) != null,
+            "The speller does not flag the text of a Markdown link on this machine.");
+
+        int found = SpellScan.FindReportableErrorIndex(box, 0, forward: true);
+        Assert.InRange(found, linkText - 1, linkText + "recieve".Length - 1);
+
+        var source = new TextBoxSpellSource(box, "body");
+        Assert.Contains("recieve", source.MoveToNextError()!.Word, StringComparison.Ordinal);
+    }
+
+    [StaFact]
+    public void MisspelledMarkdownLinkText_IsStillFound_Html()
+    {
+        var box = MakeSpellCheckedRichTextBox(MarkdownLinkText);
+        var first = box.GetNextSpellingErrorPosition(box.Document.ContentStart, LogicalDirection.Forward);
+        Assert.SkipUnless(first != null, NoEngine);
+        Assert.SkipUnless(box.GetSpellingErrorRange(first!)?.Text.Contains("recieve", StringComparison.Ordinal) == true,
+            "The speller does not flag the text of a Markdown link on this machine.");
+
+        Assert.Contains("recieve", SpellScan.FindErrorRange(box, forward: true)?.Range.Text ?? "", StringComparison.Ordinal);
+        var source = new RichTextBoxSpellSource(box, "body");
+        Assert.Contains("recieve", source.MoveToNextError()!.Word, StringComparison.Ordinal);
     }
 }
