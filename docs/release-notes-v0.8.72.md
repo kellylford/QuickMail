@@ -2,6 +2,7 @@
 
 ## New
 
+- **Install QuickMail with winget.** QuickMail is now in the Windows Package Manager, so `winget install quickmail` installs it, picking the right version for your computer, whether it has an Intel, AMD or ARM processor. You only need it once; QuickMail keeps itself up to date from then on. See [Installing with winget](https://kellylford.github.io/QuickMail/) in the User Guide.
 - **Hide folders you never use.** Choose **Hide Folder** on the folder tree's context menu, on the **Folder** menu, or in the Command Palette to take a folder, and everything inside it, out of the folder tree and **Go to Folder**. **Show All Hidden Folders**, in the same places, brings them all back. Hidden folders still sync, still count in All Mail and the other combined folders, and are still offered when you move or copy messages or set up a rule. The Inbox, accounts, calendars and saved views cannot be hidden. See [Hiding Folders](https://kellylford.github.io/QuickMail/) in the User Guide.
 - **Confirm before sending.** Turn on **Settings → General → Composing → Confirm before sending a message** for a safety check before sending or queuing mail. The setting is off by default and takes effect for open compose windows when you save Settings. **No** is selected initially; choose **Yes** to send, or **No**, **Cancel**, or **Escape** to keep editing.
 
@@ -37,3 +38,5 @@ There are four downloads. Take a regular one unless you know your PC has an ARM 
 The regular downloads run on every supported PC, ARM ones included — just not as quickly there. The ARM downloads will not start at all on a non-ARM PC, so if you are unsure, the regular one is the safe guess.
 
 All downloads include the .NET 10 runtime — you do not need to install .NET separately.
+
+You can also install QuickMail with the Windows Package Manager: `winget install quickmail`. It picks the right version for your computer, whether it has an Intel, AMD or ARM processor, and QuickMail keeps itself up to date from then on.
