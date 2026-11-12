@@ -43,9 +43,9 @@ New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
 foreach ($name in $files) {
     $source = Join-Path $TemplateDir $name
     $kept = foreach ($line in (Get-Content -LiteralPath $source -Encoding utf8)) {
-        # Keep the schema line; drop every other comment line. No value in these manifests
-        # contains a line that starts with '#', so this cannot cut into a value.
-        if ($line -match '^\s*#' -and $line -notmatch '^# yaml-language-server:') { continue }
+        # Keep the schema line; drop every other comment line. Only column-0 '#' lines: an
+        # indented one could be text inside the Description block, which must survive.
+        if ($line -match '^#' -and $line -notmatch '^# yaml-language-server:') { continue }
         $line.TrimEnd()
     }
     $text = ($kept -join "`n") + "`n"

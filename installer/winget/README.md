@@ -124,12 +124,21 @@ Automatic. When a `v*` tag's release is published, the `winget` job in `quickmai
 3. writes the manifests with `scripts/winget-manifest.ps1`, which fills these templates,
    strips their comments, and refuses to write a manifest with an `UpgradeCode`, an
    installer-level `ProductCode`, `Setup.exe`, or `RequireExplicitUpgrade` off;
-4. syncs Kelly's fork of winget-pkgs, pushes a branch with the three files, and opens the
-   pull request as `Update: KellyLford.QuickMail to <version>`.
+4. runs `scripts/winget-submit.ps1`, which builds one commit with the three files on top of
+   winget-pkgs' current master, points a branch in Kelly's fork at it, and opens the pull
+   request as `Update: KellyLford.QuickMail to <version>`. All through the GitHub API: the
+   fork is never synced, because syncing it after upstream changes its workflows needs the
+   `workflow` scope, which the token does not have. It never pushes over a branch that
+   already has an open pull request, which may carry fixes a moderator asked for.
 
 A moderator then approves it; 0.8.71's took about five hours. A failed submission leaves the
-release untouched. Rerun the job, or run **Submit to winget** by hand with the version (with
-**dry_run** on, it only shows the manifests it would submit).
+release untouched. Rerun the job, or run **Submit to winget** by hand with the version. Only
+Kelly can run it for real, since the pull request is opened in his name; with **dry_run** on
+(the default), anyone can, and it only shows the manifests it would submit.
+
+`scripts/winget-manifest.tests.ps1` runs on every pull request (the `winget-manifest` job in
+`quickmail.yml`), so a template or script change that breaks a rule fails there rather than
+after a release.
 
 Deliberately not winget-releaser, Komac or `wingetcreate update`: they analyse the MSI and
 add the `UpgradeCode` and `ProductCode` this package must not have (see above). The script is
@@ -147,3 +156,10 @@ branches `main` and `v*` tags): a classic personal access token of Kelly's with 
 `public_repo` scope. A fine-grained token cannot open a pull request on microsoft/winget-pkgs.
 Classic tokens expire; when it does, the job fails with GitHub's "Bad credentials" and needs a
 new token in the same place.
+
+`public_repo` is not narrow. It is write access to every public repository Kelly owns,
+QuickMail included, and his admin role bypasses both the `main` ruleset and "Tags: admins
+only". A leaked copy could push a `v*` tag or push to `main`, which is what the other
+environments' protection rests on. What keeps it in: only `main` and `v*` tag runs get it,
+both of which need Kelly's review or hands to change; the job runs nothing but checkout,
+the runner's own `gh`, and two code-owned scripts; and no step prints it.
