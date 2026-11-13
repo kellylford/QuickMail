@@ -1014,13 +1014,28 @@ public partial class MessageWindow : Window
         }
         // Everything else through the registry, so the keys the user assigned in Settings apply here.
         // Handled whenever a command owns the key, available or not, as the hand-written ladder this
-        // replaces did: Alt+Left on the first message must not fall through to the page.
+        // replaces did: Alt+Left on the first message must not fall through to the page. The exception
+        // is a text-editing gesture whose command is unavailable: Copy Attachment's Ctrl+C outside the
+        // attachment list must reach the header field or the page, or nothing in this window can be
+        // copied with Ctrl+C (#978).
         else if (_localRegistry.FindByGesture(key, mod) is { } command)
         {
-            if (command.IsAvailable?.Invoke() ?? true)
-                command.Execute();
-            e.Handled = true;
+            e.Handled = DispatchRegistryGesture(command, key, mod);
         }
+    }
+
+    /// <summary>
+    /// Runs <paramref name="command"/> if it is available, and says whether the key should be marked
+    /// handled: always when it ran, and when it did not unless the key is a text-editing gesture (#978).
+    /// </summary>
+    internal static bool DispatchRegistryGesture(CommandDefinition command, Key key, ModifierKeys mod)
+    {
+        if (command.IsAvailable?.Invoke() ?? true)
+        {
+            command.Execute();
+            return true;
+        }
+        return TextEditingGestures.SwallowWhenUnavailable(key, mod);
     }
 
     /// <summary>A gesture relayed out of the message body: run what the registry has on it, once input settles.</summary>

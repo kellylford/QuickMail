@@ -1,4 +1,5 @@
 using MimeKit;
+using QuickMail.Helpers;
 
 namespace QuickMail.Services;
 
@@ -8,18 +9,10 @@ namespace QuickMail.Services;
 public static class AddressParser
 {
     /// <summary>
-    /// Splits <paramref name="addressString"/> on commas and semicolons,
-    /// parses each part as a <see cref="MailboxAddress"/>, and adds valid
-    /// results to <paramref name="list"/>.
+    /// Adds the valid addresses in <paramref name="addressString"/> to <paramref name="list"/>. Entries may be
+    /// separated by commas, semicolons or line breaks; a quoted or unquoted name with a comma in it, such as
+    /// "Smith, John" &lt;john@example.com&gt;, stays one recipient rather than becoming one called "Smith" (#979).
     /// </summary>
-    public static void AddAddresses(InternetAddressList list, string addressString)
-    {
-        if (string.IsNullOrWhiteSpace(addressString)) return;
-        foreach (var part in addressString.Split(',', ';'))
-        {
-            var trimmed = part.Trim();
-            if (!string.IsNullOrEmpty(trimmed) && MailboxAddress.TryParse(trimmed, out var addr))
-                list.Add(addr);
-        }
-    }
+    public static void AddAddresses(InternetAddressList list, string addressString) =>
+        AddressInput.AddTo(list, addressString);
 }

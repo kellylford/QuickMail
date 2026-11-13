@@ -1142,6 +1142,10 @@ Enter in the From list never sends the message. Sending is **Alt+S** or **Ctrl+E
 
 Start typing a name or address in To, Cc, or Bcc. QuickMail searches your address book and recent contacts. Arrow down to choose a suggestion; press Enter or Tab to accept. Press Escape to dismiss without accepting.
 
+### Pasting Addresses
+
+You can paste several addresses into To, Cc, or Bcc at once, separated by commas, semicolons, or one per line, as Outlook and most mail programs copy them. Each becomes its own address, including names written last name first, such as `Smith, John <john@example.com>`. Copying addresses from one of these fields (select an address and press `Ctrl+C`, or `Ctrl+A` on an address to copy them all) pastes back the same way into another field or another message.
+
 ### Editing Modes
 
 Every compose window offers three modes, switchable at any time with `Ctrl+Shift+1/2/3` or the **View** menu:
