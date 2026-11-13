@@ -7,7 +7,7 @@ using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
-using MimeKit;
+using QuickMail.Helpers;
 using QuickMail.Models;
 using QuickMail.Views;
 
@@ -96,6 +96,11 @@ public partial class TokenizedAddressBox : UserControl
 
         InputBox.PreviewKeyDown += InputBox_PreviewKeyDown;
 
+        // A single-line TextBox keeps only the first line of a multi-line paste, so a list with
+        // one address per line lost every address after the first (#980). Every paste gesture
+        // (Ctrl+V, Shift+Insert, the context menu) passes through here.
+        DataObject.AddPastingHandler(InputBox, InputBox_Pasting);
+
         InputBox.GotKeyboardFocus += (_, _) => ClearChipSelection();
 
         InputBox.LostKeyboardFocus += (_, _) =>
@@ -177,28 +182,19 @@ public partial class TokenizedAddressBox : UserControl
 
         if (string.IsNullOrWhiteSpace(text)) return;
 
-        if (InternetAddressList.TryParse(text, out var list))
+        // The bound text is our own "; "-joined serialization, so it must be read with the
+        // same splitting a paste gets (#979): MimeKit alone cannot read a semicolon list.
+        var parsed = AddressInput.Parse(text);
+        foreach (var mb in parsed.Mailboxes)
         {
-            foreach (var addr in list.OfType<MailboxAddress>())
-            {
-                // Skip bare words / local-only strings MimeKit accepted but that aren't
-                // routable email addresses (e.g. "k", "hello" with no domain).
-                if (string.IsNullOrWhiteSpace(addr.Address)) continue;
-                if (!addr.Address.Contains('@')) continue;
-                var chip = new AddressChipModel
-                {
-                    DisplayName = addr.Name ?? string.Empty,
-                    EmailAddress = addr.Address
-                };
-                _chips.Add(chip);
-                ChipPanel.Children.Insert(ChipPanel.Children.Count - 1, CreateChipButton(chip, _chips.Count - 1));
-            }
+            var chip = new AddressChipModel { DisplayName = mb.Name, EmailAddress = mb.Address };
+            _chips.Add(chip);
+            ChipPanel.Children.Insert(ChipPanel.Children.Count - 1, CreateChipButton(chip, _chips.Count - 1));
         }
-        else
-        {
-            // Unparseable — put into InputBox for the user to correct
-            InputBox.Text = text;
-        }
+
+        // Text with no address in it goes back to the input box for the user to correct.
+        if (parsed.Leftover.Length > 0)
+            InputBox.Text = parsed.Leftover;
     }
 
     private void CommitCurrentInput()
@@ -216,39 +212,36 @@ public partial class TokenizedAddressBox : UserControl
             // Clear first so UpdateAddressText called from AddChip excludes this raw text
             InputBox.Text = string.Empty;
 
-            if (InternetAddressList.TryParse(raw, out var list))
-            {
-                bool added = false;
-                foreach (var addr in list.OfType<MailboxAddress>())
-                {
-                    if (string.IsNullOrWhiteSpace(addr.Address)) continue;
-                    if (!addr.Address.Contains('@')) continue;
-                    AddChip(new AddressChipModel { DisplayName = addr.Name ?? string.Empty, EmailAddress = addr.Address });
-                    added = true;
-                }
-                if (!added)
-                {
-                    // MimeKit parsed it but produced no usable address — treat as bare email
-                    if (raw.Contains('@'))
-                        AddChip(new AddressChipModel { EmailAddress = raw });
-                    else
-                        InputBox.Text = raw; // return unrecognised text to the input box
-                }
-            }
-            else if (raw.Contains('@'))
-            {
-                AddChip(new AddressChipModel { EmailAddress = raw });
-            }
-            else
-            {
-                // Not recognisable — return to the input box so the user can fix it
-                InputBox.Text = raw;
-            }
+            // One chip per address, whether the list was separated by commas, semicolons
+            // (Outlook's separator and our own copy format, #979) or line breaks (#980).
+            var parsed = AddressInput.Parse(raw);
+            foreach (var mb in parsed.Mailboxes)
+                AddChip(new AddressChipModel { DisplayName = mb.Name, EmailAddress = mb.Address });
+
+            // Not recognisable — return to the input box so the user can fix it
+            if (parsed.Leftover.Length > 0)
+                InputBox.Text = parsed.Leftover;
         }
         finally
         {
             _isCommitting = false;
         }
+    }
+
+    /// <summary>
+    /// Replaces pasted text holding line breaks or tabs with the same addresses separated by "; ",
+    /// which the input then commits as chips like any other separated list (#980).
+    /// </summary>
+    internal static void InputBox_Pasting(object sender, DataObjectPastingEventArgs e)
+    {
+        if (e.SourceDataObject.GetData(DataFormats.UnicodeText, true) is not string text) return;
+        if (AddressInput.FlattenForSingleLine(text) is not { } flat) return;
+
+        var data = new DataObject();
+        data.SetData(DataFormats.UnicodeText, flat);
+        data.SetData(DataFormats.Text, flat);
+        e.DataObject = data;
+        e.FormatToApply = DataFormats.UnicodeText;
     }
 
     // ── Chip management ───────────────────────────────────────────────────────
