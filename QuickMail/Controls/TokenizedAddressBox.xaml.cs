@@ -194,7 +194,7 @@ public partial class TokenizedAddressBox : UserControl
 
         // Text with no address in it goes back to the input box for the user to correct.
         if (parsed.Leftover.Length > 0)
-            InputBox.Text = parsed.Leftover;
+            SetLeftover(parsed.Leftover);
     }
 
     private void CommitCurrentInput()
@@ -220,7 +220,7 @@ public partial class TokenizedAddressBox : UserControl
 
             // Not recognisable — return to the input box so the user can fix it
             if (parsed.Leftover.Length > 0)
-                InputBox.Text = parsed.Leftover;
+                SetLeftover(parsed.Leftover);
         }
         finally
         {
@@ -242,6 +242,13 @@ public partial class TokenizedAddressBox : UserControl
         data.SetData(DataFormats.Text, flat);
         e.DataObject = data;
         e.FormatToApply = DataFormats.UnicodeText;
+    }
+
+    /// <summary>Puts text that held no address back in the input, with the caret after it so typing continues it.</summary>
+    private void SetLeftover(string text)
+    {
+        InputBox.Text = text;
+        InputBox.CaretIndex = text.Length;
     }
 
     // ── Chip management ───────────────────────────────────────────────────────
@@ -379,7 +386,7 @@ public partial class TokenizedAddressBox : UserControl
         var menu = new ContextMenu();
 
         var copy = new MenuItem { Header = "Copy _Address" };
-        copy.Click += (_, _) => Clipboard.SetText(chip.FullAddress);
+        copy.Click += (_, _) => Clipboard.SetText(chip.Serialize());
 
         var addToBook = new MenuItem { Header = "Add to Address _Book" };
         addToBook.Click += async (_, _) =>
@@ -499,8 +506,8 @@ public partial class TokenizedAddressBox : UserControl
 
             case Key.C when Keyboard.Modifiers == ModifierKeys.Control:
                 var addresses = _selectedChipIndices.Count > 1
-                    ? string.Join("; ", _selectedChipIndices.OrderBy(i => i).Select(i => _chips[i].FullAddress))
-                    : _chips[index].FullAddress;
+                    ? string.Join("; ", _selectedChipIndices.OrderBy(i => i).Select(i => _chips[i].Serialize()))
+                    : _chips[index].Serialize();
                 Clipboard.SetText(addresses);
                 e.Handled = true;
                 break;

@@ -115,6 +115,89 @@ public class AddressInputTests
         Assert.Equal(new[] { "A <a;b@example.com>", "c@example.com" },
             AddressInput.SplitSegments("A <a;b@example.com>; c@example.com"));
 
+    [Fact]
+    public void Semicolon_inside_a_comment_does_not_split()
+    {
+        // Review of #979: raw header text can carry RFC 5322 comments.
+        var result = AddressInput.Parse("ann@example.com (Ann; Sales), ben@example.com");
+
+        Assert.Equal(new[] { "ann@example.com", "ben@example.com" }, result.Mailboxes.Select(m => m.Address));
+        Assert.Equal(string.Empty, result.Leftover);
+    }
+
+    [Fact]
+    public void Empty_group_is_dropped_not_left_over()
+    {
+        // A Bcc-only draft from another client has "To: undisclosed-recipients:;".
+        var result = AddressInput.Parse("undisclosed-recipients:;");
+
+        Assert.Empty(result.Mailboxes);
+        Assert.Equal(string.Empty, result.Leftover);
+    }
+
+    [Theory]
+    [InlineData("", "ann@example.com", "ann@example.com")]
+    [InlineData("Ann Lee", "ann@example.com", "Ann Lee <ann@example.com>")]
+    [InlineData("Smith, John", "john@example.com", "\"Smith, John\" <john@example.com>")]
+    [InlineData("Doe; Jane", "jane@example.com", "\"Doe; Jane\" <jane@example.com>")]
+    public void Format_quotes_names_with_specials(string name, string address, string expected) =>
+        Assert.Equal(expected, AddressInput.Format(name, address));
+
+    [Fact]
+    public void Formatted_addresses_read_back_as_the_same_people()
+    {
+        var people = new[]
+        {
+            new AddressInput.Mailbox("Smith, John", "john@example.com"),
+            new AddressInput.Mailbox("Doe; Jane", "jane@example.com"),
+            new AddressInput.Mailbox("", "ann@example.com"),
+        };
+        var text = string.Join("; ", people.Select(p => AddressInput.Format(p.Name, p.Address)));
+
+        Assert.Equal(people, AddressInput.Parse(text).Mailboxes);
+    }
+
+    [Fact]
+    public void AddTo_keeps_comma_names_as_one_recipient()
+    {
+        // The send path used to split on every comma, sending to an address "Smith".
+        var list = new MimeKit.InternetAddressList();
+        AddressInput.AddTo(list, "Smith, John <john@example.com>; \"Doe, Jane\" <jane@example.com>");
+
+        var mailboxes = list.Mailboxes.ToList();
+        Assert.Equal(new[] { "john@example.com", "jane@example.com" }, mailboxes.Select(m => m.Address));
+        Assert.Equal(new[] { "Smith, John", "Doe, Jane" }, mailboxes.Select(m => m.Name));
+    }
+
+    [Fact]
+    public void AddTo_reads_comma_and_semicolon_lists()
+    {
+        var list = new MimeKit.InternetAddressList();
+        AddressInput.AddTo(list, "ann@example.com, ben@example.com; cat@example.com");
+
+        Assert.Equal(new[] { "ann@example.com", "ben@example.com", "cat@example.com" }, list.Mailboxes.Select(m => m.Address));
+    }
+
+    [Fact]
+    public void AddTo_one_bad_entry_does_not_lose_its_neighbours()
+    {
+        var list = new MimeKit.InternetAddressList();
+        AddressInput.AddTo(list, "ann@example.com, <<<, ben@example.com");
+
+        Assert.Equal(new[] { "ann@example.com", "ben@example.com" }, list.Mailboxes.Select(m => m.Address));
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void AddTo_empty_adds_nothing(string? text)
+    {
+        var list = new MimeKit.InternetAddressList();
+        AddressInput.AddTo(list, text);
+        Assert.Empty(list);
+    }
+
     [Theory]
     [InlineData("ann@example.com\r\nben@example.com\r\ncat@example.com", "ann@example.com; ben@example.com; cat@example.com")]
     [InlineData("ann@example.com\nben@example.com", "ann@example.com; ben@example.com")]

@@ -96,9 +96,10 @@ public class TokenizedAddressBoxPasteTests
         // #979: copying several chips writes them joined with "; " — that text must paste back as the same chips.
         EnsureApplication();
         var source = new TokenizedAddressBox();
-        source.InputBox.Text = "ann@example.com, Ben Baker <ben@example.com>, cat@example.com";
+        source.InputBox.Text = "ann@example.com, Ben Baker <ben@example.com>, \"Doe; Jane\" <jane@example.com>, \"Smith, John\" <john@example.com>";
         DoEvents();
-        var copied = string.Join("; ", source.GetChips().Select(c => c.FullAddress));
+        Assert.Equal(4, source.GetChips().Count);
+        var copied = string.Join("; ", source.GetChips().Select(c => c.Serialize()));
 
         var target = new TokenizedAddressBox();
         target.InputBox.Text = copied;
@@ -130,6 +131,34 @@ public class TokenizedAddressBoxPasteTests
 
         Assert.Equal("ann@example.com; ben@example.com; cat@example.com",
             args.DataObject.GetData(DataFormats.UnicodeText) as string);
+    }
+
+    [StaFact]
+    public void PastingHandler_IsWiredToTheInputBox()
+    {
+        // Raise the real Pasting event on the input, as every paste gesture does.
+        EnsureApplication();
+        var box = new TokenizedAddressBox();
+        var source = new DataObject(DataFormats.UnicodeText, "ann@example.com\nben@example.com");
+        var args = new DataObjectPastingEventArgs(source, isDragDrop: false, DataFormats.UnicodeText);
+
+        box.InputBox.RaiseEvent(args);
+
+        Assert.Equal("ann@example.com; ben@example.com", args.DataObject.GetData(DataFormats.UnicodeText) as string);
+    }
+
+    [StaFact]
+    public void Leftover_text_keeps_the_caret_at_its_end()
+    {
+        EnsureApplication();
+        var box = new TokenizedAddressBox();
+
+        box.InputBox.Text = "ann@example.com; Ford, Kelly";
+        DoEvents();
+
+        Assert.Equal(new[] { "ann@example.com" }, box.GetChips().Select(c => c.EmailAddress));
+        Assert.Equal("Ford, Kelly", box.InputBox.Text);
+        Assert.Equal(box.InputBox.Text.Length, box.InputBox.CaretIndex);
     }
 
     [StaFact]
