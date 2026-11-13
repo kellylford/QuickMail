@@ -29,7 +29,7 @@ public static class MessageBodyHtmlBuilder
     /// </summary>
     private const string ResidualForbiddenTag =
         @"<(/?(?:script|style|svg|math|iframe|frame|frameset|object|embed|applet|video|audio|source|track|" +
-        @"canvas|form|img|image|link|base|meta|input|button|portal|title|html|head|body)(?=[\s/>]|$))";
+        @"canvas|form|textarea|select|img|image|link|base|meta|input|button|portal|title|html|head|body)(?=[\s/>]|$))";
 
     /// <summary>
     /// A start tag with something after its name: the name, then everything up to the closing
@@ -776,7 +776,17 @@ public static class MessageBodyHtmlBuilder
             body = Step(body, "<script\\b.*?" + EndTag("script"), RegexOptions.IgnoreCase | RegexOptions.Singleline);
             body = Step(body, "<style\\b.*?" + EndTag("style"), RegexOptions.IgnoreCase | RegexOptions.Singleline);
             body = Step(body, "<svg\\b.*?" + EndTag("svg"), RegexOptions.IgnoreCase | RegexOptions.Singleline);
-            body = Step(body, "<(iframe|object|embed|video|audio|canvas|form)\\b.*?" + EndTag("\\1"), RegexOptions.IgnoreCase | RegexOptions.Singleline);
+            // textarea and select go with their content: an editable box or a dropdown in a message is
+            // a Tab stop that puts a screen reader into forms mode mid-newsletter, and a select's
+            // option list means nothing as text. An unclosed one is escaped by ResidualForbiddenTag.
+            body = Step(body, "<(iframe|object|embed|video|audio|canvas|textarea|select)\\b.*?" + EndTag("\\1"), RegexOptions.IgnoreCase | RegexOptions.Singleline);
+            // A form loses its tags but keeps what is inside. Newsletters generated from ASP.NET
+            // pages wrap their WHOLE body in <form id="ctl00">, so removing the element with its
+            // content left the reading pane blank. Its controls are removed on their own (input and
+            // button below, textarea and select above), and the CSP's form-action 'none' stands.
+            // The tail is quote-aware, as the tokenizer reads a tag, so a ">" inside an attribute
+            // value does not leave the rest of the tag behind as visible text.
+            body = Step(body, "</?form(?=[\\s/>])(?:[^>\"']|\"[^\"]*\"|'[^']*')*>", RegexOptions.IgnoreCase | RegexOptions.Singleline);
             // Substitute each image's alt text before images are removed (issue #163). Removing the
             // element outright discards the only name the image has: the CSP blocks the pixels either
             // way, so what is lost is not the picture but the words describing it. Worst where the
