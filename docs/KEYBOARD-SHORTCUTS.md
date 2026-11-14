@@ -46,9 +46,28 @@ A menu item or button names its command with `sc:CommandShortcut.Id` (`Helpers/C
 | Ctrl+Shift+W | `mail.toggleWatch` | Watch Conversation — watches the selected message's conversation, or unwatches it if already watched. On a Conversations group header it acts on that group; on a From/To group header it is unavailable (a sender group spans many conversations) |
 | *(unassigned)* | `mail.watchManager` | Watched Conversations… (review, rename, stop watching) |
 | *(unassigned)* | `view.filterWatched` | Show Watched Conversations Only |
+| *(unassigned)* | `view.filterAll` | Show All Messages |
+| *(unassigned)* | `view.filterUnread` | Show Unread Only |
+| *(unassigned)* | `view.filterRead` | Show Read Only |
+| *(unassigned)* | `view.filterWithAttachments` | Show Messages with Attachments |
+| *(unassigned)* | `view.filterReplied` | Show Replied Only |
+| *(unassigned)* | `view.filterForwarded` | Show Forwarded Only |
+| *(unassigned)* | `view.filterToMe` | Show Messages Addressed to Me |
+| *(unassigned)* | `view.sortDateDesc` | Sort: Newest First |
+| *(unassigned)* | `view.sortDateAsc` | Sort: Oldest First |
+| *(unassigned)* | `view.sortAlphaAsc` | Sort: A → Z |
+| *(unassigned)* | `view.sortAlphaDesc` | Sort: Z → A |
+| *(unassigned)* | `view.sortCountDesc` | Sort: Most Messages — only in the grouped views (any view mode but the flat message list) |
+| *(unassigned)* | `view.sortCountAsc` | Sort: Fewest Messages — as Most Messages |
+| *(unassigned)* | `view.sortFlaggedFirst` | Sort: Flagged First |
+| *(unassigned)* | `view.toggleConversation` | Cycle View Mode — steps through the four message-list view modes |
+| *(unassigned)* | `view.clearView` | Clear View — leaves the applied saved view (available only while one is applied) |
+| *(unassigned)* | `view.resetFolderView` | Reset Folder View — available on a real folder, not an account header |
+| *(the view's hotkey)* | `view.saved.{id}` | [view name] — one per saved view, category Views; its default key is the hotkey set in the view manager, if any |
 | Ctrl+Shift+V | `view.openViewMenu` | Open View Menu |
 | Ctrl+, | `settings.open` | Settings… (File menu). The File menu showed it before anything handled it (#849) |
 | Ctrl+Shift+Y | `view.searchFolders` | Search Folders… |
+| *(unassigned)* | `view.folderPicker` | Go to Folder… — the flat folder list with a search box, the only picker that also offers the virtual folders |
 | Ctrl+Shift+I | `view.goToStartupFolder` | Go to Startup Folder — the folder QuickMail opens in, All Mail if none is set; Outlook's Go to Inbox key. (Ctrl+Shift+I in the compose window is Insert Image, a separate registry) |
 | Ctrl+Shift+S | `view.search` | Search Messages… |
 | *(unassigned)* | `mail.searchServer` | Search the Server Too — in Search Results, asks each account's server for the same search and adds what it finds (#717) |
@@ -56,7 +75,17 @@ A menu item or button names its command with `sc:CommandShortcut.Id` (`Helpers/C
 | Ctrl+/ | `mail.advancedSearch` | Advanced Search… (#717). `/` alone still opens the search box from the lists; those handlers take it only with no modifier. Not relayed from inside the reading pane, like Ctrl+Shift+S |
 | Ctrl+Shift+G | `contacts.grabAddresses` | Grab Addresses from Message |
 | Ctrl+Shift+B | `contacts.openAddressBook` | Address Book |
+| *(unassigned)* | `contacts.syncNow` | Sync Contacts Now — available when contact sync is set up |
+| *(unassigned)* | `account.manage` | Manage Accounts |
+| *(unassigned)* | `account.reconnect` | Reconnect Account — the account selected in the account list; always available, and says so when there is nothing to reconnect (#615) |
 | F1 | `help.userGuide` | Open User Guide |
+| *(unassigned)* | `help.about` | About QuickMail |
+| *(unassigned)* | `help.reportBug` | Report a Bug |
+| *(unassigned)* | `help.armVersion` | Get the ARM Version — registered on every machine; only the Help menu entry hides on non-ARM hardware |
+| *(unassigned)* | `help.adminConsent` | Grant Admin Consent for Your Organization (#607) |
+| *(unassigned)* | `help.connectionDiagnostics` | Connection Diagnostics — registered only while Connection Diagnostics is switched on in Settings (`ApplyConnectionDiagnosticsSetting`) |
+| *(unassigned)* | `settings.export` | Export Settings… — registered only while settings transfer is allowed (`ApplySettingsTransferSetting`) |
+| *(unassigned)* | `settings.import` | Import Settings… — as Export Settings |
 | *(unassigned)* | `settings.toggleCustomAnnouncements` | Toggle Custom Announcements |
 | *(unassigned)* | `settings.toggleMuteSounds` | Mute All Sounds |
 | Ctrl+A | `mail.selectAll` | Select All Messages (message list focus only) |
@@ -79,6 +108,9 @@ A menu item or button names its command with `sc:CommandShortcut.Id` (`Helpers/C
 | Ctrl+Shift+T | `view.focusTabs` | Focus Tab Strip |
 | Alt+A | `view.focusAttachments` | Focus Attachment List (of the open message) |
 | Alt+Enter | `view.showProperties` | View Properties |
+| Ctrl+Shift+H | `view.togglePlainText` | Toggle Plain Text View — re-renders the open message in place (reading pane and tab modes; the message window has its own command) |
+| Ctrl+Shift+U | `view.loadPictures` | Load Pictures — shows the open message's pictures from the web, for as long as that message is open (#508) |
+| Ctrl+W | `mail.closeMessage` | Close Message — closes the reading pane. Shares Ctrl+W with `tabs.close`: Close Message is available only while a message is open in Reading Pane mode, Close Tab only while a message tab is active |
 | Ctrl+Tab | `tabs.next` | Next Tab |
 | Ctrl+Shift+Tab | `tabs.previous` | Previous Tab |
 | Ctrl+W | `tabs.close` | Close Tab |
@@ -89,6 +121,8 @@ A menu item or button names its command with `sc:CommandShortcut.Id` (`Helpers/C
 | *(unassigned)* | `tabs.promote` | Move Tab to New Window |
 | *(unassigned)* | `mail.openInNewTab` | Open in New Tab |
 | *(unassigned)* | `mail.openInWindow` | Open in New Window |
+| *(unassigned)* | `mail.moveToFolder` | Move to Folder… — the selection, or a group header's messages |
+| *(unassigned)* | `mail.copyToFolder` | Copy to Folder… — as Move to Folder |
 | *(unassigned)* | `theme.manager.open` | Manage Themes |
 | *(unassigned)* | `theme.next` | Next Theme |
 | *(unassigned)* | `theme.previous` | Previous Theme |
@@ -96,6 +130,10 @@ A menu item or button names its command with `sc:CommandShortcut.Id` (`Helpers/C
 | *(unassigned)* | `view.density.comfortable` | Density: Comfortable |
 | *(unassigned)* | `view.density.compact` | Density: Compact |
 | *(unassigned)* | `view.rowFields` | Message List Fields… |
+| *(unassigned)* | `folder.new` | New Folder… — under the folder-tree selection, or the selected account's root (#250) |
+| Delete | `folder.delete` | Delete Folder — folder-tree focus on a real folder; shares Delete with `mail.delete` |
+| *(unassigned)* | `folder.setStartupFolder` | Set as Startup Folder — the folder selected in the folder tree (#516) |
+| *(unassigned)* | `folder.clearStartupFolder` | Clear Startup Folder |
 | *(unassigned)* | `folder.expand` | Expand Folder — the selected folder and every subfolder in it |
 | *(unassigned)* | `folder.collapse` | Collapse Folder — the selected folder and every subfolder in it |
 | *(unassigned)* | `folder.expandAll` | Expand All Folders |
@@ -104,6 +142,35 @@ A menu item or button names its command with `sc:CommandShortcut.Id` (`Helpers/C
 | *(unassigned)* | `folder.showHidden` | Show All Hidden Folders |
 | *(unassigned)* | `calendar.calendarAtTopOfFolderList` | Calendar at Top of Folder List |
 | *(unassigned)* | `calendar.calendarAtBottomOfFolderList` | Calendar at Bottom of Folder List |
+| Ctrl+Shift+C | `view.calendar` | Calendar — opens the calendar view; available when there is a calendar |
+| *(unassigned)* | `calendar.syncNow` | Sync Calendars Now — available when calendar sync is set up |
+| *(unassigned)* | `calendar.search` | Search Appointments — while the calendar is open. Ctrl+Shift+S (`view.search`) routes here in the calendar, so search is one gesture app-wide |
+| Ctrl+G | `calendar.goToDate` | Go to Date — while the calendar is open |
+| T | `calendar.toggleTodayFilter` | Toggle Today Filter — calendar list or month grid focus (category View) |
+| Enter | `calendar.openSourceMessage` | Open Calendar Event Source Message — calendar list focus with an event selected; on a pending invitation it shows the response menu (category View) |
+| N | `calendar.newEvent` | New Appointment — calendar list or month grid focus |
+| E | `calendar.editEvent` | Edit Appointment — calendar list focus with an event selected |
+| Delete | `calendar.deleteEvent` | Delete Appointment — calendar list focus with an event selected |
+| *(unassigned)* | `calendar.exportEvent` | Export Appointment as .ics — calendar list focus with an event selected |
+| *(unassigned)* | `calendar.importIcs` | Import Calendar File (.ics)… (#762) |
+| *(unassigned)* | `calendar.setDefaultCalendar` | Use as Default Calendar for New Appointments — folder-tree focus on a calendar node (#497) |
+| *(unassigned)* | `calendar.clearDefaultCalendar` | Clear Default Calendar |
+| *(unassigned)* | `calendar.acceptInvite` | Accept Invitation — calendar list focus on a pending invitation |
+| *(unassigned)* | `calendar.tentativeInvite` | Tentative Invitation — as Accept Invitation |
+| *(unassigned)* | `calendar.declineInvite` | Decline Invitation — as Accept Invitation |
+| A | `calendar.viewAgenda` | Agenda View — calendar list or month grid focus |
+| D | `calendar.viewDay` | Day View — calendar list or month grid focus |
+| W | `calendar.viewWeek` | Week View — calendar list or month grid focus |
+| M | `calendar.viewMonth` | Month View — calendar list or month grid focus |
+| Enter | `calendar.drillIntoDay` | Open Selected Day — month grid focus with a day selected |
+| Ctrl+Left | `calendar.prevPeriod` | Previous Day or Week — calendar list or month grid focus |
+| Ctrl+Right | `calendar.nextPeriod` | Next Day or Week — calendar list or month grid focus |
+
+The calendar's single-letter keys (T, N, E, A, D, W, M) and its Enter and Delete are scoped to the
+calendar's own panes, so they never take a letter away from type-ahead elsewhere. Enter is shared by
+`calendar.openSourceMessage` (calendar list) and `calendar.drillIntoDay` (month grid), and Delete by
+`calendar.deleteEvent`, `mail.delete` and `folder.delete`; in each case the scopes never overlap.
+F5 is not a separate calendar command: `mail.refresh` refreshes the calendar while it is open.
 
 Alt+Up and Alt+Down appear twice above on purpose. `mail.previousUnread` / `mail.nextUnread` are
 scoped to the message area and `account.moveUp` / `account.moveDown` to the account list, and
@@ -127,6 +194,25 @@ The folder tree's own Right and Left arrow keys expand and collapse one level. T
 in-control navigation — the same kind as the arrow keys inside a list box — and are not registered
 commands. The four `folder.expand*` / `folder.collapse*` commands above are the bulk equivalents
 (#590): they act on the whole branch, or on the whole tree.
+
+## Keeping the table complete
+
+The table above lists every command registered in the main window's `CommandRegistry`: the ones in
+`MainViewModel.RegisterCommands` (and the `MainViewModel.*.cs` partials) and the ones in
+`MainWindow.xaml.cs`. `KeyboardShortcutsDocTests` fails when a registered id is missing from the
+table, or when a row names an id nothing registers. Add the row in the same change as the
+registration. Ids built at run time (`theme.apply.{id}`, `view.saved.{id}`) are covered by one row
+per family.
+
+Other windows keep their own registry, which feeds only that window's local command palette
+(`Ctrl+Shift+P`) and is not customizable in Settings: `ComposeWindow`, `MessageWindow`,
+`AddressBookWindow`, `AdvancedSearchWindow`, `WatchedConversationsWindow`, `RowFieldsWindow`,
+`UnifiedRulesWindow`, `FlagManagerWindow`, `FlagPickerWindow`, `ThemeManagerWindow`,
+`EventEditorWindow`, `GoToDateWindow`, `SpellCheckDialog`, `MarkdownPreviewWindow`,
+`SoundTutorialWindow`, `SoundGalleryWindow`, `ReportBugWindow`, `ConnectionDiagnosticsWindow`,
+`ExportSettingsWindow`, `ImportSettingsWindow` and `SettingsImportedWindow`. Those are not listed
+id by id here; the window's own section below describes its keys where they need explaining, and
+its palette is the complete list.
 
 ## Inside the Command Palette
 

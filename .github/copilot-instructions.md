@@ -20,7 +20,7 @@ Do not name a specific screen reader product (NVDA, JAWS, VoiceOver, Narrator, e
 
 ## Keyboard shortcuts
 
-Every new user-facing shortcut must be registered in `CommandRegistry` in `MainWindow.xaml.cs`. Do not add raw key-matching branches in `PreviewKeyDown` for new commands.
+Every new user-facing shortcut must be registered in `CommandRegistry` via `Register(new CommandDefinition(...))`. Most registrations are in `RegisterCommands` in `MainViewModel.cs` (VM-backed actions: mail, view, account, help and so on); the rest are in `MainWindow.xaml.cs` (window-level wiring). Follow whichever file already registers the related commands, and add the new command's row to `docs/KEYBOARD-SHORTCUTS.md` (`KeyboardShortcutsDocTests` fails without it). Do not add raw key-matching branches in `PreviewKeyDown` for new commands.
 
 ## Logging
 
