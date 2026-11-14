@@ -20,6 +20,7 @@ QuickMail is a keyboard and screen reader friendly email program for Windows. Gm
 - [Flags](#flags)
 - [Mail Rules](#mail-rules)
 - [Saved Views](#saved-views)
+- [Startup](#startup)
 - [Calendar](#calendar)
 - [What Syncs and What Doesn't](#what-syncs-and-what-doesnt)
 - [Working Offline](#working-offline)
@@ -28,6 +29,7 @@ QuickMail is a keyboard and screen reader friendly email program for Windows. Gm
 - [Sounds](#sounds)
 - [Tools Menu](#tools-menu)
 - [Connection Diagnostics](#connection-diagnostics)
+- [Data Folder and Command-Line Options](#data-folder-and-command-line-options)
 - [Reporting Issues](#reporting-issues)
 - [Settings](#settings)
 - [Themes](#themes)
@@ -592,6 +594,8 @@ You can also jump directly to any pane:
 
 Select **All Inboxes** at the top of the folder tree to see messages from all accounts merged into one list, sorted by date. The same **All Mail** group also holds **All Drafts**, **All Sent**, and **All Trash**, each merging that kind of folder across every account; **All Archive**, which follows each account's own archive setting; **All Flagged**, which collects flagged messages from every folder rather than from one kind of folder; and **Watched Conversations**, described below.
 
+Each account also has its own **All Mail — *account name*** entry in the folder tree, which shows every message from every folder of that one account, newest first; these entries are in **Go to Folder** too. None of these merged views moves or copies anything: they only gather messages into one list.
+
 In any of these merged views, each row also says which folder the message came from — qualified with the account name when the view spans more than one account, so "Work, Archive" and "Home, Archive" are told apart. In an ordinary single-folder view the folder is already known, so nothing extra is said. You can move where this falls in the row, or turn it off, in [Message List Fields](#message-list-fields).
 
 ### Watched Conversations
@@ -751,12 +755,55 @@ If a file is not an email, QuickMail says so instead of opening it.
 
 ### Message List Views
 
-Press `Ctrl+Shift+V` (or use the **View** menu) to switch how messages are grouped:
+Use **View → View Mode** (`Ctrl+Shift+V` opens the View menu) to switch how messages are grouped:
 
 - **Messages** — flat list, newest first
 - **Conversations** — messages grouped by thread
 - **From** — messages grouped by sender
 - **To** — messages grouped by recipient
+
+### Selecting Several Messages
+
+In the **Messages** view, hold **Shift** and press **Up** or **Down** to extend the selection one message at a time without opening anything. (In Conversations, From, and To, acting on a group's heading already acts on all of its messages.) For bigger selections:
+
+| Shortcut | What it does |
+|----------|--------------|
+| `Ctrl+A` | Select every message in the list |
+| `Ctrl+Shift+Home` | Extend the selection from the current message to the first one |
+| `Ctrl+Shift+End` | Extend the selection from the current message to the last one |
+
+Anything you do next acts on all of them: **Delete**, **Move to Archive**, **Move to Folder…**, **Copy Messages**, **Save**, and so on.
+
+### Filtering the List
+
+**View → Filter** narrows the list without leaving the folder:
+
+| Filter | Shows |
+|--------|-------|
+| **Show All** | Everything (no filter) |
+| **Unread** | Messages not yet read, replied to, or forwarded |
+| **Read** | Messages marked as read |
+| **With Attachments** | Messages with at least one attachment |
+| **Replied** / **Forwarded** | Messages you have replied to / forwarded |
+| **To Me** | Messages with one of your account addresses on the To line, leaving out mailing-list mail |
+| **Watched** | Messages in conversations you are watching |
+| **Flagged** | **All Flagged**, or just the messages carrying one of your named flags |
+
+Every filter except **Flagged** is also in the command palette (for example **Show Unread Only** or **Show Messages Addressed to Me**), and you can give any of them a key in **File → Settings → Keyboard Shortcuts**. While a filter is on, the window title names it, for example "Inbox - Work — Unread". **Show All**, or **Show All Messages** in the palette, turns it off. A folder remembers its filter along with its other view settings.
+
+### Sorting the List
+
+**View → Sort** sets the order:
+
+| Sort | Orders by |
+|------|-----------|
+| **Newest First** (default) | Date, most recent first |
+| **Oldest First** | Date, oldest first |
+| **A → Z** / **Z → A** | Subject in the Messages view; the conversation, sender, or recipient name in the grouped views |
+| **Flagged First** | Flagged messages first, then newest first (by name in From and To) |
+| **Most Messages** / **Fewest Messages** | Groups with the most / fewest messages first — Conversations, From, and To only |
+
+**Most Messages** and **Fewest Messages** are unavailable in the flat Messages view. In the From view they show at a glance who writes to you most. Each sort is also in the command palette as **Sort: …**.
 
 ### Moving to the Next Unread Message
 
@@ -896,11 +943,30 @@ The first time you start a version of QuickMail with this search, it builds its 
 
 ### Searching Folders
 
-Press `Ctrl+Shift+Y` to search folder names. Type to filter the tree, press Enter to navigate to the matching folder.
+Press `Ctrl+Shift+Y` (or **View → Search Folders…**) for a list of every folder, including All Inboxes and the other merged folders. Focus starts in the list, so **Up**, **Down** and **Enter** work at once; press `/` to move to the search box and type to narrow the list.
 
 ### Refreshing
 
-Press **F5** to manually refresh the current folder.
+Press **F5** to refresh the folder you are in. With a saved view active, **F5** refreshes the view, so you stay in it.
+
+QuickMail also checks for new mail by itself. Most mail servers tell QuickMail the moment a message reaches your inbox, so it appears straight away. The **Check for new mail every** setting in **Settings → General** adds a regular check behind that (every 5 minutes unless you change it), which also catches changes made in other mail programs. **Off (server push only)** leaves it to the server.
+
+### Sync Range
+
+**View → Sync Range** decides how far back QuickMail keeps mail on this computer: **Last 7 Days**, **Last 30 Days** (the default), **Last 6 Months**, **Last 1 Year**, or **All Mail**. The same choice is **Sync range** in **Settings → General**. Older mail is still on your server; it is just not in QuickMail's lists, or in searches of the mail on this computer. A wider range means more to download the first time, and more disk space used.
+
+### The Status Bar
+
+Press **Ctrl+9** (unless **Message Open Mode** is **Tab** or a message tab is open, when it goes to the last tab), or cycle to it with **F6**, to reach the status bar. **Left** and **Right** move between its parts, and **Tab** leaves it.
+
+| Part | Shows |
+|------|-------|
+| **Status** | The message count and when mail was last checked, for example "7,326 messages. Synced 9:48 AM", or "Syncing mail…" while a check runs |
+| **Connection** | "Connecting…", "Syncing…", how many accounts are connected, **Offline**, or an error |
+| **Update** | Shown only when a new version is out. Press **Enter** to open the release page |
+| **Rules** | How many client-side rules are on or off and when they last ran. Press **Enter** or **Space** to open the Rules Manager |
+| **Offline reading** | Shown only when **Download messages for offline reading** is on |
+| **Sync progress** | Shown only while mail is being checked |
 
 ### Command Palette
 
@@ -955,13 +1021,13 @@ This is one of three ways to report a problem. See **[Reporting Issues](#reporti
 
 ### Opening a Message
 
-Press Enter on a message in the list to open it in the reading pane (or in a new tab or window, depending on your **Reading Mode** setting in **Settings → General**).
-
-Press **Ctrl+Enter** to open a message in a new tab regardless of the Reading Mode setting.
+Press Enter on a message in the list to open it in the reading pane (or in a new tab or window, depending on the **Message Open Mode** setting in **Settings → Windowing**).
 
 ### Reading Pane
 
 The reading pane renders HTML messages with WebView2. Links open in your default browser.
+
+Nothing in a message can run on your computer: scripts, embedded objects, frames, and forms are blocked or removed before it is shown. A message with a very large layout, such as some newsletters and statements, may be shown in a simplified form so the reading pane stays quick to move through.
 
 **Links have a context menu.** With a link focused, press **Shift+F10** or the Applications key (or right-click it) for **Open**, **Copy Address**, and — when the link's text is not simply its address again — **Copy Text**. On an email address link a **New Message to This Address** entry (last in the menu) opens a new message in QuickMail, instead of handing the address to whichever mail client Windows has registered. A copy that works says nothing — it did what you asked, and it clears any earlier failure notice. A copy that fails writes a line at the end of the message, starting **QuickMail:**, saying what could not be copied. Read to the end of the message to find it. In the reading pane and in a tab it also goes to the status bar, so **Ctrl+9** reads back the most recent one.
 
@@ -988,7 +1054,7 @@ The setting persists across app restarts and applies to the reading pane, messag
 
 ### Message Windows
 
-When Reading Mode is set to **Window**, messages open in a separate window. Each window has a full menu bar (**File, Message, Navigate**), a toolbar, and a command palette. Shortcuts work the same as in the main window:
+When **Message Open Mode** is set to **Window**, messages open in a separate window. Each window has a full menu bar (**File, Message, Navigate**), a toolbar, and a command palette. Shortcuts work the same as in the main window:
 
 | Shortcut | Action |
 |----------|--------|
@@ -996,7 +1062,6 @@ When Reading Mode is set to **Window**, messages open in a separate window. Each
 | `Ctrl+Shift+R` | Reply All |
 | `Ctrl+Shift+F` | Forward |
 | `Delete` | Delete |
-| `Ctrl+Shift+M` | Move to Archive |
 | `Ctrl+Q` | Mark as Read |
 | `Ctrl+Shift+G` | Grab Addresses |
 | `Ctrl+Shift+W` | Watch or unwatch this message's conversation |
@@ -1006,6 +1071,8 @@ When Reading Mode is set to **Window**, messages open in a separate window. Each
 | `Ctrl+P` | Print |
 
 Deleting a message from its window closes the window and returns focus to the originating position in the message list.
+
+A message window's status bar says where the message sits in its folder, for example "Message 3 of 47". **Alt+Left** and **Alt+Right** go to the previous and next message, and **F6** cycles the toolbar, the header fields, and the message. **Ctrl+W** or **Escape** closes the window, and focus goes back to that message in the list. **Navigate → Move to Main Window** (also a toolbar button and a palette command) moves the message into a tab in the main window and closes its own window.
 
 ### Attachments on a Received Message
 
@@ -1067,17 +1134,30 @@ For POP3 accounts, QuickMail keeps the original of every message it downloads, s
 
 ### Message Properties
 
-Press **Alt+Enter** on any message to open a properties window showing the sender's name and address, recipients, date, size, and flags.
+**Alt+Enter** opens a read-only Properties window for whatever is selected:
+
+| Selected | Shows |
+|----------|-------|
+| A message | Its headers, where it is stored, its format and attachments, and its raw headers when QuickMail has them |
+| A conversation, sender, or recipient group | Message count, unread count, dates, and who is in it |
+| A folder | Its name, path, account, and message counts |
+| An account | Its servers, ports, security, sign-in method (never a password), and a **Sync** section: messages cached on this computer, the oldest one, and the sync range |
+| A contact or a group in the address book | Name and address, groups and members, when last used |
+| An attachment | File name, type, and size |
+
+Focus starts on the list of properties; **Up** and **Down** move through it, and section names are rows of their own. **Enter** or **Ctrl+C** copies the row you are on as "Field: Value". **Copy all** copies everything as text, section by section, and **Escape** closes the window.
 
 On a conversation, or on a sender's group in the From view, **Alt+Enter** lists the senders the same way, each as name and address. A sender's group is gathered by name, so if mail under that name came from more than one address, every address is listed. That way, someone else using a familiar name shows up there.
 
 ### Marking as Read
 
-Press `Ctrl+Q` to mark the selected message or messages as read. Messages are also marked read automatically when you open them (configurable in **Settings → General**).
+Press `Ctrl+Q` to mark the selected message or messages as read. Messages are also marked read when you open them.
 
 ### Deleting Messages
 
 Press **Delete**. Deleted messages go to Trash. Press `Ctrl+Shift+E` to empty the Trash for the selected account.
+
+Before emptying, QuickMail tells you how many messages will be permanently deleted and asks you to confirm, since this cannot be undone. To skip the question, clear **Confirm before emptying trash** under **Mail Actions** in **Settings → General**.
 
 ### Archiving Messages
 
@@ -1097,15 +1177,22 @@ If an account has no Archive folder and you have not set one, QuickMail tells yo
 
 ### Tabs
 
-QuickMail can open messages in tabs, keeping multiple messages visible at once.
+Set **Settings → Windowing → Message Open Mode** to **Tab** and each message you open gets its own tab, in a strip above the message list. The first tab is always the message list itself. **Escape** in a message tab goes back to the list and leaves the tab open; **Ctrl+W** closes it.
 
 | Shortcut | Action |
 |----------|--------|
-| `Ctrl+Tab` | Next tab |
-| `Ctrl+Shift+Tab` | Previous tab |
-| `Ctrl+W` | Close tab |
-| `Ctrl+Shift+`` ` | Tab list (navigate by name) |
-| `Ctrl+Shift+T` | Focus tab strip |
+| `Ctrl+Tab` / `Ctrl+Shift+Tab` | Next / previous tab |
+| `Ctrl+1` … `Ctrl+8` | Go to tab 1 to 8 |
+| `Ctrl+9` | Go to the last tab |
+| `Ctrl+W` | Close the tab (in reading-pane mode, close the reading pane) |
+| `Ctrl+Shift+T` | Move focus to the tab strip |
+| ``Ctrl+Shift+` `` | Tab list: **Up** and **Down** to choose, **Enter** to go there, **Escape** to leave it |
+
+These number keys choose tabs whenever the tab strip is showing: always in Tab mode, and in the other modes while a message tab is open. See [Keyboard Shortcuts](#keyboard-shortcuts) for how to reach the panes then.
+
+In the tab strip, **Left** and **Right** move through the tabs. Each tab has two stops: its name (**Enter** or **Space** shows it) and its close button (**Enter** or **Space** closes it).
+
+The command palette has **Close Other Tabs**, **Move Tab Left**, **Move Tab Right**, and **Move Tab to New Window**, which moves the message into a window of its own without reloading it. None has a key until you give it one.
 
 ---
 
@@ -1140,7 +1227,23 @@ Enter in the From list never sends the message. Sending is **Alt+S** or **Ctrl+E
 
 ### Address Autocomplete
 
-Start typing a name or address in To, Cc, or Bcc. QuickMail searches your address book and recent contacts. Arrow down to choose a suggestion; press Enter or Tab to accept. Press Escape to dismiss without accepting.
+Start typing a name or address in To, Cc, or Bcc. QuickMail searches your address book and recent contacts, ordered by how recently you used each person. A contact group whose name matches is offered too; choosing it adds all its members. Arrow down to choose a suggestion; press Enter or Tab to accept. Press Escape to dismiss without accepting.
+
+### Address Fields
+
+Each address you finish becomes its own item, showing the person's name, or the address when there is no name. Finish an address with **Enter**, **Tab**, a comma, or a semicolon, or choose one from the suggestions.
+
+| Key | Action |
+|-----|--------|
+| `Left` at the start of the box | Move to the last address |
+| `Left` / `Right` | Move between addresses; `Right` on the last one returns to the box |
+| `Delete` or `Backspace` | Remove the address you are on, or all selected addresses |
+| `Backspace` in an empty box | Remove the last address |
+| `Ctrl+A` on an address | Select every address in the field |
+| `Ctrl+C` | Copy the address you are on, or all selected ones |
+| `Shift+F10` on an address | **Copy Address**, **Add to Address Book**, **Remove** |
+
+Each address is read as the full name and address. After **Ctrl+K** (Check Addresses), one that could not be resolved is shown in red, and its name starts with "Unrecognized:", so it is not told by color alone.
 
 ### Pasting Addresses
 
@@ -1156,9 +1259,13 @@ Every compose window offers three modes, switchable at any time with `Ctrl+Shift
 | Markdown | `Ctrl+Shift+2` | Write Markdown; sent as formatted HTML |
 | HTML | `Ctrl+Shift+3` | Rich text editor with real formatting |
 
-Switching from a rich mode to Plain Text asks for confirmation because formatting would be lost.
+You can also switch with the **Compose mode** list in the window's status row. Your text converts as you switch: Markdown becomes real formatting in HTML mode, and formatting becomes Markdown when you leave it. Switching from a rich mode to Plain Text asks for confirmation because formatting would be lost. The mode new messages start in is **Default compose mode** in **Settings → General → Composing**.
 
-Messages composed in Markdown or HTML are sent with both an HTML part and a plain text part.
+**What Markdown understands:** headings (`#` to `######`), bold, italic, strikethrough (`~~`), inline code and fenced code blocks (with a language name after the opening fence), bullet, numbered and nested lists, links, bare web addresses, pictures (`![description](address)`), quotes (`>`), horizontal rules (`---`), and tables written with pipes (`| A | B |`). HTML typed into a Markdown message is never run; it stays as visible text. A task list (`- [x] done`) is sent as the text you typed, since mail programs strip checkboxes and they are not accessible in email.
+
+**Switching Markdown to HTML and back gives you what you wrote:** heading levels, table header rows and column alignment, picture descriptions, code-block languages, quotes, and link addresses all come back unchanged.
+
+**What recipients get:** a Markdown or HTML message goes out as a complete HTML document that declares its language, uses your subject as its title, keeps picture descriptions, and marks table header cells so a recipient's screen reader announces column headers. A plain text part goes alongside it.
 
 ### Formatting (Markdown and HTML Modes)
 
@@ -1182,6 +1289,12 @@ Messages composed in Markdown or HTML are sent with both an HTML part and a plai
 
 **Nested lists:** In a list, press **Tab** to indent an item (creating a sub-list); press **Shift+Tab** to dedent.
 
+In Markdown mode these commands type the Markdown for you: `**` for bold, `*` for italic, `~~` for strikethrough, `- ` or `1. ` for lists, and `[text](address)` for a link. With text selected, a command wraps or unwraps it; with nothing selected, it puts in an empty pair and leaves the cursor between them. Underline has no Markdown form, so it works in HTML mode only, and QuickMail says so if you try it in Markdown. Each command says what it did, for example "Bold on" or "Bullet list off".
+
+Every compose action is also on the menu bar, which you reach with **Alt** or **F10**: **File** (Send, Save Draft, Insert Template, Save as Template, Add Attachments, Close), **Edit**, **View** (the three modes, with the current one checked, and Preview), **Format**, **Insert** (Link, Image, Image Properties), and **Tools** (Check Spelling, Next and Previous Misspelling, Toggle Spelling Announcements, Address Book, Check Addresses, Command Palette). Format items are unavailable in Plain Text mode.
+
+The window title starts with the subject and the mode, for example "Lunch Friday - HTML - QuickMail", so the taskbar and **Alt+Tab** tell your messages apart. Before you type a subject it says what kind of message it is, such as "Reply".
+
 ### Headings, Quotes and Normal Text
 
 Every line of a message has a paragraph style: **Normal text**, **Heading 1** to **Heading 6**, or **Quote**. A recipient's screen reader can move by the headings and quotes you create.
@@ -1198,7 +1311,7 @@ When you reply in HTML mode, the message you are replying to is quoted as a real
 
 A picture can go in the body of a message in Markdown or HTML mode (`Ctrl+Shift+I`, paste, or drop), and every picture has to have a description or be marked decorative before it goes in. See [Pictures](#pictures) for everything about putting pictures in, sending them, and how they are kept safe.
 
-### Checking Formatting (HTML Mode)
+### Checking Formatting (Markdown and HTML Modes)
 
 - **`Ctrl+T`** — announces a one-line summary: "Heading 2. Bold on, Italic off, Underline off." Inside a quote it says so ("Quote", or "Quote, level 2" inside a quote within a quote). In a link it adds the link's address, and in inline code it adds "Code on".
 - **`Ctrl+Shift+T`** — opens a small window listing the same details one per row. Arrow through them; press Escape or Enter to close.
@@ -1206,6 +1319,8 @@ A picture can go in the body of a message in Markdown or HTML mode (`Ctrl+Shift+
 ### Preview (Markdown and HTML Modes)
 
 Press **F8** to open a rendered preview in a separate window. The preview is fully focusable, so you can browse the formatted output exactly as a recipient would. Links open in your default browser. Press **Escape** or **Ctrl+W** to close the preview.
+
+The preview shows the message as it was when you opened it. To see later changes, close it and press **F8** again.
 
 ### Check Spelling (Full Dialog)
 
@@ -1242,6 +1357,8 @@ The message stays visible and editable behind the Spelling window, with the curr
 Inline navigation wraps around the message so it always finds misspellings wherever the cursor starts.
 
 When a screen reader is active, QuickMail announces each misspelling along with up to three suggestions. By default, each suggestion is numbered — for example: "Misspelling: teh. 1: the, 2: then, 3: them." Press `Alt+1`, `Alt+2`, or `Alt+3` to replace the misspelled word with that numbered suggestion without leaving the compose area, and `Ctrl+Z` to undo the replacement. If you have typed since you heard the misspelling and the word has moved, QuickMail announces the misspelling at the cursor instead of replacing anything; press the key again to replace that one.
+
+**Alt+F7** repeats the misspelling and its suggestions. **Shift+F10** on a misspelled word opens a menu with more suggestions and **Ignore All**. To silence spelling announcements for a while without leaving the message, choose **Tools → Toggle Spelling Announcements** (also in the compose command palette); it switches **Announce spelling errors while navigating** and says which way it went. **Ctrl+F7** and **Ctrl+Shift+F7** always announce, whatever this is set to.
 
 Control announcement behavior in **File → Settings → General → Screen Reader Announcements**:
 
@@ -1282,6 +1399,12 @@ To ask before each send, turn on **Confirm before sending a message** in **Setti
 | Shortcut | Action |
 |----------|--------|
 | `Alt+S` or `Ctrl+Enter` | Send |
+
+### Drafts
+
+**Ctrl+S** saves the message to your account's Drafts folder, replacing any earlier save. To pick it up again, go to **Drafts**, select it, and press **Enter**: it opens in the compose window, attachments included, and on IMAP and POP3 accounts in the mode you wrote it in. When you send it, it leaves the Drafts folder.
+
+Closing a message that has unsaved changes asks whether to save it as a draft: **Yes** saves and closes, **No** closes without saving, and **Cancel** goes back to the message.
 
 ### Auto-Save Drafts
 
@@ -1413,6 +1536,14 @@ Press **Ctrl+Shift+B** to open the address book.
 
 The address book lists everyone you have sent mail to or explicitly added, plus — if you turn on contact sync — the contacts stored in your Microsoft and Google accounts. You can search by name or address, edit contact details, and organize contacts into groups. An **Account** column shows where each contact came from: **Local address book** for the ones you added yourself, or the account name for synced ones.
 
+### Adding and Editing Contacts
+
+Type a **Name** and **Email** and press **Add**. To change a contact you added, select it and press **F2** (or **Edit**), change it, and choose **Save**. **Delete** removes the selected contacts; **Ctrl+A** selects them all.
+
+### Adding Contacts to a Message
+
+Press **Ctrl+Shift+B** in a compose window to open the address book with **To**, **Cc**, and **Bcc** buttons (**Alt+T**, **Alt+C**, **Alt+B**). Select a contact and press the one you want. The window stays open so you can add several people. On the **Groups** tab the same buttons add every member of the selected group, most recently used first, and you hear how many were added. Opened from the main window, these buttons start a new message for you.
+
 ### Filtering by Account
 
 When several accounts sync contacts into QuickMail, the list can get long. The **Filter** button, just to the right of the search box, narrows the list to one account at a time.
@@ -1478,6 +1609,15 @@ Groups let you write to multiple people with a single address. Select a group in
 
 Open the address book and use the **Groups** pane to create, rename, and delete groups, and to add or remove members.
 
+| Action | Key |
+|--------|-----|
+| Move to the Groups list | `Ctrl+G` |
+| New group | `Ctrl+Shift+N` (type the name, **Enter**; **Escape** cancels) |
+| Rename the selected group | `F2` |
+| Delete the selected group | `Delete` — the contacts in it are kept |
+| Add the selected contact to a group | `Shift+F10` on the contact, then **Add to "*group*"** |
+| Open the Group Manager | `Ctrl+Shift+M` or **Manage…** — select a group, then **Enter** on a person adds or removes them |
+
 Group names must be unique, regardless of letter case ("Team" and "team" count as the same name). If you try to create or rename a group to a name that already exists, QuickMail tells you the name is already in use and leaves your text in place so you can choose a different one. Groups are never merged.
 
 ---
@@ -1519,11 +1659,13 @@ Press **Ctrl+Shift+K** to open the flag picker. Arrow to a flag and press Enter 
 
 ### Creating and Managing Flags
 
-Open the **Flag Manager** from the command palette (**Ctrl+Shift+P → Manage Flags**). You can create up to 20 named flags, each with an optional color. Use **Set as K default** to make any flag the one that **K** applies.
+Open the **Flag Manager** from the command palette (**Ctrl+Shift+P → Manage Flags**). You can create up to 20 named flags, each with an optional color. Use **Set K Default** to make any flag the one that **K** applies.
+
+In the Flag Manager, **Add Flag** creates one, **Rename** and the **Color** section change the selected flag, **Move Up** and **Move Down** set the order the flag picker lists them in, and **Delete** removes one (the built-in flag cannot be deleted). A message carries one flag at a time: picking another replaces it, and **K** on a message that has any flag clears it.
 
 ### Filtering by Flag
 
-Open the View menu or the filter combo box and choose **Flagged** to see only flagged messages in the current folder.
+**View → Filter → Flagged** offers **All Flagged** and each of your named flags, so you can show just "Urgent". With a flag filter on, unflagging a message takes it out of the list straight away. On a Microsoft 365 account the built-in flag is Outlook's "Flag for follow-up".
 
 ### All Flagged Mail
 
@@ -1626,6 +1768,31 @@ A saved view is a named filter you can return to instantly — for example, "Unr
 Open the **View Manager** from the **View** menu or the command palette. Create a view by choosing a folder (or All Inboxes), a message filter, and optionally a date limit. Assign a hotkey to jump to it directly.
 
 Press the assigned hotkey from anywhere in the main window to switch to that view immediately.
+
+### Creating a View
+
+Go to the folder you want (any folder, or a merged one such as All Inboxes), and set the view mode, filter, and sort. Then choose **View → Views → Save View…**. Optionally press **Set…** and the keys you want for it. Under **Day Limit**, leave **Show all messages** checked, or clear it and type a number of days, such as 7. The **Name** is filled in from the account, folder, and day limit, for example "Work Inbox, last 7 days"; change it if you like, then choose **Save View**.
+
+### Going to a View
+
+- Press the view's key from anywhere in the main window.
+- Choose it from **View → Views**, where the view you are in is checked.
+- Expand **Views** at the top of the folder tree and choose it.
+- Type its name in the command palette, where views are in their own category.
+
+While a view is active, the window title shows its name.
+
+### Day Limit
+
+A day limit shows only mail from the last so many days. It adds to the view's filter ("Unread, last 7 days" is unread mail from the past week). It changes only what is shown: QuickMail keeps checking mail across the whole [Sync Range](#sync-range), and the older mail is back as soon as you leave the view.
+
+### Views Covering Several Folders
+
+To add a folder to a view, first go to that folder in the main window. Then open **View → Views → Manage Views…**, select the view, choose **Edit**, and choose **Save**. QuickMail asks: **Yes** replaces the view's folder, **No** adds the new one alongside it, and **Cancel** leaves the view alone. In the folder tree, a view with several folders has a ***view name* — All** entry, which shows them all together, and an entry for each folder.
+
+### Managing Views
+
+**View → Views → Manage Views…** opens the View Manager: your views on the left, and on the right what the selected one holds. **Apply View** goes to it, and **Delete** removes it. **Edit** lets you change its key, day limit and name; **Save** then keeps those changes and, if you are in a different folder, asks whether to replace or add it. **Save As New** makes a new view from where you are. A view's mode, filter and sort are set when it is created, so to change them, make a new view with **Save As New** and delete the old one. A view's key also shows in **File → Settings → Keyboard Shortcuts**, and changing it in either place changes both.
 
 ### Leaving a view
 
@@ -2076,7 +2243,7 @@ With a window set, the sync at launch and each background check (**Check for new
 - Attachments are not included. Opening one still needs a connection.
 - POP3 accounts already keep every message whole, so the setting does not apply to them.
 - The text lives in `mail.db` in QuickMail's data folder, which grows accordingly — roughly tens of megabytes for a month of a busy Inbox, so a year or all mail can run to hundreds of megabytes or more.
-- The status bar says how it is going: "Messages: 1,240 of 2,000 downloaded", and "Messages: downloading 120 of 500" while a batch is coming down. Press **Ctrl+9** to reach the status bar (when no tabs are open; with tabs, **Ctrl+9** goes to the last tab) and **Right** to move along it. Nothing is said aloud as it changes; it is there to be read when you want it.
+- The status bar says how it is going: "Messages: 1,240 of 2,000 downloaded", and "Messages: downloading 120 of 500" while a batch is coming down. Press **Ctrl+9** to reach the status bar (unless the tab strip is showing, in Tab mode or while a message tab is open, when **Ctrl+9** goes to the last tab) and **Right** to move along it. Nothing is said aloud as it changes; it is there to be read when you want it.
 - A large window fills in gradually. Each pass downloads up to 500 messages per Inbox, newest first, so a big Inbox set to a year or all mail takes many background checks to finish.
 
 ### Getting back online
@@ -2361,6 +2528,64 @@ Recording stops as soon as you turn the setting off. To remove what has already 
 
 ---
 
+## Data Folder and Command-Line Options
+
+### What is in the data folder
+
+QuickMail keeps everything in `%APPDATA%\QuickMail` (usually `C:\Users\<you>\AppData\Roaming\QuickMail`) unless you start it with `--profileDir`. The main files are:
+
+| File | Holds |
+|------|-------|
+| `accounts.json` | Accounts: servers, ports, names. No passwords |
+| `config.ini` | Your settings |
+| `hotkeys.json` | Keys you assigned yourself |
+| `contacts.json`, `groups.json` | The address book and contact groups |
+| `rules.json` | Client-side rules |
+| `views.json`, `folderviews.json` | Saved views, and how each folder was last left |
+| `flags.json`, `watches.json` | Named flags and watched conversations |
+| `templates.json` | Message templates |
+| `custom.lex` | Words you added to the dictionary |
+| `mail.db` | The copy of your mail kept on this computer |
+| `msal.cache` | Encrypted Microsoft sign-in tokens |
+| `quickmail.log`, `connection.log` | The application log and the connection diagnostics log |
+
+Passwords are not in any of these files. They are in Windows Credential Manager. To move all this to another computer, see [Moving Your Settings to Another Computer](#moving-your-settings-to-another-computer).
+
+### Settings with no switch in Settings
+
+A few settings live only in `config.ini`. Close QuickMail before editing the file, because QuickMail rewrites it whenever you save settings. Lines starting with `#` are comments. Changes take effect the next time QuickMail starts.
+
+| Setting | Values | Default | What it does |
+|---------|--------|---------|--------------|
+| `MaxImapConnectionsPerAccount` | `1`–`15` | `6` | How many connections QuickMail may open to each account's mail server at once. Background work stays below this, so opening a message always has room. Raise it only if your provider allows more |
+| `AutoDiscoverOnline` | `on` / `off` | `on` | Whether adding an account looks up settings on the network for a domain QuickMail does not know; see [Automatic settings lookup](#automatic-settings-lookup) |
+| `GraphPollSeconds` | `30`–`600` | `60` | How often a Microsoft 365 account is checked for new mail |
+
+You can also set **Preview lines** for one account by adding a section named after the account's ID, which is in `accounts.json`:
+
+    [account:xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx]
+    PreviewLines = 1
+
+### Command-line options
+
+| Option | What it does |
+|--------|--------------|
+| `--profileDir <path>` | Keep all data in `<path>` instead of `%APPDATA%\QuickMail`. The folder is created if needed |
+| `--online` | Fetch everything live from the server and keep nothing on this computer. Search is limited, and the calendar and Outbox are unavailable |
+| `file.eml` | Open an email file in its own window, in the QuickMail already running if there is one |
+| `/debug` | Write detailed diagnostics to `quickmail.log` |
+| `--help` | List the options and exit |
+
+### Separate profiles
+
+`--profileDir` gives you a completely separate QuickMail, with its own accounts, mail, and settings, for example to keep work and personal mail apart:
+
+    QuickMail.exe --profileDir "C:\QuickMail\Work"
+
+Each profile can run at the same time as the others. An account you add to a new profile asks for its password as usual. A profile folder belongs to one computer: Microsoft sign-ins and passwords stay on the computer that saved them, so do not share one folder between computers through a synced folder. To move to another computer, see [Moving Your Settings to Another Computer](#moving-your-settings-to-another-computer).
+
+---
+
 ## Reporting Issues
 
 QuickMail improves because people report problems and suggest changes. There are **three** ways to do it. They mostly differ in one thing: **whether you can be contacted for follow-up**. Pick whichever fits.
@@ -2405,8 +2630,12 @@ Press **Ctrl+,** to open Settings. The **Sounds** tab has no access key, so reac
 
 ### General
 
-- **Reading Mode** — Reading Pane, Tab, or Window
-- **Mark messages read** — automatically on open, or manually only
+- **Preview lines** — Off to 5 lines of message text under each row (3 by default). Takes effect when you next open a folder.
+- **Display mode** — how folders you have not set up yourself are grouped: Messages, Conversations, From, or To.
+- **Sync range** — how far back mail is kept on this computer; see [Sync Range](#sync-range).
+- **Initial fetch count** — how many messages QuickMail fetches from a folder the first time it checks it.
+- **Check for new mail every** — the regular check behind the server's own notice of new mail; **Off (server push only)** relies on the server alone.
+- **Confirm before emptying trash** (**Mail Actions**) — on by default.
 - **Default compose mode** — Plain Text, Markdown, or HTML
 - **Check spelling as I type** — on by default. Turn it off if a message stalls, or your screen reader misreads lines, after you paste a long text. See [Turning off spell checking as you type](#turning-off-spell-checking-as-you-type).
 - **Auto-save drafts** — on/off and interval
@@ -2456,9 +2685,13 @@ Controls the order of timestamp and message text in each log line. **Action firs
 
 - **Capture screenshots of new windows** — off by default, and a developer aid rather than an everyday setting. It saves a picture of each window as you open it, so someone reviewing how QuickMail looks has something to look at. It lasts for the current session only — QuickMail turns it back off when it closes — and every window's title bar says so while it is on. The images stay on your computer and are removed by **Delete QuickMail logs**.
 
-### Keyboard
+### Keyboard Shortcuts Tab
 
-Reassign shortcuts for any registered command.
+Arrow to a command, press **Enter** (or **Set Shortcut…**) and press the keys you want; **Delete** (or **Restore Default**) puts back the command's own key. Your keys are kept in `hotkeys.json` in QuickMail's data folder. See [Keyboard Customization](#keyboard-customization).
+
+### Windowing
+
+- **Message Open Mode** — **Reading pane** (the default), **Tab**, or **Window**: where a message opens when you press **Enter**.
 
 ### Appearance
 
@@ -2693,10 +2926,11 @@ Every announcement is optional and controlled by the settings above. No custom s
 |----------|--------|
 | `F6` / `Shift+F6` | Cycle panes forward / backward |
 | `Ctrl+1` | Focus account list |
-| `Ctrl+2` | Focus folder tree |
+| `Ctrl+2` or `Ctrl+Y` | Focus folder tree |
 | `Ctrl+3` | Focus message list |
 | `Ctrl+9` | Focus status bar |
 | `Ctrl+Shift+P` | Command palette |
+| `Ctrl+/` | Advanced search |
 | `Ctrl+N` | New message |
 | `Ctrl+R` | Reply |
 | `Ctrl+Shift+R` | Reply All |
@@ -2708,6 +2942,9 @@ Every announcement is optional and controlled by the settings above. No custom s
 | `F12` | Save As |
 | `Ctrl+P` | Print |
 | `Ctrl+A` | Select all messages (message list) |
+| `Shift+Up` / `Shift+Down` | Extend the selection |
+| `Ctrl+Shift+Home` / `Ctrl+Shift+End` | Extend the selection to the first / last message |
+| `Ctrl+C` / `Ctrl+X` / `Ctrl+V` | Copy, cut, and paste messages |
 | `Alt+Enter` | Message properties |
 | `F5` | Refresh |
 | `Ctrl+Shift+E` | Empty Trash |
@@ -2733,7 +2970,7 @@ Every announcement is optional and controlled by the settings above. No custom s
 
 **Move to Folder…** and **Copy to Folder…** are available from the context menu (Shift+F10) or the command palette; they have no default keyboard shortcut. **Manage Themes**, **Next Theme**, **Previous Theme**, **Message List Fields…**, **Density: Comfortable**, **Density: Compact**, **Manage Flags…**, **Expand Folder**, **Collapse Folder**, **Expand All Folders**, **Collapse All Folders**, and **Report a Bug** likewise have no default key — reach them from the menus or the command palette, or assign a shortcut yourself in File → Settings → Keyboard Shortcuts.
 
-`Ctrl+1`, `Ctrl+2`, and `Ctrl+3` jump to a pane when no message tabs are open; with tabs open they select tab 1, 2, and 3 instead. **`Ctrl+Alt+1`, `Ctrl+Alt+2`, and `Ctrl+Alt+3` always** go to the account list, folder tree, and message list, whatever else is open. `Ctrl+0` moves to the toolbar.
+`Ctrl+1`, `Ctrl+2`, `Ctrl+3`, and `Ctrl+9` jump to a pane unless the tab strip is showing (always in Tab mode, and otherwise while a message tab is open); then they select tab 1, 2, 3, and the last tab instead. **`Ctrl+Alt+1`, `Ctrl+Alt+2`, and `Ctrl+Alt+3` always** go to the account list, folder tree, and message list, whatever else is open. `Ctrl+0` moves to the toolbar.
 
 **Calendar** (`Ctrl+Shift+C` to open): `A`/`D`/`W`/`M` switch views, `T` goes to today, `Ctrl+Left`/`Ctrl+Right` move between periods, `Ctrl+G` goes to a date, `N`/`E`/`Delete` create/edit/delete appointments, and `Ctrl+Shift+S` searches. See the [Calendar](#calendar) section for the full list.
 
@@ -2741,9 +2978,10 @@ Every announcement is optional and controlled by the settings above. No custom s
 
 | Shortcut | Action |
 |----------|--------|
-| `Ctrl+Enter` | Open message in new tab |
 | `Ctrl+Tab` | Next tab |
 | `Ctrl+Shift+Tab` | Previous tab |
+| `Ctrl+1` … `Ctrl+8` | Go to tab 1 to 8 (while the tab strip is showing) |
+| `Ctrl+9` | Go to the last tab (while the tab strip is showing) |
 | `Ctrl+W` | Close tab |
 | `Ctrl+Shift+T` | Focus tab strip |
 | `Ctrl+Shift+`` ` | Tab list |
@@ -2757,9 +2995,12 @@ Every announcement is optional and controlled by the settings above. No custom s
 | `Alt+M` | Focus From account |
 | `Alt+Y` | Focus message body |
 | `Alt+S` or `Ctrl+Enter` | Send |
+| `Ctrl+S` | Save draft |
+| `Ctrl+Shift+B` | Address Book (add to To, Cc, Bcc) |
 | `Ctrl+Shift+1/2/3` | Switch to Plain Text / Markdown / HTML mode |
 | `F7` | Check Spelling (full dialog) |
 | `Ctrl+F7` / `Ctrl+Shift+F7` | Next / previous misspelling (inline) |
+| `Alt+F7` | Repeat the spelling announcement |
 | `Alt+1` / `Alt+2` / `Alt+3` | Accept first / second / third spelling suggestion |
 | `F8` | Open preview (Markdown and HTML) |
 | `Ctrl+B` | Bold |

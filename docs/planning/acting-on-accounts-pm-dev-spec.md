@@ -910,7 +910,7 @@ defined in §8 and §9 are sufficient.
 - Verify `CanExecute` disables the correct items (Move Up when first, Move Down when last,
   Make Default when already default, Sync Now when disconnected).
 - `build.bat smoke` passes.
-- Update `USERGUIDE.md` with "Account actions" section.
+- Update `docs/USER-GUIDE.md` with "Account actions" section.
 - Update `CLAUDE.md` registered shortcut table with the two new keyboard shortcuts.
 
 ---
@@ -987,7 +987,7 @@ defined in §8 and §9 are sufficient.
 | `QuickMail/App.xaml` | Register `BoolToConnectLabelConverter` as a static resource |
 | `QuickMail.Tests/StubServices.cs` | No changes required — all new commands use existing service methods |
 | `QuickMail.Tests/CommandRegistryTests.cs` | Add assertions for the 9 new command IDs |
-| `USERGUIDE.md` | Add "Account actions" section (ordering, connect/disconnect, default, sync) |
+| `docs/USER-GUIDE.md` | Add "Account actions" section (ordering, connect/disconnect, default, sync) |
 | `CLAUDE.md` | Add `Alt+Up` and `Alt+Down` to the registered shortcut table |
 
 ---

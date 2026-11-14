@@ -21,5 +21,5 @@ Closes #
 - [ ] Keyboard shortcuts registered in `CommandRegistry` — no raw key checks for new actions
 - [ ] Custom announcements use `AccessibilityHelper.Announce()` with a `category` argument
 - [ ] No instructional text in `AutomationProperties.HelpText` or `AutomationProperties.Name`
-- [ ] User-facing text updated in `USERGUIDE.md` if applicable
+- [ ] User-facing text updated in `docs/USER-GUIDE.md` if applicable
 - [ ] Release notes updated in `docs/release-notes-v*.md` if applicable
