@@ -155,7 +155,10 @@ Filled with 0.8.71's values, it writes manifests byte-identical to the ones merg
 branches `main` and `v*` tags): a classic personal access token of Kelly's with only the
 `public_repo` scope. A fine-grained token cannot open a pull request on microsoft/winget-pkgs.
 Classic tokens expire; when it does, the job fails with GitHub's "Bad credentials" and needs a
-new token in the same place.
+new token in the same place. `quickmail.yml`'s `winget` job passes `WINGET_TOKEN` to
+`winget-submit.yml` by name: a reusable workflow gets an environment secret only when its
+caller passes it, and an empty string otherwise (#1006). The job runs only on `v*` tags, so
+pull request and `main` runs never evaluate that reference.
 
 `public_repo` is not narrow. It is write access to every public repository Kelly owns,
 QuickMail included, and his admin role bypasses both the `main` ruleset and "Tags: admins

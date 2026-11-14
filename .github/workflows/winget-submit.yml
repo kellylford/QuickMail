@@ -24,6 +24,14 @@ on:
   # From quickmail.yml once a v* tag's release is published. GitHub starts no workflow
   # from a release made with GITHUB_TOKEN, so a `release` trigger would never fire.
   workflow_call:
+    # The caller has to pass this by name: a reusable workflow's job sees its environment's
+    # secret only if the caller passed it, and otherwise gets an empty string (#1006).
+    # Declared so the caller may pass it; not `required`, since at the caller the name has no
+    # value of its own (it lives only in the environment). The step that uses it fails with
+    # a clear error if it arrives empty.
+    secrets:
+      WINGET_TOKEN:
+        required: false
   # By hand: to submit a release whose automatic submission failed, or with dry_run on, to
   # see the manifests a release would get without submitting anything. Only Kelly can run
   # it for real: the pull request is opened in his name.
@@ -144,7 +152,7 @@ jobs:
           GH_TOKEN: ${{ secrets.WINGET_TOKEN }}
         run: |
           if (-not $env:GH_TOKEN) {
-            "::error::WINGET_TOKEN is not set in the winget environment. See installer/winget/README.md, 'Every later release'."
+            "::error::WINGET_TOKEN is empty: it is not set in the winget environment, or the calling workflow did not pass it by name (#1006). See installer/winget/README.md, 'Every later release'."
             exit 1
           }
           ./scripts/winget-submit.ps1 -Version $env:V -ManifestDir "out/$env:V"

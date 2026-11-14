@@ -161,7 +161,7 @@ intended layout. Where each secret actually is today is kept in the maintainer's
 | `relay` | `main` only | `CLOUDFLARE_API_TOKEN`, `RELAY_GITHUB_APP_ID`, `RELAY_GITHUB_INSTALLATION_ID`, `RELAY_GITHUB_PRIVATE_KEY`, `BUG_REPORT_RELAY_KEY` | `deploy-relay.yml` `deploy` |
 | `live-smoke` | `main` only | `LIVE_IMAP_HOST`, `LIVE_IMAP_PORT`, `LIVE_IMAP_SSL`, `LIVE_SMTP_HOST`, `LIVE_SMTP_PORT`, `LIVE_SMTP_SSL`, `LIVE_USER`, `LIVE_PASSWORD` | `live-smoke.yml` |
 | `github-pages` | `main` and `v*` tags | none | `publish-user-guide.yml` |
-| `winget` | `main` and `v*` tags | `WINGET_TOKEN` (Kelly's classic PAT, `public_repo`: write to all his public repos, and his admin role bypasses the rulesets) | `winget-submit.yml`, called by `quickmail.yml`'s `winget` job after each release, or by hand (real submissions Kelly only) |
+| `winget` | `main` and `v*` tags | `WINGET_TOKEN` (Kelly's classic PAT, `public_repo`: write to all his public repos, and his admin role bypasses the rulesets) | `winget-submit.yml`, called by `quickmail.yml`'s `winget` job after each release (tag-only; it must pass `WINGET_TOKEN` by name, or the reusable workflow gets an empty string, #1006), or by hand (real submissions Kelly only) |
 
 A job in an environment gets the environment's copy of a secret name if there is one, and the
 repository's otherwise. **Never delete a repository secret** (step 7 below) before its value
