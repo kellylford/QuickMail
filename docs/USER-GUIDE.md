@@ -764,7 +764,7 @@ Use **View → View Mode** (`Ctrl+Shift+V` opens the View menu) to switch how me
 
 ### Selecting Several Messages
 
-Hold **Shift** and press **Up** or **Down** to extend the selection one message at a time without opening anything. For bigger selections:
+In the **Messages** view, hold **Shift** and press **Up** or **Down** to extend the selection one message at a time without opening anything. (In Conversations, From, and To, acting on a group's heading already acts on all of its messages.) For bigger selections:
 
 | Shortcut | What it does |
 |----------|--------------|
@@ -789,7 +789,7 @@ Anything you do next acts on all of them: **Delete**, **Move to Archive**, **Mov
 | **Watched** | Messages in conversations you are watching |
 | **Flagged** | **All Flagged**, or just the messages carrying one of your named flags |
 
-Every filter is also in the command palette (for example **Show Unread Only** or **Show Messages Addressed to Me**), and you can give any of them a key in **File → Settings → Keyboard Shortcuts**. While a filter is on, the window title names it, for example "Inbox - Work — Unread". **Show All**, or **Show All Messages** in the palette, turns it off. A folder remembers its filter along with its other view settings.
+Every filter except **Flagged** is also in the command palette (for example **Show Unread Only** or **Show Messages Addressed to Me**), and you can give any of them a key in **File → Settings → Keyboard Shortcuts**. While a filter is on, the window title names it, for example "Inbox - Work — Unread". **Show All**, or **Show All Messages** in the palette, turns it off. A folder remembers its filter along with its other view settings.
 
 ### Sorting the List
 
@@ -800,7 +800,7 @@ Every filter is also in the command palette (for example **Show Unread Only** or
 | **Newest First** (default) | Date, most recent first |
 | **Oldest First** | Date, oldest first |
 | **A → Z** / **Z → A** | Subject in the Messages view; the conversation, sender, or recipient name in the grouped views |
-| **Flagged First** | Flagged messages first, then newest first |
+| **Flagged First** | Flagged messages first, then newest first (by name in From and To) |
 | **Most Messages** / **Fewest Messages** | Groups with the most / fewest messages first — Conversations, From, and To only |
 
 **Most Messages** and **Fewest Messages** are unavailable in the flat Messages view. In the From view they show at a glance who writes to you most. Each sort is also in the command palette as **Sort: …**.
@@ -957,18 +957,16 @@ QuickMail also checks for new mail by itself. Most mail servers tell QuickMail t
 
 ### The Status Bar
 
-Press **Ctrl+9** (when no message tabs are open), or cycle to it with **F6**, to reach the status bar. **Left** and **Right** move between its parts, and **Tab** leaves it.
+Press **Ctrl+9** (unless **Message Open Mode** is **Tab** or a message tab is open, when it goes to the last tab), or cycle to it with **F6**, to reach the status bar. **Left** and **Right** move between its parts, and **Tab** leaves it.
 
 | Part | Shows |
 |------|-------|
-| **Status** | The message count and when mail was last checked, for example "7,326 messages. Synced 9:48 AM", or progress such as "Syncing… (5 of 20 folders)" |
-| **Connection** | "Connecting…", how many accounts are connected, **Offline**, or an error |
+| **Status** | The message count and when mail was last checked, for example "7,326 messages. Synced 9:48 AM", or "Syncing mail…" while a check runs |
+| **Connection** | "Connecting…", "Syncing…", how many accounts are connected, **Offline**, or an error |
 | **Update** | Shown only when a new version is out. Press **Enter** to open the release page |
 | **Rules** | How many client-side rules are on or off and when they last ran. Press **Enter** or **Space** to open the Rules Manager |
 | **Offline reading** | Shown only when **Download messages for offline reading** is on |
 | **Sync progress** | Shown only while mail is being checked |
-
-Your screen reader's own command for reading the status bar reads it too.
 
 ### Command Palette
 
@@ -1190,13 +1188,11 @@ Set **Settings → Windowing → Message Open Mode** to **Tab** and each message
 | `Ctrl+Shift+T` | Move focus to the tab strip |
 | ``Ctrl+Shift+` `` | Tab list: **Up** and **Down** to choose, **Enter** to go there, **Escape** to leave it |
 
-While tabs are open, `Ctrl+1` to `Ctrl+3` choose tabs rather than panes; `Ctrl+Alt+1`, `Ctrl+Alt+2` and `Ctrl+Alt+3` always reach the account list, folder tree, and message list.
+These number keys choose tabs whenever the tab strip is showing: always in Tab mode, and in the other modes while a message tab is open. See [Keyboard Shortcuts](#keyboard-shortcuts) for how to reach the panes then.
 
 In the tab strip, **Left** and **Right** move through the tabs. Each tab has two stops: its name (**Enter** or **Space** shows it) and its close button (**Enter** or **Space** closes it).
 
 The command palette has **Close Other Tabs**, **Move Tab Left**, **Move Tab Right**, and **Move Tab to New Window**, which moves the message into a window of its own without reloading it. None has a key until you give it one.
-
-To be asked before closing a tab that has unsaved changes, check **Confirm before closing a tab with unsaved changes** in **Settings → Windowing**.
 
 ---
 
@@ -1263,7 +1259,7 @@ Every compose window offers three modes, switchable at any time with `Ctrl+Shift
 | Markdown | `Ctrl+Shift+2` | Write Markdown; sent as formatted HTML |
 | HTML | `Ctrl+Shift+3` | Rich text editor with real formatting |
 
-You can also switch with the mode list at the bottom left of the window. Your text converts as you switch: Markdown becomes real formatting in HTML mode, and formatting becomes Markdown when you leave it. Switching from a rich mode to Plain Text asks for confirmation because formatting would be lost. The mode new messages start in is **Default compose mode** in **Settings → General → Composing**.
+You can also switch with the **Compose mode** list in the window's status row. Your text converts as you switch: Markdown becomes real formatting in HTML mode, and formatting becomes Markdown when you leave it. Switching from a rich mode to Plain Text asks for confirmation because formatting would be lost. The mode new messages start in is **Default compose mode** in **Settings → General → Composing**.
 
 **What Markdown understands:** headings (`#` to `######`), bold, italic, strikethrough (`~~`), inline code and fenced code blocks (with a language name after the opening fence), bullet, numbered and nested lists, links, bare web addresses, pictures (`![description](address)`), quotes (`>`), horizontal rules (`---`), and tables written with pipes (`| A | B |`). HTML typed into a Markdown message is never run; it stays as visible text. A task list (`- [x] done`) is sent as the text you typed, since mail programs strip checkboxes and they are not accessible in email.
 
@@ -1324,7 +1320,7 @@ A picture can go in the body of a message in Markdown or HTML mode (`Ctrl+Shift+
 
 Press **F8** to open a rendered preview in a separate window. The preview is fully focusable, so you can browse the formatted output exactly as a recipient would. Links open in your default browser. Press **Escape** or **Ctrl+W** to close the preview.
 
-The preview shows the message as it was when you opened it. To see later changes, close it and press **F8** again. In HTML mode, where the editor is read as an edit field, the preview is the way to hear your message the way a recipient will.
+The preview shows the message as it was when you opened it. To see later changes, close it and press **F8** again.
 
 ### Check Spelling (Full Dialog)
 
@@ -1775,7 +1771,7 @@ Press the assigned hotkey from anywhere in the main window to switch to that vie
 
 ### Creating a View
 
-Go to the folder you want (any folder, or a merged one such as All Inboxes), and set the view mode, filter, and sort. Then choose **View → Views → Save View…**. Optionally press **Set…** and the keys you want for it. Under **Day Limit**, leave **Show all messages** checked, or clear it and type a number of days, such as 7. The **Name** is filled in from the folder and the day limit ("Inbox, last 7 days"); change it if you like, then choose **Save View**.
+Go to the folder you want (any folder, or a merged one such as All Inboxes), and set the view mode, filter, and sort. Then choose **View → Views → Save View…**. Optionally press **Set…** and the keys you want for it. Under **Day Limit**, leave **Show all messages** checked, or clear it and type a number of days, such as 7. The **Name** is filled in from the account, folder, and day limit, for example "Work Inbox, last 7 days"; change it if you like, then choose **Save View**.
 
 ### Going to a View
 
@@ -1792,11 +1788,11 @@ A day limit shows only mail from the last so many days. It adds to the view's fi
 
 ### Views Covering Several Folders
 
-To add a folder to a view, open **View → Views → Manage Views…**, select the view, go to the other folder in the main window, and choose **Save**. QuickMail asks: **Yes** replaces the view's folder, **No** adds the new one alongside it, and **Cancel** leaves the view alone. In the folder tree, a view with several folders has a ***view name* — All** entry, which shows them all together, and an entry for each folder.
+To add a folder to a view, first go to that folder in the main window. Then open **View → Views → Manage Views…**, select the view, choose **Edit**, and choose **Save**. QuickMail asks: **Yes** replaces the view's folder, **No** adds the new one alongside it, and **Cancel** leaves the view alone. In the folder tree, a view with several folders has a ***view name* — All** entry, which shows them all together, and an entry for each folder.
 
 ### Managing Views
 
-**View → Views → Manage Views…** opens the View Manager: your views on the left, and on the right what the selected one holds. **Apply View** goes to it, **Edit** changes its key, day limit and name, **Save** stores the current folder, mode, filter and sort into it, **Save As New** makes a new view from where you are, and **Delete** removes it. A view's key also shows in **File → Settings → Keyboard Shortcuts**, and changing it in either place changes both.
+**View → Views → Manage Views…** opens the View Manager: your views on the left, and on the right what the selected one holds. **Apply View** goes to it, and **Delete** removes it. **Edit** lets you change its key, day limit and name; **Save** then keeps those changes and, if you are in a different folder, asks whether to replace or add it. **Save As New** makes a new view from where you are. A view's mode, filter and sort are set when it is created, so to change them, make a new view with **Save As New** and delete the old one. A view's key also shows in **File → Settings → Keyboard Shortcuts**, and changing it in either place changes both.
 
 ### Leaving a view
 
@@ -2247,7 +2243,7 @@ With a window set, the sync at launch and each background check (**Check for new
 - Attachments are not included. Opening one still needs a connection.
 - POP3 accounts already keep every message whole, so the setting does not apply to them.
 - The text lives in `mail.db` in QuickMail's data folder, which grows accordingly — roughly tens of megabytes for a month of a busy Inbox, so a year or all mail can run to hundreds of megabytes or more.
-- The status bar says how it is going: "Messages: 1,240 of 2,000 downloaded", and "Messages: downloading 120 of 500" while a batch is coming down. Press **Ctrl+9** to reach the status bar (when no tabs are open; with tabs, **Ctrl+9** goes to the last tab) and **Right** to move along it. Nothing is said aloud as it changes; it is there to be read when you want it.
+- The status bar says how it is going: "Messages: 1,240 of 2,000 downloaded", and "Messages: downloading 120 of 500" while a batch is coming down. Press **Ctrl+9** to reach the status bar (unless the tab strip is showing, in Tab mode or while a message tab is open, when **Ctrl+9** goes to the last tab) and **Right** to move along it. Nothing is said aloud as it changes; it is there to be read when you want it.
 - A large window fills in gradually. Each pass downloads up to 500 messages per Inbox, newest first, so a big Inbox set to a year or all mail takes many background checks to finish.
 
 ### Getting back online
@@ -2582,11 +2578,11 @@ You can also set **Preview lines** for one account by adding a section named aft
 
 ### Separate profiles
 
-`--profileDir` gives you a completely separate QuickMail, with its own accounts, mail, and settings: for example to keep work and personal mail apart, or to keep your data in a synced folder:
+`--profileDir` gives you a completely separate QuickMail, with its own accounts, mail, and settings, for example to keep work and personal mail apart:
 
-    QuickMail.exe --profileDir "C:\Users\<you>\OneDrive\QuickMail"
+    QuickMail.exe --profileDir "C:\QuickMail\Work"
 
-Each profile can run at the same time as the others. An account you add to a new profile asks for its password as usual.
+Each profile can run at the same time as the others. An account you add to a new profile asks for its password as usual. A profile folder belongs to one computer: Microsoft sign-ins and passwords stay on the computer that saved them, so do not share one folder between computers through a synced folder. To move to another computer, see [Moving Your Settings to Another Computer](#moving-your-settings-to-another-computer).
 
 ---
 
@@ -2689,14 +2685,13 @@ Controls the order of timestamp and message text in each log line. **Action firs
 
 - **Capture screenshots of new windows** — off by default, and a developer aid rather than an everyday setting. It saves a picture of each window as you open it, so someone reviewing how QuickMail looks has something to look at. It lasts for the current session only — QuickMail turns it back off when it closes — and every window's title bar says so while it is on. The images stay on your computer and are removed by **Delete QuickMail logs**.
 
-### Keyboard Shortcuts
+### Keyboard Shortcuts Tab
 
 Arrow to a command, press **Enter** (or **Set Shortcut…**) and press the keys you want; **Delete** (or **Restore Default**) puts back the command's own key. Your keys are kept in `hotkeys.json` in QuickMail's data folder. See [Keyboard Customization](#keyboard-customization).
 
 ### Windowing
 
 - **Message Open Mode** — **Reading pane** (the default), **Tab**, or **Window**: where a message opens when you press **Enter**.
-- **Confirm before closing a tab with unsaved changes**.
 
 ### Appearance
 
@@ -2975,7 +2970,7 @@ Every announcement is optional and controlled by the settings above. No custom s
 
 **Move to Folder…** and **Copy to Folder…** are available from the context menu (Shift+F10) or the command palette; they have no default keyboard shortcut. **Manage Themes**, **Next Theme**, **Previous Theme**, **Message List Fields…**, **Density: Comfortable**, **Density: Compact**, **Manage Flags…**, **Expand Folder**, **Collapse Folder**, **Expand All Folders**, **Collapse All Folders**, and **Report a Bug** likewise have no default key — reach them from the menus or the command palette, or assign a shortcut yourself in File → Settings → Keyboard Shortcuts.
 
-`Ctrl+1`, `Ctrl+2`, and `Ctrl+3` jump to a pane when no message tabs are open; with tabs open they select tab 1, 2, and 3 instead. **`Ctrl+Alt+1`, `Ctrl+Alt+2`, and `Ctrl+Alt+3` always** go to the account list, folder tree, and message list, whatever else is open. `Ctrl+0` moves to the toolbar.
+`Ctrl+1`, `Ctrl+2`, `Ctrl+3`, and `Ctrl+9` jump to a pane unless the tab strip is showing (always in Tab mode, and otherwise while a message tab is open); then they select tab 1, 2, 3, and the last tab instead. **`Ctrl+Alt+1`, `Ctrl+Alt+2`, and `Ctrl+Alt+3` always** go to the account list, folder tree, and message list, whatever else is open. `Ctrl+0` moves to the toolbar.
 
 **Calendar** (`Ctrl+Shift+C` to open): `A`/`D`/`W`/`M` switch views, `T` goes to today, `Ctrl+Left`/`Ctrl+Right` move between periods, `Ctrl+G` goes to a date, `N`/`E`/`Delete` create/edit/delete appointments, and `Ctrl+Shift+S` searches. See the [Calendar](#calendar) section for the full list.
 
@@ -2985,8 +2980,8 @@ Every announcement is optional and controlled by the settings above. No custom s
 |----------|--------|
 | `Ctrl+Tab` | Next tab |
 | `Ctrl+Shift+Tab` | Previous tab |
-| `Ctrl+1` … `Ctrl+8` | Go to tab 1 to 8 (with tabs open) |
-| `Ctrl+9` | Go to the last tab (with tabs open) |
+| `Ctrl+1` … `Ctrl+8` | Go to tab 1 to 8 (while the tab strip is showing) |
+| `Ctrl+9` | Go to the last tab (while the tab strip is showing) |
 | `Ctrl+W` | Close tab |
 | `Ctrl+Shift+T` | Focus tab strip |
 | `Ctrl+Shift+`` ` | Tab list |
