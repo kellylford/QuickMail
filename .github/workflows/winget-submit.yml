@@ -24,6 +24,12 @@ on:
   # From quickmail.yml once a v* tag's release is published. GitHub starts no workflow
   # from a release made with GITHUB_TOKEN, so a `release` trigger would never fire.
   workflow_call:
+    # The caller has to pass this by name: a reusable workflow's job sees its environment's
+    # secret only if the caller passed it, and otherwise gets an empty string (#1006).
+    # Required, so a caller that forgets fails at once instead of submitting nothing.
+    secrets:
+      WINGET_TOKEN:
+        required: true
   # By hand: to submit a release whose automatic submission failed, or with dry_run on, to
   # see the manifests a release would get without submitting anything. Only Kelly can run
   # it for real: the pull request is opened in his name.

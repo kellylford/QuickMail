@@ -725,3 +725,8 @@ jobs:
     uses: ./.github/workflows/winget-submit.yml
     permissions:
       contents: read
+    # The caller must name the secret even though it lives only in the winget environment,
+    # which the called job enters: without this it reaches the called workflow as an empty
+    # string, with no error (#1006). Named, not `secrets: inherit`, so no other secret goes.
+    secrets:
+      WINGET_TOKEN: ${{ secrets.WINGET_TOKEN }}
