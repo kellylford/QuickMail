@@ -51,8 +51,6 @@ All tests use `StubServices.cs` stub implementations to avoid real network and c
 - **ViewModelConstructionTests** — VM instantiation with stub services (catches init crashes)
 - **XamlParseTests** — XAML loads without `XamlParseException` (requires STA thread via `[StaFact]`)
 - **LocalStoreServiceTests** — SQLite round-trip tests
-  - ⚠ Those three classes live in **`UnitTest1.cs`** (the never-renamed default file), not in files
-    matching their class names. Search by class name, not filename.
 - **SettingsViewModelTests** — settings persistence and hotkey binding logic
 - **CommandRegistryTests** / **ViewManagerHotkeyIntegrationTests** — command registration and hotkey override
 - **RuleServiceTests** / **UnifiedRulesViewModelTests** / **RuleEditorValidationTests** — rule matching, the rules window, and the rule editor's save checks
