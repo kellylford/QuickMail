@@ -70,7 +70,7 @@ $fork = "$login/winget-pkgs"
 # check on the head branch, unlike the workflow's title search, which lags behind pull
 # requests opened minutes ago.
 # --head alone is a prefix search (0.8.7 finds 0.8.71's), so compare the name exactly.
-$existing = Invoke-Gh pr list -R $upstream --author $login --head $branch --state open --json url,headRefName `
+$existing = Invoke-Gh pr list -R $upstream --author $login --head $branch --state open --json 'url,headRefName' `
     --jq "[.[] | select(.headRefName == `"$branch`")][0].url // empty"
 if ($existing) {
     Write-Host "::notice::A pull request is already open for ${branch}: $existing"
