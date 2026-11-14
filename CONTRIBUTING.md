@@ -24,7 +24,7 @@ A fresh clone builds with no setup step. The first build writes `QuickMail/Servi
 
 A build from a fork still checks this repository's GitHub Releases for updates, and an installed copy of it updates itself to the official release. To test an update cycle against your own packages, start QuickMail with `--updateFeed <folder>`; see [`docs/INSTALLER.md`](docs/INSTALLER.md).
 
-The integration tests (`QuickMail.IntegrationTests`) run against local GreenMail and Radicale servers, which need Java and Python; [`docs/TESTING-INTEGRATION.md`](docs/TESTING-INTEGRATION.md) explains the setup.
+The integration tests (`QuickMail.IntegrationTests`) run against local GreenMail and Radicale servers, which need Java and Python, plus a few opt-in tests against real servers (the `LiveSmoke` category); [`docs/TESTING-INTEGRATION.md`](docs/TESTING-INTEGRATION.md) explains the setup.
 
 Run the full test suite before submitting:
 
@@ -41,7 +41,7 @@ QuickMail's design bar is not "technically compliant" — it is a keyboard-first
 Every contribution must meet these expectations:
 
 - **All custom announcements go through `AccessibilityHelper.Announce()`** — never call `RaiseNotificationEvent` directly. Always pass a `category` argument (`Hint`, `Status`, or `Result`).
-- **No instructional text in `AutomationProperties.HelpText`** — static `HelpText` bypasses the user's hint-suppression setting. Deliver instructional text as an `AnnouncementCategory.Hint` at the moment the control is focused. `HelpText` is for one thing only: the extra description a toolbar button's tooltip carries beyond its name (see "Show a shortcut with `sc:CommandShortcut.Id`" in `CLAUDE.md`).
+- **No instructional text in `AutomationProperties.HelpText`** — static `HelpText` bypasses the user's hint-suppression setting. Deliver instructional text as an `AnnouncementCategory.Hint` at the moment the control is focused. `HelpText` may hold a short description, such as a tooltip's extra text or what a setting does, but never instructions or key presses.
 - **No `AutomationProperties.Name` values that contain instructions** — the name should be a short label. Hints belong in programmatic announcements.
 - **All keyboard shortcuts registered in `CommandRegistry`** — see the keyboard shortcuts section of `CLAUDE.md`. No raw `if (key == ...)` blocks for new actions.
 - **MVVM strictly** — no `MessageBox`, `Window`, or UI types in ViewModels; no `Dispatcher` calls in ViewModels; no business logic in code-behind.

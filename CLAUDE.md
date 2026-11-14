@@ -171,7 +171,9 @@ has been entered in its environment and a run there has proved it: deleting firs
 signing, Google sign-in in released builds, bug reports, relay deploys and Live Smoke. GitHub
 never shows a secret's value, so moving one means entering it again; the copies cannot be
 compared afterwards. Fork pull requests run without secrets, and no workflow uses
-`pull_request_target`.
+`pull_request_target`. **Before giving anyone write access**, check the private notes on where
+the secrets are and on the Live Smoke exposure (Live Smoke runs app code alongside the mailbox
+password); both must be resolved first.
 
 These protections lean on two repository rules as well, and neither may be loosened: the
 **"Tags: admins only"** tag ruleset (otherwise a collaborator could push a `v*` tag and the

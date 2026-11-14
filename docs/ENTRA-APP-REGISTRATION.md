@@ -6,9 +6,8 @@ QuickMail authenticates to Microsoft (both the Graph backend and IMAP/SMTP-over-
 (work-or-school **and** personal Microsoft accounts).
 
 This document is the source of truth for how that one app registration must be configured. Most
-QuickMail sign-in problems are registration problems, not code problems.
-
-> §§1–3 define the target state of the registration.
+QuickMail sign-in problems are registration problems, not code problems. §§1–3 define the target
+state of the registration.
 
 ---
 
