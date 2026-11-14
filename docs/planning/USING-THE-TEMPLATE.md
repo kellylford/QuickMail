@@ -361,7 +361,7 @@ After spec approval:
 
 If the template is unclear or you find sections that don't make sense for your feature:
 
-1. **Read LESSONS-LEARNED.md** to understand why each section exists.
+1. **Read [LESSONS-LEARNED.md](../history/LESSONS-LEARNED.md)** to understand why each section exists.
 2. **Look at existing specs** in `docs/planning/` to see how others filled it out.
 3. **Ask an AI assistant.** Prompt: "I'm using SPEC-TEMPLATE.md for [my feature]. I'm stuck on section [X]. Help me fill it out."
 

@@ -4,7 +4,7 @@
     <OutputType>WinExe</OutputType>
     <!-- Windows-10 TFM (1809 / 17763) is required so Microsoft.Toolkit.Uwp.Notifications can
          call the Windows.UI.Notifications WinRT `.Show()` API for new-mail toasts. Plain
-         net10.0-windows (= windows7.0) does not expose it. See docs/planning/notifications-pm-dev-spec.md. -->
+         net10.0-windows (= windows7.0) does not expose it. See docs/planning/Completed/notifications-pm-dev-spec.md. -->
     <TargetFramework>net10.0-windows10.0.17763.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>

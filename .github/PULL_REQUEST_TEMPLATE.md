@@ -20,6 +20,6 @@ Closes #
 - [ ] CLAUDE.md conventions followed (MVVM rules, modal dialog rules, keyboard shortcut registration)
 - [ ] Keyboard shortcuts registered in `CommandRegistry` — no raw key checks for new actions
 - [ ] Custom announcements use `AccessibilityHelper.Announce()` with a `category` argument
-- [ ] No instructional text in `AutomationProperties.HelpText` or `AutomationProperties.Name`
+- [ ] No instructional text in `AutomationProperties.Name` or `AutomationProperties.HelpText` (`HelpText` only for a tooltip's description beyond the name)
 - [ ] User-facing text updated in `docs/USER-GUIDE.md` if applicable
 - [ ] Release notes updated in `docs/release-notes-v*.md` if applicable

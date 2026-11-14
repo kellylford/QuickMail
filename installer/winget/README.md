@@ -8,7 +8,7 @@
 
 Reference copy of the three manifests that describe QuickMail to the
 [Windows Package Manager community repository](https://github.com/microsoft/winget-pkgs)
-(issue #536, `docs/planning/winget-distribution-plan.md`). The **published** manifests live
+(issue #536, `docs/planning/Completed/winget-distribution-plan.md`). The **published** manifests live
 in winget-pkgs under `manifests/k/KellyLford/QuickMail/<version>/`; the files here are the
 template for the first, manual submission and the record of every deliberate choice in it.
 

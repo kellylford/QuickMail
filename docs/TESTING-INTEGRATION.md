@@ -2,7 +2,7 @@
 
 `QuickMail.IntegrationTests` exercises real protocol code — `ImapMailService`, `SmtpService`,
 and (in later phases) the CalDAV/CardDAV clients — against local servers, per the
-[live-content testing plan](planning/live-content-testing-plan.md) (issue #304).
+[live-content testing plan](planning/Completed/live-content-testing-plan.md) (issue #304).
 
 These tests are **separate from `QuickMail.Tests`** (the stub-based unit suite) and only run
 meaningfully when the local servers are up. Without them, the tests skip with an explanatory

@@ -14,7 +14,7 @@ public sealed record NotificationActivation(Guid AccountId, string? Folder, stri
 /// Shows Windows toast (app) notifications. The single implementation
 /// (<see cref="WindowsToastNotificationService"/>) wraps the Windows Community Toolkit
 /// notification platform; a null service (tests, unsupported OS) means notifications are
-/// simply not shown. See docs/planning/notifications-pm-dev-spec.md.
+/// simply not shown. See docs/planning/Completed/notifications-pm-dev-spec.md.
 /// </summary>
 public interface INotificationService
 {

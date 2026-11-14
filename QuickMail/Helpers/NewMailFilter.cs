@@ -7,7 +7,7 @@ namespace QuickMail.Helpers;
 /// <summary>
 /// Pure logic for deciding which just-synced inbox messages are "genuinely new" and should
 /// raise a new-mail notification. Kept separate from <c>MainViewModel</c> so the rules are
-/// unit-testable without a live VM. See docs/planning/notifications-pm-dev-spec.md.
+/// unit-testable without a live VM. See docs/planning/Completed/notifications-pm-dev-spec.md.
 /// </summary>
 internal static class NewMailFilter
 {

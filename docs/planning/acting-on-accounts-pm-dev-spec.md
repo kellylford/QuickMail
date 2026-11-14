@@ -65,7 +65,7 @@ Open All Mail for Account (navigate to the `\x00AccountMail:{guid}` virtual fold
 the surface. All three are one-action workflows that are currently multi-step.
 
 **Relationship to the Alt+Enter spec:** Alt+Enter on an account opens the read-only
-[Account Properties dialog](alt-enter-properties-pm-dev-spec.md). Enter (no modifier) toggles
+[Account Properties dialog](Completed/alt-enter-properties-pm-dev-spec.md). Enter (no modifier) toggles
 connection. The two are distinct and complementary.
 
 ---

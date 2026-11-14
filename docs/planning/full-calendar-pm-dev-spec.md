@@ -5,9 +5,9 @@
 **Target:** Phase 3+ (multi-release; sequenced into v-series milestones below)
 **Crew:** Bravo (PM → Dev Lead → Test Enforcer)
 **Depends on (shipped):**
-- `ics-calendar-pm-spec.md` — ICS parsing, invite accept/decline/tentative, event card in reading pane
-- `calendar-view-pm-dev-spec.md` — minimal read-only calendar list harvested from the local cache
-- `graph-backend-pm-spec.md` — Microsoft Graph mail backend, MSAL OAuth, per-backend scope selection
+- `Completed/ics-calendar-pm-spec.md` — ICS parsing, invite accept/decline/tentative, event card in reading pane
+- `Completed/calendar-view-pm-dev-spec.md` — minimal read-only calendar list harvested from the local cache
+- `Completed/graph-backend-pm-spec.md` — Microsoft Graph mail backend, MSAL OAuth, per-backend scope selection
 
 > **Author's note for the reviewer (Kelly):** This is greenfield planning for a *complete* calendar, not an incremental tweak. The feature is large, so it is sequenced into independently shippable milestones (M1–M6). Where a design decision is genuinely open and more than one answer is defensible, I have **not** forced a single choice — §5 and §15 lay out each viable option with trade-offs and a recommendation, per your instruction to "assume all choices are valid and write up for each." Treat the recommendations as defaults you can override during review; nothing below is locked until you approve it. Several decisions (which sync stack for Google, how aggressive the month-grid accessibility model should be, whether reminders need OS-level toast) deserve your explicit call before M2+ implementation begins — they are collected in §15.
 

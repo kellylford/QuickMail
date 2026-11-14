@@ -154,8 +154,8 @@ A collaborator with write access must not be able to read a secret, sign, releas
 relay or publish the website from a branch of their own. Repository secrets cannot promise
 that — any workflow pushed to any branch can read them — so **every secret belongs in a GitHub
 environment**, and the environment's protection decides which runs get in. The table is the
-intended layout; see **Where the secrets actually are today** below it before touching any
-secret:
+intended layout. Where each secret actually is today is kept in the maintainer's private notes
+(Claude's project memory); check there before touching any secret:
 
 | Environment | Protection | Secrets | Entered by |
 |---|---|---|---|
@@ -165,31 +165,19 @@ secret:
 | `github-pages` | `main` and `v*` tags | none | `publish-user-guide.yml` |
 | `winget` | `main` and `v*` tags | `WINGET_TOKEN` (Kelly's classic PAT, `public_repo`: write to all his public repos, and his admin role bypasses the rulesets) | `winget-submit.yml`, called by `quickmail.yml`'s `winget` job after each release, or by hand (real submissions Kelly only) |
 
-**Where the secrets actually are today (checked 2026-11-12).** Only `winget` holds its own
-secret. `azure-signing`, `relay` and `live-smoke` exist with their protections but hold **no
-secrets**: every release, relay deploy and Live Smoke run reads the **repository** secrets of
-the same names (a job in an environment gets the environment's copy of a name if there is one,
-and the repository's otherwise). So:
-
-- **Never delete a repository secret** (step 7 below) before its value has been entered in its
-  environment and a run there has proved it. Deleting first breaks signing, Google sign-in in
-  released builds, bug reports, relay deploys and Live Smoke. GitHub never shows a secret's
-  value, so moving one means entering it again; the copies cannot be compared afterwards.
-- This is harmless while Kelly is the only collaborator: only someone with write access can
-  push a branch or start a workflow, fork pull requests run without secrets, and no workflow
-  uses `pull_request_target`. **Finish the move before giving anyone write access.**
-- `APPKIT_RELAY_KEY` is a repository secret no QuickMail workflow uses.
+A job in an environment gets the environment's copy of a secret name if there is one, and the
+repository's otherwise. **Never delete a repository secret** (step 7 below) before its value
+has been entered in its environment and a run there has proved it: deleting first breaks
+signing, Google sign-in in released builds, bug reports, relay deploys and Live Smoke. GitHub
+never shows a secret's value, so moving one means entering it again; the copies cannot be
+compared afterwards. Fork pull requests run without secrets, and no workflow uses
+`pull_request_target`.
 
 These protections lean on two repository rules as well, and neither may be loosened: the
 **"Tags: admins only"** tag ruleset (otherwise a collaborator could push a `v*` tag and the
 `github-pages` environment would admit their run), and **code-owner review on `main`**
 (otherwise a collaborator could merge an edited workflow to `main` and the main-only
 environments would hand it their secrets).
-
-Known gap: app code under `QuickMail/` is not code-owned, and the live smoke tests run it in
-the same process as the `LIVE_*` variables. Code a collaborator merged could read the
-mailbox password on the next Live Smoke run. A required reviewer on `live-smoke` closes it,
-at the cost of every scheduled run waiting for approval.
 
 - **Pull requests, `main` pushes, CodeQL, the flaky hunt and the winget matrix read no
   secrets.** They compile against empty placeholder credentials written by
@@ -213,8 +201,8 @@ in, or releases break or holes stay open):
 5. `main` ruleset: require review from Code Owners.
 6. Workflow permissions default: read.
 7. Delete **every** repository secret (`gh secret list` must come back empty), including any
-   no workflow uses. A repository secret left behind is readable from any branch. **Not
-   done yet, and only safe after step 1 is done and proven** (see above).
+   no workflow uses. A repository secret left behind is readable from any branch. **Only
+   safe after step 1 is done and proven** (see above).
 
 **A tag run waits for Kelly's approval.** Pushing `v<version>` starts `quickmail.yml`, whose
 `build` job then waits on `azure-signing`. After Kelly says "go", approve **only the tag run he

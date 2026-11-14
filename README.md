@@ -95,8 +95,9 @@ dotnet test QuickMail.Tests/QuickMail.Tests.csproj -c Release
 |--------|----------|
 | `QuickMail/` | The WPF app: `Views`, `ViewModels`, `Services`, `Models`, `Controls`, `Themes` |
 | `QuickMail.Tests/` | Unit and UI tests (xUnit) |
-| `QuickMail.IntegrationTests/` | Tests against real mail servers |
-| `Tools/` | Test fixtures and a test-mail generator |
+| `QuickMail.IntegrationTests/` | Tests against local GreenMail and Radicale servers; see [`docs/TESTING-INTEGRATION.md`](docs/TESTING-INTEGRATION.md) for the Java and Python they need |
+| `Tools/` | Test fixtures, a test-mail generator, and `perf-counters.bat` (logs QuickMail's performance counters to CSV) |
+| `installer/` | Packaging inputs for the Velopack installer and winget manifests; see [`docs/INSTALLER.md`](docs/INSTALLER.md) |
 | `relay/` | The service that files in-app bug reports as GitHub issues |
 | `scripts/` | Release, documentation, and visual-testing scripts |
 | `docs/` | User Guide, release notes, and design documents |
