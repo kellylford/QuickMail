@@ -436,7 +436,7 @@ Not permitted in `.xaml.cs`:
 
 ## Keyboard Shortcuts — Enforced
 
-Every user-facing keyboard shortcut **must** be registered in `CommandRegistry` via a `Register(new CommandDefinition(...))` call. Registrations live in two places: most are in the `RegisterCommands` method in `MainViewModel.cs` (VM-backed actions — mail, view, account, help, etc.), and the remainder are in `MainWindow.xaml.cs` (window-level wiring). When adding a command, follow whichever file already registers the related commands. This is not optional: registration is what makes the shortcut appear in the **keyboard customizations** dialog and in the **Command Palette**.
+Every user-facing keyboard shortcut **must** be registered in `CommandRegistry` via a `Register(new CommandDefinition(...))` call. Registrations live in two files. `MainWindow.xaml.cs` registers the larger share, in `OnLoaded`: commands that need the window's controls or focus (focus moves, tabs, folder-tree and calendar commands, clipboard, save and print). `MainViewModel.cs` registers the VM-backed actions (mail, view, sort and filter, account, help) in `RegisterCommands`, plus the run-time ones: themes in `RegisterThemeCommands`, saved views in `RegisterOneViewCommand`, and `help.connectionDiagnostics` in `ApplyConnectionDiagnosticsSetting`; the `MainViewModel.SettingsImport.cs` partial registers `settings.export` / `settings.import`. Every one needs a row in `docs/KEYBOARD-SHORTCUTS.md` (`KeyboardShortcutsDocTests`). When adding a command, follow whichever file already registers the related commands. This is not optional: registration is what makes the shortcut appear in the **keyboard customizations** dialog and in the **Command Palette**.
 
 ### Rules
 

@@ -13,7 +13,8 @@ A menu item or button names its command with `sc:CommandShortcut.Id` (`Helpers/C
 | Ctrl+2 / Ctrl+Y | `view.focusFolders` | Focus Folder Tree (or tab 2 when tabs are open) |
 | Ctrl+3 | *(hardcoded)* | Focus message list (or tab 3 when tabs are open) |
 | Ctrl+4–8 | *(hardcoded)* | Jump to tab 4–8 (when tabs are open) |
-| Ctrl+9 | *(hardcoded/registry)* | Jump to last tab (tabs open) or `view.focusStatusBar` (no tabs). Left/Right move between the status bar regions: status, connection, rules, offline reading (when downloading is switched on, #717), sender-address update (only while the one-time update after upgrading runs, #803), sync progress |
+| Ctrl+9 | *(hardcoded)* | Jump to last tab (when tabs are open); with no tabs open, Ctrl+9 is `view.focusStatusBar`, the next row |
+| Ctrl+9 | `view.focusStatusBar` | Focus Status Bar (when no tabs are open). Left/Right move between the status bar regions: status, connection, rules, offline reading (when downloading is switched on, #717), sender-address update (only while the one-time update after upgrading runs, #803), sync progress |
 | Ctrl+Alt+1 | `view.focusAccounts` | Focus Account List (always) |
 | Ctrl+Alt+2 | *(hardcoded)* | Focus Folder Tree (always) |
 | Ctrl+Alt+3 | `view.focusMessages` | Focus Message List (always) |
@@ -110,7 +111,7 @@ A menu item or button names its command with `sc:CommandShortcut.Id` (`Helpers/C
 | Alt+Enter | `view.showProperties` | View Properties |
 | Ctrl+Shift+H | `view.togglePlainText` | Toggle Plain Text View — re-renders the open message in place (reading pane and tab modes; the message window has its own command) |
 | Ctrl+Shift+U | `view.loadPictures` | Load Pictures — shows the open message's pictures from the web, for as long as that message is open (#508) |
-| Ctrl+W | `mail.closeMessage` | Close Message — closes the reading pane. Shares Ctrl+W with `tabs.close`: Close Message is available only while a message is open in Reading Pane mode, Close Tab only while a message tab is active |
+| Ctrl+W | `mail.closeMessage` | Close Message — closes the reading pane. Available only while a message is open in Reading Pane mode. Shares Ctrl+W with `tabs.close`, which is available whenever a message tab is active. The two can both be available, in Reading Pane mode with a message tab opened by Open in New Tab; then Close Tab wins, because it is registered first (see the note below the table) |
 | Ctrl+Tab | `tabs.next` | Next Tab |
 | Ctrl+Shift+Tab | `tabs.previous` | Previous Tab |
 | Ctrl+W | `tabs.close` | Close Tab |
@@ -167,10 +168,25 @@ A menu item or button names its command with `sc:CommandShortcut.Id` (`Helpers/C
 | Ctrl+Right | `calendar.nextPeriod` | Next Day or Week — calendar list or month grid focus |
 
 The calendar's single-letter keys (T, N, E, A, D, W, M) and its Enter and Delete are scoped to the
-calendar's own panes, so they never take a letter away from type-ahead elsewhere. Enter is shared by
-`calendar.openSourceMessage` (calendar list) and `calendar.drillIntoDay` (month grid), and Delete by
-`calendar.deleteEvent`, `mail.delete` and `folder.delete`; in each case the scopes never overlap.
-F5 is not a separate calendar command: `mail.refresh` refreshes the calendar while it is open.
+calendar's own panes, so they never take a letter away from type-ahead elsewhere. F5 is not a
+separate calendar command: `mail.refresh` refreshes the calendar while it is open.
+
+**When two commands share a key, which one runs.** `CommandRegistry.FindByGesture` returns an
+available user override first; otherwise it walks the default bindings in registration order and
+returns the first one that is available. Only focus-based conditions keep a shared key predictable,
+and they do not all exclude each other today:
+
+- Enter: `calendar.openSourceMessage` needs calendar-list focus and `calendar.drillIntoDay`
+  month-grid focus, so they never both apply.
+- Delete: `folder.delete` needs folder-tree focus, which `mail.delete` excludes. But `mail.delete`
+  does not exclude the calendar: it needs only a selected message or group header, and it is
+  registered before `calendar.deleteEvent` (MainViewModel registers it first; MainWindow's
+  replacement keeps that place). Opening the calendar empties the message list but does not itself
+  clear the selected message, so Delete in the calendar list reaches `calendar.deleteEvent` only
+  while no message is selected.
+- Ctrl+W: `tabs.close` (a message tab is active) is registered before `mail.closeMessage` (a message
+  open in Reading Pane mode). Activating a message tab opens its message in the reading pane, so in
+  Reading Pane mode with a tab opened by Open in New Tab both are available, and Close Tab wins.
 
 Alt+Up and Alt+Down appear twice above on purpose. `mail.previousUnread` / `mail.nextUnread` are
 scoped to the message area and `account.moveUp` / `account.moveDown` to the account list, and
@@ -197,15 +213,22 @@ commands. The four `folder.expand*` / `folder.collapse*` commands above are the 
 
 ## Keeping the table complete
 
-The table above lists every command registered in the main window's `CommandRegistry`: the ones in
-`MainViewModel.RegisterCommands` (and the `MainViewModel.*.cs` partials) and the ones in
-`MainWindow.xaml.cs`. `KeyboardShortcutsDocTests` fails when a registered id is missing from the
-table, or when a row names an id nothing registers. Add the row in the same change as the
-registration. Ids built at run time (`theme.apply.{id}`, `view.saved.{id}`) are covered by one row
-per family.
+The table above lists every command registered in the main window's `CommandRegistry`: the ones
+`MainWindow.xaml.cs` registers in `OnLoaded`, and the ones `MainViewModel.cs` and its partials
+register (`RegisterCommands`, `RegisterThemeCommands`, `RegisterOneViewCommand`,
+`ApplyConnectionDiagnosticsSetting`, and `ApplySettingsTransferSetting` in
+`MainViewModel.SettingsImport.cs`). `KeyboardShortcutsDocTests` fails when a registered id has no row
+of its own (the Command ID column), when a row names an id nothing registers, or when a row's key
+disagrees with the code's default key. Add the row in the same change as the registration. Ids built
+at run time (`theme.apply.{id}`, `view.saved.{id}`) are covered by one row per family.
 
-Other windows keep their own registry, which feeds only that window's local command palette
-(`Ctrl+Shift+P`) and is not customizable in Settings: `ComposeWindow`, `MessageWindow`,
+`MessageWindow` keeps its own registry, but takes the user's main-window key changes for its matching
+commands: `MessageWindow.MainCommandIds` maps each of them (`message.reply` to `mail.reply`,
+`window.close` to `mail.closeMessage`, and so on) and `TranslateMainOverrides` applies the bindings
+(#849). Its other commands keep their default keys.
+
+The other windows also keep their own registry, which feeds only that window's local command palette
+(`Ctrl+Shift+P`) and does not follow key changes made in Settings: `ComposeWindow`,
 `AddressBookWindow`, `AdvancedSearchWindow`, `WatchedConversationsWindow`, `RowFieldsWindow`,
 `UnifiedRulesWindow`, `FlagManagerWindow`, `FlagPickerWindow`, `ThemeManagerWindow`,
 `EventEditorWindow`, `GoToDateWindow`, `SpellCheckDialog`, `MarkdownPreviewWindow`,
