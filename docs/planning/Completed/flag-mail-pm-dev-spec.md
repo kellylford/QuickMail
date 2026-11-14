@@ -64,13 +64,13 @@ QuickMail today has no way for a user to mark a message as requiring action or a
 
 | Surface | Today | Pain |
 |---|---|---|
-| IMAP `\Flagged` | Fetched via `MessageSummaryItems.Flags` in `ImapMailService.SummaryToModel` ([ImapMailService.cs:1244](../../QuickMail/Services/ImapMailService.cs)) but not mapped to `MailMessageSummary`. | Flags set by Outlook/Gmail on the same account are silently discarded. |
-| `MailMessageSummary` | No `IsFlagged` or `FlagId` property ([MailMessageSummary.cs](../../QuickMail/Models/MailMessageSummary.cs)). | No per-message flag state in the UI layer at all. |
-| `MessageFilter` | Values: All, Unread, Read, WithAttachments, Replied, Forwarded, ToMe ([MessageFilter.cs](../../QuickMail/Models/MessageFilter.cs)). | No `Flagged` filter; users cannot view "only flagged messages" in any view. |
-| `SavedView` | No flag-related properties ([SavedView.cs](../../QuickMail/Models/SavedView.cs)). | Cannot save a "Flagged" view with a hotkey. |
+| IMAP `\Flagged` | Fetched via `MessageSummaryItems.Flags` in `ImapMailService.SummaryToModel` ([ImapMailService.cs:1244](../../../QuickMail/Services/ImapMailService.cs)) but not mapped to `MailMessageSummary`. | Flags set by Outlook/Gmail on the same account are silently discarded. |
+| `MailMessageSummary` | No `IsFlagged` or `FlagId` property ([MailMessageSummary.cs](../../../QuickMail/Models/MailMessageSummary.cs)). | No per-message flag state in the UI layer at all. |
+| `MessageFilter` | Values: All, Unread, Read, WithAttachments, Replied, Forwarded, ToMe ([MessageFilter.cs](../../../QuickMail/Models/MessageFilter.cs)). | No `Flagged` filter; users cannot view "only flagged messages" in any view. |
+| `SavedView` | No flag-related properties ([SavedView.cs](../../../QuickMail/Models/SavedView.cs)). | Cannot save a "Flagged" view with a hotkey. |
 | Virtual folders | `\x00AllMail`, `\x00AllInboxes`, etc. — no `\x00AllFlagged` sentinel. | No cross-account flagged message aggregation. |
-| Accessibility announcement | Format: `"{ReadStatusLabel}. {From}. {Subject}. {Preview}. {DateDisplay}."` ([MainWindow.xaml.cs:2447](../../QuickMail/Views/MainWindow.xaml.cs)). | Flag state is absent even when the user's Outlook flags are restored on next sync. |
-| Graph accounts | No `flag` property in `GraphDtos.GraphMessageDto` ([GraphDtos.cs:73](../../QuickMail/Services/Graph/GraphDtos.cs)). | Microsoft 365 `followUpFlag` is never read or written. |
+| Accessibility announcement | Format: `"{ReadStatusLabel}. {From}. {Subject}. {Preview}. {DateDisplay}."` ([MainWindow.xaml.cs:2447](../../../QuickMail/Views/MainWindow.xaml.cs)). | Flag state is absent even when the user's Outlook flags are restored on next sync. |
+| Graph accounts | No `flag` property in `GraphDtos.GraphMessageDto` ([GraphDtos.cs:73](../../../QuickMail/Services/Graph/GraphDtos.cs)). | Microsoft 365 `followUpFlag` is never read or written. |
 
 ### 2.2 What users want
 

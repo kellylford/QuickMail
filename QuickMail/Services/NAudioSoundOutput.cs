@@ -10,7 +10,7 @@ namespace QuickMail.Services;
 /// <summary>
 /// Plays a sound on the Windows default output with NAudio. A player is opened per sound, not held
 /// open, so it follows the default device and doesn't keep the audio device awake between sounds.
-/// See "What the spike measured" in docs/planning/sounds-pm-dev-spec.md.
+/// See "What the spike measured" in docs/planning/Completed/sounds-pm-dev-spec.md.
 /// </summary>
 public sealed class NAudioSoundOutput : ISoundOutput
 {

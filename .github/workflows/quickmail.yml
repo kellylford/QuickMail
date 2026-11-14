@@ -14,7 +14,7 @@ permissions:
 
 jobs:
   # Protocol integration tests against a local GreenMail server (IMAP/SMTP), per
-  # docs/planning/live-content-testing-plan.md (issue #304). Runs in parallel with the
+  # docs/planning/Completed/live-content-testing-plan.md (issue #304). Runs in parallel with the
   # build job. GreenMail runs as a native Java process because the app's net10.0-windows
   # TFM requires a Windows runner, and Docker service containers are Linux-only.
   integration:

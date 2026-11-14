@@ -14,7 +14,7 @@ namespace QuickMail.Services;
 /// no shortcut still works but may show a generic label.
 ///
 /// Every platform call is guarded: any failure degrades to a logged no-op, never a crash.
-/// See docs/planning/notifications-pm-dev-spec.md.
+/// See docs/planning/Completed/notifications-pm-dev-spec.md.
 /// </summary>
 public sealed class WindowsToastNotificationService : INotificationService, IDisposable
 {
