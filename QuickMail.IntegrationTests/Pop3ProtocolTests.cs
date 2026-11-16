@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.IO;
+using MailKit;
 using MailKit.Net.Pop3;
 using MailKit.Security;
 using MimeKit;
@@ -607,7 +608,7 @@ public sealed class Pop3ProtocolTests : IDisposable
 
         using var smtp = new MailKit.Net.Smtp.SmtpClient();
         await smtp.ConnectAsync(GreenMailFixture.Host, GreenMailFixture.SmtpPort, SecureSocketOptions.None, ct);
-        await smtp.SendAsync(message, ct);
+        await smtp.SendAsync(new SendRequest(message), ct);
         await smtp.DisconnectAsync(quit: true, ct);
     }
 }

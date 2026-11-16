@@ -322,7 +322,7 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
         // Gmail searches the whole mailbox in one request — but All Mail is one folder as far as the result
         // is concerned, so a search that names a folder has to go folder by folder like any other server.
         if (query.Folders.Count == 0
-            && client.Capabilities.HasFlag(ImapCapabilities.GMailExt1)
+            && client.Capabilities.Contains(ImapCapability.GMailExt1)
             && Helpers.ServerSearchQuery.ToGmailRaw(query) is { } raw)
         {
             IMailFolder? allMail = null;
@@ -710,7 +710,7 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
                     await draftsFolder.AddFlagsAsync(oldUid, MessageFlags.Deleted, true, ct);
                     // UID EXPUNGE where offered, so only the superseded draft goes — not anything
                     // else in Drafts that some other client marked deleted.
-                    if (client.Capabilities.HasFlag(ImapCapabilities.UidPlus))
+                    if (client.Capabilities.Contains(ImapCapability.UidPlus))
                         await draftsFolder.ExpungeAsync(new[] { oldUid }, ct);
                     else
                         await draftsFolder.ExpungeAsync(ct);
@@ -1368,7 +1368,7 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
                 _passwords.TryGetValue(accountId, out var password);
                 client = await CreateAuthenticatedClientAsync(account, password, ct);
 
-                if (!client.Capabilities.HasFlag(ImapCapabilities.Idle))
+                if (!client.Capabilities.Contains(ImapCapability.Idle))
                 {
                     LogService.Log($"IDLE watcher [{account.Username}]: server does not support IDLE — watcher disabled.");
                     // A permanent exit. Worth journaling loudly: from here on this account has no
@@ -1521,8 +1521,14 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
 
             var decoded = await folder.GetBodyPartAsync(mailKitUid, bodyPart, ct);
             using var stream = new MemoryStream();
+            // MimeKit 5 hands back a part with no content when the server's part headers are malformed,
+            // where 4.x threw. Say what happened rather than fail with a null reference.
             if (decoded is MimePart mp)
-                mp.Content!.DecodeTo(stream, CancellationToken.None);
+            {
+                if (mp.Content is null)
+                    throw new InvalidOperationException("The mail server sent this attachment in a form that could not be read.");
+                mp.Content.DecodeTo(stream, CancellationToken.None);
+            }
             else if (decoded is MessagePart msgPart)
                 await msgPart.Message!.WriteToAsync(stream, ct);
             return stream.ToArray();
@@ -1741,7 +1747,7 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
             await client.NoOpAsync(ct);
 
             var detail = $"INBOX count={inbox.Count} unread={inbox.Unread} " +
-                         $"idleSupported={client.Capabilities.HasFlag(ImapCapabilities.Idle)}";
+                         $"idleSupported={client.Capabilities.Contains(ImapCapability.Idle)}";
             return new ProbeResult(ProbeOutcome.Reachable, sw.ElapsedMilliseconds, detail);
         }
         catch (OperationCanceledException)

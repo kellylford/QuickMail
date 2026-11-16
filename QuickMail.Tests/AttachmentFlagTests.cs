@@ -21,22 +21,16 @@ namespace QuickMail.Tests;
 
 public class ImapAttachmentFlagRuleTests
 {
-    private static BodyPartText Text(string subtype) => new()
-    {
-        ContentType = new ContentType("text", subtype),
-        PartSpecifier = "1",
-    };
+    private static BodyPartText Text(string subtype) => new(new ContentType("text", subtype), "1");
 
-    private static BodyPartBasic Attached(string name) => new()
+    private static BodyPartBasic Attached(string name) => new(new ContentType("application", "pdf"), "2")
     {
-        ContentType = new ContentType("application", "pdf"),
         ContentDisposition = new ContentDisposition("attachment") { FileName = name },
-        PartSpecifier = "2",
     };
 
     private static BodyPartMultipart Multi(string subtype, params BodyPart[] parts)
     {
-        var multi = new BodyPartMultipart { ContentType = new ContentType("multipart", subtype) };
+        var multi = new BodyPartMultipart(new ContentType("multipart", subtype), "");
         foreach (var part in parts) multi.BodyParts.Add(part);
         return multi;
     }
@@ -56,11 +50,9 @@ public class ImapAttachmentFlagRuleTests
     [Fact]
     public void AnInlinePictureInsideRelatedDoesNotCount()
     {
-        var picture = new BodyPartBasic
+        var picture = new BodyPartBasic(new ContentType("image", "png") { Name = "logo.png" }, "1.2")
         {
-            ContentType = new ContentType("image", "png") { Name = "logo.png" },
             ContentId = "<logo>",
-            PartSpecifier = "1.2",
         };
         Assert.False(ImapMailService.HasAttachments(Multi("related", Text("html"), picture)));
     }
@@ -68,7 +60,7 @@ public class ImapAttachmentFlagRuleTests
     [Fact]
     public void ANamedFileWithNoDispositionCounts()
     {
-        var part = new BodyPartBasic { ContentType = new ContentType("application", "zip") { Name = "a.zip" }, PartSpecifier = "2" };
+        var part = new BodyPartBasic(new ContentType("application", "zip") { Name = "a.zip" }, "2");
         Assert.True(ImapMailService.HasAttachments(Multi("mixed", Text("plain"), part)));
     }
 
