@@ -18,6 +18,8 @@ namespace QuickMail.Tests;
 /// <c>CanContentScroll=True</c>, a <c>HierarchicalDataTemplate</c>, and <c>IsExpanded</c> bound
 /// TwoWay in the container style — because every one of those is load-bearing for what is asserted.</para>
 /// </summary>
+// Shows windows, so it must not run alongside the focus tests (WindowTestCollectionGuard.cs).
+[Collection("WpfTests")]
 public class TreeViewItemRealizerTests
 {
     private sealed class Group

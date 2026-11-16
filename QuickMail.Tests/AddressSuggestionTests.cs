@@ -18,6 +18,8 @@ namespace QuickMail.Tests;
 /// the controller compose's To field now shares — what counts as the address being typed, what a
 /// chosen suggestion leaves behind — and the controller itself, against the real editor window.
 /// </summary>
+// Shows windows, so it must not run alongside the focus tests (WindowTestCollectionGuard.cs).
+[Collection("WpfTests")]
 public class AddressSuggestionTests
 {
     private static void EnsureApplication() => WpfTestHost.EnsureApplication();

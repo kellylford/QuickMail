@@ -46,6 +46,12 @@ dotnet test QuickMail.Tests/QuickMail.Tests.csproj -c Release
 dotnet test QuickMail.Tests/QuickMail.Tests.csproj -c Release --filter "FullyQualifiedName~ClassName"
 ```
 
+**A test class that shows a window must be in `[Collection("WpfTests")]`** (or a collection with
+`DisableParallelization = true`). Collections run in parallel, and a window shown on another test
+thread takes keyboard focus from whichever focus or tab-order test is running in WpfTests, which then
+fails at random. `WindowTestCollectionGuard` fails any test that loads a window outside those
+collections, every run.
+
 All tests use `StubServices.cs` stub implementations to avoid real network and credential calls. Key test classes in `QuickMail.Tests/`:
 
 - **ViewModelConstructionTests** — VM instantiation with stub services (catches init crashes)

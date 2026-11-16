@@ -30,6 +30,8 @@ using Xunit;
 
 namespace QuickMail.Tests;
 
+// Shows a window, so it must not run alongside the focus tests (WindowTestCollectionGuard.cs).
+[Collection("WpfTests")]
 public class FolderTreeMergeTests
 {
     private static readonly Guid AccountA = Guid.Parse("71971971-0000-0000-0000-000000000001");
