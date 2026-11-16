@@ -1,6 +1,7 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using MailKit;
 using MailKit.Net.Smtp;
 using MailKit.Security;
 using QuickMail.Models;
@@ -59,7 +60,7 @@ public class SmtpService : ISendMailService
                 await client.AuthenticateAsync(account.AuthUsername, password!, ct);
             }
             LogService.Log($"SmtpService: authenticated, sending.");
-            await client.SendAsync(message, ct);
+            await client.SendAsync(new SendRequest(message), ct);
             LogService.Log($"SmtpService: send complete");
         }
         catch (Exception ex)
@@ -194,7 +195,7 @@ public class SmtpService : ISendMailService
                 await client.AuthenticateAsync(account.AuthUsername, password!, ct);
             }
             LogService.Log($"SmtpService: {what} authenticated, sending.");
-            await client.SendAsync(message, ct);
+            await client.SendAsync(new SendRequest(message), ct);
             LogService.Log($"SmtpService: {what} sent.");
         }
         catch (Exception ex)

@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using MailKit;
 using MailKit.Net.Smtp;
 using MailKit.Security;
 using MimeKit;
@@ -197,7 +198,7 @@ public sealed class ConnectionRecoveryTests : IDisposable
 
         using var smtp = new SmtpClient();
         await smtp.ConnectAsync(GreenMailFixture.Host, GreenMailFixture.SmtpPort, SecureSocketOptions.None, ct);
-        await smtp.SendAsync(message, ct);
+        await smtp.SendAsync(new SendRequest(message), ct);
         await smtp.DisconnectAsync(quit: true, ct);
     }
 }
