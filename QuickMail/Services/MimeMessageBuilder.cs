@@ -211,17 +211,17 @@ public static partial class MimeMessageBuilder
 
     private static MimePart MimePartFor(AttachmentModel att, string disposition)
     {
-        var slash = att.ContentType.IndexOf('/');
-        var mediaType    = slash >= 0 ? att.ContentType[..slash] : "application";
-        var mediaSubtype = slash >= 0 ? att.ContentType[(slash + 1)..] : "octet-stream";
+        // The type comes from received mail or Graph and may carry parameters ("application/pdf;
+        // name=x.pdf"), so parse it rather than split it; MimeKit 5 rejects a type or subtype that is not
+        // a valid MIME token where 4.x stored it as given. An unusable type must not fail the whole send
+        // or draft: send the file as a generic one.
         MimePart part;
-        // The type comes from received mail or Graph, and MimeKit 5 rejects one that is not a valid
-        // MIME token ("application/", "pdf; name=x.pdf") where 4.x stored it as given. An unusable
-        // type must not fail the whole send or draft: send the file as a generic one.
-        try { part = new MimePart(mediaType, mediaSubtype); }
-        catch (ArgumentException)
+        if (ContentType.TryParse(att.ContentType, out var parsed))
+            part = new MimePart(parsed.MediaType, parsed.MediaSubtype);
+        else
         {
-            LogService.Log($"Attachment {att.FileName} has an unusable content type '{att.ContentType}'; sending it as application/octet-stream");
+            if (att.ContentType.Contains('/'))
+                LogService.Log($"Attachment {att.FileName} has an unusable content type '{att.ContentType}'; sending it as application/octet-stream");
             part = new MimePart("application", "octet-stream");
         }
         part.Content                 = new MimeContent(new MemoryStream(att.Content!));

@@ -30,14 +30,14 @@ public class MimeKit5CompatibilityTests
     [Fact]
     public void TheParserAcceptsHeadersLongerThanMimeKitsDefault()
     {
-        // Touching a QuickMail type runs the module initializer, as the app's first line of code does.
-        System.Runtime.CompilerServices.RuntimeHelpers.RunModuleConstructor(typeof(MimeMessageBuilder).Module.ModuleHandle);
+        // Reading a QuickMail member is enough: the runtime runs the module initializer before any code
+        // in the assembly, as it does before the app's Main.
         Assert.True(ParserOptions.Default.MaxHeaderLength >= MimeParsing.MaxHeaderLength);
 
         var bytes = MessageWithLongToHeader();
         Assert.True(bytes.Length > 16 * 1024, "the header must exceed MimeKit 5's 16 KB default to test anything");
         using var stream = new System.IO.MemoryStream(bytes);
-        var message = MimeMessage.Load(stream);
+        var message = MimeMessage.Load(stream, TestContext.Current.CancellationToken);
         Assert.Equal(400, message.To.Count);
     }
 
@@ -66,6 +66,7 @@ public class MimeKit5CompatibilityTests
         var message = MimeMessageBuilder.Build(compose, Account());
 
         Assert.Equal("Re: hi", message.Subject);
+        Assert.Null(message.InReplyTo);
     }
 
     [Fact]
@@ -79,9 +80,11 @@ public class MimeKit5CompatibilityTests
     }
 
     [Theory]
-    [InlineData("application/")]
-    [InlineData("application/pdf; name=x.pdf")]
-    public void AnAttachmentWithAnUnusableContentTypeIsSentAsAGenericFile(string contentType)
+    [InlineData("application/", "application/octet-stream")]
+    [InlineData("", "application/octet-stream")]
+    [InlineData("application/pdf; name=x.pdf", "application/pdf")]
+    [InlineData("image/png", "image/png")]
+    public void AnAttachmentIsSentWithAUsableContentType(string contentType, string expected)
     {
         var compose = new ComposeModel
         {
@@ -94,6 +97,6 @@ public class MimeKit5CompatibilityTests
 
         var attachment = Assert.IsType<MimePart>(Assert.Single(message.Attachments));
         Assert.Equal("x.pdf", attachment.FileName);
-        Assert.Equal("application/octet-stream", attachment.ContentType.MimeType);
+        Assert.Equal(expected, attachment.ContentType.MimeType);
     }
 }
