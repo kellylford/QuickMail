@@ -101,7 +101,7 @@
     <PackageReference Include="AdysTech.CredentialManager" Version="3.1.0" />
     <PackageReference Include="Google.Apis.Auth" Version="1.77.0" />
     <PackageReference Include="Markdig" Version="1.5.0" />
-    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.13" />
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="11.0.0" />
     <!-- Transitive-vulnerability overrides. SQLitePCLRaw.bundle_e_sqlite3: pinned to 2.1.13 for
          the fixed bundled SQLite (GHSA-2m69-gcr7-jv3q). Microsoft.Data.Sqlite 10.0.13 now asks
          for 2.1.13 itself, so the pin is a floor rather than a bump — keep it so a future
@@ -114,7 +114,7 @@
          the SDK prunes any package the shared framework already provides, and the WindowsDesktop
          framework (UseWindowsForms) provides System.Drawing.Common, so the vulnerable transitive is
          dropped from the graph and an explicit reference only draws NU1510 (#472). -->
-    <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="2.1.13" />
+    <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.5" />
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
     <PackageReference Include="MailKit" Version="4.18.2" />
     <PackageReference Include="Microsoft.Identity.Client" Version="4.92.0" />
