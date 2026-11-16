@@ -99,8 +99,8 @@
 
   <ItemGroup>
     <PackageReference Include="AdysTech.CredentialManager" Version="3.1.0" />
-    <PackageReference Include="Google.Apis.Auth" Version="1.77.0" />
-    <PackageReference Include="Markdig" Version="1.5.0" />
+    <PackageReference Include="Google.Apis.Auth" Version="1.78.0" />
+    <PackageReference Include="Markdig" Version="1.6.0" />
     <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.13" />
     <!-- Transitive-vulnerability overrides. SQLitePCLRaw.bundle_e_sqlite3: pinned to 2.1.13 for
          the fixed bundled SQLite (GHSA-2m69-gcr7-jv3q). Microsoft.Data.Sqlite 10.0.13 now asks
