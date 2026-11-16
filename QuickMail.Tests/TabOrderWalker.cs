@@ -25,6 +25,11 @@ namespace QuickMail.Tests;
 /// <see cref="UIElement.MoveFocus"/> still performs the same real traversal WPF uses for Tab. That
 /// is what these tests actually mean to measure — where Tab goes — not which window Windows
 /// currently considers foreground.
+///
+/// <para>That removes the dependency at the start of a walk, not during it: <c>MoveFocus</c> moves
+/// logical focus only when the keyboard focus change succeeds, so a window shown activated on another
+/// test thread mid-walk still ended walks part-way. Keeping every window-showing test in the
+/// "WpfTests" collection is what stops that; see WindowTestCollectionGuard.cs.</para>
 /// </summary>
 internal static class TabOrderWalker
 {

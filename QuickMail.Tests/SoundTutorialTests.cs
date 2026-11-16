@@ -12,6 +12,8 @@ using Xunit;
 
 namespace QuickMail.Tests;
 
+// Shows windows, so it must not run alongside the focus tests (WindowTestCollectionGuard.cs).
+[Collection("WpfTests")]
 public class SoundTutorialTests
 {
     private readonly StubConfigService _config = new();
