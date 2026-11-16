@@ -100,8 +100,17 @@ public static partial class MimeMessageBuilder
         if (compose.OutgoingDate is { } date)
             message.Date = date;
 
+        // The id being replied to comes from the received message, and MimeKit 5 rejects a malformed
+        // one (two ids, bare whitespace) where 4.x tidied it. A reply without In-Reply-To still
+        // threads by subject; a reply that cannot be built cannot be sent or saved at all.
         if (!string.IsNullOrEmpty(compose.InReplyToMessageId))
-            message.InReplyTo = compose.InReplyToMessageId;
+        {
+            try { message.InReplyTo = compose.InReplyToMessageId; }
+            catch (ArgumentException ex)
+            {
+                LogService.Log("Reply: the original's Message-ID is malformed; sending without In-Reply-To", ex);
+            }
+        }
 
         // text/plain only (existing behavior), or multipart/alternative with a
         // text/html part when the message was composed in Markdown or HTML mode.
@@ -205,13 +214,21 @@ public static partial class MimeMessageBuilder
         var slash = att.ContentType.IndexOf('/');
         var mediaType    = slash >= 0 ? att.ContentType[..slash] : "application";
         var mediaSubtype = slash >= 0 ? att.ContentType[(slash + 1)..] : "octet-stream";
-        return new MimePart(mediaType, mediaSubtype)
+        MimePart part;
+        // The type comes from received mail or Graph, and MimeKit 5 rejects one that is not a valid
+        // MIME token ("application/", "pdf; name=x.pdf") where 4.x stored it as given. An unusable
+        // type must not fail the whole send or draft: send the file as a generic one.
+        try { part = new MimePart(mediaType, mediaSubtype); }
+        catch (ArgumentException)
         {
-            Content                 = new MimeContent(new MemoryStream(att.Content!)),
-            ContentDisposition      = new ContentDisposition(disposition),
-            ContentTransferEncoding = ContentEncoding.Base64,
-            FileName                = att.FileName,
-        };
+            LogService.Log($"Attachment {att.FileName} has an unusable content type '{att.ContentType}'; sending it as application/octet-stream");
+            part = new MimePart("application", "octet-stream");
+        }
+        part.Content                 = new MimeContent(new MemoryStream(att.Content!));
+        part.ContentDisposition      = new ContentDisposition(disposition);
+        part.ContentTransferEncoding = ContentEncoding.Base64;
+        part.FileName                = att.FileName;
+        return part;
     }
 
     /// <summary>
