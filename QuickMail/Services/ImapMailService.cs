@@ -1521,8 +1521,14 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
 
             var decoded = await folder.GetBodyPartAsync(mailKitUid, bodyPart, ct);
             using var stream = new MemoryStream();
+            // MimeKit 5 hands back a part with no content when the server's part headers are malformed,
+            // where 4.x threw. Say what happened rather than fail with a null reference.
             if (decoded is MimePart mp)
-                mp.Content!.DecodeTo(stream, CancellationToken.None);
+            {
+                if (mp.Content is null)
+                    throw new InvalidOperationException("The mail server sent this attachment in a form that could not be read.");
+                mp.Content.DecodeTo(stream, CancellationToken.None);
+            }
             else if (decoded is MessagePart msgPart)
                 await msgPart.Message!.WriteToAsync(stream, ct);
             return stream.ToArray();
