@@ -1,8 +1,10 @@
 # QuickMail v0.8.73 Release Notes
 
+This update is about keeping QuickMail working behind the scenes. Several of the technologies and libraries QuickMail uses have been updated; there should be no change in how QuickMail looks, sounds or works.
+
 ## Changed
 
-- **Updated mail and storage libraries.** QuickMail now uses MailKit 5, the library behind its IMAP, POP3 and SMTP connections and the reading and building of messages, and version 11 of its SQLite library for the local mail store. Nothing should look or sound different. Your existing mail store opens as before. If something about connecting, sending or reading mail behaves differently than in 0.8.72, please report it.
+- **Updated mail and storage libraries.** QuickMail now uses MailKit 5, the library behind its IMAP, POP3 and SMTP connections and the reading and building of messages, and version 11 of its SQLite library for the local mail store. Your existing mail store opens as before. If something about connecting, sending or reading mail behaves differently than in 0.8.72, please report it.
 - **Messages with very long headers keep working.** The new mail library rejects by default any message with a single header longer than 16 KB, such as a To or Cc line with a few hundred people on it. QuickMail raises that limit, so such a message is still collected over POP3, opens from a .eml file, and can be attached or copied to another account.
 - **A reply or forward goes through when the original is slightly malformed.** Replying to a message whose Message-ID is malformed sends the reply without linking it to the original, and an attachment whose type can't be read goes out as a generic file, instead of the send failing.
 - **A clearer message when an attachment can't be read.** If the mail server sends an attachment in a form that can't be read, saving it now says so, instead of "Object reference not set to an instance of an object."
