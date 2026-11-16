@@ -99,22 +99,24 @@
 
   <ItemGroup>
     <PackageReference Include="AdysTech.CredentialManager" Version="3.1.0" />
-    <PackageReference Include="Google.Apis.Auth" Version="1.77.0" />
-    <PackageReference Include="Markdig" Version="1.5.0" />
-    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.13" />
-    <!-- Transitive-vulnerability overrides. SQLitePCLRaw.bundle_e_sqlite3: pinned to 2.1.13 for
-         the fixed bundled SQLite (GHSA-2m69-gcr7-jv3q). Microsoft.Data.Sqlite 10.0.13 now asks
-         for 2.1.13 itself, so the pin is a floor rather than a bump — keep it so a future
-         Microsoft.Data.Sqlite cannot quietly drag the bundle back down. Deliberately NOT moved to
-         3.0.5: that is a major rewrite of the provider bundle and Microsoft.Data.Sqlite still
-         resolves SQLitePCLRaw.core 2.1.13 alongside it, which would mix 2.x and 3.x assemblies.
+    <PackageReference Include="Google.Apis.Auth" Version="1.78.0" />
+    <PackageReference Include="Markdig" Version="1.6.0" />
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="11.0.0" />
+    <!-- Transitive-vulnerability overrides. SQLitePCLRaw.bundle_e_sqlite3: first pinned (at 2.1.13) for
+         the fixed bundled SQLite (GHSA-2m69-gcr7-jv3q). It is now a floor rather than a bump:
+         Microsoft.Data.Sqlite asks for the same version itself, and the pin stays so a future
+         Microsoft.Data.Sqlite cannot quietly drag the bundle back down. Move the two together.
+         Microsoft.Data.Sqlite 11.0.0 (which targets net10.0) depends on SQLitePCLRaw 3.0.5
+         exactly, so both moved to 3.x in one change; moving the bundle alone to 3.x under
+         Microsoft.Data.Sqlite 10 would resolve SQLitePCLRaw.core 2.1.13 alongside it and mix
+         2.x and 3.x assemblies.
          System.Drawing.Common needs no pin any more. Microsoft.Toolkit.Uwp.Notifications 7.1.3
          (its final release) still asks for 4.7.0, vulnerable to GHSA-rxg9-xrhp-64gj, and on .NET 8
          this project pinned a patched 8.0.x so NuGetAuditMode=all saw a fixed version. From .NET 10
          the SDK prunes any package the shared framework already provides, and the WindowsDesktop
          framework (UseWindowsForms) provides System.Drawing.Common, so the vulnerable transitive is
          dropped from the graph and an explicit reference only draws NU1510 (#472). -->
-    <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="2.1.13" />
+    <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.5" />
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
     <PackageReference Include="MailKit" Version="4.18.2" />
     <PackageReference Include="Microsoft.Identity.Client" Version="4.92.0" />
