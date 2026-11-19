@@ -1,5 +1,14 @@
 # QuickMail v0.8.74 Release Notes
 
+## Added
+
+- **Suggest people you've sent mail to.** A new setting, **Remember people I send to and suggest them as I type an address** (Settings → General → Composing), suggests the people you have sent mail to as you type in To, Cc and Bcc, even when they are not in your address book. It is off by default. They are kept on this computer only and separately from your address book, so it does not fill up with everyone you have ever written to. **Forget People I've Sent To** clears them. (#1037)
+
+## Changed
+
+- **Tab enters the suggestion you just heard.** When address suggestions appear, a screen reader now hears the first one along with how many there are, for example "Jane Smith jane@uni.edu, 3 suggestions", instead of the count alone. Press **Tab** to enter it and stay in the field for the next address, or **Down** to choose another. This works in a message's To, Cc and Bcc and in an appointment's Invite field. (#1037)
+- **The likeliest suggestion comes first.** People whose name, a word of their name, or address begins with what you typed are now listed before those who only contain it, so typing "jo" offers Joan before Marjorie. (#1037)
+
 
 ## Reporting Issues
 
