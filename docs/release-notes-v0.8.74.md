@@ -6,7 +6,7 @@
 
 ## Changed
 
-- **Tab enters the suggestion you just heard.** When address suggestions appear, a screen reader now hears the first one along with how many there are, for example "Jane Smith jane@uni.edu, 3 suggestions", instead of the count alone. Press **Tab** to enter it and stay in the field for the next address, or **Down** to choose another. This works in a message's To, Cc and Bcc and in an appointment's Invite field. (#1037)
+- **Tab enters the suggestion you just heard.** When address suggestions appear, a screen reader now hears the first one along with how many there are, for example "Jane Smith jane@uni.edu, 3 suggestions", instead of the count alone. Press **Tab** to enter it and stay in the field for the next address, or **Down** to choose another. Tab only takes a suggestion you are typing towards; a complete address you typed out in full stays as typed. This works in a message's To, Cc and Bcc and in an appointment's Invite field. (#1037)
 - **The likeliest suggestion comes first.** People whose name, a word of their name, or address begins with what you typed are now listed before those who only contain it, so typing "jo" offers Joan before Marjorie. (#1037)
 
 

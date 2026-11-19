@@ -73,7 +73,13 @@ public class ContactService : IContactService, IDisposable
                     c.DisplayName.Contains(q, StringComparison.OrdinalIgnoreCase) ||
                     c.EmailAddress.Contains(q, StringComparison.OrdinalIgnoreCase));
 
-            var deduped = DedupByEmail(source).OrderByDescending(c => c.LastUsedTicks);
+            // The best matches before the cut to ten (#1037): the exact address, then a name, word or
+            // address beginning with the text, then the rest; most recently used first within each. By
+            // recency alone, a big address book could fill all ten with people who merely contain the
+            // text and leave out the one being typed.
+            var deduped = DedupByEmail(source)
+                .OrderBy(c => Helpers.SuggestionMatch.Strength(c.DisplayName, c.EmailAddress, q))
+                .ThenByDescending(c => c.LastUsedTicks);
             return string.IsNullOrEmpty(q) ? deduped.ToList() : deduped.Take(10).ToList();
         }
         finally

@@ -37,11 +37,17 @@ public class AddressSuggestionTests
         /// <summary>When set, a search waits for it: a search still running when the next key comes.</summary>
         public TaskCompletionSource? Gate { get; set; }
 
+        /// <summary>Match anywhere in the name or address, as the real ContactService does.</summary>
+        public bool MatchContains { get; set; }
+
         public async Task<List<ContactModel>> SearchContactsAsync(string prefix, CancellationToken ct = default)
         {
             if (Gate is { } gate) await gate.Task;
-            return People.Where(p => p.DisplayName.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
-                                  || p.EmailAddress.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)).ToList();
+            return MatchContains
+                ? People.Where(p => p.DisplayName.Contains(prefix, StringComparison.OrdinalIgnoreCase)
+                                 || p.EmailAddress.Contains(prefix, StringComparison.OrdinalIgnoreCase)).ToList()
+                : People.Where(p => p.DisplayName.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
+                                 || p.EmailAddress.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)).ToList();
         }
         public Task<List<GroupModel>> SearchGroupsAsync(string prefix, CancellationToken ct = default)
             => Task.FromResult(Groups.Where(g => g.Name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)).ToList());
@@ -400,6 +406,122 @@ public class AddressSuggestionTests
             contacts.Gate.SetResult();
             PumpUntil(() => rig.Box.GetChips().Count == 1);
             Assert.Equal("bea@example.com", rig.Box.GetChips()[0].EmailAddress);
+        }
+        finally
+        {
+            contacts.Gate?.TrySetResult();
+            rig.Controller.Dispose();
+            rig.Window.Close();
+        }
+    }
+
+    [StaFact]
+    public void Compose_TabWithOnlyAContainsMatch_KeepsWhatWasTyped_AndMovesOn()
+    {
+        EnsureApplication();
+        var contacts = new Contacts { MatchContains = true };
+        contacts.People.Clear(); // only joann, so nothing matches the typed address exactly
+        contacts.People.Add(new ContactModel { Id = 3, DisplayName = "", EmailAddress = "joann@example.com" });
+        var rig = BuildComposeRig(contacts);
+        try
+        {
+            rig.Box.InputBox.Text = "ann@example.com";   // a new address, typed in full
+            PumpUntil(() => rig.Popup.IsOpen);            // joann@example.com contains it
+
+            var tab = Key_(rig.Window, Key.Tab);
+            rig.Box.InputBox.RaiseEvent(tab);
+
+            Assert.False(tab.Handled);                    // Tab is the field's own: it commits and moves on
+            Assert.False(rig.Popup.IsOpen);
+            Assert.Equal("ann@example.com", Assert.Single(rig.Box.GetChips()).EmailAddress);
+        }
+        finally
+        {
+            rig.Controller.Dispose();
+            rig.Window.Close();
+        }
+    }
+
+    [StaFact]
+    public void Editor_TabAfterTheCaretMovesToAnotherEntry_IsNotTrapped()
+    {
+        EnsureApplication();
+        var vm = new EventEditorViewModel(new DateTime(2026, 11, 3, 9, 0, 0));
+        var window = new EventEditorWindow(vm, new Contacts()) { ShowInTaskbar = false };
+        window.Show();
+        try
+        {
+            var invite = (TextBox)window.FindName("InviteBox");
+            var popup = (System.Windows.Controls.Primitives.Popup)window.FindName("InviteSuggestionPopup");
+            invite.Text = "carol@example.com; an";
+            invite.CaretIndex = invite.Text.Length;
+            PumpUntil(() => popup.IsOpen);
+
+            invite.CaretIndex = 2;                         // Home: into carol's entry, no search starts
+            var tab = Key_(window, Key.Tab);
+            invite.RaiseEvent(tab);
+
+            Assert.False(tab.Handled);                     // Tab moves on rather than being swallowed
+            Assert.False(popup.IsOpen);
+            Assert.Equal("carol@example.com; an", invite.Text); // and nothing was entered over carol
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    [StaFact]
+    public void Editor_TabWithTheListShowing_EntersTheFirst()
+    {
+        EnsureApplication();
+        var vm = new EventEditorViewModel(new DateTime(2026, 11, 3, 9, 0, 0));
+        var window = new EventEditorWindow(vm, new Contacts()) { ShowInTaskbar = false };
+        window.Show();
+        try
+        {
+            var invite = (TextBox)window.FindName("InviteBox");
+            var popup = (System.Windows.Controls.Primitives.Popup)window.FindName("InviteSuggestionPopup");
+            invite.Text = "bo";
+            invite.CaretIndex = invite.Text.Length;
+            PumpUntil(() => popup.IsOpen);
+
+            var tab = Key_(window, Key.Tab);
+            invite.RaiseEvent(tab);
+
+            Assert.True(tab.Handled);
+            Assert.Equal("Bob Ray <bob@example.com>; ", vm.InviteText);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    [StaFact]
+    public void Compose_TabWaitingForASearchThatFindsNothing_ClosesTheList_SoTheNextTabMovesOn()
+    {
+        EnsureApplication();
+        var contacts = new Contacts();
+        var rig = BuildComposeRig(contacts);
+        try
+        {
+            rig.Box.InputBox.Text = "b";
+            PumpUntil(() => rig.Popup.IsOpen);
+            contacts.Gate = new TaskCompletionSource();
+            rig.Box.InputBox.Text = "bz";                 // will find nothing
+            DoEvents();
+            var tab = Key_(rig.Window, Key.Tab);
+            rig.Box.InputBox.RaiseEvent(tab);
+            Assert.True(tab.Handled);                     // held for the search
+
+            contacts.Gate.SetResult();
+            PumpUntil(() => !rig.Popup.IsOpen);
+            Assert.Empty(rig.Box.GetChips());
+
+            var next = Key_(rig.Window, Key.Tab);
+            rig.Box.InputBox.RaiseEvent(next);
+            Assert.False(next.Handled);
         }
         finally
         {

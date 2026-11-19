@@ -305,7 +305,8 @@
                                 <CheckBox x:Name="RememberRecipientsCheckBox"
                                           Content="Remember people I send to and suggest them as I type an address"
                                           IsChecked="{Binding RememberRecipients, Mode=TwoWay}"
-                                          AutomationProperties.Name="Remember people I send to and suggest them as I type an address"/>
+                                          AutomationProperties.Name="Remember people I send to and suggest them as I type an address"
+                                          AutomationProperties.HelpText="Kept on this computer only, apart from your address book."/>
                                 <TextBlock Text="Kept on this computer only, apart from your address book. Turning this off stops both remembering and suggesting; Forget clears who is remembered."
                                            Foreground="{DynamicResource Theme.TextSecondary}" FontSize="{DynamicResource Theme.FontSizeSmall}" Margin="0,3,0,4" TextWrapping="Wrap"/>
                                 <Button x:Name="ForgetRecipientsButton"

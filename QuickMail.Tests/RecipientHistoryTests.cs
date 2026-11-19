@@ -125,6 +125,27 @@ public class RecipientHistoryTests : IDisposable
     }
 
     [Fact]
+    public async Task AFileHoldingNulls_KeepsOnlyUsableEntries_AndSearchStillWorks()
+    {
+        await File.WriteAllTextAsync(FilePath,
+            """[null, {"DisplayName": null, "EmailAddress": "jane@uni.edu"}, {"DisplayName": "X", "EmailAddress": null}]""", Ct);
+        using var store = NewStore();
+        var jane = Assert.Single(await store.SearchAsync("jane", 10, Ct));
+        Assert.Equal(string.Empty, jane.DisplayName);
+        Assert.Equal(1, await store.CountAsync());
+    }
+
+    [Fact]
+    public async Task Clear_WhenTheFileCannotBeDeleted_ForgetsNoOne()
+    {
+        using var store = NewStore();
+        await store.RecordAsync([("Jane", "jane@uni.edu")]);
+        using (new FileStream(FilePath, FileMode.Open, FileAccess.Read, FileShare.None))
+            await Assert.ThrowsAnyAsync<IOException>(store.ClearAsync);
+        Assert.Equal(1, await store.CountAsync()); // not gone now only to come back at the next start
+    }
+
+    [Fact]
     public async Task TheFile_HoldsOnlyNameAddressAndTime()
     {
         using var store = NewStore();
@@ -313,14 +334,99 @@ public class RecipientHistoryTests : IDisposable
     public void TheAnnouncement_NamesWhatTabWouldEnter_ThenHowManyThereAre()
     {
         var one = new List<AddressSuggestion> { new(P("Jane Smith", "jane@uni.edu")) };
-        Assert.Equal("Jane Smith jane@uni.edu, 1 suggestion", AddressSuggestionController.AnnouncementFor(one));
+        Assert.Equal("Jane Smith jane@uni.edu, 1 suggestion", AddressSuggestionController.AnnouncementFor(one, "ja"));
 
         var three = new List<AddressSuggestion>
         {
             new(new GroupModel { Name = "Lab", ResolvedMemberCount = 2 }),
-            new(P("", "joe@uni.edu")),
-            new(P("Jo", "jo@uni.edu"), isRecent: true),
+            new(P("", "lab.tech@uni.edu")),
+            new(P("Labelle", "jo@uni.edu"), isRecent: true),
         };
-        Assert.Equal("Lab, group, 2 members, 3 suggestions", AddressSuggestionController.AnnouncementFor(three));
+        Assert.Equal("Lab, group, 2 members, 3 suggestions", AddressSuggestionController.AnnouncementFor(three, "la"));
+    }
+
+    [Fact]
+    public void TheAnnouncement_IsOnlyTheCount_WhenTabWouldKeepWhatWasTyped()
+    {
+        // "ann" is only inside joann: Tab will not take it, so it is not named.
+        var inside = new List<AddressSuggestion> { new(P("", "joann@example.com")) };
+        Assert.Equal("1 suggestion", AddressSuggestionController.AnnouncementFor(inside, "ann"));
+    }
+
+    // ── What Tab may enter ───────────────────────────────────────────────────
+
+    private static List<AddressSuggestion> Ranked(string typed, params ContactModel[] contacts)
+        => AddressSuggestionRanking.Combine(typed, [], contacts, []);
+
+    [Fact]
+    public void Tab_NeverTurnsAnAddressIntoOneThatMerelyContainsIt()
+    {
+        // The reviewer's case: a new address typed in full, and a contact that contains it.
+        var list = Ranked("ann@example.com", P("", "joann@example.com"));
+        Assert.False(AddressSuggestionRanking.TabTakesFirst(list, "ann@example.com"));
+        Assert.False(AddressSuggestionRanking.TabTakesFirst(Ranked("ann", P("Joann Lee", "jl@example.com")), "ann"));
+    }
+
+    [Fact]
+    public void Tab_TakesAnExactAddress_EvenWhenALongerOneWasUsedMoreRecently()
+    {
+        var list = Ranked("bob@x.com", P("", "bob@x.com.au", used: 9), P("", "bob@x.com", used: 1));
+        Assert.Equal("bob@x.com", list[0].Contact!.EmailAddress);
+        Assert.True(AddressSuggestionRanking.TabTakesFirst(list, "bob@x.com"));
+    }
+
+    [Fact]
+    public void Tab_KeepsACompleteTypedAddress_ThatIsNotInTheList()
+    {
+        var list = Ranked("bob@x.com", P("", "bob@x.com.au"));
+        Assert.False(AddressSuggestionRanking.TabTakesFirst(list, "bob@x.com"));
+    }
+
+    [Theory]
+    [InlineData("ja", true)]
+    [InlineData("smi", true)]          // a word of the name
+    [InlineData("jane@uni", true)]     // an address still being typed
+    [InlineData("jane@uni.e", true)]   // one letter after the dot is not yet an address
+    [InlineData("JANE@UNI.EDU", true)] // the exact address, whatever its case
+    public void Tab_TakesWhatTheUserIsTypingTowards(string typed, bool takes)
+        => Assert.Equal(takes, AddressSuggestionRanking.TabTakesFirst(Ranked(typed, P("Jane Smith", "jane@uni.edu")), typed));
+
+    [Theory]
+    [InlineData("bob@x.com", true)]
+    [InlineData("bob@x.co", true)]
+    [InlineData("bob@x.c", false)]
+    [InlineData("bob@x.", false)]
+    [InlineData("bob@x", false)]
+    [InlineData("bob", false)]
+    [InlineData("@x.com", false)]
+    public void ACompleteAddress_HasADomainWithAtLeastTwoLettersAfterTheLastDot(string typed, bool complete)
+        => Assert.Equal(complete, AddressSuggestionRanking.LooksComplete(typed));
+
+    [Fact]
+    public void Ranking_LeavesOutARememberedPerson_WhoIsAnywhereInTheAddressBook()
+    {
+        // Jane is a contact, but not among the few contact matches passed in.
+        var book = new HashSet<string>(["jane@uni.edu", "other@uni.edu"], StringComparer.OrdinalIgnoreCase);
+        var list = AddressSuggestionRanking.Combine("ja", [], [], [P("Jane", "JANE@uni.edu"), P("Jack", "jack@uni.edu")], book);
+        Assert.Equal(["Jack"], list.Select(s => s.PrimaryText));
+    }
+
+    [Fact]
+    public async Task TheAddressBookSearch_KeepsWhatBeginsWithTheText_InsideItsTopTen()
+    {
+        var contacts = new ContactService(new ProfileContext(_dir));
+        try
+        {
+            // Twelve recent contacts that only contain "jo", and one older that begins with it.
+            for (var i = 0; i < 12; i++)
+                await contacts.UpsertContactAsync(new ContactModel { DisplayName = $"Marjorie {i}", EmailAddress = $"m{i}@uni.edu", LastUsedTicks = 100 + i });
+            await contacts.UpsertContactAsync(new ContactModel { DisplayName = "Joan Bell", EmailAddress = "joan@uni.edu", LastUsedTicks = 1 });
+
+            var found = await contacts.SearchContactsAsync("jo", Ct);
+            Assert.Equal(10, found.Count);
+            Assert.Equal("joan@uni.edu", found[0].EmailAddress);
+            Assert.Equal("m11@uni.edu", found[1].EmailAddress); // then the rest by recency
+        }
+        finally { contacts.Dispose(); }
     }
 }

@@ -112,9 +112,11 @@ public sealed class RecipientHistoryService : IRecipientHistory, IDisposable
         await _lock.WaitAsync();
         try
         {
+            // The file first: if it cannot be deleted, nothing is forgotten, rather than everyone
+            // vanishing now and coming back at the next start.
+            if (File.Exists(_path)) File.Delete(_path);
             _people = [];
             _loaded = true;
-            if (File.Exists(_path)) File.Delete(_path);
         }
         finally
         {
@@ -140,7 +142,13 @@ public sealed class RecipientHistoryService : IRecipientHistory, IDisposable
         try
         {
             var json = await File.ReadAllTextAsync(_path);
-            _people = JsonSerializer.Deserialize<List<ContactModel>>(json) ?? [];
+            // Valid JSON can still hold nulls (a hand edit, a half-written file from an old build); a
+            // null entry or name would throw on every search and take the address book's suggestions
+            // down with it, so keep only usable entries.
+            _people = (JsonSerializer.Deserialize<List<ContactModel?>>(json) ?? [])
+                .Where(p => p != null && !string.IsNullOrWhiteSpace(p.EmailAddress))
+                .Select(p => { p!.DisplayName ??= string.Empty; p.EmailAddress = p.EmailAddress.Trim(); return p; })
+                .ToList();
         }
         catch (Exception ex)
         {

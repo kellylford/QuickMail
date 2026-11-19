@@ -1229,7 +1229,7 @@ Enter in the From list never sends the message. Sending is **Alt+S** or **Ctrl+E
 
 Start typing a name or address in To, Cc, or Bcc. QuickMail searches your address book and recent contacts. People whose name, a word of their name, or address begins with what you typed come first; after them come those who only contain it. A contact group whose name matches is offered too; choosing it adds all its members.
 
-When suggestions appear, a screen reader hears the first one and how many there are, for example "Jane Smith jane@uni.edu, 3 suggestions". Press **Tab** to enter that first suggestion; you stay in the field, ready for the next address. Type another letter to narrow the list, and you hear the new first suggestion. To choose a different one, press **Down** to move into the list, arrow to it, and press **Enter** or **Tab**. Press **Escape** to dismiss the list without accepting.
+When suggestions appear, a screen reader hears the first one and how many there are, for example "Jane Smith jane@uni.edu, 3 suggestions". Press **Tab** to enter that first suggestion; you stay in the field, ready for the next address. Type another letter to narrow the list, and you hear the new first suggestion. Tab only enters a suggestion you are typing towards, one whose name, a word of its name, or address begins with what you typed. When the best match only contains your text somewhere in the middle, you hear just the number of suggestions, and Tab keeps what you typed. A complete address you have typed out in full is kept as typed too, unless it is exactly one in the list. To choose a different one, press **Down** to move into the list, arrow to it, and press **Enter** or **Tab**. Press **Escape** to dismiss the list without accepting.
 
 #### Remembering people you send to
 
@@ -1239,7 +1239,7 @@ Turning the setting off stops both remembering and suggesting them. **Forget Peo
 
 ### Address Fields
 
-Each address you finish becomes its own item, showing the person's name, or the address when there is no name. Finish an address with **Enter**, **Tab**, a comma, or a semicolon, or choose one from the suggestions.
+Each address you finish becomes its own item, showing the person's name, or the address when there is no name. Finish an address with **Enter**, **Tab**, a comma, or a semicolon, or choose one from the suggestions. While suggestions are showing, **Tab** enters the first suggestion when you are typing towards it (see [Address Autocomplete](#address-autocomplete)); **Enter** always keeps exactly what you typed.
 
 | Key | Action |
 |-----|--------|
