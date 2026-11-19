@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.IO;
@@ -202,6 +203,51 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
 
     /// <summary>Reads the current composing preference, including changes made while composing.</summary>
     public Func<bool>? ConfirmBeforeSendProvider { get; set; }
+
+    /// <summary>
+    /// Where the people a sent message went to are remembered, for address suggestions (#1037). Set by
+    /// the View; null records nothing.
+    /// </summary>
+    public IRecipientHistory? RecipientHistory { get; set; }
+
+    /// <summary>Reads Settings → Remember people I send to at send time. Null or false records nothing.</summary>
+    public Func<bool>? RememberRecipientsProvider { get; set; }
+
+    /// <summary>
+    /// The finished record of who a message went to, when there is one to wait for. Tests await it; the
+    /// send path does not, since remembering is never worth delaying the window's close for.
+    /// </summary>
+    internal Task? PendingRecipientRecord { get; private set; }
+
+    /// <summary>
+    /// Remembers every To, Cc and Bcc address of a message that has been sent or queued, when the user
+    /// has asked for that. Best effort: a failure is logged and never reaches the send.
+    /// </summary>
+    private void RememberRecipients(ComposeModel compose)
+    {
+        if (RecipientHistory is not { } history || RememberRecipientsProvider?.Invoke() != true) return;
+        var people = RecipientsOf(compose);
+        if (people.Count == 0) return;
+        PendingRecipientRecord = Task.Run(async () =>
+        {
+            try { await history.RecordAsync(people); }
+            catch (Exception ex) { LogService.Log("Send: could not remember the recipients", ex); }
+        });
+    }
+
+    /// <summary>Every address in To, Cc and Bcc with its name, read the way the message headers are built.</summary>
+    internal static List<(string DisplayName, string EmailAddress)> RecipientsOf(ComposeModel compose)
+    {
+        var list = new MimeKit.InternetAddressList();
+        AddressInput.AddTo(list, compose.To);
+        AddressInput.AddTo(list, compose.Cc);
+        AddressInput.AddTo(list, compose.Bcc);
+        return list.Mailboxes
+            .Where(m => !string.IsNullOrWhiteSpace(m.Address))
+            .GroupBy(m => m.Address, StringComparer.OrdinalIgnoreCase)
+            .Select(g => (g.Select(m => m.Name ?? string.Empty).FirstOrDefault(n => n.Length > 0) ?? string.Empty, g.Key))
+            .ToList();
+    }
 
     // A modal confirmation runs a nested message loop before AsyncRelayCommand marks itself
     // running. Guard that interval as well as the asynchronous send and post-send cleanup.
@@ -441,6 +487,7 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
         }
         _isSent = true;
         _isDirty = false;
+        RememberRecipients(compose);
         SetStatusOutcome(queuedMessage ?? "Message queued. It will be sent when you're online.");
         _sounds?.Play(SoundEvent.MessageQueued);
         CloseRequested?.Invoke();
@@ -928,6 +975,7 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
                 throw;
             }
             _isSent = true;
+            RememberRecipients(compose);
             SetStatusOutcome("Message sent.");
             _sounds?.Play(SoundEvent.MessageSent);
             await ForgetLocalCopyAsync();

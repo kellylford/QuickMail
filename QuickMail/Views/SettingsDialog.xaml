@@ -301,6 +301,19 @@
                                           IsChecked="{Binding ConfirmBeforeSend, Mode=TwoWay}"
                                           Margin="0,0,0,8"
                                           AutomationProperties.Name="Confirm before sending a message"/>
+                                <!-- #1037. No access key: every letter of both labels is taken on this tab. -->
+                                <CheckBox x:Name="RememberRecipientsCheckBox"
+                                          Content="Remember people I send to and suggest them as I type an address"
+                                          IsChecked="{Binding RememberRecipients, Mode=TwoWay}"
+                                          AutomationProperties.Name="Remember people I send to and suggest them as I type an address"/>
+                                <TextBlock Text="Kept on this computer only, apart from your address book. Turning this off stops both remembering and suggesting; Forget clears who is remembered."
+                                           Foreground="{DynamicResource Theme.TextSecondary}" FontSize="{DynamicResource Theme.FontSizeSmall}" Margin="0,3,0,4" TextWrapping="Wrap"/>
+                                <Button x:Name="ForgetRecipientsButton"
+                                        Content="Forget People I've Sent To…"
+                                        Command="{Binding ForgetRecipientsCommand}"
+                                        Visibility="{Binding HasRecipientHistory, Converter={StaticResource BoolToVisibilityConverter}}"
+                                        HorizontalAlignment="Left" Padding="10,3" Margin="0,0,0,8"
+                                        AutomationProperties.Name="Forget people I've sent to"/>
                                 <CheckBox Content="Automatically save _drafts while composing"
                                           IsChecked="{Binding AutoSaveDrafts, Mode=TwoWay}"
                                           AutomationProperties.Name="Automatically save the message as a draft while composing"/>

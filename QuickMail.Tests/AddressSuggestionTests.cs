@@ -34,9 +34,15 @@ public class AddressSuggestionTests
         ];
         public List<GroupModel> Groups { get; } = [];
 
-        public Task<List<ContactModel>> SearchContactsAsync(string prefix, CancellationToken ct = default)
-            => Task.FromResult(People.Where(p => p.DisplayName.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
-                                              || p.EmailAddress.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)).ToList());
+        /// <summary>When set, a search waits for it: a search still running when the next key comes.</summary>
+        public TaskCompletionSource? Gate { get; set; }
+
+        public async Task<List<ContactModel>> SearchContactsAsync(string prefix, CancellationToken ct = default)
+        {
+            if (Gate is { } gate) await gate.Task;
+            return People.Where(p => p.DisplayName.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
+                                  || p.EmailAddress.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)).ToList();
+        }
         public Task<List<GroupModel>> SearchGroupsAsync(string prefix, CancellationToken ct = default)
             => Task.FromResult(Groups.Where(g => g.Name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)).ToList());
         public Task<List<ContactModel>> LoadAllContactsAsync() => Task.FromResult(People);
@@ -224,7 +230,7 @@ public class AddressSuggestionTests
         System.Windows.Controls.Primitives.Popup Popup, ListBox List, AddressSuggestionController Controller);
 
     /// <summary>A shown window with one chip box, wired the way ComposeWindow wires To.</summary>
-    private static ComposeRig BuildComposeRig(Contacts contacts)
+    private static ComposeRig BuildComposeRig(Contacts contacts, IRecipientHistory? recents = null, Func<bool>? includeRecents = null)
     {
         var box = new QuickMail.Controls.TokenizedAddressBox();
         var list = new ListBox();
@@ -235,7 +241,7 @@ public class AddressSuggestionTests
             Width = 400, Height = 200, ShowInTaskbar = false,
         };
         window.Show();
-        var controller = new AddressSuggestionController(window, contacts, popup, list);
+        var controller = new AddressSuggestionController(window, contacts, popup, list, recents, includeRecents);
         controller.Attach(new TokenizedAddressEntry(box));
         return new ComposeRig(window, box, popup, list, controller);
     }
@@ -328,6 +334,113 @@ public class AddressSuggestionTests
             Assert.True(up.Handled);
             Assert.False(rig.Popup.IsOpen);
             Assert.Empty(rig.Box.GetChips()); // nothing chosen
+        }
+        finally
+        {
+            rig.Controller.Dispose();
+            rig.Window.Close();
+        }
+    }
+
+    // ── Tab enters the first suggestion (#1037) ──────────────────────────────
+
+    [StaFact]
+    public void Compose_TabInTheField_EntersTheFirstSuggestion_AndStaysForTheNext()
+    {
+        EnsureApplication();
+        var rig = BuildComposeRig(new Contacts());
+        try
+        {
+            rig.Box.InputBox.Text = "bo";
+            PumpUntil(() => rig.Popup.IsOpen);
+
+            var tab = Key_(rig.Window, Key.Tab);
+            rig.Box.InputBox.RaiseEvent(tab);
+
+            Assert.True(tab.Handled); // focus does not move on
+            Assert.Equal("bob@example.com", Assert.Single(rig.Box.GetChips()).EmailAddress);
+            Assert.False(rig.Popup.IsOpen);
+            Assert.Equal(string.Empty, rig.Box.InputBox.Text);
+
+            // With no list showing, Tab is the field's own again.
+            var second = Key_(rig.Window, Key.Tab);
+            rig.Box.InputBox.RaiseEvent(second);
+            Assert.False(second.Handled);
+        }
+        finally
+        {
+            rig.Controller.Dispose();
+            rig.Window.Close();
+        }
+    }
+
+    [StaFact]
+    public void Compose_TabBeforeTheSearchCatchesUp_EntersWhatTheLastLetterFound_NotTheStaleFirst()
+    {
+        EnsureApplication();
+        var contacts = new Contacts();
+        contacts.People.Add(new ContactModel { Id = 3, DisplayName = "Bea Moe", EmailAddress = "bea@example.com" });
+        var rig = BuildComposeRig(contacts);
+        try
+        {
+            rig.Box.InputBox.Text = "b";                 // Bob first, then Bea
+            PumpUntil(() => rig.Popup.IsOpen);
+            Assert.Equal(2, rig.List.Items.Count);
+
+            contacts.Gate = new TaskCompletionSource();
+            rig.Box.InputBox.Text = "be";                // its search is held up
+            DoEvents();
+            Assert.Equal(2, rig.List.Items.Count);       // still the list for "b", Bob first
+
+            var tab = Key_(rig.Window, Key.Tab);
+            rig.Box.InputBox.RaiseEvent(tab);
+            Assert.True(tab.Handled);
+            Assert.Empty(rig.Box.GetChips());            // Bob was not entered
+
+            contacts.Gate.SetResult();
+            PumpUntil(() => rig.Box.GetChips().Count == 1);
+            Assert.Equal("bea@example.com", rig.Box.GetChips()[0].EmailAddress);
+        }
+        finally
+        {
+            contacts.Gate?.TrySetResult();
+            rig.Controller.Dispose();
+            rig.Window.Close();
+        }
+    }
+
+    private sealed class Remembered : IRecipientHistory
+    {
+        public List<ContactModel> People { get; } = [new() { DisplayName = "Prof Bell", EmailAddress = "bell@uni.edu" }];
+        public Task RecordAsync(IReadOnlyList<(string DisplayName, string EmailAddress)> recipients) => Task.CompletedTask;
+        public Task<List<ContactModel>> SearchAsync(string text, int max, CancellationToken ct = default)
+            => Task.FromResult(People.Where(p => p.DisplayName.Contains(text, StringComparison.OrdinalIgnoreCase)
+                                              || p.EmailAddress.Contains(text, StringComparison.OrdinalIgnoreCase)).ToList());
+        public Task<int> CountAsync() => Task.FromResult(People.Count);
+        public Task ClearAsync() => Task.CompletedTask;
+    }
+
+    [StaFact]
+    public void Compose_RememberedPeople_AreSuggested_OnlyWhileTheSettingIsOn()
+    {
+        EnsureApplication();
+        var on = false;
+        var rig = BuildComposeRig(new Contacts(), new Remembered(), () => on);
+        try
+        {
+            rig.Box.InputBox.Text = "bel";
+            PumpFor(TimeSpan.FromMilliseconds(200));
+            Assert.False(rig.Popup.IsOpen);               // off: nothing remembered is offered
+
+            on = true;
+            rig.Box.InputBox.Text = "be";
+            PumpUntil(() => rig.Popup.IsOpen);
+            var only = Assert.Single(rig.List.Items.Cast<AddressSuggestion>());
+            Assert.True(only.IsRecent);
+            Assert.Equal("Prof Bell bell@uni.edu", only.ToString());
+
+            rig.Box.InputBox.RaiseEvent(Key_(rig.Window, Key.Tab));
+            Assert.Equal("bell@uni.edu", Assert.Single(rig.Box.GetChips()).EmailAddress);
         }
         finally
         {

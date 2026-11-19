@@ -48,6 +48,7 @@ public partial class App : Application
     // Held so OnExit can dispose them.
     private GraphSendMailService? _graphSendMail;
     private ContactService? _contactService;
+    private RecipientHistoryService? _recipientHistory;
     private GooglePeopleClient? _googlePeopleClient;
     private GoogleCalendarClient? _googleCalendarClient;
     private CalDavCalendarClient? _calDavCalendarClient;
@@ -553,6 +554,7 @@ public partial class App : Application
 
             _contactService = new ContactService(profile);
             var contactService = _contactService;
+            _recipientHistory = new RecipientHistoryService(profile);
             _templateService = new TemplateService(profile);
             var templateService = _templateService;
             // accountService drives the one-time "All accounts" → per-account rule migration (#333 D1).
@@ -735,7 +737,7 @@ public partial class App : Application
             mainVm.ApplySettingsTransferSetting(startupCfg.AllowSettingsTransfer);   // #507, off by default
             mainVm.LoadAccountList(accounts);
 
-            var mainWindow = new MainWindow(mainVm, effectiveSmtp, accountService, credentialService, effectiveMail, effectiveOAuth, commandRegistry, contactService, configService, localStore, viewService, ruleService, templateService, featureGate, flagService, customDictionary, themeService, _bugReportService, _notificationService, contactSyncService, graphCalendarSync, serverRuleService, providerCatalog, _autoDiscoverService, _truthProbe, rowLayoutService, watchService, outboxService, _connectivity);
+            var mainWindow = new MainWindow(mainVm, effectiveSmtp, accountService, credentialService, effectiveMail, effectiveOAuth, commandRegistry, contactService, configService, localStore, viewService, ruleService, templateService, featureGate, flagService, customDictionary, themeService, _bugReportService, _notificationService, contactSyncService, graphCalendarSync, serverRuleService, providerCatalog, _autoDiscoverService, _truthProbe, rowLayoutService, watchService, outboxService, _connectivity, _recipientHistory);
 
             // Clicking a new-mail toast brings QuickMail to the foreground and opens the referenced
             // message. OnActivated may fire on a background thread, so marshal to the UI thread first.
@@ -823,6 +825,7 @@ public partial class App : Application
         _calDavCalendarClient?.Dispose();
         _cardDavContactClient?.Dispose();
         _contactService?.Dispose();
+        _recipientHistory?.Dispose();
         _templateService?.Dispose();
         _updateCheckService?.Dispose();
         _bugReportService?.Dispose();

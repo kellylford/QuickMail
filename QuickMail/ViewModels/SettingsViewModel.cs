@@ -584,6 +584,7 @@ public partial class SettingsViewModel : ObservableObject
         OfferPop3                        = ReadFeature(cfg, FeatureFlag.Pop3Backend, false);
         AutoSaveDrafts                   = cfg.AutoSaveDrafts;
         ConfirmBeforeSend                = cfg.ConfirmBeforeSend;
+        RememberRecipients               = cfg.RememberRecipients;
         AutoSaveIntervalSeconds          = cfg.AutoSaveIntervalSeconds;
         CheckSpellingAsYouType           = cfg.CheckSpellingAsYouType;
         DefaultComposeMode = cfg.DefaultComposeMode switch
@@ -702,6 +703,7 @@ public partial class SettingsViewModel : ObservableObject
         }
         cfg.AutoSaveDrafts                   = AutoSaveDrafts;
         cfg.ConfirmBeforeSend                = ConfirmBeforeSend;
+        cfg.RememberRecipients               = RememberRecipients;
         cfg.AutoSaveIntervalSeconds          = AutoSaveIntervalSeconds;
         cfg.CheckSpellingAsYouType           = CheckSpellingAsYouType;
         SaveSoundSettings(cfg);
