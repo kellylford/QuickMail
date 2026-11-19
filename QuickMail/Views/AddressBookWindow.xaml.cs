@@ -20,6 +20,9 @@ public partial class AddressBookWindow : Window
         _vm = vm;
         InitializeComponent();
         DataContext = vm;
+        // Set, not bound: a binding on a TabItem's visibility is not applied until the TabControl lays
+        // out, so a window that has not been shown yet still had the tab (#1039).
+        SentToTab.Visibility = vm.HasSentTo ? Visibility.Visible : Visibility.Collapsed;
 
         // Opened from the keyboard, the filter menu takes focus once, on the filter in effect,
         // rather than on the menu and then that item (#693).

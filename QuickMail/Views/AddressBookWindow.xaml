@@ -474,12 +474,11 @@
             </TabItem>
 
             <!-- People I've Sent To (#1039): people remembered from sent mail who are not in the address
-                 book. Absent where there is no store (tests). Its content binds to the SentTo view model;
-                 the tab's own visibility binds to the window's. -->
+                 book. Absent where there is no store (tests): the constructor collapses it, since whether
+                 there is one never changes. Its content binds to the SentTo view model. -->
             <TabItem x:Name="SentToTab"
                      Header="People I've Sent To"
                      AutomationProperties.Name="People I've Sent To"
-                     Visibility="{Binding HasSentTo, Converter={StaticResource BoolToVis}}"
                      KeyboardNavigation.TabNavigation="Local">
                 <DockPanel Margin="0,6,0,0" DataContext="{Binding SentTo}">
                     <!-- Why the list is empty, or that remembering is off. Tab never reaches a TextBlock,
