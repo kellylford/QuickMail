@@ -59,9 +59,11 @@ internal sealed class AddressSuggestion
 /// The order address suggestions are offered in, and which of them Tab may enter (#1037). The first
 /// should be the person the user is most likely typing: the address exactly as typed, then a name, a
 /// word of a name or an address that <em>begins</em> with the text, then one that only contains it
-/// (<see cref="SuggestionMatch.Strength"/>). Within each, groups come first (picking a group is quicker
-/// than picking many people), then the address book in its own most-recently-used order, then people
-/// remembered from sent mail. A remembered person who is anywhere in the address book is not offered.
+/// (<see cref="SuggestionMatch.Strength"/>). Within each, the address book in its own most-recently-used
+/// order, then people remembered from sent mail, then groups. Groups come last within a strength because
+/// the first suggestion is what one Tab enters: typing "ma" for Mary must not put all twenty members of
+/// Marketing in To. A group's name typed in full ranks with an exact address, ahead of everyone. A
+/// remembered person who is anywhere in the address book is not offered.
 /// </summary>
 internal static class AddressSuggestionRanking
 {
@@ -77,19 +79,22 @@ internal static class AddressSuggestionRanking
     {
         var contactList = contacts.ToList();
         var known = new HashSet<string>(contactList.Select(c => c.EmailAddress.Trim()), StringComparer.OrdinalIgnoreCase);
-        var all = groups.Select(g => new AddressSuggestion(g))
-            .Concat(contactList.Select(c => new AddressSuggestion(c)))
+        var all = contactList.Select(c => new AddressSuggestion(c))
             .Concat(recents.Where(r => !known.Contains(r.EmailAddress.Trim())
                                     && addressBook?.Contains(r.EmailAddress.Trim()) != true)
-                           .Select(r => new AddressSuggestion(r, isRecent: true)));
+                           .Select(r => new AddressSuggestion(r, isRecent: true)))
+            .Concat(groups.Select(g => new AddressSuggestion(g)));
         // OrderBy is stable, so each kind keeps its place within a strength.
         return all.OrderBy(s => Strength(s, typed)).ToList();
     }
 
     internal static int Strength(AddressSuggestion s, string typed)
-        => s.IsGroup
-            ? (SuggestionMatch.BeginsWith(s.Group!.Name, null, typed) ? 1 : 2)
-            : SuggestionMatch.Strength(s.Contact!.DisplayName, s.Contact.EmailAddress, typed);
+    {
+        if (!s.IsGroup) return SuggestionMatch.Strength(s.Contact!.DisplayName, s.Contact.EmailAddress, typed);
+        var name = s.Group!.Name ?? string.Empty;
+        if (typed.Trim().Length > 0 && name.Trim().Equals(typed.Trim(), StringComparison.OrdinalIgnoreCase)) return 0;
+        return SuggestionMatch.BeginsWith(name, null, typed) ? 1 : 2;
+    }
 
     /// <summary>
     /// Whether Tab enters the first of <paramref name="suggestions"/> for <paramref name="typed"/>. Only
@@ -531,9 +536,17 @@ internal sealed class AddressSuggestionController : IDisposable
         {
             if (_searchTask is { } pending) await pending;
             if (ReferenceEquals(entry, _active) && IsCurrentFor(entry) && TabTakesShownFirst())
+            {
                 AcceptFirst();
+            }
             else
-                _popup.IsOpen = false; // whatever is left is not what Tab was for; the next Tab moves on
+            {
+                // Nothing Tab should enter: do what the held Tab would have done, and move on. Leaving
+                // the field commits what was typed in compose, as Tab always did.
+                _popup.IsOpen = false;
+                if (entry.Element.IsKeyboardFocusWithin && Keyboard.FocusedElement is UIElement focused)
+                    focused.MoveFocus(new TraversalRequest(FocusNavigationDirection.Next));
+            }
         }
         catch (Exception ex)
         {

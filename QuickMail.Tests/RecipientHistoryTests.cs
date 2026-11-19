@@ -298,8 +298,9 @@ public class RecipientHistoryTests : IDisposable
             contacts: [P("Marjorie Lee", "mlee@uni.edu"), P("Ann Jones", "ann@uni.edu")],
             recents: [P("Joe Bloggs", "joe@uni.edu")]);
 
-        // Words beginning "jo" first, contacts before remembered people; then the "contains" matches.
-        Assert.Equal(["Ann Jones", "Joe Bloggs", "Major Projects", "Marjorie Lee"], combined.Select(s => s.PrimaryText));
+        // Words beginning "jo" first, contacts before remembered people; then the "contains" matches,
+        // people before groups.
+        Assert.Equal(["Ann Jones", "Joe Bloggs", "Marjorie Lee", "Major Projects"], combined.Select(s => s.PrimaryText));
         Assert.True(combined[1].IsRecent);
         Assert.False(combined[0].IsRecent);
     }
@@ -373,6 +374,20 @@ public class RecipientHistoryTests : IDisposable
         var list = Ranked("bob@x.com", P("", "bob@x.com.au", used: 9), P("", "bob@x.com", used: 1));
         Assert.Equal("bob@x.com", list[0].Contact!.EmailAddress);
         Assert.True(AddressSuggestionRanking.TabTakesFirst(list, "bob@x.com"));
+    }
+
+    [Fact]
+    public void Tab_TakesAPersonBeforeAGroup_UnlessTheGroupIsTypedInFull()
+    {
+        var marketing = new GroupModel { Name = "Marketing", ResolvedMemberCount = 20 };
+        var mary = P("Mary Hall", "mary@uni.edu");
+
+        var ma = AddressSuggestionRanking.Combine("ma", [marketing], [mary], []);
+        Assert.Equal("Mary Hall", ma[0].PrimaryText);   // one Tab must not add twenty people
+
+        var named = AddressSuggestionRanking.Combine("Marketing", [marketing], [P("Marketing Desk", "desk@uni.edu")], []);
+        Assert.True(named[0].IsGroup);                  // the group's whole name ranks with an exact address
+        Assert.True(AddressSuggestionRanking.TabTakesFirst(named, "Marketing"));
     }
 
     [Fact]

@@ -453,7 +453,11 @@ public class AddressSuggestionTests
         {
             var invite = (TextBox)window.FindName("InviteBox");
             var popup = (System.Windows.Controls.Primitives.Popup)window.FindName("InviteSuggestionPopup");
-            invite.Text = "carol@example.com; an";
+            // Typed the way a person would: setting Text leaves the caret at the start, so the
+            // search would run for carol's entry. Put the caret at the end, then type "an".
+            invite.Text = "carol@example.com; ";
+            invite.CaretIndex = invite.Text.Length;
+            invite.SelectedText = "an";
             invite.CaretIndex = invite.Text.Length;
             PumpUntil(() => popup.IsOpen);
 
@@ -517,7 +521,7 @@ public class AddressSuggestionTests
 
             contacts.Gate.SetResult();
             PumpUntil(() => !rig.Popup.IsOpen);
-            Assert.Empty(rig.Box.GetChips());
+            Assert.DoesNotContain(rig.Box.GetChips(), c => c.EmailAddress == "bob@example.com"); // the stale first was not entered
 
             var next = Key_(rig.Window, Key.Tab);
             rig.Box.InputBox.RaiseEvent(next);
