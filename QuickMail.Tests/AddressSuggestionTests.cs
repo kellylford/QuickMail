@@ -544,6 +544,8 @@ public class AddressSuggestionTests
                                               || p.EmailAddress.Contains(text, StringComparison.OrdinalIgnoreCase)).ToList());
         public Task<int> CountAsync() => Task.FromResult(People.Count);
         public Task ClearAsync() => Task.CompletedTask;
+        public Task<List<ContactModel>> ListAsync() => Task.FromResult(People.ToList());
+        public Task<bool> RemoveAsync(string emailAddress) => Task.FromResult(false);
     }
 
     [StaFact]

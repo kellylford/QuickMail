@@ -216,6 +216,12 @@ public class SelectorItemAccessibilityTests
         Assert.Equal("zeta@example.com",
             new ContactModel { DisplayName = "", EmailAddress = "zeta@example.com" }.ToString());
 
+        // The address book's People I've Sent To rows (#1039): the container carries AccessibleName;
+        // ToString matches it for anything that reads the item instead.
+        var remembered = new RememberedPerson("Jane Smith", "jane@uni.edu", 0);
+        Assert.Equal("Jane Smith, jane@uni.edu", remembered.ToString());
+        Assert.Equal(remembered.AccessibleName, remembered.ToString());
+
         // Message List Fields chooser: the row-type ComboBox and the field ListBox. The field
         // rows render a CheckBox, which drives only the visual — the item's name is ToString().
         // Watched Conversations manager: the row must speak its label, count, and when it was

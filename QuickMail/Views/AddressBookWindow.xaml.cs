@@ -49,6 +49,13 @@ public partial class AddressBookWindow : Window
             vm.GroupsListFocusRequested     += QueueFocusGroupsList;
             vm.GroupMemberFocusNowRequested   += FocusGroupMemberNow;
             vm.GroupMembersListFocusRequested += QueueFocusGroupMembersList;
+            if (vm.SentTo is { } sentTo)
+            {
+                sentTo.AnnouncementRequested += OnAnnouncement;
+                sentTo.ConfirmRequested     += OnConfirm;
+                sentTo.FocusNowRequested    += FocusSelectedSentToRowNow;
+                sentTo.FocusRequested       += QueueFocusSentToList;
+            }
             await vm.LoadAsync();
             SearchBox.Focus();
         };
@@ -65,6 +72,23 @@ public partial class AddressBookWindow : Window
             vm.GroupsListFocusRequested     -= QueueFocusGroupsList;
             vm.GroupMemberFocusNowRequested   -= FocusGroupMemberNow;
             vm.GroupMembersListFocusRequested -= QueueFocusGroupMembersList;
+            if (vm.SentTo is { } sentTo)
+            {
+                sentTo.AnnouncementRequested -= OnAnnouncement;
+                sentTo.ConfirmRequested     -= OnConfirm;
+                sentTo.FocusNowRequested    -= FocusSelectedSentToRowNow;
+                sentTo.FocusRequested       -= QueueFocusSentToList;
+            }
+        };
+
+        // Coming back to People I've Sent To shows anyone sent to since it was last filled, and drops
+        // anyone saved as a contact on the Contacts tab meanwhile. Only on arriving at that tab, so the
+        // list never refills under a row that holds focus.
+        MainTabs.SelectionChanged += async (_, e) =>
+        {
+            if (!ReferenceEquals(e.OriginalSource, MainTabs)) return; // a list's selection bubbling up
+            if (MainTabs.SelectedItem == SentToTab && _vm.SentTo is { } s)
+                await s.LoadAsync();
         };
 
         // When edit mode is activated, focus the name field and select it
@@ -194,6 +218,34 @@ public partial class AddressBookWindow : Window
             id: "contacts.filterByAccount", category: "Contacts", title: "Filter Addresses by Account",
             defaultKey: Key.None, defaultModifiers: ModifierKeys.None,
             execute: OpenAccountFilterMenu));
+
+        // ── People I've Sent To tab commands (#1039) ─────────────────────────
+        // No default keys: Delete in the list forgets, and the buttons have access keys. Registered
+        // so the actions are in this window's palette.
+        if (_vm.SentTo is not null)
+        {
+            _registry.Register(new CommandDefinition(
+                id: "contacts.showPeopleSentTo", category: "Contacts", title: "Show People I've Sent To",
+                defaultKey: Key.None, defaultModifiers: ModifierKeys.None,
+                execute: FocusSentToPane));
+
+            _registry.Register(new CommandDefinition(
+                id: "contacts.saveSentToContact", category: "Contacts", title: "Save Person to Contacts",
+                defaultKey: Key.None, defaultModifiers: ModifierKeys.None,
+                execute: () => _ = _vm.SentTo!.SaveToContactsCommand.ExecuteAsync(null),
+                isAvailable: () => MainTabs.SelectedItem == SentToTab && _vm.SentTo!.HasSelectedPerson));
+
+            _registry.Register(new CommandDefinition(
+                id: "contacts.forgetSentTo", category: "Contacts", title: "Forget Person",
+                defaultKey: Key.None, defaultModifiers: ModifierKeys.None,
+                execute: () => _ = _vm.SentTo!.ForgetSelectedCommand.ExecuteAsync(null),
+                isAvailable: () => MainTabs.SelectedItem == SentToTab && _vm.SentTo!.HasSelectedPerson));
+
+            _registry.Register(new CommandDefinition(
+                id: "contacts.forgetAllSentTo", category: "Contacts", title: "Forget Everyone I've Sent To",
+                defaultKey: Key.None, defaultModifiers: ModifierKeys.None,
+                execute: () => _ = _vm.SentTo!.ForgetAllCommand.ExecuteAsync(null)));
+        }
     }
 
     // ── Account filter menu ──────────────────────────────────────────────────
@@ -701,4 +753,54 @@ public partial class AddressBookWindow : Window
         _vm.SetSelectedContacts(ContactList.SelectedItems.OfType<ContactModel>());
 
     private void Close_Click(object sender, RoutedEventArgs e) => Close();
+
+    // ── People I've Sent To (#1039) ──────────────────────────────────────────
+
+    private async void SentToList_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (_vm.SentTo is not { } sentTo) return;
+        if (e.Key == Key.Delete && Keyboard.Modifiers == ModifierKeys.None && sentTo.HasSelectedPerson)
+        {
+            // Handled before the await: once this handler yields, routing has moved on.
+            e.Handled = true;
+            await sentTo.ForgetSelectedCommand.ExecuteAsync(null);
+        }
+    }
+
+    private async void SaveSentToContact_Click(object sender, RoutedEventArgs e)
+    {
+        if (_vm.SentTo is { } s) await s.SaveToContactsCommand.ExecuteAsync(null);
+    }
+
+    private async void ForgetSentTo_Click(object sender, RoutedEventArgs e)
+    {
+        if (_vm.SentTo is { } s) await s.ForgetSelectedCommand.ExecuteAsync(null);
+    }
+
+    private async void ForgetAllSentTo_Click(object sender, RoutedEventArgs e)
+    {
+        if (_vm.SentTo is { } s) await s.ForgetAllCommand.ExecuteAsync(null);
+    }
+
+    private bool FocusSelectedSentToRowNow() => FocusRowNow(SentToList, _vm.SentTo?.SelectedPerson);
+
+    // The fallback when focus could not land on a row before the removal, most often because the list
+    // is now empty: then the list itself, whose help text says why it is empty.
+    private void QueueFocusSentToList() =>
+        Dispatcher.BeginInvoke(DispatcherPriority.Input, () =>
+        {
+            if (!SentToList.IsVisible) return;
+            if (!FocusRowNow(SentToList, _vm.SentTo?.SelectedPerson))
+                SentToList.Focus();
+        });
+
+    private void FocusSentToPane()
+    {
+        MainTabs.SelectedItem = SentToTab;
+        Dispatcher.BeginInvoke(DispatcherPriority.Loaded, () =>
+        {
+            if (!FocusRowNow(SentToList, _vm.SentTo?.SelectedPerson))
+                SentToList.Focus();
+        });
+    }
 }

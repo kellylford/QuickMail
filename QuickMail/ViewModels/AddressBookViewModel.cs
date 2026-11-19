@@ -123,6 +123,7 @@ public partial class AddressBookViewModel : ObservableObject
         _ccInsertAction = ccAction;
         _bccInsertAction = bccAction;
         OnPropertyChanged(nameof(HasInsertActions));
+        SentTo?.SetInsertActions(toAction, ccAction, bccAction);
     }
 
     /// <summary>
@@ -149,7 +150,8 @@ public partial class AddressBookViewModel : ObservableObject
         IContactService contactService,
         IContactSyncService? contactSync = null,
         IAccountService? accountService = null,
-        IConfigService? configService = null)
+        IConfigService? configService = null,
+        IRecipientHistory? recipientHistory = null)
     {
         _contactService = contactService;
         _contactSync    = contactSync;
@@ -165,6 +167,13 @@ public partial class AddressBookViewModel : ObservableObject
         RefreshAccountLabels();
 
         _showFieldLabels = configService?.Load().ContactListShowFieldLabels ?? false;
+
+        if (recipientHistory is not null)
+        {
+            SentTo = new PeopleSentToViewModel(recipientHistory, contactService,
+                () => configService?.Load().RememberRecipients ?? false, _showFieldLabels);
+            SentTo.ContactsChanged += ReloadContactsAsync;
+        }
     }
 
     private void RefreshAccountLabels()
@@ -406,6 +415,18 @@ public partial class AddressBookViewModel : ObservableObject
     [RelayCommand]
     public async Task LoadAsync()
     {
+        await ReloadContactsAsync();
+        await ReloadGroupsAsync();
+        RebuildSelectedGroupMembers();
+        if (SentTo is not null) await SentTo.LoadAsync();
+    }
+
+    /// <summary>
+    /// Refills the Contacts tab only. Used after People I've Sent To saves someone as a contact (#1039):
+    /// reloading that tab as well would rebuild the row keyboard focus just landed on.
+    /// </summary>
+    private async Task ReloadContactsAsync()
+    {
         RefreshAccountLabels();
         _allContacts = await _contactService.LoadAllContactsAsync();
         foreach (var c in _allContacts)
@@ -414,9 +435,14 @@ public partial class AddressBookViewModel : ObservableObject
         // and before the filter runs.
         RebuildAccountFilterOptions();
         ApplyFilter(SearchText);
-        await ReloadGroupsAsync();
-        RebuildSelectedGroupMembers();
     }
+
+    // ── People I've Sent To (#1039) ──────────────────────────────────────────
+
+    /// <summary>The People I've Sent To tab, or null where there is no store of remembered people (tests).</summary>
+    public PeopleSentToViewModel? SentTo { get; }
+
+    public bool HasSentTo => SentTo is not null;
 
     /// <summary>
     /// Stamps the Account-column label and the composed accessible name onto a contact row

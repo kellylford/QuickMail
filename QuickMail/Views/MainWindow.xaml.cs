@@ -7871,7 +7871,7 @@ public partial class MainWindow : Window
 
     private void OpenAddressBook()
     {
-        var vm = new AddressBookViewModel(_contactService, _contactSyncService, _accountService, _configService);
+        var vm = new AddressBookViewModel(_contactService, _contactSyncService, _accountService, _configService, _recipientHistory);
 
         // When the address book is opened standalone (not from a compose window) the
         // insert actions open a new compose window on demand.  All calls from a single

@@ -28,6 +28,15 @@ public interface IRecipientHistory
     /// <summary>How many people are remembered.</summary>
     Task<int> CountAsync();
 
+    /// <summary>Everyone remembered, most recently sent to first (#1039).</summary>
+    Task<List<ContactModel>> ListAsync();
+
+    /// <summary>
+    /// Forgets one person (#1039). False when they were not remembered. Sending to them again remembers
+    /// them again, as Kelly chose: this clears an entry, it does not block the address.
+    /// </summary>
+    Task<bool> RemoveAsync(string emailAddress);
+
     /// <summary>Forgets everyone.</summary>
     Task ClearAsync();
 }

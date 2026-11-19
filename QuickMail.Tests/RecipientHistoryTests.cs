@@ -169,6 +169,9 @@ public class RecipientHistoryTests : IDisposable
                                               || p.EmailAddress.Contains(text, StringComparison.OrdinalIgnoreCase)).Take(max).ToList());
         public Task<int> CountAsync() => Task.FromResult(People.Count);
         public Task ClearAsync() { People.Clear(); return Task.CompletedTask; }
+        public Task<List<ContactModel>> ListAsync() => Task.FromResult(People.ToList());
+        public Task<bool> RemoveAsync(string emailAddress)
+            => Task.FromResult(People.RemoveAll(p => p.EmailAddress.Equals(emailAddress, StringComparison.OrdinalIgnoreCase)) > 0);
     }
 
     private static (ComposeViewModel Vm, StubSmtpService Smtp, StubConnectivityService Net, FakeHistory History) NewCompose(bool remember)

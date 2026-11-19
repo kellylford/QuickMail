@@ -1246,7 +1246,7 @@ These apply to the **Invite** field of an appointment too, and take effect in wi
 
 QuickMail can also suggest people you have sent mail to who are not in your address book. Turn on **Remember people I send to** in **Settings → General → Composing**. It is off by default. While it is on, everyone in To, Cc, and Bcc of each message you send, or queue in the Outbox, is remembered; on screen their suggestion says "sent to before". They are kept on this computer only, separately from your address book, so the address book does not fill up with everyone you have ever written to. They are suggested while **Suggest people I've sent to** is on. Someone who is also in your address book is suggested once, as the contact. QuickMail remembers up to 1,000 people and drops the ones you have not written to for longest. They are not included when you export your settings.
 
-Turning the setting off stops remembering anyone new; to stop suggesting the people already remembered, turn off **Suggest people I've sent to**. **Forget People I've Sent To** beside it clears everyone remembered, after asking; your address book is not changed.
+Turning the setting off stops remembering anyone new; to stop suggesting the people already remembered, turn off **Suggest people I've sent to**. **Forget People I've Sent To** beside it clears everyone remembered, after asking; your address book is not changed. To see who is remembered, forget one person, or save someone as a contact, use the address book's [People I've Sent To](#people-ive-sent-to) tab.
 
 ### Address Fields
 
@@ -1553,7 +1553,7 @@ A picture can go in the body of a message in Markdown or HTML mode, and every pi
 
 Press **Ctrl+Shift+B** to open the address book.
 
-The address book lists everyone you have sent mail to or explicitly added, plus — if you turn on contact sync — the contacts stored in your Microsoft and Google accounts. You can search by name or address, edit contact details, and organize contacts into groups. An **Account** column shows where each contact came from: **Local address book** for the ones you added yourself, or the account name for synced ones.
+The address book lists the people you have added, plus — if you turn on contact sync — the contacts stored in your Microsoft and Google accounts. You can search by name or address, edit contact details, and organize contacts into groups. An **Account** column shows where each contact came from: **Local address book** for the ones you added yourself, or the account name for synced ones.
 
 ### Adding and Editing Contacts
 
@@ -1638,6 +1638,19 @@ Open the address book and use the **Groups** pane to create, rename, and delete 
 | Open the Group Manager | `Ctrl+Shift+M` or **Manage…** — select a group, then **Enter** on a person adds or removes them |
 
 Group names must be unique, regardless of letter case ("Team" and "team" count as the same name). If you try to create or rename a group to a name that already exists, QuickMail tells you the name is already in use and leaves your text in place so you can choose a different one. Groups are never merged.
+
+### People I've Sent To
+
+The **People I've Sent To** tab lists the people QuickMail has remembered sending to who are not in your address book, most recently sent to first, with the date you last wrote to each. People are remembered only while **Remember people I send to** is on (see [Remembering people you send to](#remembering-people-you-send-to)); when it is off, a line above the list says so.
+
+| Action | Key |
+|--------|-----|
+| Forget the selected person | `Delete` or **Forget** (Alt+F), after asking |
+| Save the selected person as a contact | **Save to Contacts** (Alt+S) — they move to the Contacts tab |
+| Forget everyone | **Forget All…** (Alt+A), after asking — your address book is not changed |
+| Add the selected person to the message | **To**, **Cc**, **Bcc** (Alt+T, Alt+C, Alt+B) |
+
+Forgetting someone stops them being suggested, but if you send to them again they are remembered again. Typing a letter in the list jumps to the next person whose name, or address when there is no name, starts with it. These actions are also in the address book's command palette (**Ctrl+Shift+P**).
 
 ---
 
