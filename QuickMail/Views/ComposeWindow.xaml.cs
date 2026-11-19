@@ -82,14 +82,18 @@ public partial class ComposeWindow : Window
     // setting applies to messages opened afterwards, as Settings says: turning it back on must
     // not switch the speller on in a message the user opened with it off.
     private readonly bool _checkSpellingAsYouType;
+    private readonly IRecipientHistory? _recipientHistory;
 
-    public ComposeWindow(ComposeViewModel vm, IContactService contactService, ITemplateService templateService, IConfigService configService, ICustomDictionaryService? customDictionary = null, IThemeService? themeService = null)
+    public ComposeWindow(ComposeViewModel vm, IContactService contactService, ITemplateService templateService, IConfigService configService, ICustomDictionaryService? customDictionary = null, IThemeService? themeService = null, IRecipientHistory? recipientHistory = null)
     {
         _vm = vm;
         _contactService = contactService;
         _templateService = templateService;
         _configService = configService;
+        _recipientHistory = recipientHistory;
         vm.ConfirmBeforeSendProvider = () => configService.Load().ConfirmBeforeSend;
+        vm.RecipientHistory = recipientHistory;
+        vm.RememberRecipientsProvider = () => configService.Load().RememberRecipients;
         _checkSpellingAsYouType = configService.Load().CheckSpellingAsYouType;
         _customDictionary = customDictionary;
         _themeService = themeService;
@@ -160,7 +164,8 @@ public partial class ComposeWindow : Window
             return Task.FromResult<MessageTemplate?>(null);
         };
 
-        _suggestions = new AddressSuggestionController(this, _contactService, AutoCompletePopup, SuggestionList);
+        _suggestions = new AddressSuggestionController(this, _contactService, AutoCompletePopup, SuggestionList,
+            _recipientHistory, () => _configService.Load().RememberRecipients);
         // The return trip from the list is not a fresh arrival in the field: don't read its chips again.
         _suggestions.EnteringSuggestions += () => _suppressNextFocusAnnouncement = true;
         foreach (var box in new[] { ToBox, CcBox, BccBox })

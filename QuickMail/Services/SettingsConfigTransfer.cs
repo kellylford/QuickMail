@@ -101,6 +101,7 @@ public static class SettingsConfigTransfer
         nameof(ConfigModel.CheckSpellingAsYouType),
         nameof(ConfigModel.AutoSaveDrafts),
         nameof(ConfigModel.ConfirmBeforeSend),
+        nameof(ConfigModel.RememberRecipients),
         nameof(ConfigModel.AutoSaveIntervalSeconds),
         nameof(ConfigModel.ConfirmEmptyTrash),
         nameof(ConfigModel.SaveMessageFormat),

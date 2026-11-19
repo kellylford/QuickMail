@@ -75,7 +75,7 @@
 </div>
 
 <h1>QuickMail Privacy Policy</h1>
-<p class="effective">Effective date: November 12, 2026. Replaces the version dated November 6, 2026.</p>
+<p class="effective">Effective date: November 19, 2026. Replaces the version dated November 12, 2026.</p>
 
 <div class="callout">
   <strong>Short version:</strong> QuickMail is a Windows desktop application with no servers of its own.
@@ -110,6 +110,7 @@
     <tr><td><code>mail.db</code></td><td>The local SQLite cache of messages you have synced — headers and message bodies, so mail can be read and searched without waiting on the network.</td></tr>
     <tr><td><code>accounts.json</code></td><td>Your account settings: email addresses, server names, ports, security settings, signatures, and display preferences. <strong>Never passwords.</strong></td></tr>
     <tr><td><code>contacts.json</code>, <code>groups.json</code></td><td>Contacts you typed in yourself, contact groups, and the read-only copies of contacts synced from accounts you opted in.</td></tr>
+    <tr><td><code>recipients.json</code></td><td>Only if you turn on <em>Remember people I send to</em> (off by default): the names and addresses of people you have sent mail to, and when, so they can be suggested as you type. Kept apart from the address book; <em>Forget People I've Sent To</em> in Settings deletes it.</td></tr>
     <tr><td>Calendar data</td><td>Events copied from calendars you have connected, so the calendar works offline.</td></tr>
     <tr><td><code>config.ini</code></td><td>Your settings: theme, fonts, announcement preferences, keyboard customizations, saved views, and message-list field choices.</td></tr>
     <tr><td><code>rules.json</code>, templates, flags</td><td>Mail rules, message templates, and the named flags you create. Mail rules run inside QuickMail only; your provider never sees them.</td></tr>

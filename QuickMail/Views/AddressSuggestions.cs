@@ -26,6 +26,12 @@ internal sealed class AddressSuggestion
     public GroupModel?   Group   { get; }
     public bool IsGroup => Group is not null;
 
+    /// <summary>
+    /// Someone remembered from a sent message rather than saved in the address book (#1037). Shown on
+    /// the second line only: what is said for the row is the person, wherever they came from.
+    /// </summary>
+    public bool IsRecent { get; }
+
     /// <summary>Bold first line shown in the popup row.</summary>
     public string PrimaryText => IsGroup
         ? Group!.Name
@@ -34,7 +40,7 @@ internal sealed class AddressSuggestion
     /// <summary>Dimmed second line shown below the primary text.</summary>
     public string SecondaryText => IsGroup
         ? $"{Group!.ResolvedMemberCount} member{(Group!.ResolvedMemberCount == 1 ? "" : "s")} — group"
-        : Contact!.EmailAddress;
+        : IsRecent ? $"{Contact!.EmailAddress} — sent to before" : Contact!.EmailAddress;
 
     /// <summary>Full accessible name read by the screen reader for the list item.</summary>
     public string Display => IsGroup
@@ -43,10 +49,83 @@ internal sealed class AddressSuggestion
             ? Contact.EmailAddress
             : $"{Contact.DisplayName} {Contact.EmailAddress}";
 
-    public AddressSuggestion(ContactModel c) { Contact = c; }
+    public AddressSuggestion(ContactModel c, bool isRecent = false) { Contact = c; IsRecent = isRecent; }
     public AddressSuggestion(GroupModel g)   { Group   = g; }
 
     public override string ToString() => Display;
+}
+
+/// <summary>
+/// The order address suggestions are offered in, and which of them Tab may enter (#1037). The first
+/// should be the person the user is most likely typing: the address exactly as typed, then a name, a
+/// word of a name or an address that <em>begins</em> with the text, then one that only contains it
+/// (<see cref="SuggestionMatch.Strength"/>). Within each, the address book in its own most-recently-used
+/// order, then people remembered from sent mail, then groups. Groups come last within a strength because
+/// the first suggestion is what one Tab enters: typing "ma" for Mary must not put all twenty members of
+/// Marketing in To. A group's name typed in full ranks with an exact address, ahead of everyone. A
+/// remembered person who is anywhere in the address book is not offered.
+/// </summary>
+internal static class AddressSuggestionRanking
+{
+    /// <param name="addressBook">
+    /// Every address in the address book, to leave out remembered people who are in it. The contacts
+    /// passed in are only the best few matches, so checking against those alone would let a contact
+    /// outside them be offered a second time as "sent to before". Null checks against
+    /// <paramref name="contacts"/> only.
+    /// </param>
+    internal static List<AddressSuggestion> Combine(string typed,
+        IEnumerable<GroupModel> groups, IEnumerable<ContactModel> contacts, IEnumerable<ContactModel> recents,
+        IReadOnlySet<string>? addressBook = null)
+    {
+        var contactList = contacts.ToList();
+        var known = new HashSet<string>(contactList.Select(c => c.EmailAddress.Trim()), StringComparer.OrdinalIgnoreCase);
+        var all = contactList.Select(c => new AddressSuggestion(c))
+            .Concat(recents.Where(r => !known.Contains(r.EmailAddress.Trim())
+                                    && addressBook?.Contains(r.EmailAddress.Trim()) != true)
+                           .Select(r => new AddressSuggestion(r, isRecent: true)))
+            .Concat(groups.Select(g => new AddressSuggestion(g)));
+        // OrderBy is stable, so each kind keeps its place within a strength.
+        return all.OrderBy(s => Strength(s, typed)).ToList();
+    }
+
+    internal static int Strength(AddressSuggestion s, string typed)
+    {
+        if (!s.IsGroup) return SuggestionMatch.Strength(s.Contact!.DisplayName, s.Contact.EmailAddress, typed);
+        var name = s.Group!.Name ?? string.Empty;
+        if (typed.Trim().Length > 0 && name.Trim().Equals(typed.Trim(), StringComparison.OrdinalIgnoreCase)) return 0;
+        return SuggestionMatch.BeginsWith(name, null, typed) ? 1 : 2;
+    }
+
+    /// <summary>
+    /// Whether Tab enters the first of <paramref name="suggestions"/> for <paramref name="typed"/>. Only
+    /// when the user is visibly typing it: never one that merely contains the text (typing "ann" must
+    /// not become joann), and never in place of a complete address typed out in full that is not in the
+    /// list (typing bob@x.com must not become bob@x.com.au). Otherwise Tab keeps what was typed, as it
+    /// always did.
+    /// </summary>
+    internal static bool TabTakesFirst(IReadOnlyList<AddressSuggestion> suggestions, string typed)
+    {
+        if (suggestions.Count == 0) return false;
+        var strength = Strength(suggestions[0], typed);
+        if (strength == 0) return true;
+        if (strength == 2) return false;
+        return !LooksComplete(typed);
+    }
+
+    /// <summary>
+    /// Typed text that reads as a whole address: something@domain.tld, with at least two letters after
+    /// the last dot. "ann@ex" and "ann@example." are still being typed; "bob@x.com" is finished, even
+    /// though bob@x.com.au begins with it.
+    /// </summary>
+    internal static bool LooksComplete(string typed)
+    {
+        typed = typed.Trim();
+        var at = typed.LastIndexOf('@');
+        if (at <= 0 || at == typed.Length - 1) return false;
+        var domain = typed[(at + 1)..];
+        var dot = domain.LastIndexOf('.');
+        return dot > 0 && domain.Length - dot - 1 >= 2 && EmailAddressValidator.IsValid(typed);
+    }
 }
 
 /// <summary>
@@ -221,19 +300,33 @@ internal sealed class AddressSuggestionController : IDisposable
     private readonly IContactService _contacts;
     private readonly Popup _popup;
     private readonly ListBox _list;
+    private readonly IRecipientHistory? _recents;
+    private readonly Func<bool> _includeRecents;
     private IAddressEntry? _active;
     private CancellationTokenSource? _searchCts;
+    private Task? _searchTask;
+
+    /// <summary>The typed text the showing list answers; null while no list is showing.</summary>
+    private string? _shownFor;
+
+    /// <summary>At most this many remembered people are offered alongside the address book (#1037).</summary>
+    internal const int MaxRecentSuggestions = 10;
 
     /// <summary>Raised just before focus moves into the list, so the window can tell its own
     /// focus handlers that the trip back is not a fresh arrival in the field.</summary>
     public event Action? EnteringSuggestions;
 
-    public AddressSuggestionController(Window owner, IContactService contacts, Popup popup, ListBox list)
+    /// <param name="recents">People remembered from sent mail (#1037), or null for none.</param>
+    /// <param name="includeRecents">Read at each search: Settings → Remember people I send to.</param>
+    public AddressSuggestionController(Window owner, IContactService contacts, Popup popup, ListBox list,
+        IRecipientHistory? recents = null, Func<bool>? includeRecents = null)
     {
         _owner = owner;
         _contacts = contacts;
         _popup = popup;
         _list = list;
+        _recents = recents;
+        _includeRecents = includeRecents ?? (() => false);
         _list.PreviewKeyDown += List_PreviewKeyDown;
         _list.MouseLeftButtonUp += (_, _) =>
         {
@@ -253,6 +346,7 @@ internal sealed class AddressSuggestionController : IDisposable
         // However the popup closes, the field goes back to committing normally on losing focus.
         _popup.Closed += (_, _) =>
         {
+            _shownFor = null;
             if (_active != null) _active.SuppressLostFocusCommit = false;
         };
     }
@@ -262,7 +356,8 @@ internal sealed class AddressSuggestionController : IDisposable
 
     public void Attach(IAddressEntry entry)
     {
-        entry.InputChanged += async (_, _) => await SearchAsync(entry);
+        // Kept so a Tab pressed before the search for the last letter finishes can wait for it.
+        entry.InputChanged += (_, _) => _searchTask = SearchAsync(entry);
         entry.Element.PreviewKeyDown += (_, e) => Field_PreviewKeyDown(entry, e);
         entry.Element.IsKeyboardFocusWithinChanged += (_, e) =>
         {
@@ -290,38 +385,98 @@ internal sealed class AddressSuggestionController : IDisposable
         try
         {
             var ct = _searchCts.Token;
-            // Both searches are cache-backed, so running them together is cheap.
+            // All three searches are cache-backed, so running them together is cheap.
             var contactTask = _contacts.SearchContactsAsync(searchToken, ct);
             var groupTask   = _contacts.SearchGroupsAsync(searchToken, ct);
-            await Task.WhenAll(contactTask, groupTask);
+            var recentTask  = _recents != null && _includeRecents()
+                ? _recents.SearchAsync(searchToken, MaxRecentSuggestions, ct)
+                : Task.FromResult(new List<ContactModel>());
+            await Task.WhenAll(contactTask, groupTask, recentTask);
 
-            // Groups first: picking a group is quicker than picking many people. Empty groups
-            // are already excluded by SearchGroupsAsync.
-            var combined = groupTask.Result.Select(g => new AddressSuggestion(g))
-                .Concat(contactTask.Result.Select(c => new AddressSuggestion(c)))
-                .ToList();
+            // Only when someone remembered matched: the whole address book, so a remembered person
+            // who is a contact outside the few best contact matches is not offered twice.
+            HashSet<string>? addressBook = null;
+            if (recentTask.Result.Count > 0)
+            {
+                var all = await _contacts.LoadAllContactsAsync();
+                ct.ThrowIfCancellationRequested();
+                addressBook = new HashSet<string>(all.Select(c => c.EmailAddress.Trim()), StringComparer.OrdinalIgnoreCase);
+            }
+
+            var combined = AddressSuggestionRanking.Combine(searchToken,
+                groupTask.Result, contactTask.Result, recentTask.Result, addressBook);
 
             if (combined.Count == 0) { _popup.IsOpen = false; return; }
 
             _list.ItemsSource      = combined;
+            _shownFor              = searchToken;
             _popup.PlacementTarget = entry.Element;
             _popup.Placement       = PlacementMode.Bottom;
             _popup.IsOpen          = true;
 
-            AccessibilityHelper.Announce(_owner,
-                combined.Count == 1 ? "1 suggestion" : $"{combined.Count} suggestions",
+            // Interrupting: each keystroke replaces the list, so a slower announcement of the list
+            // before it is stale and should not be finished.
+            AccessibilityHelper.Announce(_owner, AnnouncementFor(combined, searchToken), interrupt: true,
                 category: AnnouncementCategory.Result);
         }
         catch (OperationCanceledException)
         {
             // Superseded by a newer keystroke.
         }
+        catch (Exception ex)
+        {
+            // The search is no longer awaited by an async void handler, so nothing else would see
+            // this. No suggestions is the right outcome: the user can still type the address.
+            LogService.Log("AddressSuggestions: searching for suggestions failed", ex);
+            _popup.IsOpen = false;
+        }
+    }
+
+    /// <summary>
+    /// What is said when the list appears or changes (#1037). When Tab would enter the first
+    /// suggestion, it is named before the count, since that is what a single key does; when Tab
+    /// would keep what was typed instead, only the count is said, so nothing heard is a promise Tab
+    /// does not keep.
+    /// </summary>
+    internal static string AnnouncementFor(IReadOnlyList<AddressSuggestion> suggestions, string typed)
+    {
+        var count = suggestions.Count == 1 ? "1 suggestion" : $"{suggestions.Count} suggestions";
+        return AddressSuggestionRanking.TabTakesFirst(suggestions, typed)
+            ? $"{suggestions[0].Display}, {count}"
+            : count;
     }
 
     private void Field_PreviewKeyDown(IAddressEntry entry, KeyEventArgs e)
     {
         if (!_popup.IsOpen || !ReferenceEquals(entry, _active)) return;
-        if (e.Key == Key.Down)
+        if (e.Key == Key.Tab && Keyboard.Modifiers == ModifierKeys.None)
+        {
+            // Tab enters the suggestion that was just announced, and stays in the field for the next
+            // address (#1037). A second Tab, with the list gone, moves on as usual. Shift+Tab is left
+            // alone so going back a field always works.
+            if (IsCurrentFor(entry))
+            {
+                if (TabTakesShownFirst()) { e.Handled = AcceptFirst(); return; }
+                // Nothing the user is typing towards: Tab keeps what was typed and moves on, as before.
+                _popup.IsOpen = false;
+            }
+            else if (_searchTask is { IsCompleted: false })
+            {
+                // Typed faster than the search: the list still answers fewer letters than the field
+                // holds, so its first entry may not even match. Wait for the search the last letter
+                // started, then enter its first suggestion if Tab would take it.
+                e.Handled = true;
+                _ = AcceptFirstWhenCurrentAsync(entry);
+            }
+            else
+            {
+                // The list answers something other than what the field holds and no search is coming
+                // to replace it — the caret moved to another entry in Invite. Drop it and let Tab move
+                // on, so the key can never be trapped here.
+                _popup.IsOpen = false;
+            }
+        }
+        else if (e.Key == Key.Down)
         {
             // Suppress the field's lost-focus commit before focus moves into the popup: the
             // popup is a separate HwndSource, so the field loses keyboard focus the moment the
@@ -363,6 +518,40 @@ internal sealed class AddressSuggestionController : IDisposable
             _popup.IsOpen = false;
             _active?.FocusInput();
             e.Handled = true;
+        }
+    }
+
+    /// <summary>True when the list showing was built for exactly what the field now holds.</summary>
+    private bool IsCurrentFor(IAddressEntry entry)
+        => _shownFor != null && string.Equals(_shownFor, entry.CurrentInput.Trim(), StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Whether Tab enters the first of the list showing (<see cref="AddressSuggestionRanking.TabTakesFirst"/>).</summary>
+    private bool TabTakesShownFirst()
+        => _shownFor != null && _list.ItemsSource is IReadOnlyList<AddressSuggestion> shown
+           && AddressSuggestionRanking.TabTakesFirst(shown, _shownFor);
+
+    private async Task AcceptFirstWhenCurrentAsync(IAddressEntry entry)
+    {
+        try
+        {
+            if (_searchTask is { } pending) await pending;
+            if (ReferenceEquals(entry, _active) && IsCurrentFor(entry) && TabTakesShownFirst())
+            {
+                AcceptFirst();
+            }
+            else
+            {
+                // Nothing Tab should enter: do what the held Tab would have done, and move on. Leaving
+                // the field commits what was typed in compose, as Tab always did.
+                _popup.IsOpen = false;
+                if (entry.Element.IsKeyboardFocusWithin && Keyboard.FocusedElement is UIElement focused)
+                    focused.MoveFocus(new TraversalRequest(FocusNavigationDirection.Next));
+            }
+        }
+        catch (Exception ex)
+        {
+            LogService.Log("AddressSuggestions: entering the suggestion Tab waited for failed", ex);
+            _popup.IsOpen = false;
         }
     }
 

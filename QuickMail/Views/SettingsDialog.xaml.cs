@@ -21,6 +21,7 @@ public partial class SettingsDialog : Window
         DataContext = vm;
         vm.DiagnosticsAnnouncementRequested += OnDiagnosticsAnnouncement;
         vm.SoundResultAnnounced += OnSoundResult;
+        vm.RecipientResultAnnounced += OnSoundResult; // the same plain Result announcement (#1037)
         vm.ConfirmRequested ??= Confirm;
         vm.UpdateChoiceRequested ??= AskAboutUpdate;
         Closing += (_, e) => _closing = !e.Cancel;
@@ -29,6 +30,7 @@ public partial class SettingsDialog : Window
             _closing = true;
             vm.DiagnosticsAnnouncementRequested -= OnDiagnosticsAnnouncement;
             vm.SoundResultAnnounced -= OnSoundResult;
+            vm.RecipientResultAnnounced -= OnSoundResult;
             _schemeNameDialog?.Close();
             vm.StopSounds();
             vm.DiscardUnsavedSchemeSounds();   // the folders of schemes made here, unless Save kept them (#948)

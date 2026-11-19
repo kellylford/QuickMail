@@ -389,6 +389,9 @@ public class ConfigService : IConfigService
                     case "confirmbeforesend":
                         config.ConfirmBeforeSend = ParseBool(value);
                         break;
+                    case "rememberrecipients":
+                        config.RememberRecipients = ParseBool(value);
+                        break;
                     case "autosavedrafts":
                         config.AutoSaveDrafts = ParseBool(value);
                         break;
@@ -958,6 +961,10 @@ public class ConfigService : IConfigService
 
         sb.AppendLine($"ConfirmBeforeSend = {(config.ConfirmBeforeSend ? "on" : "off")}");
         sb.AppendLine("# Ask before sending or queuing a message.");
+        sb.AppendLine();
+        sb.AppendLine($"RememberRecipients = {(config.RememberRecipients ? "on" : "off")}");
+        sb.AppendLine("# Remember the people you send to and suggest them as you type an address.");
+        sb.AppendLine("# Kept apart from the address book, on this computer only. Values: on, off. Default off.");
         sb.AppendLine();
         sb.AppendLine($"AutoSaveDrafts = {(config.AutoSaveDrafts ? "on" : "off")}");
         sb.AppendLine("# Automatically save the message as a draft while composing.");

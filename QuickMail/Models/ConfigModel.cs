@@ -350,6 +350,13 @@ public class ConfigModel
     /// <summary>Ask before sending or queuing a message. Off preserves the existing send workflow.</summary>
     public bool ConfirmBeforeSend { get; set; }
 
+    /// <summary>
+    /// Remember the people messages are sent to and suggest them in To, Cc and Bcc (#1037). They are
+    /// kept in recipients.json, apart from the address book. Off by default; off also stops suggesting
+    /// people already remembered.
+    /// </summary>
+    public bool RememberRecipients { get; set; }
+
     /// <summary>Seconds between automatic draft saves. Clamped to 30–600.</summary>
     public int AutoSaveIntervalSeconds { get; set; } = 120;
 

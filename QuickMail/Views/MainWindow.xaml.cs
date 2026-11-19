@@ -161,6 +161,7 @@ public partial class MainWindow : Window
     private static readonly TimeSpan SearchAnnounceDebounce = TimeSpan.FromMilliseconds(300);
 
     private readonly IContactService _contactService;
+    private readonly IRecipientHistory? _recipientHistory;
     private readonly IContactSyncService? _contactSyncService;
     private readonly IGraphCalendarSyncService? _graphCalendarSyncService;
     private readonly IConfigService _configService;
@@ -243,9 +244,11 @@ public partial class MainWindow : Window
         IRowLayoutService? rowLayoutService = null,
         IWatchService? watchService = null,
         IOutboxService? outbox = null,
-        IConnectivityService? connectivity = null)
+        IConnectivityService? connectivity = null,
+        IRecipientHistory? recipientHistory = null)
     {
         _vm = vm;
+        _recipientHistory = recipientHistory;
         _watchService = watchService;
         _rowLayoutService = rowLayoutService;
         // Optional so existing test constructions keep compiling; a null catalog falls back to the
@@ -6457,7 +6460,7 @@ public partial class MainWindow : Window
         {
             var composeVm = new ComposeViewModel(_smtp, _accountService, _credentials, _imap, _templateService, outbox: _outbox, connectivity: _connectivity, isAccountConnected: _vm.IsAccountReady, sounds: _vm.Sounds);
             composeVm.Seed(composeModel);
-            var window = new ComposeWindow(composeVm, _contactService, _templateService, _configService, _customDictionary, _themeService);
+            var window = new ComposeWindow(composeVm, _contactService, _templateService, _configService, _customDictionary, _themeService, _recipientHistory);
             composeVm.CloseRequested += window.Close;
             _openComposeWindows.Add(window);
             window.Closed += (_, _) => _openComposeWindows.Remove(window);
@@ -7884,7 +7887,7 @@ public partial class MainWindow : Window
             // this the From picker is empty and the user can't choose who to send from (a pre-existing
             // bug the address book exposes whenever To/Cc opens a compose window).
             cvm.Seed(new ComposeModel());
-            pending = new ComposeWindow(cvm, _contactService, _templateService, _configService, _customDictionary, _themeService);
+            pending = new ComposeWindow(cvm, _contactService, _templateService, _configService, _customDictionary, _themeService, _recipientHistory);
             cvm.CloseRequested += pending.Close;
             var tracked = pending;
             _openComposeWindows.Add(tracked);
@@ -8126,6 +8129,7 @@ public partial class MainWindow : Window
             _vm.Sounds);
         // Before the dialog is built, so Browse schemes is there from the start (#937).
         vm.SoundGallery = (Application.Current as App)?.SoundGallery;
+        vm.RecipientHistory = _recipientHistory;
         var dialog = new SettingsDialog(vm) { Owner = this };
 
         // A sound file for an event (#912). The Windows file dialog, over the Settings dialog, which
