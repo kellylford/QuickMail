@@ -585,6 +585,9 @@ public partial class SettingsViewModel : ObservableObject
         AutoSaveDrafts                   = cfg.AutoSaveDrafts;
         ConfirmBeforeSend                = cfg.ConfirmBeforeSend;
         RememberRecipients               = cfg.RememberRecipients;
+        SuggestAddresses                 = cfg.SuggestAddresses;
+        SuggestFromAddressBook           = cfg.SuggestFromAddressBook;
+        SuggestPeopleEmailed             = cfg.SuggestPeopleEmailed;
         AutoSaveIntervalSeconds          = cfg.AutoSaveIntervalSeconds;
         CheckSpellingAsYouType           = cfg.CheckSpellingAsYouType;
         DefaultComposeMode = cfg.DefaultComposeMode switch
@@ -704,6 +707,9 @@ public partial class SettingsViewModel : ObservableObject
         cfg.AutoSaveDrafts                   = AutoSaveDrafts;
         cfg.ConfirmBeforeSend                = ConfirmBeforeSend;
         cfg.RememberRecipients               = RememberRecipients;
+        cfg.SuggestAddresses                 = SuggestAddresses;
+        cfg.SuggestFromAddressBook           = SuggestFromAddressBook;
+        cfg.SuggestPeopleEmailed             = SuggestPeopleEmailed;
         cfg.AutoSaveIntervalSeconds          = AutoSaveIntervalSeconds;
         cfg.CheckSpellingAsYouType           = CheckSpellingAsYouType;
         SaveSoundSettings(cfg);

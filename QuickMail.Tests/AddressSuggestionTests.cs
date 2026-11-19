@@ -236,7 +236,7 @@ public class AddressSuggestionTests
         System.Windows.Controls.Primitives.Popup Popup, ListBox List, AddressSuggestionController Controller);
 
     /// <summary>A shown window with one chip box, wired the way ComposeWindow wires To.</summary>
-    private static ComposeRig BuildComposeRig(Contacts contacts, IRecipientHistory? recents = null, Func<bool>? includeRecents = null)
+    private static ComposeRig BuildComposeRig(Contacts contacts, IRecipientHistory? recents = null, Func<SuggestionSources>? sources = null)
     {
         var box = new QuickMail.Controls.TokenizedAddressBox();
         var list = new ListBox();
@@ -247,7 +247,7 @@ public class AddressSuggestionTests
             Width = 400, Height = 200, ShowInTaskbar = false,
         };
         window.Show();
-        var controller = new AddressSuggestionController(window, contacts, popup, list, recents, includeRecents);
+        var controller = new AddressSuggestionController(window, contacts, popup, list, recents, sources);
         controller.Attach(new TokenizedAddressEntry(box));
         return new ComposeRig(window, box, popup, list, controller);
     }
@@ -547,11 +547,86 @@ public class AddressSuggestionTests
     }
 
     [StaFact]
+    public void Compose_EachSuggestionSwitch_IsReadAsYouType()
+    {
+        EnsureApplication();
+        var contacts = new Contacts();
+        contacts.People.Add(new ContactModel { Id = 3, DisplayName = "Ben Hart", EmailAddress = "ben@example.com" });
+        var config = new ConfigModel { RememberRecipients = true };
+        var rig = BuildComposeRig(contacts, new Remembered(), () => SuggestionSources.From(config));
+        try
+        {
+            // Both sources: Ben from the address book, Prof Bell remembered.
+            rig.Box.InputBox.Text = "be";
+            PumpUntil(() => rig.Popup.IsOpen);
+            Assert.Equal(["Ben Hart", "Prof Bell"], rig.List.Items.Cast<AddressSuggestion>().Select(s => s.PrimaryText));
+
+            // Address book off: only the remembered.
+            config.SuggestFromAddressBook = false;
+            rig.Box.InputBox.Text = "b";
+            PumpUntil(() => rig.List.Items.Count == 1);
+            Assert.True(rig.List.Items.Cast<AddressSuggestion>().Single().IsRecent);
+
+            // People I've sent to off as well: nothing to suggest, so no list.
+            config.SuggestPeopleEmailed = false;
+            rig.Box.InputBox.Text = "be";
+            PumpUntil(() => !rig.Popup.IsOpen);
+
+            // Both back on, but the master switch off: still no list, and Tab keeps what was typed.
+            config.SuggestFromAddressBook = config.SuggestPeopleEmailed = true;
+            config.SuggestAddresses = false;
+            rig.Box.InputBox.Text = "ben@example.com";
+            PumpFor(TimeSpan.FromMilliseconds(200));
+            Assert.False(rig.Popup.IsOpen);
+            var tab = Key_(rig.Window, Key.Tab);
+            rig.Box.InputBox.RaiseEvent(tab);
+            Assert.False(tab.Handled);
+            Assert.Equal("ben@example.com", Assert.Single(rig.Box.GetChips()).EmailAddress);
+        }
+        finally
+        {
+            rig.Controller.Dispose();
+            rig.Window.Close();
+        }
+    }
+
+    [StaFact]
+    public void Editor_FollowsTheSuggestionSettings_AndOffersRememberedPeople()
+    {
+        EnsureApplication();
+        var configService = new StubConfigService();
+        var vm = new EventEditorViewModel(new DateTime(2026, 11, 3, 9, 0, 0));
+        var window = new EventEditorWindow(vm, new Contacts(), configService, new Remembered()) { ShowInTaskbar = false };
+        window.Show();
+        try
+        {
+            var invite = (TextBox)window.FindName("InviteBox");
+            var popup = (System.Windows.Controls.Primitives.Popup)window.FindName("InviteSuggestionPopup");
+
+            invite.Text = "bel";
+            invite.CaretIndex = invite.Text.Length;
+            PumpUntil(() => popup.IsOpen);
+            Assert.True(window.Suggestions!.AcceptFirst());
+            Assert.Equal("Prof Bell <bell@uni.edu>; ", vm.InviteText);
+
+            configService.Load().SuggestAddresses = false;
+            invite.SelectedText = "an";
+            invite.CaretIndex = invite.Text.Length;
+            PumpFor(TimeSpan.FromMilliseconds(200));
+            Assert.False(popup.IsOpen);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    [StaFact]
     public void Compose_RememberedPeople_AreSuggested_OnlyWhileTheSettingIsOn()
     {
         EnsureApplication();
         var on = false;
-        var rig = BuildComposeRig(new Contacts(), new Remembered(), () => on);
+        var rig = BuildComposeRig(new Contacts(), new Remembered(), () => new SuggestionSources(AddressBook: true, PeopleEmailed: on));
         try
         {
             rig.Box.InputBox.Text = "bel";

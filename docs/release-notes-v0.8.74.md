@@ -2,7 +2,8 @@
 
 ## Added
 
-- **Suggest people you've sent mail to.** A new setting, **Remember people I send to and suggest them as I type an address** (Settings → General → Composing), suggests the people you have sent mail to as you type in To, Cc and Bcc, even when they are not in your address book. It is off by default. They are kept on this computer only and separately from your address book, so it does not fill up with everyone you have ever written to. **Forget People I've Sent To** clears them. (#1037)
+- **Suggest people you've sent mail to.** A new setting, **Remember people I send to** (Settings → General → Composing), lets QuickMail suggest the people you have sent mail to as you type in To, Cc and Bcc, even when they are not in your address book. It is off by default. They are kept on this computer only and separately from your address book, so it does not fill up with everyone you have ever written to. **Forget People I've Sent To** clears them. (#1037)
+- **Choose what is suggested as you type an address.** **Suggest addresses as I type** turns address suggestions on or off altogether, and under it **Suggest from my address book** and **Suggest people I've sent to** choose where they come from. All three are on by default, so suggestions work as before until you change them. They apply to an appointment's Invite field too. (#1037)
 
 ## Changed
 

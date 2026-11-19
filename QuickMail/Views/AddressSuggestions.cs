@@ -129,6 +129,18 @@ internal static class AddressSuggestionRanking
 }
 
 /// <summary>
+/// Where address suggestions come from, as Settings → Composing has it (#1037): the address book
+/// (contacts and groups) and the people remembered from sent mail. Both false means no suggestions.
+/// </summary>
+internal readonly record struct SuggestionSources(bool AddressBook, bool PeopleEmailed)
+{
+    /// <summary>The settings as they stand: the master switch off turns both sources off.</summary>
+    internal static SuggestionSources From(ConfigModel config) => new(
+        AddressBook:   config.SuggestAddresses && config.SuggestFromAddressBook,
+        PeopleEmailed: config.SuggestAddresses && config.SuggestPeopleEmailed);
+}
+
+/// <summary>
 /// A field the address suggestions can serve: compose's To/Cc/Bcc chip boxes, or the
 /// appointment editor's plain Invite text box (#869). The controller only needs to read what is
 /// being typed and to put a chosen address in its place.
@@ -301,7 +313,7 @@ internal sealed class AddressSuggestionController : IDisposable
     private readonly Popup _popup;
     private readonly ListBox _list;
     private readonly IRecipientHistory? _recents;
-    private readonly Func<bool> _includeRecents;
+    private readonly Func<SuggestionSources> _sources;
     private IAddressEntry? _active;
     private CancellationTokenSource? _searchCts;
     private Task? _searchTask;
@@ -317,16 +329,20 @@ internal sealed class AddressSuggestionController : IDisposable
     public event Action? EnteringSuggestions;
 
     /// <param name="recents">People remembered from sent mail (#1037), or null for none.</param>
-    /// <param name="includeRecents">Read at each search: Settings → Remember people I send to.</param>
+    /// <param name="sources">
+    /// Read at each keystroke, so a change in Settings applies to a window already open: which of the
+    /// address book and the remembered people to suggest from (<see cref="SuggestionSources.From"/>).
+    /// Null suggests from the address book only.
+    /// </param>
     public AddressSuggestionController(Window owner, IContactService contacts, Popup popup, ListBox list,
-        IRecipientHistory? recents = null, Func<bool>? includeRecents = null)
+        IRecipientHistory? recents = null, Func<SuggestionSources>? sources = null)
     {
         _owner = owner;
         _contacts = contacts;
         _popup = popup;
         _list = list;
         _recents = recents;
-        _includeRecents = includeRecents ?? (() => false);
+        _sources = sources ?? (() => new SuggestionSources(AddressBook: true, PeopleEmailed: false));
         _list.PreviewKeyDown += List_PreviewKeyDown;
         _list.MouseLeftButtonUp += (_, _) =>
         {
@@ -374,7 +390,18 @@ internal sealed class AddressSuggestionController : IDisposable
     {
         _active = entry;
         var searchToken = entry.CanEdit ? entry.CurrentInput.Trim() : string.Empty;
-        if (searchToken.Length < 1) { _popup.IsOpen = false; return; }
+        var sources = _sources();
+        var fromRecents = sources.PeopleEmailed && _recents != null;
+        // Nothing to search — suggestions turned off, or both sources — means no list, and with no list
+        // Tab and Enter keep what was typed, exactly as before suggestions existed.
+        if (searchToken.Length < 1 || (!sources.AddressBook && !fromRecents))
+        {
+            // Cancel a search still running for an earlier keystroke, or it could finish after this and
+            // open the list again for text the field no longer holds.
+            try { _searchCts?.Cancel(); } catch (ObjectDisposedException) { /* already superseded */ }
+            _popup.IsOpen = false;
+            return;
+        }
 
         // Cancel and dispose the superseded search (its token was already captured by the
         // in-flight search, which unwinds via OperationCanceledException).
@@ -386,17 +413,21 @@ internal sealed class AddressSuggestionController : IDisposable
         {
             var ct = _searchCts.Token;
             // All three searches are cache-backed, so running them together is cheap.
-            var contactTask = _contacts.SearchContactsAsync(searchToken, ct);
-            var groupTask   = _contacts.SearchGroupsAsync(searchToken, ct);
-            var recentTask  = _recents != null && _includeRecents()
-                ? _recents.SearchAsync(searchToken, MaxRecentSuggestions, ct)
+            var contactTask = sources.AddressBook
+                ? _contacts.SearchContactsAsync(searchToken, ct) : Task.FromResult(new List<ContactModel>());
+            var groupTask   = sources.AddressBook
+                ? _contacts.SearchGroupsAsync(searchToken, ct) : Task.FromResult(new List<GroupModel>());
+            var recentTask  = fromRecents
+                ? _recents!.SearchAsync(searchToken, MaxRecentSuggestions, ct)
                 : Task.FromResult(new List<ContactModel>());
             await Task.WhenAll(contactTask, groupTask, recentTask);
 
-            // Only when someone remembered matched: the whole address book, so a remembered person
-            // who is a contact outside the few best contact matches is not offered twice.
+            // Only when someone remembered matched, and the address book is being suggested too: the
+            // whole address book, so a remembered person who is a contact outside the few best contact
+            // matches is not offered twice. With the address book off, the remembered copy is the only
+            // way to reach them, so it stays.
             HashSet<string>? addressBook = null;
-            if (recentTask.Result.Count > 0)
+            if (recentTask.Result.Count > 0 && sources.AddressBook)
             {
                 var all = await _contacts.LoadAllContactsAsync();
                 ct.ThrowIfCancellationRequested();

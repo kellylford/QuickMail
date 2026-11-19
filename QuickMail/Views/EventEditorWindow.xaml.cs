@@ -26,7 +26,11 @@ public partial class EventEditorWindow : Window
     /// <summary>The Invite field's suggestions, for tests.</summary>
     internal AddressSuggestionController? Suggestions => _suggestions;
 
-    public EventEditorWindow(EventEditorViewModel vm, IContactService? contactService = null)
+    /// <param name="configService">Settings → Composing's address suggestion choices (#1037); null suggests
+    /// from the address book only.</param>
+    /// <param name="recipientHistory">People remembered from sent mail, suggested when Settings say so.</param>
+    public EventEditorWindow(EventEditorViewModel vm, IContactService? contactService = null,
+        IConfigService? configService = null, IRecipientHistory? recipientHistory = null)
     {
         _vm = vm;
         DataContext = vm;
@@ -34,7 +38,8 @@ public partial class EventEditorWindow : Window
 
         if (contactService != null)
         {
-            _suggestions = new AddressSuggestionController(this, contactService, InviteSuggestionPopup, InviteSuggestionList);
+            _suggestions = new AddressSuggestionController(this, contactService, InviteSuggestionPopup, InviteSuggestionList,
+                recipientHistory, configService is null ? null : () => SuggestionSources.From(configService.Load()));
             _suggestions.Attach(new TextBoxAddressEntry(InviteBox));
         }
         Closed += (_, _) => _suggestions?.Dispose();

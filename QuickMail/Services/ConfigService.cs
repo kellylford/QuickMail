@@ -392,6 +392,15 @@ public class ConfigService : IConfigService
                     case "rememberrecipients":
                         config.RememberRecipients = ParseBool(value);
                         break;
+                    case "suggestaddresses":
+                        config.SuggestAddresses = ParseBool(value);
+                        break;
+                    case "suggestfromaddressbook":
+                        config.SuggestFromAddressBook = ParseBool(value);
+                        break;
+                    case "suggestpeopleemailed":
+                        config.SuggestPeopleEmailed = ParseBool(value);
+                        break;
                     case "autosavedrafts":
                         config.AutoSaveDrafts = ParseBool(value);
                         break;
@@ -962,9 +971,16 @@ public class ConfigService : IConfigService
         sb.AppendLine($"ConfirmBeforeSend = {(config.ConfirmBeforeSend ? "on" : "off")}");
         sb.AppendLine("# Ask before sending or queuing a message.");
         sb.AppendLine();
+        sb.AppendLine($"SuggestAddresses = {(config.SuggestAddresses ? "on" : "off")}");
+        sb.AppendLine("# Suggest addresses as you type in To, Cc, Bcc and Invite. Off, no suggestions appear at all,");
+        sb.AppendLine("# whatever the next two say. Values: on, off. Default on.");
+        sb.AppendLine($"SuggestFromAddressBook = {(config.SuggestFromAddressBook ? "on" : "off")}");
+        sb.AppendLine("# Suggest contacts and groups from your address book. Values: on, off. Default on.");
+        sb.AppendLine($"SuggestPeopleEmailed = {(config.SuggestPeopleEmailed ? "on" : "off")}");
+        sb.AppendLine("# Suggest people you have sent to (see RememberRecipients). Values: on, off. Default on.");
         sb.AppendLine($"RememberRecipients = {(config.RememberRecipients ? "on" : "off")}");
-        sb.AppendLine("# Remember the people you send to and suggest them as you type an address.");
-        sb.AppendLine("# Kept apart from the address book, on this computer only. Values: on, off. Default off.");
+        sb.AppendLine("# Remember the people you send to, so they can be suggested. Kept apart from the address");
+        sb.AppendLine("# book, on this computer only. Values: on, off. Default off.");
         sb.AppendLine();
         sb.AppendLine($"AutoSaveDrafts = {(config.AutoSaveDrafts ? "on" : "off")}");
         sb.AppendLine("# Automatically save the message as a draft while composing.");

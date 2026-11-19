@@ -351,11 +351,25 @@ public class ConfigModel
     public bool ConfirmBeforeSend { get; set; }
 
     /// <summary>
-    /// Remember the people messages are sent to and suggest them in To, Cc and Bcc (#1037). They are
-    /// kept in recipients.json, apart from the address book. Off by default; off also stops suggesting
-    /// people already remembered.
+    /// Remember the people messages are sent to, in recipients.json, apart from the address book (#1037).
+    /// Off by default. Only the remembering: whether they are suggested is <see cref="SuggestPeopleEmailed"/>.
     /// </summary>
     public bool RememberRecipients { get; set; }
+
+    /// <summary>
+    /// Show address suggestions while typing in To, Cc, Bcc and an appointment's Invite field (#1037). On by
+    /// default. Off, no list ever appears and Tab and Enter keep what was typed, whatever the two below say.
+    /// </summary>
+    public bool SuggestAddresses { get; set; } = true;
+
+    /// <summary>Suggest contacts and groups from the address book, synced contacts included. On by default.</summary>
+    public bool SuggestFromAddressBook { get; set; } = true;
+
+    /// <summary>
+    /// Suggest people remembered from sent mail (<see cref="RememberRecipients"/>). On by default; it offers
+    /// nothing until remembering has been turned on.
+    /// </summary>
+    public bool SuggestPeopleEmailed { get; set; } = true;
 
     /// <summary>Seconds between automatic draft saves. Clamped to 30–600.</summary>
     public int AutoSaveIntervalSeconds { get; set; } = 120;

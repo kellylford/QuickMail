@@ -301,13 +301,34 @@
                                           IsChecked="{Binding ConfirmBeforeSend, Mode=TwoWay}"
                                           Margin="0,0,0,8"
                                           AutomationProperties.Name="Confirm before sending a message"/>
-                                <!-- #1037. No access key: every letter of both labels is taken on this tab. -->
+                                <!-- #1037. Address suggestions: a master switch and its two sources, indented under it
+                                     like Custom announcements and its categories, then remembering. No access keys:
+                                     on this tab only Q and Z are free, and none of these labels has either. -->
+                                <CheckBox x:Name="SuggestAddressesCheckBox"
+                                          Content="Suggest addresses as I type"
+                                          IsChecked="{Binding SuggestAddresses, Mode=TwoWay}"
+                                          AutomationProperties.Name="Suggest addresses as I type"
+                                          AutomationProperties.HelpText="In To, Cc, Bcc and an appointment's Invite field. When off, no suggestions appear."/>
+                                <CheckBox x:Name="SuggestFromAddressBookCheckBox"
+                                          Content="Suggest from my address book"
+                                          IsChecked="{Binding SuggestFromAddressBook, Mode=TwoWay}"
+                                          Margin="16,4,0,0"
+                                          AutomationProperties.Name="Suggest from my address book"
+                                          AutomationProperties.HelpText="Contacts and groups, including contacts synced from your accounts."/>
+                                <CheckBox x:Name="SuggestPeopleEmailedCheckBox"
+                                          Content="Suggest people I've sent to"
+                                          IsChecked="{Binding SuggestPeopleEmailed, Mode=TwoWay}"
+                                          Margin="16,4,0,0"
+                                          AutomationProperties.Name="Suggest people I've sent to"
+                                          AutomationProperties.HelpText="Needs Remember people I send to, below."/>
+                                <TextBlock Text="The two sources apply only while Suggest addresses as I type is on."
+                                           Foreground="{DynamicResource Theme.TextSecondary}" FontSize="{DynamicResource Theme.FontSizeSmall}" Margin="16,2,0,8" TextWrapping="Wrap"/>
                                 <CheckBox x:Name="RememberRecipientsCheckBox"
-                                          Content="Remember people I send to and suggest them as I type an address"
+                                          Content="Remember people I send to"
                                           IsChecked="{Binding RememberRecipients, Mode=TwoWay}"
-                                          AutomationProperties.Name="Remember people I send to and suggest them as I type an address"
-                                          AutomationProperties.HelpText="Kept on this computer only, apart from your address book."/>
-                                <TextBlock Text="Kept on this computer only, apart from your address book. Turning this off stops both remembering and suggesting; Forget clears who is remembered."
+                                          AutomationProperties.Name="Remember people I send to"
+                                          AutomationProperties.HelpText="Needed for Suggest people I've sent to. Kept on this computer only, apart from your address book."/>
+                                <TextBlock Text="Needed for Suggest people I've sent to, above. Kept on this computer only, apart from your address book. Forget clears who is remembered."
                                            Foreground="{DynamicResource Theme.TextSecondary}" FontSize="{DynamicResource Theme.FontSizeSmall}" Margin="0,3,0,4" TextWrapping="Wrap"/>
                                 <Button x:Name="ForgetRecipientsButton"
                                         Content="Forget People I've Sent To…"
