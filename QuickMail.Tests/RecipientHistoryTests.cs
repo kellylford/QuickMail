@@ -227,6 +227,84 @@ public class RecipientHistoryTests : IDisposable
         Assert.Empty(history.Recorded);
     }
 
+    private sealed class Accounts(params AccountModel[] accounts) : IAccountService
+    {
+        public bool Throw { get; set; }
+        public List<AccountModel> LoadAccounts() => Throw ? throw new IOException("accounts.json is locked") : [.. accounts];
+        public void SaveAccounts(List<AccountModel> list) { }
+        public void SetDefaultAccount(Guid accountId) { }
+    }
+
+    [Fact]
+    public void OwnAddresses_AreLeftOut_EveryAccountAndASharedMailbox()
+    {
+        var people = new List<(string, string)>
+        {
+            ("Me", "Kelly@KellFord.com "), ("Work me", "kelly@work.example"), ("Team box", "team@work.example"),
+            ("Jane", "jane@uni.edu"),
+        };
+        var kept = ComposeViewModel.WithoutOwnAddresses(people,
+        [
+            new AccountModel { Username = "kelly@kellford.com" },
+            new AccountModel { Username = "kelly@work.example" },
+            new AccountModel { Username = "kelly@work.example", SharedAddress = "team@work.example" },
+        ]);
+        Assert.Equal(["jane@uni.edu"], kept.Select(p => p.Item2));
+    }
+
+    [Fact]
+    public async Task SendingToYourself_DoesNotRememberYou()
+    {
+        var history = new FakeHistory();
+        var me = new AccountModel { Id = Guid.NewGuid(), Username = "kelly@kellford.com", AuthType = AuthType.OAuth2Google };
+        var smtp = new StubSmtpService();
+        var vm = new ComposeViewModel(smtp, new Accounts(me), new StubCredentialService(),
+            new StubImapMailService(), new StubTemplateService(), outbox: new StubOutboxService(), connectivity: new StubConnectivityService())
+        {
+            SenderAccount = me,
+            To = "kelly@kellford.com",
+            Cc = "Jane <jane@uni.edu>, KELLY@kellford.com",
+            Body = "Hello",
+            RecipientHistory = history,
+            RememberRecipientsProvider = () => true,
+        };
+
+        await vm.SendCommand.ExecuteAsync(null);
+        Assert.Single(smtp.Sent);
+        await vm.PendingRecipientRecord!;
+        Assert.Equal(["jane@uni.edu"], Assert.Single(history.Recorded).Select(r => r.EmailAddress));
+
+        // Only to yourself: nothing to remember, so nothing is recorded at all.
+        var alone = new FakeHistory();
+        var vm2 = new ComposeViewModel(new StubSmtpService(), new Accounts(me), new StubCredentialService(),
+            new StubImapMailService(), new StubTemplateService(), outbox: new StubOutboxService(), connectivity: new StubConnectivityService())
+        {
+            SenderAccount = me, To = "kelly@kellford.com", Body = "Note to self",
+            RecipientHistory = alone, RememberRecipientsProvider = () => true,
+        };
+        await vm2.SendCommand.ExecuteAsync(null);
+        Assert.Null(vm2.PendingRecipientRecord);
+        Assert.Empty(alone.Recorded);
+    }
+
+    [Fact]
+    public async Task WhenTheAccountsCannotBeRead_NoOneIsRemembered_AndTheSendStillGoes()
+    {
+        var history = new FakeHistory();
+        var me = new AccountModel { Id = Guid.NewGuid(), Username = "kelly@kellford.com", AuthType = AuthType.OAuth2Google };
+        var smtp = new StubSmtpService();
+        var vm = new ComposeViewModel(smtp, new Accounts(me) { Throw = true }, new StubCredentialService(),
+            new StubImapMailService(), new StubTemplateService(), outbox: new StubOutboxService(), connectivity: new StubConnectivityService())
+        {
+            SenderAccount = me, To = "jane@uni.edu", Body = "Hello",
+            RecipientHistory = history, RememberRecipientsProvider = () => true,
+        };
+        await vm.SendCommand.ExecuteAsync(null);
+        Assert.Single(smtp.Sent);
+        Assert.True(vm.IsSent);
+        Assert.Empty(history.Recorded);
+    }
+
     [Fact]
     public async Task AQueuedSend_IsRemembered_SinceItWillGo()
     {
