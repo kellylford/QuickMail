@@ -1438,6 +1438,9 @@ public sealed class SettingsTransferTests : IDisposable
             ".sender-address-backfilled", ".sender-address-backfill-progress",
             SettingsImporter.PendingFileName, SettingsImporter.ResultFileName, SettingsImporter.PendingCalendarFileName,
             ImportFolderHeal.FileName,
+            // People remembered from sent mail (#1037): a history that refills as you send, not a setting,
+            // and a list of who someone writes to has no place in a file they may share or post.
+            "recipients.json",
         };
         var carried = SettingsBundle.CategoryFiles.Values.SelectMany(f => f).Append("themes").Append(SoundCatalog.CustomFolderName).ToHashSet(StringComparer.OrdinalIgnoreCase);
 
