@@ -255,6 +255,45 @@ public class RecipientHistoryTests : IDisposable
     }
 
     [Fact]
+    public void TheSuggestionSwitches_AreOnByDefault_AndEachRoundTripsThroughConfigIni()
+    {
+        var defaults = new ConfigModel();
+        Assert.True(defaults.SuggestAddresses);
+        Assert.True(defaults.SuggestFromAddressBook);
+        Assert.True(defaults.SuggestPeopleEmailed);
+        Assert.Equal(new SuggestionSources(AddressBook: true, PeopleEmailed: true), SuggestionSources.From(defaults));
+
+        var config = new ConfigService(new ProfileContext(_dir));
+        var settings = new SettingsViewModel(config, new StubCommandRegistry())
+        {
+            SuggestAddresses = false, SuggestFromAddressBook = false, SuggestPeopleEmailed = true,
+        };
+        settings.SaveCommand.Execute(null);
+
+        var reloaded = new ConfigService(new ProfileContext(_dir)).Load();
+        Assert.False(reloaded.SuggestAddresses);
+        Assert.False(reloaded.SuggestFromAddressBook);
+        Assert.True(reloaded.SuggestPeopleEmailed);
+        var vm = new SettingsViewModel(new ConfigService(new ProfileContext(_dir)), new StubCommandRegistry());
+        Assert.False(vm.SuggestAddresses);
+        Assert.False(vm.SuggestFromAddressBook);
+        Assert.True(vm.SuggestPeopleEmailed);
+        foreach (var name in new[] { nameof(ConfigModel.SuggestAddresses), nameof(ConfigModel.SuggestFromAddressBook), nameof(ConfigModel.SuggestPeopleEmailed) })
+            Assert.Contains(name, SettingsConfigTransfer.Portable);
+    }
+
+    [Theory]
+    [InlineData(true, true, true, true, true)]
+    [InlineData(true, false, true, false, true)]
+    [InlineData(true, true, false, true, false)]
+    [InlineData(false, true, true, false, false)] // the master switch overrides both sources
+    public void SuggestionSources_FollowTheMasterSwitch(bool master, bool book, bool people, bool expectBook, bool expectPeople)
+        => Assert.Equal(new SuggestionSources(expectBook, expectPeople), SuggestionSources.From(new ConfigModel
+        {
+            SuggestAddresses = master, SuggestFromAddressBook = book, SuggestPeopleEmailed = people,
+        }));
+
+    [Fact]
     public async Task Forget_AsksFirst_AndOnlyClearsOnYes()
     {
         var history = new FakeHistory();

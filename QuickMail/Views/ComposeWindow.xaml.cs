@@ -165,7 +165,7 @@ public partial class ComposeWindow : Window
         };
 
         _suggestions = new AddressSuggestionController(this, _contactService, AutoCompletePopup, SuggestionList,
-            _recipientHistory, () => _configService.Load().RememberRecipients);
+            _recipientHistory, () => SuggestionSources.From(_configService.Load()));
         // The return trip from the list is not a fresh arrival in the field: don't read its chips again.
         _suggestions.EnteringSuggestions += () => _suppressNextFocusAnnouncement = true;
         foreach (var box in new[] { ToBox, CcBox, BccBox })

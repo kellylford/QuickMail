@@ -1231,11 +1231,22 @@ Start typing a name or address in To, Cc, or Bcc. QuickMail searches your addres
 
 When suggestions appear, a screen reader hears the first one and how many there are, for example "Jane Smith jane@uni.edu, 3 suggestions". Press **Tab** to enter that first suggestion; you stay in the field, ready for the next address. Type another letter to narrow the list, and you hear the new first suggestion. Tab only enters a suggestion you are typing towards, one whose name, a word of its name, or address begins with what you typed. When the best match only contains your text somewhere in the middle, you hear just the number of suggestions, and Tab keeps what you typed. A complete address you have typed out in full is kept as typed too, unless it is exactly one in the list. To choose a different one, press **Down** to move into the list, arrow to it, and press **Enter** or **Tab**. Press **Escape** to dismiss the list without accepting.
 
+#### Choosing what is suggested
+
+Four settings in **Settings → General → Composing** decide what is suggested:
+
+- **Suggest addresses as I type** — on by default. Turn it off and no suggestions appear at all; **Tab** and **Enter** keep exactly what you type. The next two settings apply only while this one is on.
+  - **From my address book** — on by default. Your contacts and groups, including contacts synced from your Microsoft, Google, or iCloud accounts.
+  - **People I've sent to** — on by default. The people QuickMail has remembered sending to; there are none until you turn on the next setting.
+- **Remember people I send to** — off by default. See below.
+
+These apply to the **Invite** field of an appointment too, and take effect in windows already open as soon as you save them.
+
 #### Remembering people you send to
 
-QuickMail can also suggest people you have sent mail to who are not in your address book. Turn on **Remember people I send to and suggest them as I type an address** in **Settings → General → Composing**. It is off by default. While it is on, everyone in To, Cc, and Bcc of each message you send, or queue in the Outbox, is remembered; on screen their suggestion says "sent to before". They are kept on this computer only, separately from your address book, so the address book does not fill up with everyone you have ever written to. Someone who is also in your address book is suggested once, as the contact. QuickMail remembers up to 1,000 people and drops the ones you have not written to for longest. They are not included when you export your settings.
+QuickMail can also suggest people you have sent mail to who are not in your address book. Turn on **Remember people I send to** in **Settings → General → Composing**. It is off by default. While it is on, everyone in To, Cc, and Bcc of each message you send, or queue in the Outbox, is remembered; on screen their suggestion says "sent to before". They are kept on this computer only, separately from your address book, so the address book does not fill up with everyone you have ever written to. They are suggested while **People I've sent to** is on. Someone who is also in your address book is suggested once, as the contact. QuickMail remembers up to 1,000 people and drops the ones you have not written to for longest. They are not included when you export your settings.
 
-Turning the setting off stops both remembering and suggesting them. **Forget People I've Sent To** beside it clears everyone remembered, after asking; your address book is not changed.
+Turning the setting off stops remembering anyone new; to stop suggesting the people already remembered, turn off **People I've sent to**. **Forget People I've Sent To** beside it clears everyone remembered, after asking; your address book is not changed.
 
 ### Address Fields
 
@@ -1994,7 +2005,7 @@ Press **Enter** (or the **Save** button) to save, or **Escape** to cancel. If so
 
 ### Inviting people to an appointment
 
-To make an appointment a meeting, type the people's email addresses in the editor's **Invite** field (**Alt+I** moves there), separated by semicolons. You can write a name with an address, as in `Ann Lee <ann@example.com>`. As you type, matching people and groups from your address book are suggested, just as in a message's **To** field: press **Down** to move into the suggestions and **Enter** to choose one, or press **Enter** or **Tab** straight away to take the first, which is the one a screen reader names when the list appears. A group adds all its members. Save the appointment to an iCloud, Google or Microsoft calendar, and each person gets a meeting invitation in their email that they can accept or decline in their own mail program.
+To make an appointment a meeting, type the people's email addresses in the editor's **Invite** field (**Alt+I** moves there), separated by semicolons. You can write a name with an address, as in `Ann Lee <ann@example.com>`. As you type, matching people and groups are suggested, just as in a message's **To** field and following the same settings (see [Choosing what is suggested](#choosing-what-is-suggested)): press **Down** to move into the suggestions and **Enter** to choose one, or press **Enter** or **Tab** straight away to take the first, which is the one a screen reader names when the list appears. A group adds all its members. Save the appointment to an iCloud, Google or Microsoft calendar, and each person gets a meeting invitation in their email that they can accept or decline in their own mail program.
 
 - **Who sends it.** Google and Microsoft send the invitations themselves. iCloud does too when its server offers to; if it does not, QuickMail emails them from your iCloud account. Either way, after you save QuickMail says how many people the invitation went to — or, if it could not be sent, why. The appointment is saved either way.
 - **Changing a meeting.** Edit it as you would any appointment. When you save, the people invited get an update. Anyone you add to **Invite** gets an invitation, and anyone you remove gets a cancellation.
@@ -2648,7 +2659,8 @@ Press **Ctrl+,** to open Settings. The **Sounds** tab has no access key, so reac
 - **Check spelling as I type** — on by default. Turn it off if a message stalls, or your screen reader misreads lines, after you paste a long text. See [Turning off spell checking as you type](#turning-off-spell-checking-as-you-type).
 - **Auto-save drafts** — on/off and interval
 - **Confirm before sending a message** — off by default. Asks before sending or queuing mail; applies to open compose windows as soon as settings are saved.
-- **Remember people I send to and suggest them as I type an address** — off by default. Suggests people you have sent to, kept apart from the address book; **Forget People I've Sent To** clears them. See [Remembering people you send to](#remembering-people-you-send-to).
+- **Suggest addresses as I type** — on by default, with **From my address book** and **People I've sent to** under it, both on. Turn off the first to have no address suggestions at all. See [Choosing what is suggested](#choosing-what-is-suggested).
+- **Remember people I send to** — off by default. Remembers people you send to, kept apart from the address book, so they can be suggested; **Forget People I've Sent To** clears them. See [Remembering people you send to](#remembering-people-you-send-to).
 - **Read messages as plain text** — when on, display all messages as plain text instead of HTML
 - **Show pictures included in messages** — on by default. Shows pictures that travel with a message; nothing is fetched from the sender.
 - **Load pictures from the web automatically** — off by default. Loads the pictures a message links to on the web in every message, rather than only when you choose **Load Pictures**. See [Pictures](#pictures).

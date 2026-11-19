@@ -16,6 +16,16 @@ public partial class SettingsViewModel
     [ObservableProperty]
     private bool _rememberRecipients;
 
+    /// <summary>The master switch for address suggestions; the two sources below are unavailable while it is off.</summary>
+    [ObservableProperty]
+    private bool _suggestAddresses;
+
+    [ObservableProperty]
+    private bool _suggestFromAddressBook;
+
+    [ObservableProperty]
+    private bool _suggestPeopleEmailed;
+
     /// <summary>Where remembered people are kept. Null where there is none (tests), which hides Forget.</summary>
     public IRecipientHistory? RecipientHistory
     {
