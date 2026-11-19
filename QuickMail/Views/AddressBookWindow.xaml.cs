@@ -20,6 +20,9 @@ public partial class AddressBookWindow : Window
         _vm = vm;
         InitializeComponent();
         DataContext = vm;
+        // Set, not bound: a binding on a TabItem's visibility is not applied until the TabControl lays
+        // out, so a window that has not been shown yet still had the tab (#1039).
+        SentToTab.Visibility = vm.HasSentTo ? Visibility.Visible : Visibility.Collapsed;
 
         // Opened from the keyboard, the filter menu takes focus once, on the filter in effect,
         // rather than on the menu and then that item (#693).
@@ -49,7 +52,15 @@ public partial class AddressBookWindow : Window
             vm.GroupsListFocusRequested     += QueueFocusGroupsList;
             vm.GroupMemberFocusNowRequested   += FocusGroupMemberNow;
             vm.GroupMembersListFocusRequested += QueueFocusGroupMembersList;
+            if (vm.SentTo is { } sentTo)
+            {
+                sentTo.AnnouncementRequested += OnAnnouncement;
+                sentTo.ConfirmRequested     += OnConfirm;
+                sentTo.FocusNowRequested    += FocusSelectedSentToRowNow;
+                sentTo.FocusRequested       += QueueFocusSentToList;
+            }
             await vm.LoadAsync();
+            if (vm.SentTo is { } people) await people.LoadAsync();
             SearchBox.Focus();
         };
         Closed += (_, _) =>
@@ -65,6 +76,24 @@ public partial class AddressBookWindow : Window
             vm.GroupsListFocusRequested     -= QueueFocusGroupsList;
             vm.GroupMemberFocusNowRequested   -= FocusGroupMemberNow;
             vm.GroupMembersListFocusRequested -= QueueFocusGroupMembersList;
+            if (vm.SentTo is { } sentTo)
+            {
+                sentTo.AnnouncementRequested -= OnAnnouncement;
+                sentTo.ConfirmRequested     -= OnConfirm;
+                sentTo.FocusNowRequested    -= FocusSelectedSentToRowNow;
+                sentTo.FocusRequested       -= QueueFocusSentToList;
+            }
+        };
+
+        // Coming back to People I've Sent To shows anyone sent to since it was last filled, and drops
+        // anyone saved as a contact on the Contacts tab meanwhile. Only on arriving at that tab (and when
+        // the window opens), so the list never refills under a row that holds focus: the address book's
+        // full reload leaves it alone.
+        MainTabs.SelectionChanged += async (_, e) =>
+        {
+            if (!ReferenceEquals(e.OriginalSource, MainTabs)) return; // a list's selection bubbling up
+            if (MainTabs.SelectedItem == SentToTab && _vm.SentTo is { } s)
+                await s.LoadAsync();
         };
 
         // When edit mode is activated, focus the name field and select it
@@ -194,6 +223,37 @@ public partial class AddressBookWindow : Window
             id: "contacts.filterByAccount", category: "Contacts", title: "Filter Addresses by Account",
             defaultKey: Key.None, defaultModifiers: ModifierKeys.None,
             execute: OpenAccountFilterMenu));
+
+        // ── People I've Sent To tab commands (#1039) ─────────────────────────
+        // No default keys: Delete in the list forgets, and the buttons have access keys. Registered
+        // so the actions are in this window's palette.
+        if (_vm.SentTo is not null)
+        {
+            _registry.Register(new CommandDefinition(
+                id: "contacts.showPeopleSentTo", category: "Contacts", title: "Show People I've Sent To",
+                defaultKey: Key.None, defaultModifiers: ModifierKeys.None,
+                execute: FocusSentToPane));
+
+            // The palette does not check isAvailable, so each command checks the tab itself: from another
+            // tab it only brings People I've Sent To up, rather than acting on a selection the user
+            // cannot see.
+            _registry.Register(new CommandDefinition(
+                id: "contacts.saveSentToContact", category: "Contacts", title: "Save Person to Contacts",
+                defaultKey: Key.None, defaultModifiers: ModifierKeys.None,
+                execute: () => OnSentToTab(() => _ = _vm.SentTo!.SaveToContactsCommand.ExecuteAsync(null)),
+                isAvailable: () => MainTabs.SelectedItem == SentToTab && _vm.SentTo!.HasSelectedPerson));
+
+            _registry.Register(new CommandDefinition(
+                id: "contacts.forgetSentTo", category: "Contacts", title: "Forget Person",
+                defaultKey: Key.None, defaultModifiers: ModifierKeys.None,
+                execute: () => OnSentToTab(() => _ = _vm.SentTo!.ForgetSelectedCommand.ExecuteAsync(null)),
+                isAvailable: () => MainTabs.SelectedItem == SentToTab && _vm.SentTo!.HasSelectedPerson));
+
+            _registry.Register(new CommandDefinition(
+                id: "contacts.forgetAllSentTo", category: "Contacts", title: "Forget Everyone I've Sent To",
+                defaultKey: Key.None, defaultModifiers: ModifierKeys.None,
+                execute: () => OnSentToTab(() => _ = _vm.SentTo!.ForgetAllCommand.ExecuteAsync(null))));
+        }
     }
 
     // ── Account filter menu ──────────────────────────────────────────────────
@@ -353,6 +413,7 @@ public partial class AddressBookWindow : Window
         // Alt+Enter — show Properties for the selected contact or group.
         if (e.Key == Key.System && e.SystemKey == Key.Return
             && Keyboard.Modifiers == ModifierKeys.Alt
+            && MainTabs.SelectedItem != SentToTab   // a remembered person has no Properties (#1039)
             && (_vm.HasSelectedContact || _vm.HasSelectedGroup))
         {
             _ = _vm.ShowPropertiesCommand.ExecuteAsync(null);
@@ -701,4 +762,61 @@ public partial class AddressBookWindow : Window
         _vm.SetSelectedContacts(ContactList.SelectedItems.OfType<ContactModel>());
 
     private void Close_Click(object sender, RoutedEventArgs e) => Close();
+
+    // ── People I've Sent To (#1039) ──────────────────────────────────────────
+
+    private async void SentToList_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (_vm.SentTo is not { } sentTo) return;
+        if (e.Key == Key.Delete && Keyboard.Modifiers == ModifierKeys.None && sentTo.HasSelectedPerson)
+        {
+            // Handled before the await: once this handler yields, routing has moved on.
+            e.Handled = true;
+            await sentTo.ForgetSelectedCommand.ExecuteAsync(null);
+        }
+    }
+
+    private async void SaveSentToContact_Click(object sender, RoutedEventArgs e)
+    {
+        if (_vm.SentTo is { } s) await s.SaveToContactsCommand.ExecuteAsync(null);
+    }
+
+    private async void ForgetSentTo_Click(object sender, RoutedEventArgs e)
+    {
+        if (_vm.SentTo is { } s) await s.ForgetSelectedCommand.ExecuteAsync(null);
+    }
+
+    private async void ForgetAllSentTo_Click(object sender, RoutedEventArgs e)
+    {
+        if (_vm.SentTo is { } s) await s.ForgetAllCommand.ExecuteAsync(null);
+    }
+
+    private bool FocusSelectedSentToRowNow() => FocusRowNow(SentToList, _vm.SentTo?.SelectedPerson);
+
+    // The fallback when focus could not land on a row before the removal, most often because the list
+    // is now empty: then the list itself, whose help text says why it is empty.
+    private void QueueFocusSentToList() =>
+        Dispatcher.BeginInvoke(DispatcherPriority.Input, () =>
+        {
+            if (!SentToList.IsVisible) return;
+            if (!FocusRowNow(SentToList, _vm.SentTo?.SelectedPerson))
+                SentToList.Focus();
+        });
+
+    /// <summary>Runs <paramref name="action"/> only on People I've Sent To; from another tab, goes there instead.</summary>
+    private void OnSentToTab(Action action)
+    {
+        if (MainTabs.SelectedItem == SentToTab) action();
+        else FocusSentToPane();
+    }
+
+    private void FocusSentToPane()
+    {
+        MainTabs.SelectedItem = SentToTab;
+        Dispatcher.BeginInvoke(DispatcherPriority.Loaded, () =>
+        {
+            if (!FocusRowNow(SentToList, _vm.SentTo?.SelectedPerson))
+                SentToList.Focus();
+        });
+    }
 }

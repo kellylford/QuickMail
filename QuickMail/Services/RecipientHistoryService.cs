@@ -107,6 +107,45 @@ public sealed class RecipientHistoryService : IRecipientHistory, IDisposable
         }
     }
 
+    public async Task<List<ContactModel>> ListAsync()
+    {
+        await _lock.WaitAsync();
+        try
+        {
+            await EnsureLoadedLockedAsync();
+            return _people.OrderByDescending(p => p.LastUsedTicks)
+                .Select(p => new ContactModel { DisplayName = p.DisplayName, EmailAddress = p.EmailAddress, LastUsedTicks = p.LastUsedTicks })
+                .ToList();
+        }
+        finally
+        {
+            _lock.Release();
+        }
+    }
+
+    public async Task<bool> RemoveAsync(string emailAddress)
+    {
+        var email = emailAddress?.Trim() ?? string.Empty;
+        if (email.Length == 0) return false;
+        await _lock.WaitAsync();
+        try
+        {
+            await EnsureLoadedLockedAsync();
+            var kept = _people.Where(p => !p.EmailAddress.Equals(email, StringComparison.OrdinalIgnoreCase)).ToList();
+            if (kept.Count == _people.Count) return false;
+            // A failed write puts the list back, as Clear does: forgetting must not hold only until restart.
+            var previous = _people;
+            _people = kept;
+            try { await SaveLockedAsync(); }
+            catch { _people = previous; throw; }
+            return true;
+        }
+        finally
+        {
+            _lock.Release();
+        }
+    }
+
     public async Task ClearAsync()
     {
         await _lock.WaitAsync();
