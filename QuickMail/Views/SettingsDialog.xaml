@@ -310,13 +310,13 @@
                                           AutomationProperties.Name="Suggest addresses as I type"
                                           AutomationProperties.HelpText="In To, Cc, Bcc and an appointment's Invite field. When off, no suggestions appear."/>
                                 <CheckBox x:Name="SuggestFromAddressBookCheckBox"
-                                          Content="From my address book"
+                                          Content="Suggest from my address book"
                                           IsChecked="{Binding SuggestFromAddressBook, Mode=TwoWay}"
                                           Margin="16,4,0,0"
                                           AutomationProperties.Name="Suggest from my address book"
                                           AutomationProperties.HelpText="Contacts and groups, including contacts synced from your accounts."/>
                                 <CheckBox x:Name="SuggestPeopleEmailedCheckBox"
-                                          Content="People I've sent to"
+                                          Content="Suggest people I've sent to"
                                           IsChecked="{Binding SuggestPeopleEmailed, Mode=TwoWay}"
                                           Margin="16,4,0,0"
                                           AutomationProperties.Name="Suggest people I've sent to"
@@ -327,8 +327,8 @@
                                           Content="Remember people I send to"
                                           IsChecked="{Binding RememberRecipients, Mode=TwoWay}"
                                           AutomationProperties.Name="Remember people I send to"
-                                          AutomationProperties.HelpText="Kept on this computer only, apart from your address book."/>
-                                <TextBlock Text="Kept on this computer only, apart from your address book, so they can be suggested. Forget clears who is remembered."
+                                          AutomationProperties.HelpText="Needed for Suggest people I've sent to. Kept on this computer only, apart from your address book."/>
+                                <TextBlock Text="Needed for Suggest people I've sent to, above. Kept on this computer only, apart from your address book. Forget clears who is remembered."
                                            Foreground="{DynamicResource Theme.TextSecondary}" FontSize="{DynamicResource Theme.FontSizeSmall}" Margin="0,3,0,4" TextWrapping="Wrap"/>
                                 <Button x:Name="ForgetRecipientsButton"
                                         Content="Forget People I've Sent To…"

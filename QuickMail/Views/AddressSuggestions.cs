@@ -394,7 +394,14 @@ internal sealed class AddressSuggestionController : IDisposable
         var fromRecents = sources.PeopleEmailed && _recents != null;
         // Nothing to search — suggestions turned off, or both sources — means no list, and with no list
         // Tab and Enter keep what was typed, exactly as before suggestions existed.
-        if (searchToken.Length < 1 || (!sources.AddressBook && !fromRecents)) { _popup.IsOpen = false; return; }
+        if (searchToken.Length < 1 || (!sources.AddressBook && !fromRecents))
+        {
+            // Cancel a search still running for an earlier keystroke, or it could finish after this and
+            // open the list again for text the field no longer holds.
+            try { _searchCts?.Cancel(); } catch (ObjectDisposedException) { /* already superseded */ }
+            _popup.IsOpen = false;
+            return;
+        }
 
         // Cancel and dispose the superseded search (its token was already captured by the
         // in-flight search, which unwinds via OperationCanceledException).

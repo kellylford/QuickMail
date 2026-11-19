@@ -16,7 +16,7 @@ public partial class SettingsViewModel
     [ObservableProperty]
     private bool _rememberRecipients;
 
-    /// <summary>The master switch for address suggestions; the two sources below are unavailable while it is off.</summary>
+    /// <summary>The master switch for address suggestions; the two sources below have no effect while it is off.</summary>
     [ObservableProperty]
     private bool _suggestAddresses;
 

@@ -1236,17 +1236,17 @@ When suggestions appear, a screen reader hears the first one and how many there 
 Four settings in **Settings → General → Composing** decide what is suggested:
 
 - **Suggest addresses as I type** — on by default. Turn it off and no suggestions appear at all; **Tab** and **Enter** keep exactly what you type. The next two settings apply only while this one is on.
-  - **From my address book** — on by default. Your contacts and groups, including contacts synced from your Microsoft, Google, or iCloud accounts.
-  - **People I've sent to** — on by default. The people QuickMail has remembered sending to; there are none until you turn on the next setting.
+  - **Suggest from my address book** — on by default. Your contacts and groups, including contacts synced from your Microsoft, Google, or iCloud accounts.
+  - **Suggest people I've sent to** — on by default. The people QuickMail has remembered sending to; there are none until you turn on the next setting.
 - **Remember people I send to** — off by default. See below.
 
 These apply to the **Invite** field of an appointment too, and take effect in windows already open as soon as you save them.
 
 #### Remembering people you send to
 
-QuickMail can also suggest people you have sent mail to who are not in your address book. Turn on **Remember people I send to** in **Settings → General → Composing**. It is off by default. While it is on, everyone in To, Cc, and Bcc of each message you send, or queue in the Outbox, is remembered; on screen their suggestion says "sent to before". They are kept on this computer only, separately from your address book, so the address book does not fill up with everyone you have ever written to. They are suggested while **People I've sent to** is on. Someone who is also in your address book is suggested once, as the contact. QuickMail remembers up to 1,000 people and drops the ones you have not written to for longest. They are not included when you export your settings.
+QuickMail can also suggest people you have sent mail to who are not in your address book. Turn on **Remember people I send to** in **Settings → General → Composing**. It is off by default. While it is on, everyone in To, Cc, and Bcc of each message you send, or queue in the Outbox, is remembered; on screen their suggestion says "sent to before". They are kept on this computer only, separately from your address book, so the address book does not fill up with everyone you have ever written to. They are suggested while **Suggest people I've sent to** is on. Someone who is also in your address book is suggested once, as the contact. QuickMail remembers up to 1,000 people and drops the ones you have not written to for longest. They are not included when you export your settings.
 
-Turning the setting off stops remembering anyone new; to stop suggesting the people already remembered, turn off **People I've sent to**. **Forget People I've Sent To** beside it clears everyone remembered, after asking; your address book is not changed.
+Turning the setting off stops remembering anyone new; to stop suggesting the people already remembered, turn off **Suggest people I've sent to**. **Forget People I've Sent To** beside it clears everyone remembered, after asking; your address book is not changed.
 
 ### Address Fields
 
@@ -2659,7 +2659,7 @@ Press **Ctrl+,** to open Settings. The **Sounds** tab has no access key, so reac
 - **Check spelling as I type** — on by default. Turn it off if a message stalls, or your screen reader misreads lines, after you paste a long text. See [Turning off spell checking as you type](#turning-off-spell-checking-as-you-type).
 - **Auto-save drafts** — on/off and interval
 - **Confirm before sending a message** — off by default. Asks before sending or queuing mail; applies to open compose windows as soon as settings are saved.
-- **Suggest addresses as I type** — on by default, with **From my address book** and **People I've sent to** under it, both on. Turn off the first to have no address suggestions at all. See [Choosing what is suggested](#choosing-what-is-suggested).
+- **Suggest addresses as I type** — on by default, with **Suggest from my address book** and **Suggest people I've sent to** under it, both on. Turn off the first to have no address suggestions at all. See [Choosing what is suggested](#choosing-what-is-suggested).
 - **Remember people I send to** — off by default. Remembers people you send to, kept apart from the address book, so they can be suggested; **Forget People I've Sent To** clears them. See [Remembering people you send to](#remembering-people-you-send-to).
 - **Read messages as plain text** — when on, display all messages as plain text instead of HTML
 - **Show pictures included in messages** — on by default. Shows pictures that travel with a message; nothing is fetched from the sender.
