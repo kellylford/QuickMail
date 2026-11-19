@@ -287,22 +287,72 @@ public class RecipientHistoryTests : IDisposable
         Assert.Empty(alone.Recorded);
     }
 
-    [Fact]
-    public async Task WhenTheAccountsCannotBeRead_NoOneIsRemembered_AndTheSendStillGoes()
+    [Theory]
+    [InlineData(false)] // AccountService's own way of failing: an empty list
+    [InlineData(true)]  // and a throw, should a service ever do that
+    public async Task WhenTheAccountsCannotBeRead_TheSendingAccountIsStillLeftOut(bool throws)
     {
         var history = new FakeHistory();
         var me = new AccountModel { Id = Guid.NewGuid(), Username = "kelly@kellford.com", AuthType = AuthType.OAuth2Google };
         var smtp = new StubSmtpService();
-        var vm = new ComposeViewModel(smtp, new Accounts(me) { Throw = true }, new StubCredentialService(),
+        var vm = new ComposeViewModel(smtp, new Accounts() { Throw = throws }, new StubCredentialService(),
             new StubImapMailService(), new StubTemplateService(), outbox: new StubOutboxService(), connectivity: new StubConnectivityService())
         {
-            SenderAccount = me, To = "jane@uni.edu", Body = "Hello",
+            SenderAccount = me, To = "jane@uni.edu", Cc = "kelly@kellford.com", Body = "Hello",
             RecipientHistory = history, RememberRecipientsProvider = () => true,
         };
         await vm.SendCommand.ExecuteAsync(null);
         Assert.Single(smtp.Sent);
+        await vm.PendingRecipientRecord!;
+        Assert.Equal(["jane@uni.edu"], Assert.Single(history.Recorded).Select(r => r.EmailAddress));
+    }
+
+    [Fact]
+    public async Task AQueuedSendToYourself_DoesNotRememberYouEither()
+    {
+        var history = new FakeHistory();
+        var me = new AccountModel { Id = Guid.NewGuid(), Username = "kelly@kellford.com", AuthType = AuthType.OAuth2Google };
+        var net = new StubConnectivityService();
+        net.SetAccount(me.Id, online: false);
+        var vm = new ComposeViewModel(new StubSmtpService(), new Accounts(me), new StubCredentialService(),
+            new StubImapMailService(), new StubTemplateService(), outbox: new StubOutboxService(), connectivity: net)
+        {
+            SenderAccount = me, To = "kelly@kellford.com; jane@uni.edu", Body = "Hello",
+            RecipientHistory = history, RememberRecipientsProvider = () => true,
+        };
+        await vm.SendCommand.ExecuteAsync(null);
         Assert.True(vm.IsSent);
-        Assert.Empty(history.Recorded);
+        await vm.PendingRecipientRecord!;
+        Assert.Equal(["jane@uni.edu"], Assert.Single(history.Recorded).Select(r => r.EmailAddress));
+    }
+
+    [Fact]
+    public void ASignInNameThatIsAnAddress_CountsAsYourOwn()
+    {
+        var own = ComposeViewModel.OwnAddresses(
+        [
+            new AccountModel { Username = "me@mydomain.example", LoginUsername = "me@icloud.com" },
+            new AccountModel { Username = "x@host.example", LoginUsername = "DOMAIN\\x" }, // not an address
+        ]);
+        Assert.Contains("me@icloud.com", own);
+        Assert.Contains("ME@MYDOMAIN.EXAMPLE", own);
+        Assert.DoesNotContain("DOMAIN\\x", own);
+    }
+
+    [Fact]
+    public async Task ForgetAsync_DropsTheGivenAddresses_InOneWrite_AndWritesNothingWhenNoneAreThere()
+    {
+        using var store = NewStore();
+        await store.RecordAsync([("Me", "kelly@kellford.com"), ("Jane", "jane@uni.edu")]);
+        var before = File.GetLastWriteTimeUtc(FilePath);
+
+        Assert.Equal(0, await store.ForgetAsync(["nobody@example.com"]));
+        Assert.Equal(before, File.GetLastWriteTimeUtc(FilePath));
+
+        Assert.Equal(1, await store.ForgetAsync(["KELLY@kellford.com "]));
+        Assert.Equal(["jane@uni.edu"], (await store.ListAsync()).Select(p => p.EmailAddress));
+        using var reopened = NewStore();
+        Assert.Equal(1, await reopened.CountAsync());
     }
 
     [Fact]
