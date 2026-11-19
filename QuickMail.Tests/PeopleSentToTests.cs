@@ -68,8 +68,13 @@ public class PeopleSentToTests : IDisposable
         var path = Path.Combine(_dir, "recipients.json");
         using var store = new RecipientHistoryService(path);
         await store.RecordAsync([("Ann", "ann@uni.edu")]);
+        // Saving replaces the file with a move, and replacing a file held open throws
+        // UnauthorizedAccessException on Windows, which is not an IOException: accept either.
         using (new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.None))
-            await Assert.ThrowsAnyAsync<IOException>(() => store.RemoveAsync("ann@uni.edu"));
+        {
+            var ex = await Assert.ThrowsAnyAsync<Exception>(() => store.RemoveAsync("ann@uni.edu"));
+            Assert.True(ex is IOException or UnauthorizedAccessException, ex.GetType().Name);
+        }
         Assert.Single(await store.ListAsync());
     }
 
@@ -217,11 +222,54 @@ public class PeopleSentToTests : IDisposable
 
         await vm.ForgetAllCommand.ExecuteAsync(null);
 
-        Assert.Contains("all 4 people", asked, StringComparison.Ordinal); // the store's count, contacts included
+        // The list's count, and a word about the one also in the address book (Al), whom the list hides.
+        Assert.Equal(PeopleSentToViewModel.ForgetAllQuestion(3, 4), asked);
         Assert.Empty(history.People);
         Assert.Empty(vm.People);
         Assert.Equal(["Forgot 4 people."], said);
         Assert.StartsWith("Remembering is off, so no one is here.", vm.Notice, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData(3, 3, "Forget all 3 people in this list? Your address book is not changed.")]
+    [InlineData(1, 1, "Forget the 1 person in this list? Your address book is not changed.")]
+    [InlineData(3, 4, "Forget all 3 people in this list? This also forgets 1 person who is in your address book; they stay in it. Your address book is not changed.")]
+    [InlineData(0, 2, "Forget everyone QuickMail remembered sending to? This also forgets 2 people who are in your address book; they stay in it. Your address book is not changed.")]
+    public void TheForgetAllQuestion_CountsWhatTheListShows(int listed, int remembered, string expected)
+        => Assert.Equal(expected, PeopleSentToViewModel.ForgetAllQuestion(listed, remembered));
+
+    [Fact]
+    public async Task ASecondForget_WhileTheFirstIsAsking_IsIgnored()
+    {
+        var (vm, _, _) = NewVm();
+        await vm.LoadAsync();
+        var asks = 0;
+        var answer = new TaskCompletionSource<bool>();
+        vm.ConfirmRequested += (_, _) => { asks++; return answer.Task; };
+
+        var first = vm.ForgetSelectedCommand.ExecuteAsync(null);
+        await vm.ForgetSelectedCommand.ExecuteAsync(null);     // pressed again while the question is up
+        answer.SetResult(true);
+        await first;
+
+        Assert.Equal(1, asks);
+        Assert.Equal(2, vm.People.Count);
+    }
+
+    [Fact]
+    public async Task ForgettingSomeone_AfterTheListWasRefilled_StillTakesTheirRowOut()
+    {
+        var (vm, _, _) = NewVm();
+        await vm.LoadAsync();
+        var answer = new TaskCompletionSource<bool>();
+        vm.ConfirmRequested += (_, _) => answer.Task;
+
+        var forgetting = vm.ForgetSelectedCommand.ExecuteAsync(null);
+        await vm.LoadAsync();                                  // the tab was arrived at again meanwhile
+        answer.SetResult(true);
+        await forgetting;
+
+        Assert.DoesNotContain(vm.People, p => p.EmailAddress == "jane@uni.edu");
     }
 
     [Fact]

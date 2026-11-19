@@ -57,6 +57,7 @@ public partial class AddressBookWindow : Window
                 sentTo.FocusRequested       += QueueFocusSentToList;
             }
             await vm.LoadAsync();
+            if (vm.SentTo is { } people) await people.LoadAsync();
             SearchBox.Focus();
         };
         Closed += (_, _) =>
@@ -82,8 +83,9 @@ public partial class AddressBookWindow : Window
         };
 
         // Coming back to People I've Sent To shows anyone sent to since it was last filled, and drops
-        // anyone saved as a contact on the Contacts tab meanwhile. Only on arriving at that tab, so the
-        // list never refills under a row that holds focus.
+        // anyone saved as a contact on the Contacts tab meanwhile. Only on arriving at that tab (and when
+        // the window opens), so the list never refills under a row that holds focus: the address book's
+        // full reload leaves it alone.
         MainTabs.SelectionChanged += async (_, e) =>
         {
             if (!ReferenceEquals(e.OriginalSource, MainTabs)) return; // a list's selection bubbling up
@@ -229,22 +231,25 @@ public partial class AddressBookWindow : Window
                 defaultKey: Key.None, defaultModifiers: ModifierKeys.None,
                 execute: FocusSentToPane));
 
+            // The palette does not check isAvailable, so each command checks the tab itself: from another
+            // tab it only brings People I've Sent To up, rather than acting on a selection the user
+            // cannot see.
             _registry.Register(new CommandDefinition(
                 id: "contacts.saveSentToContact", category: "Contacts", title: "Save Person to Contacts",
                 defaultKey: Key.None, defaultModifiers: ModifierKeys.None,
-                execute: () => _ = _vm.SentTo!.SaveToContactsCommand.ExecuteAsync(null),
+                execute: () => OnSentToTab(() => _ = _vm.SentTo!.SaveToContactsCommand.ExecuteAsync(null)),
                 isAvailable: () => MainTabs.SelectedItem == SentToTab && _vm.SentTo!.HasSelectedPerson));
 
             _registry.Register(new CommandDefinition(
                 id: "contacts.forgetSentTo", category: "Contacts", title: "Forget Person",
                 defaultKey: Key.None, defaultModifiers: ModifierKeys.None,
-                execute: () => _ = _vm.SentTo!.ForgetSelectedCommand.ExecuteAsync(null),
+                execute: () => OnSentToTab(() => _ = _vm.SentTo!.ForgetSelectedCommand.ExecuteAsync(null)),
                 isAvailable: () => MainTabs.SelectedItem == SentToTab && _vm.SentTo!.HasSelectedPerson));
 
             _registry.Register(new CommandDefinition(
                 id: "contacts.forgetAllSentTo", category: "Contacts", title: "Forget Everyone I've Sent To",
                 defaultKey: Key.None, defaultModifiers: ModifierKeys.None,
-                execute: () => _ = _vm.SentTo!.ForgetAllCommand.ExecuteAsync(null)));
+                execute: () => OnSentToTab(() => _ = _vm.SentTo!.ForgetAllCommand.ExecuteAsync(null))));
         }
     }
 
@@ -405,6 +410,7 @@ public partial class AddressBookWindow : Window
         // Alt+Enter — show Properties for the selected contact or group.
         if (e.Key == Key.System && e.SystemKey == Key.Return
             && Keyboard.Modifiers == ModifierKeys.Alt
+            && MainTabs.SelectedItem != SentToTab   // a remembered person has no Properties (#1039)
             && (_vm.HasSelectedContact || _vm.HasSelectedGroup))
         {
             _ = _vm.ShowPropertiesCommand.ExecuteAsync(null);
@@ -793,6 +799,13 @@ public partial class AddressBookWindow : Window
             if (!FocusRowNow(SentToList, _vm.SentTo?.SelectedPerson))
                 SentToList.Focus();
         });
+
+    /// <summary>Runs <paramref name="action"/> only on People I've Sent To; from another tab, goes there instead.</summary>
+    private void OnSentToTab(Action action)
+    {
+        if (MainTabs.SelectedItem == SentToTab) action();
+        else FocusSentToPane();
+    }
 
     private void FocusSentToPane()
     {

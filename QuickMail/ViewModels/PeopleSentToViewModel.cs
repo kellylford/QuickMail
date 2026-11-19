@@ -120,6 +120,7 @@ public partial class PeopleSentToViewModel : ObservableObject
         {
             LogService.Log("People I've Sent To: could not load", ex);
             People.Clear();
+            SelectedPerson = null;
             OnPropertyChanged(nameof(HasPeople));
             Notice = "Couldn't load the people you've sent to. " + ex.Message;
             return;
@@ -144,10 +145,21 @@ public partial class PeopleSentToViewModel : ObservableObject
 
     // ── Forget one ───────────────────────────────────────────────────────────
 
+    // Set while one of the three actions is running: a second Delete pressed while the first is still
+    // asking or writing would otherwise ask again about the same person.
+    private bool _busy;
+
     [RelayCommand]
     private async Task ForgetSelectedAsync()
     {
-        if (SelectedPerson is not { } person) return;
+        if (_busy || SelectedPerson is not { } person) return;
+        _busy = true;
+        try { await ForgetCoreAsync(person); }
+        finally { _busy = false; }
+    }
+
+    private async Task ForgetCoreAsync(RememberedPerson person)
+    {
         if (!await ConfirmAsync("Forget Person",
                 $"Forget {person.ShownName}? They won't be suggested, and will be remembered again if you send to them."))
             return;
@@ -171,7 +183,14 @@ public partial class PeopleSentToViewModel : ObservableObject
     [RelayCommand]
     private async Task SaveToContactsAsync()
     {
-        if (SelectedPerson is not { } person) return;
+        if (_busy || SelectedPerson is not { } person) return;
+        _busy = true;
+        try { await SaveCoreAsync(person); }
+        finally { _busy = false; }
+    }
+
+    private async Task SaveCoreAsync(RememberedPerson person)
+    {
         try
         {
             await _contacts.UpsertContactAsync(new ContactModel
@@ -199,6 +218,14 @@ public partial class PeopleSentToViewModel : ObservableObject
     [RelayCommand]
     private async Task ForgetAllAsync()
     {
+        if (_busy) return;
+        _busy = true;
+        try { await ForgetAllCoreAsync(); }
+        finally { _busy = false; }
+    }
+
+    private async Task ForgetAllCoreAsync()
+    {
         int count;
         try { count = await _history.CountAsync(); }
         catch (Exception ex) { LogService.Log("People I've Sent To: could not count", ex); count = People.Count; }
@@ -207,8 +234,7 @@ public partial class PeopleSentToViewModel : ObservableObject
             Report("No one is remembered.", landed: false);
             return;
         }
-        var who = count == 1 ? "the 1 person" : $"all {count} people";
-        if (!await ConfirmAsync("Forget Everyone", $"Forget {who} QuickMail remembered sending to? Your address book is not changed."))
+        if (!await ConfirmAsync("Forget Everyone", ForgetAllQuestion(People.Count, count)))
             return;
         try
         {
@@ -227,6 +253,23 @@ public partial class PeopleSentToViewModel : ObservableObject
         Report(count == 1 ? "Forgot 1 person." : $"Forgot {count} people.", landed: false);
     }
 
+    /// <summary>
+    /// The Forget All question, counting what the list shows. The store also remembers people who are
+    /// now contacts, whom this list leaves out; they are forgotten too, and the question says so rather
+    /// than giving a number that does not match the list just read.
+    /// </summary>
+    internal static string ForgetAllQuestion(int listed, int remembered)
+    {
+        var people = listed == 1 ? "the 1 person" : $"all {listed} people";
+        var also = remembered - listed;
+        var extra = also <= 0 ? string.Empty
+            : also == 1 ? " This also forgets 1 person who is in your address book; they stay in it."
+            : $" This also forgets {also} people who are in your address book; they stay in it.";
+        return listed == 0
+            ? $"Forget everyone QuickMail remembered sending to?{extra} Your address book is not changed."
+            : $"Forget {people} in this list?{extra} Your address book is not changed.";
+    }
+
     // ── Helpers ──────────────────────────────────────────────────────────────
 
     private async Task<bool> ConfirmAsync(string title, string question)
@@ -239,6 +282,15 @@ public partial class PeopleSentToViewModel : ObservableObject
     /// </summary>
     private bool RemoveRow(RememberedPerson person)
     {
+        // By address, not by object: if the list was refilled while the store was being written, the
+        // row on screen is a new object for the same person.
+        var row = People.FirstOrDefault(p => p.EmailAddress.Equals(person.EmailAddress, StringComparison.OrdinalIgnoreCase));
+        if (row is null)
+        {
+            if (People.Count == 0) Notice = NoticeFor(_rememberingOn(), 0);
+            return false;
+        }
+        person = row;
         var landing = AddressBookViewModel.FindLandingRow(People, [person]);
         var landed = false;
         if (landing is not null)

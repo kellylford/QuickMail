@@ -418,7 +418,9 @@ public partial class AddressBookViewModel : ObservableObject
         await ReloadContactsAsync();
         await ReloadGroupsAsync();
         RebuildSelectedGroupMembers();
-        if (SentTo is not null) await SentTo.LoadAsync();
+        // Not People I've Sent To: this runs after Sync Now, the Group Manager and other actions that
+        // can happen while focus is on that tab's list, and refilling it would destroy the focused row.
+        // The window fills it when it opens and each time the tab is arrived at.
     }
 
     /// <summary>
