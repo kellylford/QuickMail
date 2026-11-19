@@ -146,6 +146,34 @@ public sealed class RecipientHistoryService : IRecipientHistory, IDisposable
         }
     }
 
+    /// <summary>
+    /// Forgets every one of <paramref name="emailAddresses"/> that is remembered, in one write; writes
+    /// nothing when none is. Returns how many were forgotten. Used at startup to drop the user's own
+    /// addresses (#1037), so it is on the concrete service rather than the interface.
+    /// </summary>
+    internal async Task<int> ForgetAsync(IEnumerable<string> emailAddresses)
+    {
+        var drop = new HashSet<string>(emailAddresses.Select(e => e.Trim()), StringComparer.OrdinalIgnoreCase);
+        if (drop.Count == 0) return 0;
+        await _lock.WaitAsync();
+        try
+        {
+            await EnsureLoadedLockedAsync();
+            var kept = _people.Where(p => !drop.Contains(p.EmailAddress.Trim())).ToList();
+            var forgotten = _people.Count - kept.Count;
+            if (forgotten == 0) return 0;
+            var previous = _people;
+            _people = kept;
+            try { await SaveLockedAsync(); }
+            catch { _people = previous; throw; }
+            return forgotten;
+        }
+        finally
+        {
+            _lock.Release();
+        }
+    }
+
     public async Task ClearAsync()
     {
         await _lock.WaitAsync();

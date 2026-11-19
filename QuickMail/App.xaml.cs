@@ -555,6 +555,16 @@ public partial class App : Application
             _contactService = new ContactService(profile);
             var contactService = _contactService;
             _recipientHistory = new RecipientHistoryService(profile);
+            // Your own addresses are never remembered (#1037), but an earlier build did remember them, and
+            // an address can become yours later by being added as an account. Forget them each start; it
+            // writes nothing when none are there. Off the startup path, and best effort.
+            var ownAddresses = ViewModels.ComposeViewModel.OwnAddresses(accounts);
+            var history = _recipientHistory;
+            _ = Task.Run(async () =>
+            {
+                try { await history.ForgetAsync(ownAddresses); }
+                catch (Exception ex) { LogService.Log("Startup: could not forget the user's own addresses from the remembered people", ex); }
+            });
             _templateService = new TemplateService(profile);
             var templateService = _templateService;
             // accountService drives the one-time "All accounts" → per-account rule migration (#333 D1).

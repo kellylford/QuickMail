@@ -226,13 +226,49 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
     private void RememberRecipients(ComposeModel compose)
     {
         if (RecipientHistory is not { } history || RememberRecipientsProvider?.Invoke() != true) return;
-        var people = RecipientsOf(compose);
+        // The accounts as they are now, and as they were when this window opened, and the one sending.
+        // AccountService returns an empty list rather than throwing when accounts.json cannot be read,
+        // so the read alone could quietly let the user's own address through; the other two cannot fail.
+        var accounts = new List<AccountModel>();
+        try { accounts.AddRange(_accountService.LoadAccounts()); }
+        catch (Exception ex) { LogService.Log("Send: could not read the accounts to leave the user's own addresses out", ex); }
+        accounts.AddRange(SenderAccounts);
+        if (SenderAccount is { } sender) accounts.Add(sender);
+        var people = WithoutOwnAddresses(RecipientsOf(compose), accounts);
         if (people.Count == 0) return;
         PendingRecipientRecord = Task.Run(async () =>
         {
             try { await history.RecordAsync(people); }
             catch (Exception ex) { LogService.Log("Send: could not remember the recipients", ex); }
         });
+    }
+
+    /// <summary>
+    /// Leaves out the user's own addresses — every account's address, and a shared mailbox's own address
+    /// (#1037). Nobody needs themselves suggested, and a message copied to oneself, or a reply-all that
+    /// includes one's own address, would otherwise put the user in their own list.
+    /// </summary>
+    internal static List<(string DisplayName, string EmailAddress)> WithoutOwnAddresses(
+        IEnumerable<(string DisplayName, string EmailAddress)> people, IEnumerable<AccountModel> accounts)
+    {
+        var own = OwnAddresses(accounts);
+        return people.Where(p => !own.Contains(p.EmailAddress.Trim())).ToList();
+    }
+
+    /// <summary>
+    /// The user's own addresses: each account's address, a shared mailbox's address, and a sign-in name
+    /// that is itself an address (an iCloud account on a custom domain signs in with its Apple ID).
+    /// </summary>
+    internal static HashSet<string> OwnAddresses(IEnumerable<AccountModel> accounts)
+    {
+        var own = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var a in accounts)
+        {
+            if (!string.IsNullOrWhiteSpace(a.Username)) own.Add(a.Username.Trim());
+            if (!string.IsNullOrWhiteSpace(a.SharedAddress)) own.Add(a.SharedAddress.Trim());
+            if (EmailAddressValidator.IsValid(a.LoginUsername)) own.Add(a.LoginUsername!.Trim());
+        }
+        return own;
     }
 
     /// <summary>Every address in To, Cc and Bcc with its name, read the way the message headers are built.</summary>
