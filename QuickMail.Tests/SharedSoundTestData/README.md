@@ -13,8 +13,11 @@ says, so QuickMail reads them the way The Chat Place and app-kit's Python do.
   script that made these files are not copied.)
 - `*.qmsounds`, `*.tcpsounds`: scheme files, some deliberately hostile.
 - `expected.json`: what each file must give, for each app that reads it.
-- `apps.json`: copied from app-kit's `sounds/apps.json` at the same commit. It lists each app's
-  events in order; the tests check QuickMail's own list matches it.
+- `apps.json`: copied from app-kit's `sounds/apps.json`. It lists each app's events in order; the
+  tests check QuickMail's own list matches it. It is ahead of the other files: it comes from
+  commit 29c1fed8dd8a7fef7955c1296e41e4df7c31ad08 on app-kit's `quickmail-address-sounds` branch
+  (TheIdeaPlace/app-kit#48), which adds AddressSuggestions and AddressInserted (#1048). Once that
+  merges, copy the folder again and give the merge commit above.
 
 Don't edit these files here. To pick up a change, copy the folder from app-kit again and update
 the commit above. `.gitattributes` marks the folder binary, so a signature keeps its exact bytes.

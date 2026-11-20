@@ -138,6 +138,15 @@ public partial class TokenizedAddressBox : UserControl
     /// <summary>Moves keyboard focus to the inner text input.</summary>
     public void FocusInput() => InputBox.Focus();
 
+    /// <summary>
+    /// The suggestion list now showing for this box, or null once it has gone: exposed to UI
+    /// Automation as what the box controls (<see cref="ControllingTextBox.SetControls"/>).
+    /// </summary>
+    public void SetSuggestionList(UIElement? list) => InputBox.SetControls(list);
+
+    /// <summary>Reports that the suggestion list changed with nothing selected in it.</summary>
+    public void ReportSuggestionsChanged() => InputBox.RaiseControlsLayoutInvalidated();
+
     /// <summary>Commits any text in the inner input box as chips.
     /// Called by ComposeWindow before Send so no typed address is silently dropped.</summary>
     public void CommitPendingInput() => CommitCurrentInput();

@@ -108,6 +108,23 @@ public class SoundCatalogTests
         Assert.Equal(SoundOrigin.Navigation, SoundCatalog.Info(SoundEvent.ListEnd).Origin);
     }
 
+    [Theory]
+    [InlineData(SoundEvent.AddressSuggestions, "AddressSuggestions", "suggest")]
+    [InlineData(SoundEvent.AddressInserted, "AddressInserted", "inserted")]
+    public void TheAddressSuggestionEventsHaveTheirOwnSoundsAndAnswerAKeyPress(SoundEvent e, string key, string sound)
+    {
+        // #1048. Each plays at once or not at all (TryPlayNow), as an answer to the key just pressed;
+        // a scheme of the person's own made before these events plays nothing for them.
+        var info = SoundCatalog.Info(e);
+        Assert.Equal(key, info.ConfigKey);
+        Assert.Equal(SoundOrigin.Navigation, info.Origin);
+        Assert.All(SoundCatalog.Packs, pack =>
+            Assert.Equal(SoundRef.BuiltIn(sound), SoundCatalog.Resolve(e, SoundCatalog.BuiltInScheme(pack.Id))));
+        var older = new SoundScheme("user-older", "Older", isBuiltIn: false,
+            events: new Dictionary<string, string> { ["NewMail"] = "builtin:arrived" });
+        Assert.Equal(SoundRef.None, SoundCatalog.Resolve(e, older));
+    }
+
     [Fact]
     public void AnEventCanBeTurnedOffOnItsOwn()
     {

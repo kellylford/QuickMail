@@ -85,7 +85,7 @@ public class AddressSuggestionTests
         EnsureApplication();
         var box = new TextBox { Text = "ann@example.com; bo" };
         box.CaretIndex = box.Text.Length; // typing at the end
-        var entry = new TextBoxAddressEntry(box);
+        var entry = new TextBoxAddressEntry(box, "Invite");
         Assert.Equal("bo", entry.CurrentInput);
 
         entry.AcceptSuggestion("Bob Ray", "bob@example.com");
@@ -108,7 +108,7 @@ public class AddressSuggestionTests
         EnsureApplication();
         var box = new TextBox { Text = "ann@example.com; b; carol@example.com" };
         box.CaretIndex = 18; // just after the "b"
-        var entry = new TextBoxAddressEntry(box);
+        var entry = new TextBoxAddressEntry(box, "Invite");
         Assert.Equal("b", entry.CurrentInput);
 
         entry.AcceptSuggestion("Bob Ray", "bob@example.com");
@@ -127,8 +127,8 @@ public class AddressSuggestionTests
     public void TextBoxEntry_ReadOnly_IsNotOfferedSuggestions()
     {
         EnsureApplication();
-        Assert.False(new TextBoxAddressEntry(new TextBox { IsReadOnly = true }).CanEdit);
-        Assert.True(new TextBoxAddressEntry(new TextBox()).CanEdit);
+        Assert.False(new TextBoxAddressEntry(new TextBox { IsReadOnly = true }, "Invite").CanEdit);
+        Assert.True(new TextBoxAddressEntry(new TextBox(), "Invite").CanEdit);
     }
 
     [StaFact]
@@ -236,7 +236,8 @@ public class AddressSuggestionTests
         System.Windows.Controls.Primitives.Popup Popup, ListBox List, AddressSuggestionController Controller);
 
     /// <summary>A shown window with one chip box, wired the way ComposeWindow wires To.</summary>
-    private static ComposeRig BuildComposeRig(Contacts contacts, IRecipientHistory? recents = null, Func<SuggestionSources>? sources = null)
+    private static ComposeRig BuildComposeRig(Contacts contacts, IRecipientHistory? recents = null, Func<SuggestionSources>? sources = null,
+        ISoundService? sounds = null)
     {
         var box = new QuickMail.Controls.TokenizedAddressBox();
         var list = new ListBox();
@@ -247,8 +248,8 @@ public class AddressSuggestionTests
             Width = 400, Height = 200, ShowInTaskbar = false,
         };
         window.Show();
-        var controller = new AddressSuggestionController(window, contacts, popup, list, recents, sources);
-        controller.Attach(new TokenizedAddressEntry(box));
+        var controller = new AddressSuggestionController(window, contacts, popup, list, recents, sources, sounds);
+        controller.Attach(new TokenizedAddressEntry(box, "To"));
         return new ComposeRig(window, box, popup, list, controller);
     }
 
@@ -657,6 +658,215 @@ public class AddressSuggestionTests
     /// Synchronous on purpose, like the other WPF tests here: an [StaFact] thread has no
     /// dispatcher loop of its own, so awaiting the dispatcher would wait forever.
     /// </summary>
+    // ── Saying what went in, the sounds, and the list as UI Automation sees it ──
+
+    [Fact]
+    public void InsertedAnnouncement_NamesTheAddressAndTheField()
+    {
+        Assert.Equal("kelly@example.com added to To field", AddressSuggestionController.InsertedAnnouncement(" kelly@example.com ", "To"));
+        Assert.Equal("1 address from group 'Team' added to Cc field", AddressSuggestionController.GroupInsertedAnnouncement(1, "Team", "Cc"));
+        Assert.Equal("3 addresses from group 'Team' added to Invite field", AddressSuggestionController.GroupInsertedAnnouncement(3, "Team", "Invite"));
+    }
+
+    [StaFact]
+    public void Compose_TabInsert_SaysWhatWentWhere_AndPlaysItsSound()
+    {
+        EnsureApplication();
+        var sounds = new RecordingSoundService();
+        sounds.Audible.UnionWith([SoundEvent.AddressSuggestions, SoundEvent.AddressInserted]);
+        var heard = new List<(string Text, AnnouncementCategory Category)>();
+        AccessibilityHelper.AnnouncementObserver = (text, category) => heard.Add((text, category));
+        var rig = BuildComposeRig(new Contacts(), sounds: sounds);
+        try
+        {
+            rig.Box.InputBox.Text = "bo";
+            PumpUntil(() => rig.Popup.IsOpen);
+            Assert.Equal([SoundEvent.AddressSuggestions], sounds.Played);
+
+            rig.Box.InputBox.RaiseEvent(Key_(rig.Window, Key.Tab));
+
+            Assert.Equal([SoundEvent.AddressSuggestions, SoundEvent.AddressInserted], sounds.Played);
+            Assert.Contains(("bob@example.com added to To field", AnnouncementCategory.Result), heard);
+        }
+        finally
+        {
+            AccessibilityHelper.AnnouncementObserver = null;
+            rig.Controller.Dispose();
+            rig.Window.Close();
+        }
+    }
+
+    [StaFact]
+    public void Compose_EnterInTheList_AlsoSaysWhatWentWhere_AndAGroupSaysHowMany()
+    {
+        EnsureApplication();
+        var contacts = new Contacts();
+        contacts.Groups.Add(new GroupModel { Id = 9, Name = "Team", MemberContactIds = [1, 2] });
+        var sounds = new RecordingSoundService();
+        sounds.Audible.Add(SoundEvent.AddressInserted);
+        var heard = new List<string>();
+        AccessibilityHelper.AnnouncementObserver = (text, _) => heard.Add(text);
+        var rig = BuildComposeRig(contacts, sounds: sounds);
+        try
+        {
+            rig.Box.InputBox.Text = "bo";
+            PumpUntil(() => rig.Popup.IsOpen);
+            rig.List.SelectedIndex = 0;
+            rig.Controller.List_PreviewKeyDown(rig.List, Key_(rig.Window, Key.Enter));
+            PumpUntil(() => heard.Contains("bob@example.com added to To field"));
+
+            rig.Box.InputBox.Text = "Tea";
+            PumpUntil(() => rig.Popup.IsOpen);
+            rig.List.SelectedIndex = 0;
+            rig.Controller.List_PreviewKeyDown(rig.List, Key_(rig.Window, Key.Enter));
+            PumpUntil(() => heard.Contains("2 addresses from group 'Team' added to To field"));
+            Assert.Equal(2, sounds.Played.Count(e => e == SoundEvent.AddressInserted));
+        }
+        finally
+        {
+            AccessibilityHelper.AnnouncementObserver = null;
+            rig.Controller.Dispose();
+            rig.Window.Close();
+        }
+    }
+
+    [StaFact]
+    public void Compose_ListAppearingSound_PlaysWhenTheListAppears_NotOnEveryKeystroke()
+    {
+        EnsureApplication();
+        var sounds = new RecordingSoundService();
+        sounds.Audible.Add(SoundEvent.AddressSuggestions);
+        var rig = BuildComposeRig(new Contacts(), sounds: sounds);
+        try
+        {
+            rig.Box.InputBox.Text = "a";
+            PumpUntil(() => rig.Popup.IsOpen);
+            rig.Box.InputBox.Text = "an";      // the list changes but was already there
+            PumpUntil(() => rig.Controller.IsOpen && rig.List.Items.Count == 1);
+            Assert.Single(sounds.Played);
+
+            rig.Box.InputBox.Text = "";        // gone
+            PumpUntil(() => !rig.Popup.IsOpen);
+            rig.Box.InputBox.Text = "b";       // and back
+            PumpUntil(() => rig.Popup.IsOpen);
+            Assert.Equal([SoundEvent.AddressSuggestions, SoundEvent.AddressSuggestions], sounds.Played);
+        }
+        finally
+        {
+            rig.Controller.Dispose();
+            rig.Window.Close();
+        }
+    }
+
+    [StaFact]
+    public void Compose_TheFieldControlsTheList_ForUiAutomation_OnlyWhileItShows()
+    {
+        EnsureApplication();
+        var rig = BuildComposeRig(new Contacts());
+        try
+        {
+            var fieldPeer = System.Windows.Automation.Peers.UIElementAutomationPeer.CreatePeerForElement(rig.Box.InputBox);
+            Assert.Null(fieldPeer.GetControlledPeers());
+
+            rig.Box.InputBox.Text = "bo";
+            PumpUntil(() => rig.Popup.IsOpen);
+            var controlled = Assert.Single(fieldPeer.GetControlledPeers()!);
+            Assert.Same(rig.List, Assert.IsAssignableFrom<System.Windows.Automation.Peers.UIElementAutomationPeer>(controlled).Owner);
+
+            rig.Box.InputBox.RaiseEvent(Key_(rig.Window, Key.Escape));
+            PumpUntil(() => fieldPeer.GetControlledPeers() is null);
+        }
+        finally
+        {
+            rig.Controller.Dispose();
+            rig.Window.Close();
+        }
+    }
+
+    [StaFact]
+    public void Compose_WhatTabWouldEnter_IsSelected_WithFocusLeftInTheField()
+    {
+        EnsureApplication();
+        var contacts = new Contacts();
+        var rig = BuildComposeRig(contacts);
+        try
+        {
+            rig.Box.InputBox.Focus();
+            rig.Box.InputBox.Text = "bo";
+            PumpUntil(() => rig.Popup.IsOpen && rig.List.SelectedIndex == 0);
+            Assert.False(rig.List.IsKeyboardFocusWithin);
+
+            // Only contains the text: Tab would keep what was typed, so nothing is selected.
+            rig.Box.InputBox.Text = "";
+            PumpUntil(() => !rig.Popup.IsOpen);
+            contacts.MatchContains = true;
+            rig.Box.InputBox.Text = "nn";
+            PumpUntil(() => rig.Popup.IsOpen);
+            for (var i = 0; i < 5; i++) { Thread.Sleep(10); DoEvents(); }
+            Assert.Equal(-1, rig.List.SelectedIndex);
+        }
+        finally
+        {
+            rig.Controller.Dispose();
+            rig.Window.Close();
+        }
+    }
+
+    [StaFact]
+    public void Compose_TheListIsNotAlsoSaidInWords_UnlessAskedTo()
+    {
+        EnsureApplication();
+        var heard = new List<string>();
+        AccessibilityHelper.AnnouncementObserver = (text, _) => heard.Add(text);
+        var rig = BuildComposeRig(new Contacts());
+        try
+        {
+            rig.Box.InputBox.Text = "bo";
+            PumpUntil(() => rig.Popup.IsOpen);
+            Assert.DoesNotContain(heard, h => h.Contains("suggestion"));
+
+            rig.Controller.AnnounceList = true;
+            rig.Box.InputBox.Text = "b";
+            PumpUntil(() => heard.Any(h => h.Contains("suggestion")));
+        }
+        finally
+        {
+            AccessibilityHelper.AnnouncementObserver = null;
+            rig.Controller.Dispose();
+            rig.Window.Close();
+        }
+    }
+
+    [StaFact]
+    public void Invite_IsAControllingField_AndBothListsAreMarkedAsSuggestionLists()
+    {
+        EnsureApplication();
+        var vm = new EventEditorViewModel(new DateTime(2026, 11, 3, 9, 0, 0));
+        var window = new EventEditorWindow(vm, new Contacts()) { ShowInTaskbar = false };
+        try
+        {
+            Assert.NotNull(window.FindName("InviteBox") as QuickMail.Controls.ControllingTextBox);
+            var list = window.FindName("InviteSuggestionList") as ListBox;
+            Assert.NotNull(list);
+            Assert.Equal("SuggestionsList", System.Windows.Automation.AutomationProperties.GetAutomationId(list));
+        }
+        finally
+        {
+            window.Close();
+        }
+
+        // Compose's list: read from the XAML, since the window needs far more to construct.
+        var compose = System.IO.File.ReadAllText(System.IO.Path.Combine(RepoRoot(), "QuickMail", "Views", "ComposeWindow.xaml"));
+        Assert.Matches(@"x:Name=""SuggestionList""[^>]*AutomationProperties\.AutomationId=""SuggestionsList""", compose);
+    }
+
+    private static string RepoRoot()
+    {
+        var dir = new System.IO.DirectoryInfo(AppContext.BaseDirectory);
+        while (dir is not null && !System.IO.File.Exists(System.IO.Path.Combine(dir.FullName, "QuickMail.sln"))) dir = dir.Parent;
+        return dir?.FullName ?? throw new InvalidOperationException("QuickMail.sln not found above the test output.");
+    }
+
     private static void PumpUntil(Func<bool> condition)
     {
         var clock = System.Diagnostics.Stopwatch.StartNew();

@@ -26,6 +26,12 @@ public enum SoundEvent
 
     /// <summary>A rule set to the default sound matched new mail (#932). Played through <c>PlayRule</c>, not <c>Play</c>.</summary>
     RuleMatched,
+
+    /// <summary>The address suggestion list appeared below a To, Cc, Bcc or Invite field while typing.</summary>
+    AddressSuggestions,
+
+    /// <summary>An address from the suggestion list went into the field: by Tab, Enter or a click.</summary>
+    AddressInserted,
 }
 
 /// <summary>Why a sound is playing, which decides what can hold it back.</summary>
@@ -124,6 +130,8 @@ public static class SoundCatalog
         new(SoundEvent.TrashEmptied,       "TrashEmptied",       "Trash emptied",              "emptied",      SoundOrigin.Direct),
         new(SoundEvent.ListEnd,            "ListEnd",            "Reached the end of a list",  "edge",         SoundOrigin.Navigation),
         new(SoundEvent.RuleMatched,        "RuleMatched",        "A rule matched",             DefaultRuleSound, SoundOrigin.Rule),
+        new(SoundEvent.AddressSuggestions, "AddressSuggestions", "Address suggestions appeared", "suggest",     SoundOrigin.Navigation),
+        new(SoundEvent.AddressInserted,    "AddressInserted",    "Address inserted from suggestions", "inserted", SoundOrigin.Navigation),
     ];
 
     /// <summary>
