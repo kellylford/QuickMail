@@ -34,6 +34,22 @@ internal static class AddressMatch
         return false;
     }
 
+    /// <summary>
+    /// True when a sender value is matched as a whole address or domain rather than as text: a "Name &lt;address&gt;",
+    /// or text with a dot somewhere after its '@' ("service@paypal.com", "@paypal.com"). A fragment such as "@acme" or
+    /// "john.smith@", and anything without an '@', is a substring match. <c>RuleService.SenderMatches</c> and the
+    /// Rules Manager's row wording both ask this, so what a row says can't drift from what the rule does.
+    /// </summary>
+    internal static bool IsWhole(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return false;
+        var trimmed = value.Trim();
+        if (trimmed.Contains('<', StringComparison.Ordinal))
+            return MimeKit.MailboxAddress.TryParse(trimmed, out var mailbox) && !string.IsNullOrEmpty(mailbox.Address);
+        var at = trimmed.IndexOf('@', StringComparison.Ordinal);
+        return at >= 0 && trimmed.IndexOf('.', at + 1) > at;
+    }
+
     // Characters that can appear inside an address (RFC 5322 atext plus '.' and '@'). Seeing one
     // immediately before or after a hit means the hit is only part of a longer address.
     private static bool IsAddressChar(char c) =>
