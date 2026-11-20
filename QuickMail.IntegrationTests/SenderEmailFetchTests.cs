@@ -110,7 +110,7 @@ public sealed class SenderEmailFetchTests
         await smtp.ConnectAsync(GreenMailFixture.Host, GreenMailFixture.SmtpPort, MailKit.Security.SecureSocketOptions.None, ct);
         // The envelope sender is given explicitly: the encoded From is what is under test, not what SMTP is
         // handed as the return path.
-        await smtp.SendAsync(message, MailboxAddress.Parse("seeder@example.test"), [MailboxAddress.Parse(recipient)], ct);
+        await smtp.SendAsync(new MailKit.SendRequest(message, MailboxAddress.Parse("seeder@example.test"), [MailboxAddress.Parse(recipient)]), ct);
         await smtp.DisconnectAsync(quit: true, ct);
     }
 }

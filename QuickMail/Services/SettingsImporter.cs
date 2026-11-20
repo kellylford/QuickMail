@@ -133,6 +133,9 @@ public static class SettingsImporter
 
     private static readonly JsonSerializerOptions Indented = new() { WriteIndented = true };
 
+    // In the rollback copy: the names of the custom sounds that were here before the import.
+    private const string SoundsBeforeFileName = "sounds-before.txt";
+
     /// <summary>The profile files an import can change, which is what the rollback copy holds.</summary>
     internal static readonly string[] ProfileFiles =
         SettingsBundle.CategoryFiles.Values.SelectMany(f => f)
@@ -271,10 +274,15 @@ public static class SettingsImporter
                 SettingsCategory.LocalCalendar =>
                     SettingsImportPlan.Plural(CountEvents(bundle.GetText(SettingsBundle.CalendarName)), "appointment")
                     + ", added or updated, never removed",
+                SettingsCategory.Preferences =>
+                    "replaced, including every sound scheme here, apart from settings that belong to this computer",
                 _ => "replaced, apart from settings that belong to this computer",
             };
             lines.Add($"{name}: {detail}");
         }
+        var sounds = SoundsToAdd(bundle).Count;
+        if (sounds > 0)
+            lines.Add($"Custom sounds: {SettingsImportPlan.Plural(sounds, "sound")}, added; any with the same name as one here keeps the one here");
         return lines;
     }
 
@@ -516,6 +524,8 @@ public static class SettingsImporter
             }
         }
 
+        AddSounds(bundle, profileDir, result);
+
         // Folder names for the heal that runs when each account's folders first load (spec R5).
         var folders = bundle.GetText(SettingsBundle.FoldersName);
         if (folders is not null)
@@ -564,6 +574,95 @@ public static class SettingsImporter
             File.WriteAllBytes(Path.Combine(dir, name[SettingsBundle.ThemesPrefix.Length..]), bytes);
     }
 
+    /// <summary>The custom sounds this file would add: only with a category that can name one, whatever else the archive holds.</summary>
+    private static List<KeyValuePair<string, byte[]>> SoundsToAdd(SettingsBundle bundle)
+    {
+        if (!bundle.Manifest.Categories.Any(c => c is SettingsCategory.RulesAndViews or SettingsCategory.Preferences)) return [];
+        return bundle.SoundEntries
+            .Where(e => e.Value.Length <= SoundCatalog.MaxCustomFileBytes)
+            .Take(SoundCatalog.MaxCustomFilesInImport)
+            .ToList();
+    }
+
+    // Added, never mirrored or overwritten as themes are: a sound can be in use by a category this
+    // import isn't replacing, such as a rule here when only the preferences were imported. So a name
+    // already here keeps the file that's here, even if the one in the settings file differs.
+    private static void AddSounds(SettingsBundle bundle, string profileDir, SettingsImportResult result)
+    {
+        var sounds = SoundsToAdd(bundle);
+        if (sounds.Count == 0) return;
+        var dir = Directory.CreateDirectory(Path.Combine(profileDir, SoundCatalog.CustomFolderName)).FullName;
+        var added = 0;
+        var flatAdded = new List<string>();
+        var flatKept = new List<string>();
+        var anyInSchemeFolders = false;
+        foreach (var (name, bytes) in sounds)
+        {
+            if (SettingsBundle.SoundEntryPath(name) is not { } relative) continue;
+            var isFlat = Path.GetDirectoryName(relative) is null or "";
+            anyInSchemeFolders |= !isFlat;
+            var target = Path.Combine(dir, relative);
+            if (File.Exists(target))
+            {
+                if (isFlat) flatKept.Add(relative);
+                continue;
+            }
+            var folder = Path.GetDirectoryName(target)!;
+            // A scheme folder this import makes is written down, so that if no scheme here owns it,
+            // such as when the file brought sounds but not the preferences, the tidy-up after the
+            // import removes it (#955). One that was already here is never written down.
+            if (!isFlat && !Directory.Exists(folder))
+                SoundSchemeFolderCleanup.NoteUnsaved(dir, [Path.GetFileName(folder)]);
+            Directory.CreateDirectory(folder);
+            File.WriteAllBytes(target, bytes);
+            if (isFlat) flatAdded.Add(relative);
+            added++;
+        }
+        var kept = sounds.Count - added;
+        result.Lines.Add($"Custom sounds: {SettingsImportPlan.Plural(added, "sound")} added"
+                         + (kept > 0 ? $", {kept} already here kept." : "."));
+
+        // A file from QuickMail 0.8.69 has every sound directly under sounds/, where only the rules'
+        // belong now (#948): each one it brought that a scheme uses is copied into that scheme's
+        // folder too. Copied, not moved, so undoing the import never needs a file put back. A newer
+        // file, with schemes' folders of its own, already has its schemes' sounds in place; its flat
+        // ones are rules', and must never stand in for a file a scheme here has lost.
+        if (anyInSchemeFolders) return;
+        if (flatAdded.Count > 0) PlaceFlatSounds(profileDir, dir, flatAdded, onlySchemes: null);
+        // A name this computer already had kept its own file, so the schemes the settings file brought
+        // that use that name would otherwise play a missing sound: they get a copy of the file that's
+        // here (#955). Only the file's own schemes: one that was here already was never using it.
+        if (flatKept.Count > 0 && SchemesFromFile(bundle) is { Count: > 0 } fromFile)
+            PlaceFlatSounds(profileDir, dir, flatKept, onlySchemes: fromFile);
+    }
+
+    /// <summary>The ids of the sound schemes a settings file brought in, or null if it brought none in.</summary>
+    private static HashSet<string>? SchemesFromFile(SettingsBundle bundle)
+    {
+        // As in ApplyPreferences: only a file with the preferences, from a QuickMail with sounds,
+        // replaces this computer's schemes with its own.
+        if (!bundle.Has(SettingsCategory.Preferences) || bundle.GetText("config.ini") is not { } text
+            || !text.Contains("PlayEventSounds", StringComparison.OrdinalIgnoreCase)) return null;
+        return new HashSet<string>(ConfigService.ParseFile(SplitLines(text)).SoundSchemes.Keys, StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static void PlaceFlatSounds(string profileDir, string soundsFolder, IReadOnlyCollection<string> names,
+        HashSet<string>? onlySchemes)
+    {
+        try
+        {
+            var config = Path.Combine(profileDir, "config.ini");
+            if (!File.Exists(config)) return;
+            var schemes = ConfigService.ParseFile(File.ReadAllLines(config)).SoundSchemes.Values
+                .Where(s => onlySchemes is null || onlySchemes.Contains(s.Id));
+            SoundFolderMigration.Place(soundsFolder, schemes, [], removeFromShared: false, onlyNames: names);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            LogService.Log("Settings import: could not copy sounds into their schemes' folders", ex);
+        }
+    }
+
     // A rule naming an account that is not here would act on nothing; turned off and named, never deleted.
     private static void DisableOrphanedRules(string profileDir, HashSet<Guid> accountIds, SettingsImportResult result)
     {
@@ -600,6 +699,14 @@ public static class SettingsImporter
         // default. Per-account sections start empty: those are the file's alone.
         var baseline = File.Exists(path) ? ConfigService.ParseFile(File.ReadAllLines(path)) : new ConfigModel();
         baseline.Accounts = [];
+        // The file's sound schemes replace this computer's, its own schemes included (#932): a built-in
+        // scheme lists only what was changed, so one missing from the file means "as it ships", not
+        // "keep this computer's". A file from before sounds existed says nothing about them either way.
+        if (text.Contains("PlayEventSounds", StringComparison.OrdinalIgnoreCase))
+        {
+            baseline.SoundSchemes = new(StringComparer.OrdinalIgnoreCase);
+            baseline.SoundSchemeId = SoundCatalog.DefaultPack;
+        }
         var incoming = ConfigService.ParseFile(SplitLines(rewrite(text)), into: baseline);
         SettingsConfigTransfer.Apply(incoming, local, carriedIds);
 
@@ -767,6 +874,12 @@ public static class SettingsImporter
                 foreach (var file in Directory.GetFiles(themes, "*.json"))
                     File.Copy(file, Path.Combine(target, Path.GetFileName(file)));
             }
+            // Only the names, not megabytes of audio in every backup: an import never changes a sound
+            // that's here, so undoing one only means removing what it added.
+            // Each as its path in the sounds folder, so a scheme's (#948) is "<scheme folder>\<file>".
+            var sounds = Path.Combine(profileDir, SoundCatalog.CustomFolderName);
+            File.WriteAllLines(Path.Combine(dir, SoundsBeforeFileName),
+                Directory.Exists(sounds) ? Directory.GetFiles(sounds, "*", SearchOption.AllDirectories).Select(f => Path.GetRelativePath(sounds, f)) : []);
             return dir;
         }
         catch
@@ -825,6 +938,30 @@ public static class SettingsImporter
         {
             LogService.Log("Settings import: could not restore the themes", ex);
             failed.Add("themes");
+        }
+
+        var sounds = Path.Combine(profileDir, SoundCatalog.CustomFolderName);
+        var soundsBefore = Path.Combine(backupDir, SoundsBeforeFileName);
+        try
+        {
+            if (Directory.Exists(sounds) && File.Exists(soundsBefore))
+            {
+                var keep = File.ReadAllLines(soundsBefore).ToHashSet(StringComparer.OrdinalIgnoreCase);
+                foreach (var file in Directory.GetFiles(sounds, "*", SearchOption.AllDirectories))
+                    if (!keep.Contains(Path.GetRelativePath(sounds, file))) File.Delete(file);
+                // A scheme's folder the import made, now empty (#948). One that was here before stays.
+                foreach (var folder in Directory.GetDirectories(sounds))
+                {
+                    var prefix = Path.GetFileName(folder) + Path.DirectorySeparatorChar;
+                    if (!Directory.EnumerateFileSystemEntries(folder).Any() && !keep.Any(k => k.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)))
+                        Directory.Delete(folder);
+                }
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            LogService.Log("Settings import: could not restore the sounds", ex);
+            failed.Add(SoundCatalog.CustomFolderName);
         }
         return failed;
     }

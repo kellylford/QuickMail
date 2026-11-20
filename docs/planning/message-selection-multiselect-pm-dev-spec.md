@@ -4,7 +4,7 @@
 **Version:** 0.1
 **Date:** 2026-07-11
 **Tracking issue:** #238 (supersedes #1)
-**Prior art:** `docs/planning/selection-shortcuts-spec.md` (v0.6.8 — shipped Ctrl+A, Ctrl+Shift+Home/End; explicitly deferred TreeView multi-select, Ctrl+Space toggle, Shift+PgUp/PgDn — this spec picks those up)
+**Prior art:** `docs/planning/Completed/selection-shortcuts-spec.md` (v0.6.8 — shipped Ctrl+A, Ctrl+Shift+Home/End; explicitly deferred TreeView multi-select, Ctrl+Space toggle, Shift+PgUp/PgDn — this spec picks those up)
 **Target release:** TBD (phased)
 
 > **Reviewer's shortcut:** the one decision this spec needs from you is in

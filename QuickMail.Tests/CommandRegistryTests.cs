@@ -11,7 +11,7 @@ namespace QuickMail.Tests;
 /// Tests the real <see cref="CommandRegistry"/> (not the stub). Regression: the override
 /// loop previously read the legacy integer fields on <see cref="HotkeyBinding"/>, which
 /// are always 0 for bindings written by the Settings UI, so customised hotkeys were
-/// silently inert. See QuickMail-Review-2026-05-21.md §1.1.
+/// silently inert. See docs/history/QuickMail-Review-2026-05-21.md §1.1.
 /// </summary>
 public class CommandRegistryTests
 {

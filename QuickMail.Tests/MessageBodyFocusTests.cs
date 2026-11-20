@@ -44,6 +44,166 @@ public class MessageBodyFocusTests
     }
 
     /// <summary>
+    /// The two windows that open messages focus them with the render's token (#959): the plain script,
+    /// run while the previous message's page is still on show, reports focus in the wrong document.
+    /// The Markdown preview shows one document and never replaces it, so it keeps the plain script.
+    /// </summary>
+    [Theory]
+    [InlineData("MainWindow.xaml.cs")]
+    [InlineData("MessageWindow.xaml.cs")]
+    public void EveryMessageWindow_UsesTheRenderTokenScript(string file)
+    {
+        var code = File.ReadAllText(Path.Combine(RepoRoot(), "QuickMail", "Views", file));
+        Assert.Contains("MessageBodyFocus.FocusScriptFor(", code);
+        Assert.Contains("MessageBodyFocus.FocusUntilReadyAsync(", code);
+        Assert.Contains("MessageBodyHtmlBuilder.WithRenderToken(", code);
+        Assert.Contains("MessageBodyNavigation.Navigate(", code);
+        Assert.DoesNotContain("MessageBodyFocus.FocusScript)", code);
+        // The old wait took the first NavigationCompleted to come along, whichever navigation it was.
+        Assert.DoesNotContain("NavigationCompleted +=", code);
+    }
+
+    /// <summary>The text of the method whose declaration contains <paramref name="signature"/>, up to its closing brace.</summary>
+    private static string Method(string code, string signature)
+    {
+        var start = code.IndexOf(signature, StringComparison.Ordinal);
+        Assert.True(start >= 0, $"No method {signature}.");
+        var end = code.IndexOf("\n    }", start, StringComparison.Ordinal);
+        Assert.True(end > start, $"No end to {signature}.");
+        return code[start..end];
+    }
+
+    private static string View(string file) =>
+        File.ReadAllText(Path.Combine(RepoRoot(), "QuickMail", "Views", file));
+
+    /// <summary>
+    /// #959 review: the open loop's own first step (focus to the host) raises the host's
+    /// GotKeyboardFocus, whose handler focuses the page without waiting for the load. It must stand
+    /// aside while the loop for the current render runs, before it reaches the focus script.
+    /// </summary>
+    [Theory]
+    [InlineData("MainWindow.xaml.cs", "void MessageBody_GotKeyboardFocus(", "FocusScriptFor(", "_messageBodyRenderVersion")]
+    [InlineData("MessageWindow.xaml.cs", "void MessageBody_GotKeyboardFocus(", "TryFocusDocumentAsync()", "_renderVersion")]
+    public void GotKeyboardFocus_StandsAsideWhileTheOpenLoopRuns(string file, string handler, string focuses, string version)
+    {
+        var body = Method(View(file), handler);
+        var guard = body.IndexOf($"_openFocus.IsRunning({version})) return;", StringComparison.Ordinal);
+        Assert.True(guard >= 0, "The handler does not check the open loop.");
+        Assert.True(guard < body.IndexOf(focuses, StringComparison.Ordinal), "The check comes after the focus script.");
+    }
+
+    /// <summary>
+    /// One loop per render (F6 during an open must not start a second that announces again), always
+    /// released in a finally, and the loop stops when the user moves focus away; after it, the host
+    /// step and the announcement only when <c>ShouldFinish</c> says so.
+    /// </summary>
+    [Theory]
+    [InlineData("MainWindow.xaml.cs")]
+    [InlineData("MessageWindow.xaml.cs")]
+    public void OpenLoop_IsGatedAndFinishesOnlyWhenItShould(string file)
+    {
+        var body = Method(View(file), "private async Task FocusMessageBodyAsync(");
+        Assert.Contains("_openFocus.TryBegin(", body);
+        Assert.Contains("finally", body);
+        Assert.Contains("_openFocus.End(", body);
+        Assert.Contains("MessageBodyHoldsFocus", body);
+        var finish = body.IndexOf("MessageOpenFocusPolicy.ShouldFinish(result, MessageBodyHoldsFocus)", StringComparison.Ordinal);
+        Assert.True(finish >= 0);
+        Assert.True(finish < body.IndexOf("AccessibilityHelper.Announce(", StringComparison.Ordinal));
+        Assert.True(finish < body.LastIndexOf("FocusMessageBodyHost();", StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// Closing a window, or the reading pane, mid-open ends the render: the loop stops (no log line,
+    /// no announcement on a closed window) and picture requests still waiting are released.
+    /// </summary>
+    [Theory]
+    [InlineData("MessageWindow.xaml.cs", "private void OnClosing(", "Interlocked.Increment(ref _renderVersion)")]
+    [InlineData("MainWindow.xaml.cs", "protected override void OnClosed(", "Interlocked.Increment(ref _messageBodyRenderVersion)")]
+    [InlineData("MainWindow.xaml.cs", "private void CloseReadingPane(", "Interlocked.Increment(ref _messageBodyRenderVersion)")]
+    public void Closing_EndsTheRender(string file, string method, string advance)
+    {
+        var body = Method(View(file), method);
+        Assert.Contains(advance, body);
+        Assert.Contains("_pictureHost?.End();", body);
+    }
+
+    private static readonly string[] TrueOrFalse = ["true", "false"];
+
+    [Fact]
+    public void FocusScriptFor_EmbedsTheTokenAndTheSharedScript()
+    {
+        var script = MessageBodyFocus.FocusScriptFor("42");
+
+        Assert.Contains("const want=\"42\";", script);
+        Assert.Contains("'" + MessageBodyHtmlBuilder.RenderTokenAttribute + "'", script);
+        Assert.Contains("return 'stale'", script);
+        Assert.Contains(MessageBodyFocus.FocusScript, script);
+    }
+
+    /// <summary>
+    /// A page whose load event has not fired is not ready (#959: that is the state that left the reader
+    /// on the title), until the loop stops waiting for the load; then only an unparsed page is.
+    /// </summary>
+    [Fact]
+    public void Scripts_WaitForTheLoad_UnlessTold()
+    {
+        foreach (var script in new[] { MessageBodyFocus.FocusScriptFor("1"), MessageBodyFocus.ReadinessScriptFor("1") })
+        {
+            Assert.Contains("document.readyState!=='complete')return 'loading'", script);
+            Assert.Contains("return 'stale'", script);
+        }
+        foreach (var script in new[]
+                 {
+                     MessageBodyFocus.FocusScriptFor("1", waitForLoad: false),
+                     MessageBodyFocus.ReadinessScriptFor("1", waitForLoad: false),
+                 })
+        {
+            Assert.DoesNotContain("'complete'", script);
+            Assert.Contains("document.readyState==='loading')return 'loading'", script);
+        }
+        Assert.DoesNotContain(MessageBodyFocus.FocusScript, MessageBodyFocus.ReadinessScriptFor("1"));
+        Assert.Contains("return 'ready'", MessageBodyFocus.ReadinessScriptFor("1"));
+    }
+
+    [Fact]
+    public void FocusScriptFor_EncodesTheToken() =>
+        Assert.Contains("const want=\"a\\u0027b\\u0022\";", MessageBodyFocus.FocusScriptFor("a'b\""));
+
+    /// <summary>
+    /// Against a real WebView2 (#959): the script for this render focuses its page; the script for any
+    /// other render answers "stale" and leaves the page untouched.
+    /// </summary>
+    [StaFact]
+    public void ARealWebView2_TokenScript_FocusesThisRender_AndIsStaleForAnother()
+    {
+        var html = MessageBodyHtmlBuilder.WithRenderToken(
+            MessageBodyHtmlBuilder.BuildPlainTextHtmlDocument("Lunch", "Hello Kelly,\nSecond line.", note: null), "5");
+        string? previous = null, previousActive = null, wrapped = null, current = null, active = null;
+        string? readyPrevious = null, readyCurrent = null;
+
+        WithWebView2(html, async core =>
+        {
+            readyPrevious = await core.ExecuteScriptAsync(MessageBodyFocus.ReadinessScriptFor("4"));
+            readyCurrent = await core.ExecuteScriptAsync(MessageBodyFocus.ReadinessScriptFor("5"));
+            previous = await core.ExecuteScriptAsync(MessageBodyFocus.FocusScriptFor("4"));
+            previousActive = await core.ExecuteScriptAsync("document.activeElement===document.body||document.activeElement===null");
+            wrapped = await core.ExecuteScriptAsync("document.body.querySelectorAll('span').length");
+            current = await core.ExecuteScriptAsync(MessageBodyFocus.FocusScriptFor("5"));
+            active = await core.ExecuteScriptAsync("document.activeElement.textContent");
+        });
+
+        Assert.Equal("\"stale\"", readyPrevious);
+        Assert.Equal("\"ready\"", readyCurrent);
+        Assert.Equal("\"stale\"", previous);
+        Assert.Equal("true", previousActive);
+        Assert.Equal("0", wrapped);
+        // true, or false where the test window is never the foreground (document.hasFocus); never stale.
+        Assert.Contains(current, TrueOrFalse);
+        Assert.Equal("\"Hello Kelly,\"", active);
+    }
+
+    /// <summary>
     /// No view gives the body a role or a name: either one brought back the one-paragraph copy (#786),
     /// and it looks like the obvious fix for reading not starting, which is how it came back once.
     /// </summary>

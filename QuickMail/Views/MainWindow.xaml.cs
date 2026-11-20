@@ -160,9 +160,8 @@ public partial class MainWindow : Window
     private string? _pendingSearchAnnounceText;
     private static readonly TimeSpan SearchAnnounceDebounce = TimeSpan.FromMilliseconds(300);
 
-    private static readonly TimeSpan WebViewNavigationTimeout = TimeSpan.FromSeconds(4);
-
     private readonly IContactService _contactService;
+    private readonly IRecipientHistory? _recipientHistory;
     private readonly IContactSyncService? _contactSyncService;
     private readonly IGraphCalendarSyncService? _graphCalendarSyncService;
     private readonly IConfigService _configService;
@@ -200,6 +199,7 @@ public partial class MainWindow : Window
     private ThemeManagerWindow? _themeManagerWindow;
 
     private TutorialViewModel? _tutorialVm;
+    private SoundTutorialWindow? _soundTutorialWindow;
 
     // Tracks open compose windows so they can be explicitly closed when the main window
     // closes. Independent (unowned) windows are not auto-closed by WPF on owner close.
@@ -244,9 +244,11 @@ public partial class MainWindow : Window
         IRowLayoutService? rowLayoutService = null,
         IWatchService? watchService = null,
         IOutboxService? outbox = null,
-        IConnectivityService? connectivity = null)
+        IConnectivityService? connectivity = null,
+        IRecipientHistory? recipientHistory = null)
     {
         _vm = vm;
+        _recipientHistory = recipientHistory;
         _watchService = watchService;
         _rowLayoutService = rowLayoutService;
         // Optional so existing test constructions keep compiling; a null catalog falls back to the
@@ -327,13 +329,21 @@ public partial class MainWindow : Window
         vm.ManageAccountsRequested += () => { if (_vm.Accounts.Count == 0) OpenFirstAccountSetup(); else OpenAccountManager(); };
         vm.OpenAccountSettingsRequested += OpenAccountManagerForAccount;
         vm.MessageListFocusRequested += ReturnFocusToMessageList;
+        // An opened .eml file or attached email (#939) gets its own message window.
+        vm.OpenedMessageRequested += detail => OpenMessageInNewWindow(detail, detail);
         vm.MessageListFocusNowRequested += FocusSelectedMessageRowNow;
+        vm.MessageListHasFocusQuery += () => IsActive && MessageList.IsKeyboardFocusWithin;
+        vm.ReadingPaneHasFocusQuery += () => IsActive && (IsMessageBodyFocused
+            || (DateField.Parent as UIElement)?.IsKeyboardFocusWithin == true || ReadingPaneAttachmentList.IsKeyboardFocusWithin);
         // Normally the main window is where a VM announcement belongs. _announceTarget redirects it
         // for the duration of a call made on behalf of another window — a UIA notification raised on
         // a background window's peer is not what the user is looking at.
         vm.AnnouncementRequested += (_, args) =>
             AccessibilityHelper.Announce(_announceTarget ?? this, args.Text,
                                          interrupt: true, category: args.Category);
+        vm.QueuedAnnouncementRequested += (_, args) =>
+            AccessibilityHelper.Announce(_announceTarget ?? this, args.Text,
+                                         interrupt: false, category: args.Category);
         vm.OpenInviteCardStatus += OnOpenInviteCardStatus;
         vm.SearchRequested += (_, _) => OpenSearch();
         vm.SaveViewRequested    += (_, _) => OpenViewManager(createMode: true);
@@ -392,6 +402,7 @@ public partial class MainWindow : Window
         vm.RulesManagerRequested += (_, _) => OpenRulesManager();
         vm.CreateRuleFromMessageRequested += (_, template) => OpenRulesManager(template);
         vm.TutorialRequested += (_, _) => ShowTutorial();
+        vm.SoundTutorialRequested += (_, _) => ShowSoundTutorial();
         vm.UpdateDialogRequested += (_, info) =>
         {
             var dialog = new UpdateDialog(info.Version, info.WhatsNewUrl, vm.RestartToUpdateAsync)
@@ -471,6 +482,24 @@ public partial class MainWindow : Window
                 _ = InitReadingPaneWebViewAsync();
         };
 
+        // Where the user is in a grouped tree, read while the tree still holds the old groups. By the
+        // time PropertyChanged runs the binding has already replaced them, so the old index was -1.
+        vm.PropertyChanging += (_, e) =>
+        {
+            var tree = e.PropertyName switch
+            {
+                nameof(MainViewModel.Conversations) => ConversationTree,
+                nameof(MainViewModel.SenderGroups)  => SenderGroupTree,
+                nameof(MainViewModel.ToGroups)      => ToGroupTree,
+                _ => null,
+            };
+            // No selection means the previous rebuild's restore has not run yet (mail arriving quickly):
+            // the place it is restoring is still the user's place, so keep it.
+            if (tree?.SelectedItem != null)
+                _placeBeforeRebuild = new GroupedTreePlace(tree, _vm.SelectedFolder, tree.SelectedItem,
+                    GroupedPlace.IndexOf(tree.Items.Cast<object>().ToList(), tree.SelectedItem));
+        };
+
         // Re-focus the active message panel whenever the message collections are replaced
         // (happens after Refresh, Load More, folder changes, and view-mode switches).
         //
@@ -485,11 +514,28 @@ public partial class MainWindow : Window
             // server reported, F5 — and keeps focus where the user is. A different folder means the
             // user went somewhere (Enter or a click on a folder, a saved-view hotkey), and focus
             // follows it into the list as it always has.
-            var stayInSidePane = e.PropertyName is nameof(MainViewModel.Messages) or nameof(MainViewModel.Conversations)
-                                     or nameof(MainViewModel.SenderGroups) or nameof(MainViewModel.ToGroups)
-                                 && IsSameFolderAsLastRebuild()
-                                 && IsFocusInSidePane()
-                                 && _keyboardNavigationsPending == 0;
+            var sameFolderRebuild = e.PropertyName is nameof(MainViewModel.Messages) or nameof(MainViewModel.Conversations)
+                                 or nameof(MainViewModel.SenderGroups) or nameof(MainViewModel.ToGroups)
+                             && IsSameFolderAsLastRebuild();
+            var stayInSidePane = sameFolderRebuild && IsFocusInSidePane() && _keyboardNavigationsPending == 0;
+
+            // A replacement that is keeping the user's row. Once the new rows are laid out, WPF focuses
+            // whichever row sits at the old focused index, and focusing a row selects it, so the row the
+            // view model kept loses to its neighbour. That happens after an Input-priority operation
+            // queued here would run (measured), so this runs at Background, after every focus move
+            // queued below, and has the last word.
+            if (e.PropertyName == nameof(MainViewModel.Messages) && vm.RowKeptByReplacement is { } kept)
+            {
+                var keysBefore = _messageListKeyPresses;
+                Dispatcher.InvokeAsync(() =>
+                {
+                    if (keysBefore != _messageListKeyPresses) return;   // the user has moved on themselves
+                    if (ReferenceEquals(MessageList.SelectedItem, kept) || !MessageList.Items.Contains(kept)) return;
+                    LogService.Debug("[FOCUS] Replacement moved the selection; putting it back on the kept row");
+                    MessageList.SelectedItem = kept;
+                    if (IsActive && MessageList.IsKeyboardFocusWithin) FocusSelectedMessageRowNow();
+                }, DispatcherPriority.Background);
+            }
 
             if (e.PropertyName == nameof(MainViewModel.Messages) && IsActive)
             {
@@ -497,6 +543,11 @@ public partial class MainWindow : Window
                 if (IsMenuOrToolbarFocused())
                 {
                     LogService.Debug("[FOCUS]   → skipped (menu/toolbar has focus)");
+                }
+                else if (vm.IsReplacingInBackground && vm.IsMessagesView && !MessageList.IsKeyboardFocusWithin)
+                {
+                    // Mail arrived in bulk, or a server search answered, while the user is elsewhere.
+                    LogService.Debug("[FOCUS]   → skipped (background replacement, focus not in the list)");
                 }
                 else if (_vm.IsMessageOpen || _vm.IsMessageOpenInWindow)
                 {
@@ -506,12 +557,13 @@ public partial class MainWindow : Window
                 }
                 else if (stayInSidePane)
                 {
-                    // A grouped view still lands its selection on the top row, as it would have,
-                    // so the list opens there when the user comes to it — but focus stays put.
-                    LogService.Debug("[FOCUS]   → background rebuild, focus in a side pane; selection only");
-                    if (vm.IsConversationsView)  LandOnConversationAfterRebuild(0, takeFocus: false);
-                    else if (vm.IsFromView)      LandOnSenderGroupAfterRebuild(0, takeFocus: false);
-                    else if (vm.IsToView)        LandOnToGroupAfterRebuild(0, takeFocus: false);
+                    LogService.Debug("[FOCUS]   → background rebuild, focus in a side pane; stays there");
+                }
+                else if (sameFolderRebuild && !vm.IsMessagesView)
+                {
+                    // The grouped tree is about to be rebuilt too, and its own branch below puts the
+                    // user back on the group they were on rather than the top one.
+                    LogService.Debug("[FOCUS]   → reload of a grouped view; its rebuild keeps the place");
                 }
                 else if (vm.IsConversationsView)
                 {
@@ -537,81 +589,79 @@ public partial class MainWindow : Window
                     Dispatcher.InvokeAsync(FocusActiveMessagePanel, DispatcherPriority.Input);
                 }
             }
-            else if (e.PropertyName == nameof(MainViewModel.Conversations) && IsActive && vm.IsConversationsView)
+            else if (e.PropertyName == nameof(MainViewModel.Conversations) && vm.IsConversationsView)
             {
                 if (IsMenuOrToolbarFocused())
                 {
                     LogService.Debug("[FOCUS] PropChanged:Conversations skipped (menu/toolbar has focus)");
+                    RestoreGroupedPlace(ConversationTree, takeFocus: false);
                 }
                 else if (_vm.IsMessageOpen)
                 {
                     // Reading pane is open — a background sync rebuilt the Conversations
                     // collection but focus must stay in the reading pane.
                     LogService.Debug("[FOCUS] PropChanged:Conversations skipped (reading pane open)");
+                    RestoreGroupedPlace(ConversationTree, takeFocus: false);
                 }
                 else
                 {
-                    // Capture selected index now (before DataBind replaces items) so we can
-                    // restore position after a background sync that rebuilds Conversations.
-                    var oldIdx = ConversationTree.Items.IndexOf(ConversationTree.SelectedItem);
-                    // A background rebuild with focus in another pane (#719) keeps the list's
-                    // position but leaves focus with the user.
-                    var takeFocus = !stayInSidePane;
-                    LogService.Debug($"[FOCUS] PropChanged:Conversations convCount={vm.Conversations.Count} oldIdx={oldIdx} takeFocus={takeFocus} {FocusInfo()}");
-                    FocusTreeSelectedOrFirst(ConversationTree, oldIdx, takeFocus);
+                    // With focus in another pane (#719) or another window, the tree keeps its place
+                    // but focus stays with the user.
+                    var takeFocus = IsActive && !stayInSidePane;
+                    LogService.Debug($"[FOCUS] PropChanged:Conversations convCount={vm.Conversations.Count} takeFocus={takeFocus} {FocusInfo()}");
+                    RestoreGroupedPlace(ConversationTree, takeFocus);
                 }
             }
-            else if (e.PropertyName == nameof(MainViewModel.SenderGroups) && IsActive && vm.IsFromView)
+            else if (e.PropertyName == nameof(MainViewModel.SenderGroups) && vm.IsFromView)
             {
                 if (IsMenuOrToolbarFocused())
                 {
                     LogService.Debug("[FOCUS] PropChanged:SenderGroups skipped (menu/toolbar has focus)");
+                    RestoreGroupedPlace(SenderGroupTree, takeFocus: false);
                 }
                 else if (_vm.IsMessageOpen)
                 {
                     // Reading pane is open — a background sync rebuilt the SenderGroups
                     // collection but focus must stay in the reading pane.
                     LogService.Debug("[FOCUS] PropChanged:SenderGroups skipped (reading pane open)");
+                    RestoreGroupedPlace(SenderGroupTree, takeFocus: false);
                 }
                 else
                 {
-                    // Capture selected index now (before DataBind replaces items) so we can
-                    // restore position after a background sync that rebuilds SenderGroups.
-                    var oldIdx = SenderGroupTree.Items.IndexOf(SenderGroupTree.SelectedItem);
-                    // A background rebuild with focus in another pane (#719) keeps the list's
-                    // position but leaves focus with the user.
-                    var takeFocus = !stayInSidePane;
-                    LogService.Debug($"[FOCUS] PropChanged:SenderGroups grpCount={vm.SenderGroups.Count} oldIdx={oldIdx} takeFocus={takeFocus} {FocusInfo()}");
-                    FocusTreeSelectedOrFirst(SenderGroupTree, oldIdx, takeFocus);
+                    // With focus in another pane (#719) or another window, the tree keeps its place
+                    // but focus stays with the user.
+                    var takeFocus = IsActive && !stayInSidePane;
+                    LogService.Debug($"[FOCUS] PropChanged:SenderGroups grpCount={vm.SenderGroups.Count} takeFocus={takeFocus} {FocusInfo()}");
+                    RestoreGroupedPlace(SenderGroupTree, takeFocus);
                 }
             }
-            else if (e.PropertyName == nameof(MainViewModel.ToGroups) && IsActive && vm.IsToView)
+            else if (e.PropertyName == nameof(MainViewModel.ToGroups) && vm.IsToView)
             {
                 if (IsMenuOrToolbarFocused())
                 {
                     LogService.Debug("[FOCUS] PropChanged:ToGroups skipped (menu/toolbar has focus)");
+                    RestoreGroupedPlace(ToGroupTree, takeFocus: false);
                 }
                 else if (_vm.IsMessageOpen)
                 {
                     // Reading pane is open — a background sync rebuilt the ToGroups
                     // collection but focus must stay in the reading pane.
                     LogService.Debug("[FOCUS] PropChanged:ToGroups skipped (reading pane open)");
+                    RestoreGroupedPlace(ToGroupTree, takeFocus: false);
                 }
                 else
                 {
-                    // Capture selected index now (before DataBind replaces items) so we can
-                    // restore position after a background sync that rebuilds ToGroups.
-                    var oldIdx = ToGroupTree.Items.IndexOf(ToGroupTree.SelectedItem);
-                    // A background rebuild with focus in another pane (#719) keeps the list's
-                    // position but leaves focus with the user.
-                    var takeFocus = !stayInSidePane;
-                    LogService.Debug($"[FOCUS] PropChanged:ToGroups grpCount={vm.ToGroups.Count} oldIdx={oldIdx} takeFocus={takeFocus} {FocusInfo()}");
-                    FocusTreeSelectedOrFirst(ToGroupTree, oldIdx, takeFocus);
+                    // With focus in another pane (#719) or another window, the tree keeps its place
+                    // but focus stays with the user.
+                    var takeFocus = IsActive && !stayInSidePane;
+                    LogService.Debug($"[FOCUS] PropChanged:ToGroups grpCount={vm.ToGroups.Count} takeFocus={takeFocus} {FocusInfo()}");
+                    RestoreGroupedPlace(ToGroupTree, takeFocus);
                 }
             }
             else if (e.PropertyName == nameof(MainViewModel.ViewMode))
             {
                 LogService.Debug($"[FOCUS] ViewMode → {vm.ViewMode} {FocusInfo()}");
+                _placeBeforeRebuild = null;   // a different view of the mail starts at its top
                 if (!IsMenuOrToolbarFocused() && ShouldRestoreMessagePanelFocusAfterViewModeChange())
                 {
                     LogService.Debug("[FOCUS]   → FocusActiveMessagePanel (view mode change)");
@@ -756,7 +806,8 @@ public partial class MainWindow : Window
             _notificationService?.ShowInfo(
                 "QuickMail is still running",
                 "QuickMail is in the notification area. Open it from the tray icon or a new-mail " +
-                "notification, or right-click the tray icon and choose Exit to quit.");
+                "notification, or right-click the tray icon and choose Exit to quit.",
+                silent: _vm.Sounds?.SilencesToasts == true);
             cfg.TrayHintShown = true;
             _configService.Save(cfg);
         }
@@ -865,6 +916,11 @@ public partial class MainWindow : Window
 
     protected override void OnClosed(EventArgs e)
     {
+        // A message still opening in the reading pane stops quietly (no focus attempt, log line or
+        // announcement after close), and the picture requests it was waiting on are answered now (#959).
+        // OnClosed, not OnClosing: closing to the tray cancels the close and the message stays open.
+        Interlocked.Increment(ref _messageBodyRenderVersion);
+        _pictureHost?.End();
         foreach (var w in _openComposeWindows.ToList())
             w.Close();
         // Standalone message windows (MessageOpenMode = Window) are unowned, so WPF keeps the
@@ -983,7 +1039,69 @@ public partial class MainWindow : Window
     // of the message list — a background sync, a removal the server reported — must not pull focus
     // out of one of these: the user did nothing to the list.
     private bool IsFocusInSidePane() =>
-        FolderList.IsKeyboardFocusWithin || AccountList.IsKeyboardFocusWithin || MainStatusBar.IsKeyboardFocusWithin;
+        FolderList.IsKeyboardFocusWithin || AccountList.IsKeyboardFocusWithin || MainStatusBar.IsKeyboardFocusWithin
+        || TabStrip.IsKeyboardFocusWithin;
+
+    private sealed record GroupedTreePlace(TreeView Tree, MailFolderModel? Folder, object Item, int Index);
+
+    // Where the user was in a grouped tree. Only good for that tree, in that folder.
+    private GroupedTreePlace? _placeBeforeRebuild;
+
+    // How many LandOn…AfterRebuild listeners are waiting for a grouped tree to be replaced.
+    private int _landingsPending;
+
+    /// <summary>
+    /// Puts a rebuilt grouped tree back where the user was: on the same message if they were inside
+    /// a group, otherwise on the same group, and failing that on whatever now sits at that position.
+    /// Deferred so the binding has finished replacing the items.
+    /// </summary>
+    private void RestoreGroupedPlace(TreeView tree, bool takeFocus)
+    {
+        // A folder change or a delete has said where the user lands; putting them back first would be a
+        // second focus move, on a row in a list they have left.
+        if (_landingsPending > 0) return;
+
+        var place = _placeBeforeRebuild;
+        if (place != null && (place.Tree != tree || !IsSameFolder(place.Folder, _vm.SelectedFolder)))
+            place = null;
+        var item = place?.Item;
+        var index = place?.Index ?? 0;
+        var messageOpen = _vm.IsMessageOpen;
+
+        Dispatcher.InvokeAsync(() =>
+        {
+            if (tree.Items.Count == 0)
+            {
+                if (takeFocus) tree.Focus();
+                return;
+            }
+
+            var groups = tree.Items.Cast<object>().ToList();
+            var (group, message) = GroupedPlace.Find(groups, item, index, messageOpen, m => GroupKeyFor(tree, m));
+            if (group == null) return;
+
+            if (message != null)
+            {
+                var where = TreeViewItemRealizer.FocusMessage(tree, tree.Items.IndexOf(group), group, message,
+                    GroupedPlace.MessagesOf(group)!.ToList().IndexOf(message), takeFocus);
+                if (where != GroupedMessageFocus.None) return;
+            }
+
+            if (!TreeViewItemRealizer.SelectGroup(tree, tree.Items.IndexOf(group), group, takeFocus) && takeFocus)
+                tree.Focus();
+        }, DispatcherPriority.Input);
+    }
+
+    private string? GroupKeyFor(TreeView tree, MailMessageSummary message)
+    {
+        if (tree == ConversationTree) return ConversationBuilder.NormalizeSubject(message.Subject);
+        return tree == ToGroupTree ? SenderGroupBuilder.ToKey(message) : SenderGroupBuilder.FromKey(message);
+    }
+
+    // Registered after a server call, a landing can outlive the rebuild it was waiting for, and the next
+    // rebuild, perhaps long after, would take focus from wherever the user has gone since.
+    private static bool IsStaleLanding(long registeredAtTicks) =>
+        Environment.TickCount64 - registeredAtTicks > 60_000;
 
     // The open folder when a message collection was last rebuilt, and when the folder tree last
     // followed it (#719). Compared by identity: a folder refresh re-resolves SelectedFolder to a new
@@ -1137,6 +1255,10 @@ public partial class MainWindow : Window
         _registry.Register(new CommandDefinition(
             id: "settings.toggleCustomAnnouncements", category: "Settings", title: "Toggle Custom Announcements",
             execute: ToggleCustomAnnouncements));
+
+        _registry.Register(new CommandDefinition(
+            id: "settings.toggleMuteSounds", category: "Settings", title: "Mute All Sounds",
+            execute: ToggleMuteSounds));
 
         _registry.Register(new CommandDefinition(
             id: "view.togglePlainText", category: "View", title: "Toggle Plain Text View",
@@ -1309,6 +1431,21 @@ public partial class MainWindow : Window
             execute: () => SetAllFoldersExpanded(false, null),
             isAvailable: () => _vm.HasExpandableFolders));
 
+        // Hidden folders (#963). No default keys; reachable from the folder tree's context menu, the
+        // Folder menu and the Command Palette. Always available, so the palette never hides the way
+        // back: each says why when it cannot act ("No folders are hidden.").
+        _registry.Register(new CommandDefinition(
+            id: "folder.hide", category: "Mail", title: "Hide Folder",
+            execute: HideSelectedFolder,
+            description: "Hide the selected folder, and the folders inside it, from the folder list"));
+
+        // "Unhide" is the word people reach for (it is what the issue's reporter typed into the
+        // palette and found nothing); the palette searches descriptions, so it lives here.
+        _registry.Register(new CommandDefinition(
+            id: "folder.showHidden", category: "Mail", title: "Show All Hidden Folders",
+            execute: () => Report(_vm.ShowAllHiddenFolders()),
+            description: "Unhide all hidden folders, in every account"));
+
         // ── Pane navigation (Ctrl+Alt+1/2/3 — always work regardless of tab mode) ──
         _registry.Register(new CommandDefinition(
             id: "view.focusAccounts", category: "View", title: "Focus Account List",
@@ -1459,6 +1596,51 @@ public partial class MainWindow : Window
             execute: async () => await CopyMessageToFolderAsync(),
             isAvailable: _vm.CanActOnSelection));
 
+        // Copy, cut and paste messages (#929). Scoped by focus, as Alt+Up/Down are to the account list:
+        // Ctrl+C, Ctrl+X and Ctrl+V must keep their ordinary meaning in every text field and in the
+        // message body, so each is available only in the message area (and, for paste, the folder
+        // tree), and never while a text box inside either has focus (a folder being renamed in place).
+        _registry.Register(new CommandDefinition(
+            id: "mail.copyMessages", category: "Mail", title: "Copy Messages",
+            description: "Copy the selected messages, to paste into another folder",
+            execute: async () => await _vm.CopyMessagesToClipboardAsync(MessageClipboardTarget()),
+            defaultKey: Key.C, defaultModifiers: ModifierKeys.Control,
+            isAvailable: () => IsMessageAreaFocused() && !IsTextEntryFocused() && _vm.CanActOnSelection()));
+
+        _registry.Register(new CommandDefinition(
+            id: "mail.cutMessages", category: "Mail", title: "Cut Messages",
+            description: "Cut the selected messages; they move when you paste them into another folder",
+            execute: async () => await _vm.CutMessagesToClipboardAsync(MessageClipboardTarget()),
+            defaultKey: Key.X, defaultModifiers: ModifierKeys.Control,
+            isAvailable: () => IsMessageAreaFocused() && !IsTextEntryFocused() && _vm.CanActOnSelection()));
+
+        _registry.Register(new CommandDefinition(
+            id: "mail.pasteMessages", category: "Mail", title: "Paste Messages",
+            description: "Paste copied or cut messages into the selected folder",
+            execute: async () => await PasteMessagesAsync(),
+            defaultKey: Key.V, defaultModifiers: ModifierKeys.Control,
+            isAvailable: () => (FolderList.IsKeyboardFocusWithin || IsMessageAreaFocused()) && !IsTextEntryFocused()));
+
+        // Copy attachments to the Windows clipboard as files (#929). Ctrl+C shares its default with
+        // mail.copyMessages; the scopes never overlap (the attachment list is not the message area).
+        _registry.Register(new CommandDefinition(
+            id: "mail.copyAttachment", category: "Mail", title: "Copy Attachment",
+            description: "Copy the selected attachment, to paste into Explorer or a message",
+            execute: async () =>
+            {
+                if (ReadingPaneAttachmentList.SelectedItem is AttachmentModel att)
+                    await _vm.CopyAttachmentCommand.ExecuteAsync(att);
+            },
+            defaultKey: Key.C, defaultModifiers: ModifierKeys.Control,
+            isAvailable: () => ReadingPaneAttachmentList.IsKeyboardFocusWithin
+                               && ReadingPaneAttachmentList.SelectedItem is AttachmentModel));
+
+        _registry.Register(new CommandDefinition(
+            id: "mail.copyAllAttachments", category: "Mail", title: "Copy All Attachments",
+            description: "Copy every attachment of the open message, to paste into Explorer or a message",
+            execute: async () => await _vm.CopyAllAttachmentsCommand.ExecuteAsync(null),
+            isAvailable: () => _vm.MessageDetail?.Attachments.Count > 0));
+
         // Save, Save As and Print (#728). Registered here rather than in the VM because what they act
         // on — a multi-selection, a group header's messages — is the window's to resolve, as for
         // Move/Copy above. Save writes the default format into the save folder without asking; Save
@@ -1475,6 +1657,14 @@ public partial class MainWindow : Window
             description: "Choose where to save the selected messages, and in which format",
             execute: async () => await SaveSelectedMessagesAsync(chooseLocation: true),
             defaultKey: Key.F12, defaultModifiers: ModifierKeys.None,
+            isAvailable: _vm.CanActOnSelection));
+
+        // Save All Attachments from the message list, without opening the message (#931). Acts on
+        // what Save As acts on. No default key: it is on the message context menus and in the palette.
+        _registry.Register(new CommandDefinition(
+            id: "mail.saveAttachments", category: "Mail", title: "Save All Attachments…",
+            description: "Save every attachment of the selected messages into a folder you choose",
+            execute: async () => await SaveSelectedAttachmentsAsync(),
             isAvailable: _vm.CanActOnSelection));
 
         _registry.Register(new CommandDefinition(
@@ -1729,7 +1919,11 @@ public partial class MainWindow : Window
         var uiProbe = (Application.Current as App)?.UiProbe;
 
         if (uiProbe is null)
+        {
             _ = _vm.CheckForUpdateInBackgroundAsync();
+            // #971: waits for startup to settle first, then at most once a day; never blocks anything.
+            _ = _vm.WatchForSoundSchemeUpdatesAsync();
+        }
 
         var firstAccount = _vm.Accounts.FirstOrDefault();
         if (firstAccount == null)
@@ -2458,7 +2652,7 @@ public partial class MainWindow : Window
             .ToDictionary(a => a.Id, a => MainViewModel.CreateAccountMailVirtualFolder(a));
         var picker = new FolderPickerWindow(
             _vm.Accounts,
-            _vm.CachedFolders,
+            _vm.VisibleCachedFolders,   // hidden folders stay out of navigation (#963)
             new[]
             {
                 MainViewModel.AllInboxesFolder, MainViewModel.AllMailFolder,
@@ -2765,26 +2959,10 @@ public partial class MainWindow : Window
     };
 
     private static System.Collections.Generic.IEnumerable<object> GetVisibleConversationItems(System.Collections.Generic.IEnumerable<ConversationGroup> groups)
-    {
-        foreach (var group in groups)
-        {
-            yield return group;
-            if (!group.IsExpanded) continue;
-            foreach (var msg in group.Messages)
-                yield return msg;
-        }
-    }
+        => ListEdgePosition.VisibleRows(groups);
 
     private static System.Collections.Generic.IEnumerable<object> GetVisibleSenderItems(System.Collections.Generic.IEnumerable<SenderGroup> groups)
-    {
-        foreach (var group in groups)
-        {
-            yield return group;
-            if (!group.IsExpanded) continue;
-            foreach (var msg in group.Messages)
-                yield return msg;
-        }
-    }
+        => ListEdgePosition.VisibleRows(groups);
 
     private static void FocusTreeItem(TreeView tree, object item)
     {
@@ -3093,7 +3271,7 @@ public partial class MainWindow : Window
     /// <summary>Opens the modeless appointment editor and restores focus to the list on close.</summary>
     private void OpenEventEditor(EventEditorViewModel editorVm)
     {
-        var editor = new EventEditorWindow(editorVm, _contactService) { Owner = this };
+        var editor = new EventEditorWindow(editorVm, _contactService, _configService, _recipientHistory) { Owner = this };
         editor.Closed += (_, _) =>
         {
             // Return focus to the calendar list (virtualised — re-focus the selected row).
@@ -3444,9 +3622,28 @@ public partial class MainWindow : Window
 
     // Enter on a message: load body; Delete: delete all selected messages;
     // Shift+Up/Down: extend consecutive selection without opening the reading pane.
+    private int _messageListKeyPresses;
+
+    // Issue #923: Up/Home at the top of the message list, or Down/End at the bottom, leaves the
+    // selection where it is, so nothing is reported. These hand the key and the focused row's place
+    // to ListEdgeCue, which decides; the VM plays the sound or announces the hint. Every key press
+    // in the list goes through, so one that moves ends a held key's single cue.
+    private readonly ListEdgeCue _listEdgeCue = new();
+
+    private void CueListEdge(KeyEventArgs e, Func<(int Index, int Count)> position)
+    {
+        var modifiers = Keyboard.Modifiers;
+        var (index, count) = e.Key is Key.Up or Key.Down or Key.Home or Key.End && modifiers == ModifierKeys.None
+            ? position()
+            : (-1, 0);
+        _vm.SignalListEdge(_listEdgeCue.Next(e.Key, modifiers, index, count, e.IsRepeat));
+    }
+
     private async void MessageList_PreviewKeyDown(object sender, KeyEventArgs e)
     {
+        _messageListKeyPresses++;
         LogService.Debug($"MessageList_PreviewKeyDown key={e.Key} mod={Keyboard.Modifiers} focused={Keyboard.FocusedElement?.GetType().Name}");
+        CueListEdge(e, () => ListEdgePosition.InList(MessageList, Keyboard.FocusedElement));
         if (e.Key == Key.Tab && Keyboard.Modifiers == ModifierKeys.Shift)
         {
             e.Handled = true;
@@ -4162,13 +4359,17 @@ public partial class MainWindow : Window
         var detail   = _vm.MessageDetail;
         var themeCss = BuildReadingPaneThemeCss();
         var plainText = _vm.ReadAsPlainText;
-        var html = await BuildMessageDocumentAsync(detail, themeCss, plainText);
+        var html = await BuildMessageDocumentAsync(detail, themeCss, plainText, renderVersion);
         if (renderVersion != _messageBodyRenderVersion) return;
 
         try { MessageBody.CoreWebView2.Stop(); }
         catch (Exception ex) { LogService.Log("RerenderReadingPane/Stop", ex); }
         MessageBody.CoreWebView2.NavigateToString(html);
     }
+
+    /// <summary>The token a reading-pane document of render <paramref name="renderVersion"/> carries (#959).</summary>
+    private static string RenderToken(int renderVersion) =>
+        renderVersion.ToString(System.Globalization.CultureInfo.InvariantCulture);
 
     private EmbeddedPictureHost? _pictureHost;
 
@@ -4184,9 +4385,11 @@ public partial class MainWindow : Window
     /// <summary>
     /// Builds the message document off the UI thread, with the pictures this message may show: its
     /// own (#729) unless that setting is off, and those from the web (#508) when the setting says
-    /// so or the user chose Load Pictures for it. Hands the host the web addresses to serve.
+    /// so or the user chose Load Pictures for it. Hands the host the web addresses to serve. The
+    /// document carries render <paramref name="renderVersion"/>'s token, for the focus script (#959).
     /// </summary>
-    private async Task<string> BuildMessageDocumentAsync(MailMessageDetail detail, string? themeCss, bool plainText)
+    private async Task<string> BuildMessageDocumentAsync(MailMessageDetail detail, string? themeCss, bool plainText,
+        int renderVersion)
     {
         var cfg = _configService.Load();
         var web = cfg.LoadWebPictures || _webPicturesAllowedFor == PictureKey(detail);
@@ -4197,7 +4400,7 @@ public partial class MainWindow : Window
             MessageBodyHtmlBuilder.BuildMessageDocument(detail, themeCss, plainText, _themeService, sources));
         _pictureHost?.ServeWebPictures(sources, document.WebPictures);
         _blockedWebPictures = document.BlockedWebPictures;
-        return document.Html;
+        return MessageBodyHtmlBuilder.WithRenderToken(document.Html, RenderToken(renderVersion));
     }
 
     /// <summary>
@@ -4232,37 +4435,25 @@ public partial class MainWindow : Window
         if (!_webViewReady) return;
 
         var renderVersion = Interlocked.Increment(ref _messageBodyRenderVersion);
+        var opened = System.Diagnostics.Stopwatch.StartNew();
         var themeCss = BuildReadingPaneThemeCss();
         var plainText = _vm.ReadAsPlainText;
         // A newly opened message starts with its pictures from the web blocked again.
         if (_webPicturesAllowedFor != PictureKey(detail)) _webPicturesAllowedFor = null;
         // The builder prepends the calendar invite event card when this message is an invitation.
-        var html = await BuildMessageDocumentAsync(detail, themeCss, plainText);
+        var html = await BuildMessageDocumentAsync(detail, themeCss, plainText, renderVersion);
         if (renderVersion != _messageBodyRenderVersion)
             return;
 
-        // Wait for navigation to finish before focusing so the screen reader
-        // gets the rendered document, but never let a complex sender HTML wait forever.
-        var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-        void OnNavigated(object? s, CoreWebView2NavigationCompletedEventArgs ev)
-        {
-            MessageBody.CoreWebView2.NavigationCompleted -= OnNavigated;
-            tcs.TrySetResult(ev.IsSuccess);
-        }
-
-        MessageBody.CoreWebView2.NavigationCompleted += OnNavigated;
-        // Cancel any prior in-flight navigation before starting this one so we don't
-        // queue two pending navigations on the WebView2 renderer.
-        try { MessageBody.CoreWebView2.Stop(); }
-        catch (Exception ex) { LogService.Log("ShowMessageBody/Stop", ex); }
-        MessageBody.CoreWebView2.NavigateToString(html);
-
-        var completed = await Task.WhenAny(tcs.Task, Task.Delay(WebViewNavigationTimeout)) == tcs.Task;
+        // Wait for this render's own navigation to finish before focusing, so the screen reader gets
+        // a document that has finished loading — but never past the grace period: the pictures no
+        // longer hold the load (they are lazy, and their wait is bounded), and focus then retries
+        // until the page on show carries this render's token (#959).
+        LogService.Debug($"[FOCUS] Reading pane: UID {detail.MessageId}, render {renderVersion}, document built in {opened.ElapsedMilliseconds} ms.");
+        using var navigation = MessageBodyNavigation.Navigate(MessageBody.CoreWebView2, html, "ShowMessageBody");
+        var completed = await navigation.WaitAsync(MessageOpenFocusPolicy.LoadGrace);
         if (!completed)
-        {
-            MessageBody.CoreWebView2.NavigationCompleted -= OnNavigated;
             LogService.Log($"ShowMessageBody: WebView navigation timed out for UID {detail.MessageId}");
-        }
 
         if (renderVersion != _messageBodyRenderVersion)
             return;
@@ -4290,46 +4481,59 @@ public partial class MainWindow : Window
         if (renderVersion != _messageBodyRenderVersion || !_webViewReady || !_vm.IsMessageOpen)
             return;
 
-        await Dispatcher.InvokeAsync(() =>
+        // F6 back into the body while this render is still opening: the loop already running brings
+        // focus in and announces; a second loop would announce twice (#959 review).
+        if (!_openFocus.TryBegin(renderVersion))
         {
-            if (!_vm.IsMessageOpen) return;
-            MessageBody.Focus();
-            Keyboard.Focus(MessageBody);
-        }, DispatcherPriority.Input);
+            FocusMessageBodyHost();
+            return;
+        }
+        try
+        {
+            await Dispatcher.InvokeAsync(() =>
+            {
+                if (!_vm.IsMessageOpen) return;
+                MessageBody.Focus();
+                Keyboard.Focus(MessageBody);
+            }, DispatcherPriority.Input);
 
-        var focusLabel = MessageBodyFocus.Label(subject);
-        for (var attempt = 0; attempt < 5; attempt++)
-        {
+            var focusLabel = MessageBodyFocus.Label(subject);
+            // Stops quietly if the user moves focus elsewhere while the page arrives.
+            var result = await MessageBodyFocus.FocusUntilReadyAsync(
+                Dispatcher,
+                () => renderVersion == _messageBodyRenderVersion && _vm.IsMessageOpen && MessageBodyHoldsFocus,
+                FocusMessageBodyHost,
+                ExecuteInMessageBodyAsync,
+                RenderToken(renderVersion),
+                "FocusMessageBody");
+
             if (renderVersion != _messageBodyRenderVersion || !_vm.IsMessageOpen)
                 return;
 
-            await Dispatcher.InvokeAsync(FocusMessageBodyHost, DispatcherPriority.Input);
-
-            try
+            await Dispatcher.InvokeAsync(() =>
             {
-                if (await TryFocusMessageBodyDocumentAsync())
-                    break;
-            }
-            catch (Exception ex)
-            {
-                if (attempt == 4)
-                    LogService.Log("FocusMessageBody", ex);
-            }
-
-            await Task.Delay(100);
+                if (!_vm.IsMessageOpen) return;
+                // Not into another message's page, and not pulling back a user who moved on.
+                if (!MessageOpenFocusPolicy.ShouldFinish(result, MessageBodyHoldsFocus)) return;
+                FocusMessageBodyHost();
+                AccessibilityHelper.Announce(this, focusLabel, interrupt: true, category: AnnouncementCategory.Result);
+                AccessibilityHelper.Announce(this, "Press Escape to return to message list.", interrupt: false, category: AnnouncementCategory.Hint);
+            }, DispatcherPriority.Input);
         }
-
-        if (renderVersion != _messageBodyRenderVersion || !_vm.IsMessageOpen)
-            return;
-
-        await Dispatcher.InvokeAsync(() =>
+        finally
         {
-            if (!_vm.IsMessageOpen) return;
-            FocusMessageBodyHost();
-            AccessibilityHelper.Announce(this, focusLabel, interrupt: true, category: AnnouncementCategory.Result);
-            AccessibilityHelper.Announce(this, "Press Escape to return to message list.", interrupt: false, category: AnnouncementCategory.Hint);
-        }, DispatcherPriority.Input);
+            _openFocus.End(renderVersion);
+        }
     }
+
+    /// <summary>The render whose open focus loop is running, if any (#959 review); see <see cref="MessageOpenFocusGate"/>.</summary>
+    private readonly MessageOpenFocusGate _openFocus = new();
+
+    /// <summary>
+    /// True while keyboard focus is on the message body or its host. A null focused element counts:
+    /// it is what WPF reports while the WebView2's own window holds focus.
+    /// </summary>
+    private bool MessageBodyHoldsFocus => IsMessageBodyFocused || Keyboard.FocusedElement is null;
 
     private void FocusMessageBodyHost()
     {
@@ -4349,14 +4553,11 @@ public partial class MainWindow : Window
         }
     }
 
-    private async Task<bool> TryFocusMessageBodyDocumentAsync()
-    {
-        // Focus goes to the message's first text, so a screen reader starts reading as soon as the
-        // message opens without the body becoming an object that cuts Ctrl+A short; see MessageBodyFocus.
-        var result = await MessageBody.CoreWebView2.ExecuteScriptAsync(MessageBodyFocus.FocusScript);
-
-        return string.Equals(result, "true", StringComparison.OrdinalIgnoreCase);
-    }
+    // Focus goes to the message's first text, so a screen reader starts reading as soon as the
+    // message opens without the body becoming an object that cuts Ctrl+A short; see MessageBodyFocus.
+    // The scripts carry the render's token, so they touch nothing while an earlier page is on show (#959).
+    private async Task<string?> ExecuteInMessageBodyAsync(string script) =>
+        await MessageBody.CoreWebView2.ExecuteScriptAsync(script);
 
     /// <summary>Handles quickmail: pseudo-URIs from the event card buttons.</summary>
     // Update the open invite card's aria-live status region in place (#329). Because the region lives
@@ -4458,12 +4659,17 @@ public partial class MainWindow : Window
     // push focus into the HTML document body so the user can read/navigate content.
     private async void MessageBody_GotKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
     {
+        // While a message is opening, its own focus loop raised this (moving focus to the host) and
+        // decides when the page is ready; focusing it here would land in a page still loading (#959).
+        if (_openFocus.IsRunning(_messageBodyRenderVersion)) return;
 
         if (_webViewReady)
         {
             try
             {
-                await TryFocusMessageBodyDocumentAsync();
+                // The user moved here themselves: a page still loading is focused, only an earlier one is not.
+                await ExecuteInMessageBodyAsync(
+                    MessageBodyFocus.FocusScriptFor(RenderToken(_messageBodyRenderVersion), waitForLoad: false));
             }
             catch (Exception ex)
             {
@@ -4578,6 +4784,8 @@ public partial class MainWindow : Window
     {
         ReleaseLinkMenuClaim();
         Interlocked.Increment(ref _messageBodyRenderVersion);
+        // Picture requests the closed message was still waiting on are answered now (#959).
+        _pictureHost?.End();
 
         if (_webViewReady)
         {
@@ -4658,6 +4866,11 @@ public partial class MainWindow : Window
         if (_vm.IsFromView)
         {
             FocusTreeSelectedOrFirst(SenderGroupTree);
+            return;
+        }
+        if (_vm.IsToView)
+        {
+            FocusTreeSelectedOrFirst(ToGroupTree);
             return;
         }
         if (MessageList.Items.Count == 0)
@@ -4892,6 +5105,16 @@ public partial class MainWindow : Window
         AccessibilityHelper.Announce(this, msg, interrupt: true, category: AnnouncementCategory.Result, force: true);
     }
 
+    private void ToggleMuteSounds()
+    {
+        var cfg = _configService.Load();
+        cfg.MuteSounds = !cfg.MuteSounds;
+        _configService.Save(cfg);
+        _vm.MuteSounds = cfg.MuteSounds;
+        var msg = cfg.MuteSounds ? "Sounds muted." : "Sounds on.";
+        AccessibilityHelper.Announce(this, msg, interrupt: true, category: AnnouncementCategory.Result);
+    }
+
     /// <summary>
     /// Flips the sticky "read as plain text" preference (issue #34): persists it, updates the VM
     /// (for the View-menu check state), re-renders the open message in place without moving focus,
@@ -4987,6 +5210,32 @@ public partial class MainWindow : Window
         window.SetFocusRestoreTarget(previousFocus);
         window.Show();
     }
+
+    // Modeless for the same reason as Connection Diagnostics, and one at a time.
+    private void ShowSoundTutorial()
+    {
+        if (_soundTutorialWindow is not null)
+        {
+            _soundTutorialWindow.Activate();
+            return;
+        }
+        if (_vm.Sounds is not { } sounds) return;
+
+        var previousFocus = Keyboard.FocusedElement;
+        var window = new SoundTutorialWindow(new SoundTutorialViewModel(_configService, sounds)) { Owner = this };
+        window.Closed += (_, _) =>
+        {
+            _soundTutorialWindow = null;
+            previousFocus?.Focus();
+        };
+        _soundTutorialWindow = window;
+        window.Show();
+    }
+
+    // Once the menu has closed and given focus back, so that's the place the window returns to on
+    // closing, rather than a menu item that has gone.
+    private void MenuSoundTutorial_Click(object sender, RoutedEventArgs e) =>
+        Dispatcher.InvokeAsync(ShowSoundTutorial, System.Windows.Threading.DispatcherPriority.Background);
 
     private void MenuConnectionDiagnostics_Click(object sender, RoutedEventArgs e)
     {
@@ -5212,6 +5461,7 @@ public partial class MainWindow : Window
     private async void ConversationTree_PreviewKeyDown(object sender, KeyEventArgs e)
     {
         LogService.Debug($"[FOCUS] ConvTree KeyDown key={e.Key} mod={Keyboard.Modifiers} {FocusInfo()} items={ConversationTree.Items.Count} selected={ConversationTree.SelectedItem?.GetType().Name ?? "null"}");
+        CueListEdge(e, () => ListEdgePosition.InTree(ConversationTree, GetVisibleConversationItems(_vm.Conversations).ToList(), Keyboard.FocusedElement));
         if (e.Key == Key.Tab && Keyboard.Modifiers == ModifierKeys.Shift)
         {
             e.Handled = true;
@@ -5345,10 +5595,13 @@ public partial class MainWindow : Window
     private void LandOnConversationAfterRebuild(int targetIdx, bool takeFocus = true)
     {
         LogService.Debug($"[FOCUS] LandOnConv: registered listener targetIdx={targetIdx} {FocusInfo()}");
+        var registeredAt = Environment.TickCount64;
         void OnPropertyChanged(object? sender, PropertyChangedEventArgs e)
         {
             if (e.PropertyName != nameof(_vm.Conversations)) return;
             _vm.PropertyChanged -= OnPropertyChanged;
+            _landingsPending--;
+            if (IsStaleLanding(registeredAt)) return;
             LogService.Debug($"[FOCUS] LandOnConv: listener fired count={_vm.Conversations.Count} targetIdx={targetIdx} {FocusInfo()}");
             Dispatcher.InvokeAsync(() =>
             {
@@ -5385,6 +5638,7 @@ public partial class MainWindow : Window
                 }
             }, DispatcherPriority.Input);
         }
+        _landingsPending++;
         _vm.PropertyChanged += OnPropertyChanged;
     }
 
@@ -5401,10 +5655,13 @@ public partial class MainWindow : Window
     private void LandOnSenderGroupAfterRebuild(int targetGroupIdx, bool takeFocus = true)
     {
         LogService.Debug($"[FOCUS] LandOnSender: registered listener targetIdx={targetGroupIdx} {FocusInfo()}");
+        var registeredAt = Environment.TickCount64;
         void OnPropertyChanged(object? sender, PropertyChangedEventArgs e)
         {
             if (e.PropertyName != nameof(_vm.SenderGroups)) return;
             _vm.PropertyChanged -= OnPropertyChanged;
+            _landingsPending--;
+            if (IsStaleLanding(registeredAt)) return;
             LogService.Debug($"[FOCUS] LandOnSender: listener fired count={_vm.SenderGroups.Count} targetIdx={targetGroupIdx} {FocusInfo()}");
             Dispatcher.InvokeAsync(() =>
             {
@@ -5441,6 +5698,7 @@ public partial class MainWindow : Window
                 }
             }, DispatcherPriority.Input);
         }
+        _landingsPending++;
         _vm.PropertyChanged += OnPropertyChanged;
     }
 
@@ -5449,10 +5707,13 @@ public partial class MainWindow : Window
     private void LandOnToGroupAfterRebuild(int targetGroupIdx, bool takeFocus = true)
     {
         LogService.Debug($"[FOCUS] LandOnToGroup: registered listener targetIdx={targetGroupIdx} {FocusInfo()}");
+        var registeredAt = Environment.TickCount64;
         void OnPropertyChanged(object? sender, PropertyChangedEventArgs e)
         {
             if (e.PropertyName != nameof(_vm.ToGroups)) return;
             _vm.PropertyChanged -= OnPropertyChanged;
+            _landingsPending--;
+            if (IsStaleLanding(registeredAt)) return;
             LogService.Debug($"[FOCUS] LandOnToGroup: listener fired count={_vm.ToGroups.Count} targetIdx={targetGroupIdx} {FocusInfo()}");
             Dispatcher.InvokeAsync(() =>
             {
@@ -5488,6 +5749,7 @@ public partial class MainWindow : Window
                 }
             }, DispatcherPriority.Input);
         }
+        _landingsPending++;
         _vm.PropertyChanged += OnPropertyChanged;
     }
 
@@ -5713,10 +5975,13 @@ public partial class MainWindow : Window
 
     private void LandOnSenderMessageAfterRebuild(string senderKey, int msgIdx, int fallbackGroupIdx)
     {
+        var registeredAt = Environment.TickCount64;
         void OnPropertyChanged(object? sender, PropertyChangedEventArgs e)
         {
             if (e.PropertyName != nameof(_vm.SenderGroups)) return;
             _vm.PropertyChanged -= OnPropertyChanged;
+            _landingsPending--;
+            if (IsStaleLanding(registeredAt)) return;
             Dispatcher.InvokeAsync(() =>
             {
                 var group = _vm.SenderGroups.FirstOrDefault(g =>
@@ -5741,15 +6006,19 @@ public partial class MainWindow : Window
                 }
             }, DispatcherPriority.Input);
         }
+        _landingsPending++;
         _vm.PropertyChanged += OnPropertyChanged;
     }
 
     private void LandOnToMessageAfterRebuild(string senderKey, int msgIdx, int fallbackGroupIdx)
     {
+        var registeredAt = Environment.TickCount64;
         void OnPropertyChanged(object? sender, PropertyChangedEventArgs e)
         {
             if (e.PropertyName != nameof(_vm.ToGroups)) return;
             _vm.PropertyChanged -= OnPropertyChanged;
+            _landingsPending--;
+            if (IsStaleLanding(registeredAt)) return;
             Dispatcher.InvokeAsync(() =>
             {
                 var group = _vm.ToGroups.FirstOrDefault(g =>
@@ -5774,15 +6043,19 @@ public partial class MainWindow : Window
                 }
             }, DispatcherPriority.Input);
         }
+        _landingsPending++;
         _vm.PropertyChanged += OnPropertyChanged;
     }
 
     private void LandOnConversationMessageAfterRebuild(string normalizedSubject, int msgIdx, int fallbackGroupIdx)
     {
+        var registeredAt = Environment.TickCount64;
         void OnPropertyChanged(object? sender, PropertyChangedEventArgs e)
         {
             if (e.PropertyName != nameof(_vm.Conversations)) return;
             _vm.PropertyChanged -= OnPropertyChanged;
+            _landingsPending--;
+            if (IsStaleLanding(registeredAt)) return;
             Dispatcher.InvokeAsync(() =>
             {
                 var group = _vm.Conversations.FirstOrDefault(g =>
@@ -5807,6 +6080,7 @@ public partial class MainWindow : Window
                 }
             }, DispatcherPriority.Input);
         }
+        _landingsPending++;
         _vm.PropertyChanged += OnPropertyChanged;
     }
 
@@ -5821,6 +6095,7 @@ public partial class MainWindow : Window
     private async void SenderGroupTree_PreviewKeyDown(object sender, KeyEventArgs e)
     {
         LogService.Debug($"[FOCUS] SenderTree KeyDown key={e.Key} mod={Keyboard.Modifiers} {FocusInfo()} items={SenderGroupTree.Items.Count} selected={SenderGroupTree.SelectedItem?.GetType().Name ?? "null"}");
+        CueListEdge(e, () => ListEdgePosition.InTree(SenderGroupTree, GetVisibleSenderItems(_vm.SenderGroups).ToList(), Keyboard.FocusedElement));
         if (e.Key == Key.Tab && Keyboard.Modifiers == ModifierKeys.Shift)
         {
             e.Handled = true;
@@ -5998,6 +6273,7 @@ public partial class MainWindow : Window
     private async void ToGroupTree_PreviewKeyDown(object sender, KeyEventArgs e)
     {
         LogService.Debug($"[FOCUS] ToTree KeyDown key={e.Key} mod={Keyboard.Modifiers} {FocusInfo()} items={ToGroupTree.Items.Count} selected={ToGroupTree.SelectedItem?.GetType().Name ?? "null"}");
+        CueListEdge(e, () => ListEdgePosition.InTree(ToGroupTree, GetVisibleSenderItems(_vm.ToGroups).ToList(), Keyboard.FocusedElement));
         if (e.Key == Key.Tab && Keyboard.Modifiers == ModifierKeys.Shift)
         {
             e.Handled = true;
@@ -6182,9 +6458,9 @@ public partial class MainWindow : Window
         // Compose windows are modeless, so the one-turn delay is imperceptible.
         Dispatcher.InvokeAsync(() =>
         {
-            var composeVm = new ComposeViewModel(_smtp, _accountService, _credentials, _imap, _templateService, outbox: _outbox, connectivity: _connectivity, isAccountConnected: _vm.IsAccountReady);
+            var composeVm = new ComposeViewModel(_smtp, _accountService, _credentials, _imap, _templateService, outbox: _outbox, connectivity: _connectivity, isAccountConnected: _vm.IsAccountReady, sounds: _vm.Sounds);
             composeVm.Seed(composeModel);
-            var window = new ComposeWindow(composeVm, _contactService, _templateService, _configService, _customDictionary, _themeService);
+            var window = new ComposeWindow(composeVm, _contactService, _templateService, _configService, _customDictionary, _themeService, _recipientHistory);
             composeVm.CloseRequested += window.Close;
             _openComposeWindows.Add(window);
             window.Closed += (_, _) => _openComposeWindows.Remove(window);
@@ -6466,30 +6742,51 @@ public partial class MainWindow : Window
             _ = OnActiveTabChangedAsync();
     }
 
-    private void OpenMessageInNewWindow(MailMessageSummary summary)
+    /// <param name="opened">
+    /// A message in no mailbox (an opened .eml file or attached email, #939), shown as it is: it is not in
+    /// the list, so there is nothing to step through, the reading pane is left alone, and Reply, Reply All
+    /// and Forward go to it directly instead of through the list's selection.
+    /// </param>
+    private void OpenMessageInNewWindow(MailMessageSummary summary, MailMessageDetail? opened = null)
     {
         var winVm = new MessageWindowViewModel
         {
-            OriginalSummary = summary,
+            OriginalSummary = opened == null ? summary : null,
             SelectedMessage = summary,
+            IsInMailbox     = opened == null,
         };
 
-        // Populate the surrounding message list so Prev/Next navigation works (issue 41).
-        foreach (var msg in _vm.Messages)
-            winVm.MessageList.Add(msg);
+        // Where an opened message came from (often another message window, for an attached email),
+        // so closing it goes back there rather than to the message list.
+        var cameFrom = opened == null ? null : Application.Current.Windows.OfType<Window>().FirstOrDefault(w => w.IsActive);
+        // Within this window, the element itself (the reading pane's attachment list), so closing an
+        // attached email opened from the reading pane returns to that attachment, not the message list.
+        var cameFromElement = opened != null && ReferenceEquals(cameFrom, this) ? Keyboard.FocusedElement as UIElement : null;
 
-        // Pre-populate detail if already loaded in the reading pane (issue 48).
-        if (_vm.SelectedMessage?.MessageId == summary.MessageId && _vm.MessageDetail != null)
-            winVm.MessageDetail = _vm.MessageDetail;
+        if (opened != null)
+        {
+            winVm.MessageList.Add(opened);
+            winVm.MessageDetail = opened;
+        }
+        else
+        {
+            // Populate the surrounding message list so Prev/Next navigation works (issue 41).
+            foreach (var msg in _vm.Messages)
+                winVm.MessageList.Add(msg);
 
-        // The reading pane must not show while the message is in a separate window.
-        _vm.IsMessageOpen = false;
+            // Pre-populate detail if already loaded in the reading pane (issue 48).
+            if (_vm.SelectedMessage?.MessageId == summary.MessageId && _vm.MessageDetail != null)
+                winVm.MessageDetail = _vm.MessageDetail;
+
+            // The reading pane must not show while the message is in a separate window.
+            _vm.IsMessageOpen = false;
+        }
 
         // Track that a message window is open so sync guards and commands work (issue 43).
         _vm.IsMessageOpenInWindow = true;
 
         // Capture the originating message list item for focus restoration on close (issue 46).
-        var originatingIndex = _vm.Messages.IndexOf(summary);
+        var originatingIndex = opened == null ? _vm.Messages.IndexOf(summary) : -1;
 
         // Do NOT set Owner = this. Owned windows share the main window's HWND context,
         // which causes screen readers to keep browse mode active for the message window's
@@ -6531,19 +6828,25 @@ public partial class MainWindow : Window
         // Each delegate syncs MainViewModel selection to the window's current message
         // before invoking the command, so navigation (Prev/Next) in the window doesn't
         // cause actions to operate on the wrong message.
-        winVm.ReplyAction = () =>
+        if (opened != null)
+        {
+            winVm.ReplyAction    = () => _vm.ReplyToMessage(winVm.MessageDetail ?? opened, all: false);
+            winVm.ReplyAllAction = () => _vm.ReplyToMessage(winVm.MessageDetail ?? opened, all: true);
+            winVm.ForwardAction  = () => _vm.ForwardMessageAsync(winVm.MessageDetail ?? opened);
+        }
+        else winVm.ReplyAction = () =>
         {
             _vm.SelectedMessage = winVm.SelectedMessage;
             if (winVm.MessageDetail != null) _vm.MessageDetail = winVm.MessageDetail;
             _vm.ReplyCommand.Execute(null);
         };
-        winVm.ReplyAllAction = () =>
+        if (opened == null) winVm.ReplyAllAction = () =>
         {
             _vm.SelectedMessage = winVm.SelectedMessage;
             if (winVm.MessageDetail != null) _vm.MessageDetail = winVm.MessageDetail;
             _vm.ReplyAllCommand.Execute(null);
         };
-        winVm.ForwardAction = async () =>
+        if (opened == null) winVm.ForwardAction = async () =>
         {
             _vm.SelectedMessage = winVm.SelectedMessage;
             if (winVm.MessageDetail != null) _vm.MessageDetail = winVm.MessageDetail;
@@ -6598,6 +6901,18 @@ public partial class MainWindow : Window
             if (addresses.Count == 0) return;
             new GrabAddressesDialog(addresses, _contactService) { Owner = win }.Show();
         };
+        if (opened != null)
+        {
+            // Straight to the opened message (#939): writing it into the main view model's MessageDetail,
+            // as the actions below do for mail in an account, would show it in the reading pane.
+            winVm.OpenAttachmentAction = attachment => attachment == null ? Task.CompletedTask
+                : _vm.OpenAttachmentOfAsync(winVm.MessageDetail ?? opened, attachment);
+            winVm.SaveAttachmentAction = attachment => attachment == null ? Task.CompletedTask
+                : _vm.SaveAttachmentOfAsync(winVm.MessageDetail ?? opened, attachment);
+            winVm.SaveAllAttachmentsAction = () => _vm.SaveAllAttachmentsOfAsync(winVm.MessageDetail ?? opened);
+        }
+        else
+        {
         winVm.OpenAttachmentAction = async (attachment) =>
         {
             if (winVm.MessageDetail != null) _vm.MessageDetail = winVm.MessageDetail;
@@ -6613,6 +6928,16 @@ public partial class MainWindow : Window
             if (winVm.MessageDetail != null) _vm.MessageDetail = winVm.MessageDetail;
             await _vm.SaveAllAttachmentsCommand.ExecuteAsync(null);
         };
+        }
+        // Copy attachments (#929): this window's message, passed rather than written into the main
+        // VM's MessageDetail, and the outcome spoken in this window.
+        void CopyReport(string text) =>
+            AccessibilityHelper.Announce(win, text, interrupt: true, category: AnnouncementCategory.Result);
+        winVm.CopyAttachmentAction = attachment => attachment == null
+            ? Task.CompletedTask
+            : _vm.CopyAttachmentsToClipboardAsync(winVm.MessageDetail, [attachment], CopyReport);
+        winVm.CopyAllAttachmentsAction = () =>
+            _vm.CopyAttachmentsToClipboardAsync(winVm.MessageDetail, winVm.MessageDetail?.Attachments.ToList() ?? [], CopyReport);
 
         // Save / Save As / Print (#728): this window's message, this window's dialogs, and the outcome
         // spoken in this window - a notification raised on the main window is not heard while the
@@ -6642,6 +6967,22 @@ public partial class MainWindow : Window
             _openMessageWindows.Remove(win);
             _vm.IsMessageOpenInWindow = _openMessageWindows.Count > 0;
 
+            if (opened != null)
+            {
+                _vm.OpenedMessages?.Close(opened.MessageId);
+                // Back to the window it was opened from, if that is still open; an opened file from
+                // Explorer came from nowhere in QuickMail and lands on the message list as usual.
+                if (cameFrom is { IsLoaded: true } && !ReferenceEquals(cameFrom, this))
+                {
+                    Dispatcher.InvokeAsync(() => cameFrom.Activate(), System.Windows.Threading.DispatcherPriority.Input);
+                    return;
+                }
+                if (cameFromElement is { IsVisible: true, Focusable: true })
+                {
+                    Dispatcher.InvokeAsync(() => { Activate(); cameFromElement.Focus(); }, System.Windows.Threading.DispatcherPriority.Input);
+                    return;
+                }
+            }
             // Restore focus to the originating message list item (issue 46).
             Dispatcher.InvokeAsync(() =>
             {
@@ -6931,9 +7272,10 @@ public partial class MainWindow : Window
         picker.Owner = this;
         var pickerOpened = picker.ShowDialog();
         _vm.CommitPendingFolderTreeRebuild(); // apply a folder created inside the picker, even on cancel (no-op otherwise)
-        if (pickerOpened != true || picker.SelectedFolder == null) return;
+        if (pickerOpened != true || (picker.SelectedFolder == null && !picker.SelectedAccountRoot)) return;
 
-        await _vm.MoveFolderToAsync(node, picker.SelectedFolder);
+        // A null folder with SelectedAccountRoot is the top level of the account (#954).
+        await _vm.MoveFolderToAsync(node, picker.SelectedAccountRoot ? null : picker.SelectedFolder);
     }
 
     private async void FolderContextMenu_CopyFolder_Click(object sender, RoutedEventArgs e)
@@ -6952,9 +7294,10 @@ public partial class MainWindow : Window
         picker.Owner = this;
         var pickerOpened = picker.ShowDialog();
         _vm.CommitPendingFolderTreeRebuild(); // apply a folder created inside the picker, even on cancel (no-op otherwise)
-        if (pickerOpened != true || picker.SelectedFolder == null) return;
+        if (pickerOpened != true || (picker.SelectedFolder == null && !picker.SelectedAccountRoot)) return;
 
-        await _vm.CopyFolderToAsync(node, picker.SelectedFolder);
+        // A null folder with SelectedAccountRoot is the top level of the account (#954).
+        await _vm.CopyFolderToAsync(node, picker.SelectedAccountRoot ? null : picker.SelectedFolder);
     }
 
     private async void FolderContextMenu_DeleteFolder_Click(object sender, RoutedEventArgs e)
@@ -7006,6 +7349,83 @@ public partial class MainWindow : Window
     // (issue #250) — these are what the command palette and any user-assigned hotkey invoke.
     private void SetStartupFolderFromSelection()
         => Report(_vm.SetStartupFolder(FolderList.SelectedItem as FolderTreeNode));
+
+    // ── Hidden folders (#963) ────────────────────────────────────────────────
+
+    private void FolderContextMenu_HideFolder_Click(object sender, RoutedEventArgs e)
+        => HideFolderWithFocus(GetContextMenuFolderNode(sender), fromFolderTree: true);
+
+    private void FolderContextMenu_ShowHiddenFolders_Click(object sender, RoutedEventArgs e)
+        => Report(_vm.ShowAllHiddenFolders());
+
+    private void MenuHideFolder_Click(object sender, RoutedEventArgs e) => HideSelectedFolder();
+
+    private void MenuShowHiddenFolders_Click(object sender, RoutedEventArgs e)
+        => Report(_vm.ShowAllHiddenFolders());
+
+    // The Folder menu and Command Palette entry: the tree's selection, or the open folder. Whether
+    // focus is put back in the tree depends on whether the user was standing in it — the window's
+    // logical focus survives the menu bar and the palette taking keyboard focus for a moment.
+    private void HideSelectedFolder()
+    {
+        // The message body is checked first: while the WebView2 has focus WPF reports nothing focused,
+        // and the window's logical focus can still name the tree item the user left (#672).
+        var inTree = !IsMessageBodyFocused &&
+                     (FolderList.IsKeyboardFocusWithin ||
+                      (FocusManager.GetFocusedElement(this) is DependencyObject logical && IsDescendantOf(FolderList, logical)));
+        HideFolderWithFocus(CurrentFolderNode(), inTree);
+    }
+
+    // Hides the folder and, when the user is in the tree, lands focus on the folder above it — the
+    // item that had focus is removed with the folder, the same situation as Delete Folder.
+    private void HideFolderWithFocus(FolderTreeNode? node, bool fromFolderTree)
+    {
+        if (_vm.HideFolderRefusal(node) is { } refusal)
+        {
+            Report(refusal);
+            return;
+        }
+
+        var visibleBefore = FlattenVisibleFolderNodes(_vm.FolderTree).ToList();
+        var landing = HideLandingNode(visibleBefore, node!);
+        // Where FolderList_GotKeyboardFocus lands if the removed item still held focus (#719). Set
+        // before the hide, because the item goes during the rebuild.
+        if (_folderTreeSpot is { } spot && ReferenceEquals(spot.Node, node))
+            _folderTreeSpot = spot with { Above = landing };
+
+        Report(_vm.HideFolder(node));
+        AccessibilityHelper.Announce(this, MainViewModel.HiddenFoldersHint, category: AnnouncementCategory.Hint);
+
+        // A saved view's copy of the folder stays where it is, and so does focus.
+        if (!fromFolderTree || IsInFolderTree(node!)) return;
+
+        // The prediction can only miss toward something that is gone; walk on up if it did.
+        if (landing != null && !IsInFolderTree(landing))
+            landing = visibleBefore.Take(Math.Max(0, visibleBefore.FindIndex(n => ReferenceEquals(n, node))))
+                                   .LastOrDefault(IsInFolderTree);
+        if (landing == null) return;
+        // Queued behind the menu or palette closing, which restores focus to where it was taken
+        // from: the item that no longer exists.
+        Dispatcher.InvokeAsync(() => FocusTreeItem(FolderList, landing), DispatcherPriority.Input);
+    }
+
+    // The node above `node` that will still be in the tree once it is hidden. Path segments that hold
+    // `node` are skipped: the builder drops a segment that hiding leaves empty, and landing on one
+    // that is about to vanish loses focus entirely.
+    internal static FolderTreeNode? HideLandingNode(List<FolderTreeNode> visible, FolderTreeNode node)
+    {
+        var index = visible.FindIndex(n => ReferenceEquals(n, node));
+        for (int i = index - 1; i >= 0; i--)
+        {
+            var candidate = visible[i];
+            if (candidate.Folder == null && !candidate.IsHeader && ContainsNode(candidate, node)) continue;
+            return candidate;
+        }
+        return null;
+
+        static bool ContainsNode(FolderTreeNode parent, FolderTreeNode target) =>
+            parent.Children.Any(c => ReferenceEquals(c, target) || ContainsNode(c, target));
+    }
 
     // ── Calendar context menu handlers (issue #497) ──────────────────────────
 
@@ -7451,7 +7871,7 @@ public partial class MainWindow : Window
 
     private void OpenAddressBook()
     {
-        var vm = new AddressBookViewModel(_contactService, _contactSyncService, _accountService, _configService);
+        var vm = new AddressBookViewModel(_contactService, _contactSyncService, _accountService, _configService, _recipientHistory);
 
         // When the address book is opened standalone (not from a compose window) the
         // insert actions open a new compose window on demand.  All calls from a single
@@ -7461,13 +7881,13 @@ public partial class MainWindow : Window
         ComposeWindow GetOrOpenCompose()
         {
             if (pending?.IsLoaded == true) return pending;
-            var cvm = new ComposeViewModel(_smtp, _accountService, _credentials, _imap, _templateService, outbox: _outbox, connectivity: _connectivity, isAccountConnected: _vm.IsAccountReady);
+            var cvm = new ComposeViewModel(_smtp, _accountService, _credentials, _imap, _templateService, outbox: _outbox, connectivity: _connectivity, isAccountConnected: _vm.IsAccountReady, sounds: _vm.Sounds);
             // Seed with an empty new-message model so the sender-account list is populated and the
             // default account + signature are applied — same as the normal "New message" path. Without
             // this the From picker is empty and the user can't choose who to send from (a pre-existing
             // bug the address book exposes whenever To/Cc opens a compose window).
             cvm.Seed(new ComposeModel());
-            pending = new ComposeWindow(cvm, _contactService, _templateService, _configService, _customDictionary, _themeService);
+            pending = new ComposeWindow(cvm, _contactService, _templateService, _configService, _customDictionary, _themeService, _recipientHistory);
             cvm.CloseRequested += pending.Close;
             var tracked = pending;
             _openComposeWindows.Add(tracked);
@@ -7689,6 +8109,8 @@ public partial class MainWindow : Window
 
     private void MenuPlainText_Click(object sender, RoutedEventArgs e) => TogglePlainTextView();
 
+    private void MenuMuteSounds_Click(object sender, RoutedEventArgs e) => ToggleMuteSounds();
+
     private void MenuLoadPictures_Click(object sender, RoutedEventArgs e) => LoadWebPictures();
 
     private async void MenuNewFolder_Click(object sender, RoutedEventArgs e)
@@ -7703,9 +8125,42 @@ public partial class MainWindow : Window
             .ToList();
         var vm = new SettingsViewModel(_configService, _registry, _themeService, fontNames,
             (Application.Current as App)?.ScreenshotCapture,
-            (Application.Current as App)?.LaunchAtSignIn);
+            (Application.Current as App)?.LaunchAtSignIn,
+            _vm.Sounds);
+        // Before the dialog is built, so Browse schemes is there from the start (#937).
+        vm.SoundGallery = (Application.Current as App)?.SoundGallery;
+        vm.RecipientHistory = _recipientHistory;
         var dialog = new SettingsDialog(vm) { Owner = this };
 
+        // A sound file for an event (#912). The Windows file dialog, over the Settings dialog, which
+        // hosts no WebView2.
+        vm.PickSoundFileRequested = () =>
+        {
+            var fileDialog = new Microsoft.Win32.OpenFileDialog
+            {
+                Title = "Choose Sound File",
+                Filter = "Sound files (*.wav;*.mp3)|*.wav;*.mp3",
+            };
+            return fileDialog.ShowDialog(dialog) == true ? fileDialog.FileName : null;
+        };
+
+        // Sharing a sound scheme (#932): Windows file dialogs over Settings, as for a sound file.
+        vm.PickSchemeExportPathRequested = suggested =>
+        {
+            var saveDialog = new Microsoft.Win32.SaveFileDialog
+            {
+                Title = "Export Sound Scheme",
+                Filter = SoundSchemeFile.FileFilter,
+                DefaultExt = SoundSchemeFile.FileExtension,
+                FileName = suggested,
+            };
+            return saveDialog.ShowDialog(dialog) == true ? saveDialog.FileName : null;
+        };
+        vm.PickSchemeImportPathRequested = () =>
+        {
+            var openDialog = new Microsoft.Win32.OpenFileDialog { Title = "Import Sound Scheme", Filter = SoundSchemeFile.FileFilter };
+            return openDialog.ShowDialog(dialog) == true ? openDialog.FileName : null;
+        };
         // Picking a startup folder needs a window, which is the View's job — the VM asks and gets a
         // plain record back (#516). Wired here rather than in SettingsDialog because this is where
         // the accounts and the folder cache live. The picker is a ShowDialog over the Settings
@@ -7828,6 +8283,19 @@ public partial class MainWindow : Window
     private async void MenuCopyToFolder_Click(object sender, RoutedEventArgs e)
         => await CopyMessageToFolderAsync();
 
+    private async void MenuCopyMessages_Click(object sender, RoutedEventArgs e)
+        => await _vm.CopyMessagesToClipboardAsync(MessageClipboardTarget());
+
+    private async void MenuCutMessages_Click(object sender, RoutedEventArgs e)
+        => await _vm.CutMessagesToClipboardAsync(MessageClipboardTarget());
+
+    private async void MenuPasteMessages_Click(object sender, RoutedEventArgs e)
+        => await PasteMessagesAsync();
+
+    /// <summary>Pastes into the folder the context menu was opened on, and leaves focus in the tree.</summary>
+    private async void FolderContextMenu_PasteMessages_Click(object sender, RoutedEventArgs e)
+        => await _vm.PasteMessagesAsync(GetContextMenuFolderNode(sender)?.Folder, moveFocus: false);
+
     private async Task MoveMessageToFolderAsync()
     {
         // A selected group header wins over the selected message — see SelectedGroupTarget (#566).
@@ -7897,6 +8365,37 @@ public partial class MainWindow : Window
         await _vm.CopySelectedMessagesToFolderAsync(messages, picker.SelectedFolder);
     }
 
+    // ── Copy, cut and paste messages (#929) ──────────────────────────────────
+
+    /// <summary>
+    /// What Ctrl+C and Ctrl+X act on: a selected group header's messages, else the selected
+    /// messages. The same rule Move to Folder follows, for the reason <see cref="SelectedGroupTarget"/>
+    /// gives.
+    /// </summary>
+    private IReadOnlyList<MailMessageSummary> MessageClipboardTarget() =>
+        SelectedGroupTarget()?.Messages ?? GetSelectedMessages();
+
+    /// <summary>
+    /// True when a text box has focus, so Ctrl+C, Ctrl+X and Ctrl+V edit its text. The pane-level
+    /// scopes alone would not do: a folder being renamed in place has its text box inside the
+    /// folder tree.
+    /// </summary>
+    private static bool IsTextEntryFocused() => Keyboard.FocusedElement is TextBoxBase;
+
+    /// <summary>
+    /// Pastes into the folder selected in the folder tree when it has focus, or else into the folder
+    /// the message list is showing. From the tree focus stays put; the paste is about that folder.
+    /// </summary>
+    private async Task PasteMessagesAsync()
+    {
+        if (FolderList.IsKeyboardFocusWithin)
+        {
+            await _vm.PasteMessagesAsync((FolderList.SelectedItem as FolderTreeNode)?.Folder, moveFocus: false);
+            return;
+        }
+        await _vm.PasteMessagesAsync(_vm.SelectedFolder);
+    }
+
     // ── Save / Save As / Print (#728) ────────────────────────────────────────
 
     private MessageSaveUi? _messageSaveUi;
@@ -7953,6 +8452,16 @@ public partial class MainWindow : Window
     private async void MenuSave_Click(object sender, RoutedEventArgs e) => await SaveSelectedMessagesAsync(chooseLocation: false);
     private async void MenuSaveAs_Click(object sender, RoutedEventArgs e) => await SaveSelectedMessagesAsync(chooseLocation: true);
     private async void MenuPrint_Click(object sender, RoutedEventArgs e) => await PrintSelectedMessageAsync();
+    private async void MenuSaveAttachments_Click(object sender, RoutedEventArgs e) => await SaveSelectedAttachmentsAsync();
+
+    // Deferred a dispatcher turn before the folder dialog opens, for the reason SaveSelectedMessagesAsync is.
+    private Task SaveSelectedAttachmentsAsync() =>
+        Dispatcher.InvokeAsync(async () =>
+        {
+            var messages = SaveTargets();
+            if (messages.Count == 0) return;
+            await _vm.SaveAttachmentsOfMessagesAsync(messages);
+        }, DispatcherPriority.Input).Task.Unwrap();
 
     private void FileMenu_SubmenuOpened(object sender, RoutedEventArgs e) => _vm.RefreshMessageTarget();
 
@@ -8133,8 +8642,8 @@ public partial class MainWindow : Window
         var accounts = _vm.Accounts.ToList();
 
         // On-demand "Run on Existing Mail" (issue #346): the VM has no local store, so the owner runs
-        // client rules over cached mail off the UI thread and returns how many were moved/deleted.
-        async Task<int> RunClientRulesOnExisting(Guid? accountScope)
+        // client rules over cached mail off the UI thread and returns what each rule moved or deleted (#949).
+        async Task<ExistingMailRunReport> RunClientRulesOnExisting(Guid? accountScope)
         {
             // Client rules act on the Inbox only (issue #346 follow-up). Resolve each account's Inbox
             // here, where folder kinds are known, and hand the map to the rule service so it never
@@ -8172,10 +8681,10 @@ public partial class MainWindow : Window
                     string.Join(", ", skipped.Select(a => a.AccountLabel)));
 
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(60));
-            var removed = await Task.Run(() => _ruleService.ApplyRulesToExistingAsync(_localStore, inboxByAccount, cts.Token));
-            if (removed.Count > 0)
+            var report = await Task.Run(() => _ruleService.ApplyRulesToExistingAsync(_localStore, inboxByAccount, cts.Token));
+            if (report.Removed.Count > 0)
                 _vm.RefreshCommand.Execute(null);
-            return removed.Count;
+            return report;
         }
 
         // Unowned (issue #347) so the window reads its own title, not the main window's. Modeless
@@ -8207,7 +8716,7 @@ public partial class MainWindow : Window
         // accounts this is null, and the VM falls back to the default account, then the first.
         var unifiedVm = new UnifiedRulesViewModel(
             _ruleService, _serverRuleService, accounts, _vm.CachedFolders, accountContext ?? _vm.RulesAccountContext,
-            selectedMessagesForTest: selectedMessages, configService: _configService);
+            selectedMessagesForTest: selectedMessages, configService: _configService, sounds: _vm.Sounds);
         unifiedVm.RunOnExistingRequested += RunClientRulesOnExisting;
         // The window prefills from the template (Ctrl+Shift+T) in its Loaded handler, once shown.
         Window dialog = new UnifiedRulesWindow(unifiedVm, accounts, _vm.CachedFolders, template, folderCreation);
@@ -8260,11 +8769,12 @@ public partial class MainWindow : Window
     private void RulesStatusButton_Click(object sender, RoutedEventArgs e) => OpenRulesManager();
 
     /// <summary>
-    /// Creates a <see cref="FolderPickerWindow"/> scoped to only the accounts that own
-    /// the given messages.  This prevents the user from selecting a destination folder
-    /// from a different IMAP account — the server-side MOVE command is connection-scoped
-    /// and cannot reach folders on a different account, which would produce a
-    /// "folder not found" error from the IMAP server.
+    /// Creates a <see cref="FolderPickerWindow"/> offering the accounts that own the given messages,
+    /// and every other account that can take messages from elsewhere (#929). The server's MOVE and COPY
+    /// are connection-scoped and reach only the source account's folders, so a destination in another
+    /// account is filled by copying each original across (MainViewModel.TransferAsync), which routes by
+    /// the destination's AccountId and never by folder name alone. An account that cannot take messages
+    /// from elsewhere (Microsoft 365, for now) is offered only for its own messages.
     /// </summary>
     /// <param name="copy">
     /// Whether this is a copy rather than a move. Passed rather than inferred from the title
@@ -8276,9 +8786,10 @@ public partial class MainWindow : Window
     {
         var list     = messages.ToList();
         var ids      = list.Select(m => m.AccountId).ToHashSet();
-        var accounts = _vm.Accounts.Where(a => ids.Contains(a.Id));
+        bool Offered(Guid accountId) => ids.Contains(accountId) || _vm.CanTakeMessagesFromOtherAccounts(accountId);
+        var accounts = _vm.Accounts.Where(a => Offered(a.Id));
         var folders  = _vm.CachedFolders
-                          .Where(kv => ids.Contains(kv.Key))
+                          .Where(kv => Offered(kv.Key))
                           .ToDictionary(kv => kv.Key, kv => kv.Value);
         return new FolderPickerWindow(accounts, folders, title: title, useTreeView: true,
             // Where this account last filed, falling back to where the messages are now (#490).

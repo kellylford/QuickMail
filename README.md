@@ -8,6 +8,14 @@ QuickMail is built to work correctly out of the box with any screen reader, with
 
 Get the latest version from the [Releases page](https://github.com/kellylford/QuickMail/releases/latest). Most people should take the `.msi` installer; it installs without administrator rights and keeps QuickMail up to date automatically. ARM builds and portable executables are also available.
 
+Or install it with the Windows Package Manager:
+
+```
+winget install quickmail
+```
+
+winget picks the right version for your computer, whether it has an Intel, AMD or ARM processor. You only need it once: from then on QuickMail keeps itself up to date.
+
 The [User Guide](https://kellylford.github.io/QuickMail/) covers everything QuickMail does. In the app, press **F1** to open it.
 
 ## Features
@@ -87,8 +95,9 @@ dotnet test QuickMail.Tests/QuickMail.Tests.csproj -c Release
 |--------|----------|
 | `QuickMail/` | The WPF app: `Views`, `ViewModels`, `Services`, `Models`, `Controls`, `Themes` |
 | `QuickMail.Tests/` | Unit and UI tests (xUnit) |
-| `QuickMail.IntegrationTests/` | Tests against real mail servers |
-| `Tools/` | Test fixtures and a test-mail generator |
+| `QuickMail.IntegrationTests/` | Tests against local GreenMail and Radicale servers, plus a few opt-in tests against real servers (the `LiveSmoke` category); see [`docs/TESTING-INTEGRATION.md`](docs/TESTING-INTEGRATION.md) for the Java and Python they need |
+| `Tools/` | Test fixtures, a test-mail generator, and `perf-counters.bat` (logs QuickMail's performance counters to CSV) |
+| `installer/` | Packaging inputs for the Velopack installer and winget manifests; see [`docs/INSTALLER.md`](docs/INSTALLER.md) |
 | `relay/` | The service that files in-app bug reports as GitHub issues |
 | `scripts/` | Release, documentation, and visual-testing scripts |
 | `docs/` | User Guide, release notes, and design documents |

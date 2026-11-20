@@ -296,6 +296,29 @@ public class FolderPickerTabOrderTests : IDisposable
     }
 
     /// <summary>
+    /// A single-account picker that offers New Folder shows the account as the tree's root (#950),
+    /// and that header is where a top-level folder is created. With it selected Open greys out, so
+    /// Tab must skip to New Folder — the button the user went there for — and Shift+Tab from New
+    /// Folder must come back to the header, not to the folder the picker opened on.
+    /// </summary>
+    [StaFact]
+    public void TabAndShiftTabRoundTripFromTheAccountRoot()
+    {
+        var window = Shown();
+        try
+        {
+            var root = Select(window, "Work");
+            Assert.True(root.Header is FolderTreeNode { IsHeader: true },
+                        "The single-account picker with New Folder has no account root.");
+            Assert.False(Named<Button>(window, "OpenButton").IsEnabled);
+
+            Assert.Same(Named<Button>(window, "NewFolderButton"), Press(window, root, ModifierKeys.None));
+            Assert.Same(root, Press(window, Named<Button>(window, "NewFolderButton"), ModifierKeys.Shift));
+        }
+        finally { window.Close(); }
+    }
+
+    /// <summary>
     /// The forward ring in tree mode, measured through WPF's own traversal.
     ///
     /// <para>This does not pin the declaration order, and must not be read as if it did: in tree

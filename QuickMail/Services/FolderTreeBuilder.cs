@@ -10,7 +10,15 @@ namespace QuickMail.Services;
 /// </summary>
 public static class FolderTreeBuilder
 {
-    public static List<FolderTreeNode> Build(IEnumerable<MailFolderModel> flat, AccountModel? account = null)
+    /// <param name="hidden">
+    /// Full names of folders to leave out, each with everything inside it (#963). Null or empty
+    /// leaves the tree whole — the destination pickers pass nothing, so a hidden folder can still
+    /// be filed into.
+    /// </param>
+    public static List<FolderTreeNode> Build(
+        IEnumerable<MailFolderModel> flat,
+        AccountModel? account = null,
+        IReadOnlyCollection<string>? hidden = null)
     {
         var list = flat.ToList();
         if (list.Count == 0) return [];
@@ -21,6 +29,9 @@ public static class FolderTreeBuilder
         var folderRoots = list.Any(f => f.ParentId != null)
             ? BuildByParentId(list)
             : BuildBySeparator(list);
+
+        if (hidden is { Count: > 0 })
+            PruneHidden(folderRoots, new HashSet<string>(hidden, StringComparer.Ordinal));
 
         // Wrap folder roots under the account as the top-level tree node
         if (account != null)
@@ -40,6 +51,51 @@ public static class FolderTreeBuilder
         }
 
         return folderRoots;
+    }
+
+    /// <summary>
+    /// The folders of <paramref name="flat"/> that the folder tree shows once <paramref name="hidden"/>
+    /// is applied, in their original order (#963). What Go to Folder lists, so it agrees with the tree
+    /// about which folders are inside a hidden one under either hierarchy model.
+    /// </summary>
+    public static List<MailFolderModel> VisibleFolders(
+        IReadOnlyList<MailFolderModel> flat, IReadOnlyCollection<string>? hidden)
+    {
+        if (hidden is not { Count: > 0 }) return [.. flat];
+        var shown = new HashSet<MailFolderModel>(ReferenceEqualityComparer.Instance);
+        foreach (var node in Flatten(Build(flat, null, hidden)))
+            if (node.Folder is { } f) shown.Add(f);
+        return flat.Where(shown.Contains).ToList();
+    }
+
+    private static IEnumerable<FolderTreeNode> Flatten(IEnumerable<FolderTreeNode> nodes)
+    {
+        foreach (var n in nodes)
+        {
+            yield return n;
+            foreach (var c in Flatten(n.Children)) yield return c;
+        }
+    }
+
+    // Removes every node whose folder is hidden, with its whole branch. A path segment that is not
+    // itself a folder (an IMAP "Archive" level that only exists because "Archive/2020" does) is
+    // removed too when hiding left it with nothing under it: it was only there to hold what is now
+    // gone, and an empty, unopenable node would be a dead end in the tree.
+    private static void PruneHidden(IList<FolderTreeNode> nodes, HashSet<string> hidden)
+    {
+        for (int i = nodes.Count - 1; i >= 0; i--)
+        {
+            var node = nodes[i];
+            if (node.Folder is { } f && hidden.Contains(f.FullName))
+            {
+                nodes.RemoveAt(i);
+                continue;
+            }
+            if (node.Children.Count == 0) continue;
+            PruneHidden(node.Children, hidden);
+            if (node.Folder == null && node.Children.Count == 0)
+                nodes.RemoveAt(i);
+        }
     }
 
     // ── IMAP: hierarchy encoded in the separator-delimited FullName ───────────────────

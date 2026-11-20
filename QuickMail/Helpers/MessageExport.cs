@@ -248,7 +248,7 @@ public static class MessageExport
         foreach (var (label, value) in BuildDetails(detail, context))
             sb.Append(label).Append(": ").Append(OneLine(value)).Append("\r\n");
 
-        sb.Append("\r\n").Append(new string('-', 40)).Append("\r\n\r\n");
+        sb.Append("\r\n").Append('-', 40).Append("\r\n\r\n");
 
         var (body, derived) = PlainBody(detail);
         if (derived)

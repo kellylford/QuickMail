@@ -51,6 +51,8 @@ jobs:
 
   deploy:
     needs: test
+    # Forks have no Cloudflare account or relay secrets; skip rather than fail there.
+    if: github.repository == 'kellylford/QuickMail'
     runs-on: ubuntu-latest
     # Holds every secret below; main only. See the header.
     environment: relay

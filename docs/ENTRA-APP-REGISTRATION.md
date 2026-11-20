@@ -6,11 +6,8 @@ QuickMail authenticates to Microsoft (both the Graph backend and IMAP/SMTP-over-
 (work-or-school **and** personal Microsoft accounts).
 
 This document is the source of truth for how that one app registration must be configured. Most
-QuickMail sign-in problems are registration problems, not code problems.
-
-> **AI agents:** to audit or change the live registration, go straight to **§7 (Agent runbook)** —
-> it has the tenant/object ids, the sign-in recipe that actually works on this machine, and the
-> known dead ends. §§1–3 define the target state; §7 is how you get a session to enforce it.
+QuickMail sign-in problems are registration problems, not code problems. §§1–3 define the target
+state of the registration.
 
 ---
 
@@ -104,11 +101,11 @@ declared scopes). Both must still be declared here.
 | --- | --- |
 | `Mail.ReadWrite` | Read/move/flag/delete mail; save drafts (Graph backend) |
 | `Mail.Send` | Send mail (Graph backend) |
-| `Calendars.ReadWrite` | Calendar sync — read/create/update/delete events (full-calendar spec M4). Added 2026-07-16 via the §7 device-code runbook (scope id `1ec239c2-d7c9-4623-a91a-a9775856bb36`). Code side: `OAuthService.GraphCalendarScopes` — like the contact scopes, `RequestCalendarConsentAsync` requests this **explicitly for BOTH work/school and personal accounts**, **not** via `.default`, so this exact scope must be declared and admin-consented. |
-| `Contacts.Read` | **In use, required.** Contact sync (#256, shipped v0.8.32) reads saved contacts from `/me/contacts` via `OAuthService.GraphContactScopes`. **The contact-consent flow requests this scope EXPLICITLY for BOTH work/school and personal accounts** (`RequestContactsConsentAsync` → `GetAccessTokenAsync(GraphContactScopes)`), **not** via `.default` — so this exact scope string must be declared and admin-consented, or the request dead-ends. Declaring only `Contacts.ReadWrite` does **not** satisfy an explicit `Contacts.Read` request (AAD matches the exact scope). This scope was missing until 2026-07-21 (only `ReadWrite` was declared), which is why contact sync dead-ended on admin-consent tenants — see #323. Added 2026-07-21 via the §7 device-code runbook. |
+| `Calendars.ReadWrite` | Calendar sync — read/create/update/delete events (full-calendar spec M4). Added 2026-07-16 (scope id `1ec239c2-d7c9-4623-a91a-a9775856bb36`). Code side: `OAuthService.GraphCalendarScopes` — like the contact scopes, `RequestCalendarConsentAsync` requests this **explicitly for BOTH work/school and personal accounts**, **not** via `.default`, so this exact scope must be declared and admin-consented. |
+| `Contacts.Read` | **In use, required.** Contact sync (#256, shipped v0.8.32) reads saved contacts from `/me/contacts` via `OAuthService.GraphContactScopes`. **The contact-consent flow requests this scope EXPLICITLY for BOTH work/school and personal accounts** (`RequestContactsConsentAsync` → `GetAccessTokenAsync(GraphContactScopes)`), **not** via `.default` — so this exact scope string must be declared and admin-consented, or the request dead-ends. Declaring only `Contacts.ReadWrite` does **not** satisfy an explicit `Contacts.Read` request (AAD matches the exact scope). This scope was missing until 2026-07-21 (only `ReadWrite` was declared), which is why contact sync dead-ended on admin-consent tenants — see #323. Added 2026-07-21. |
 | `Contacts.ReadWrite` | **Forward declaration only** — the write half for a future two-way contact sync; no code path writes contacts yet. Scope id `d56682ec-c09e-4743-aaf4-1a3aac4caa21`, added 2026-07-21. Note this does **not** cover the read path: the code requests `Contacts.Read` explicitly (see the row above). |
-| `People.Read` | **In use** — contact sync (#256, shipped v0.8.32) reads relevance-ranked prior recipients from `/me/people` (`OAuthService.GraphContactScopes`). Like `Contacts.Read`, it is requested **explicitly** by the contact-consent flow for work/school and personal accounts alike — not via `.default`. Scope id `ba47897c-39ec-4d83-8086-ee8256fa737d`, added 2026-07-21 via the §7 device-code runbook. |
-| `Mail.ReadWrite.Shared` | **Forward declaration** for shared mailboxes (#31/#461). Read/move/flag a Microsoft 365 shared mailbox the user has been delegated, via Graph `/users/{sharedAddress}/messages`. Scope id `5df07973-7d5d-46ed-9847-1271055cbd51`, added 2026-08-20 via the §7 device-code runbook, ahead of the shared-mailbox read PR. Delegated (`Scope`), **not** an application permission — the design deliberately avoids app-level `Mail.Read` so no tenant admin is needed for the common case. `Mail.Read.Shared` would cover read alone; ReadWrite.Shared subsumes it and is what the feature needs. **Not yet in `OAuthService`** — the shared-mailbox token request must add this exact string when that code lands, or the call 403s. |
+| `People.Read` | **In use** — contact sync (#256, shipped v0.8.32) reads relevance-ranked prior recipients from `/me/people` (`OAuthService.GraphContactScopes`). Like `Contacts.Read`, it is requested **explicitly** by the contact-consent flow for work/school and personal accounts alike — not via `.default`. Scope id `ba47897c-39ec-4d83-8086-ee8256fa737d`, added 2026-07-21. |
+| `Mail.ReadWrite.Shared` | **Forward declaration** for shared mailboxes (#31/#461). Read/move/flag a Microsoft 365 shared mailbox the user has been delegated, via Graph `/users/{sharedAddress}/messages`. Scope id `5df07973-7d5d-46ed-9847-1271055cbd51`, added 2026-08-20, ahead of the shared-mailbox read PR. Delegated (`Scope`), **not** an application permission — the design deliberately avoids app-level `Mail.Read` so no tenant admin is needed for the common case. `Mail.Read.Shared` would cover read alone; ReadWrite.Shared subsumes it and is what the feature needs. **Not yet in `OAuthService`** — the shared-mailbox token request must add this exact string when that code lands, or the call 403s. |
 | `Mail.Send.Shared` | **Forward declaration** for shared mailboxes (#31/#461) — send-as / send-on-behalf-of the shared address via Graph `sendMail` on `/users/{sharedAddress}`. Scope id `a367ab51-6b49-43bf-a716-a1fb06d2a174`, added 2026-08-20 alongside the row above so the registration is touched once, not twice. Same caveat: declared but **not yet requested** by any code path. |
 | `MailboxSettings.ReadWrite` | Server-side Inbox rules (messageRule API). **Superset of `MailboxSettings.Read`** — declare ReadWrite, not Read. |
 | `User.Read` | Resolve the signed-in user's address/profile |
@@ -142,8 +139,7 @@ the public-client desktop flow, so refresh tokens still issue even though the co
 > declaring it. If a sync feature dead-ends at an approval wall, suspect a missing **exact** scope
 > here before suspecting the code.
 
-**Live registration reconciled (2026-07-14):** the actual registration (tenant
-`793722c2-ea04-49a3-8183-af139211b24f`, app object `c9ca6292-3799-4b87-8e88-48ea7d04e692`) was
+**Live registration reconciled (2026-07-14):** the actual registration was
 audited via Graph and had drifted from this doc: it declared `Mail.Read` + granular scopes
 (`Mail-Advanced.*`, `MailboxFolder.*`, `People.Read`) instead of `Mail.ReadWrite`; it still had
 `MailboxSettings.Read` (the registration half of PR #137 had never been applied); the entire
@@ -369,125 +365,6 @@ scope **before** GA — while no production account has consented yet — avoids
 
 ---
 
-## 7. Agent runbook — scripted access to this registration
+## 7. Scripted access to the live registration
 
-This section is the recipe for an AI agent (or a human in a terminal) to audit or modify the
-registration. It encodes everything learned doing this on 2026-07-14, including the dead ends.
-Point the agent here and say what change is needed.
-
-### 7.1 Key identifiers
-
-| What | Value |
-| --- | --- |
-| Publishing tenant | `793722c2-ea04-49a3-8183-af139211b24f` |
-| Sign-in account | `kelly@kellford.com` |
-| Client (app) id | `bcdc84f1-d37c-4581-b14a-a01f7b3a1312` |
-| Application **object** id (PATCH target) | `c9ca6292-3799-4b87-8e88-48ea7d04e692` |
-| Graph resource appId | `00000003-0000-0000-c000-000000000000` |
-| Exchange Online resource appId | `00000002-0000-0ff1-ce00-000000000000` |
-
-**Decoy tenants — do not use:** `7d527b20-…` (theideaplace.net) and `727309b0-…` (kellford.com's
-domain-resolved default) both look plausible and are wrong. The registration lives only in
-`793722c2-…`. If an app lookup returns empty, you are in the wrong tenant — stop and re-check
-before concluding the app is gone.
-
-### 7.2 What NOT to use (verified failures on this machine)
-
-- **`Connect-MgGraph`** (Microsoft.Graph.Authentication 2.38.1 on Windows PowerShell 5.1) fails
-  with *"InteractiveBrowserCredential… A window handle must be configured"* headless, and
-  *"An error occurred when writing to a listener"* with `-UseDeviceCode` — even in a visible
-  console. Do not spend time debugging it; go straight to the raw REST flow below.
-- **`mgc` (Microsoft Graph CLI)** — retiring 2026-08-28 (§5.2).
-- **`az`** — not installed here (fine to use if that changes; commands in §5.2).
-- PowerShell 7 (`pwsh`) is not installed; everything below runs on Windows PowerShell 5.1.
-
-### 7.3 Sign-in: raw REST device-code flow (the path that works)
-
-Uses the pre-consented public client **"Microsoft Graph Command Line Tools"**
-(`14d82eec-204b-4c2f-b7e8-296a70dab67e`). Kelly consented to it in the tenant on 2026-07-14 with
-`Application.ReadWrite.All`, so sign-in normally shows **no consent page** — just code + account.
-
-```powershell
-$ErrorActionPreference = 'Stop'
-[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-$tenant   = '793722c2-ea04-49a3-8183-af139211b24f'
-$clientId = '14d82eec-204b-4c2f-b7e8-296a70dab67e'
-$scope    = 'https://graph.microsoft.com/Application.ReadWrite.All'
-
-$dc = Invoke-RestMethod -Method Post -Uri "https://login.microsoftonline.com/$tenant/oauth2/v2.0/devicecode" `
-    -ContentType 'application/x-www-form-urlencoded' -Body @{ client_id = $clientId; scope = $scope }
-"Give the user this code: $($dc.user_code)  (enter at https://login.microsoft.com/device)"
-
-$deadline = (Get-Date).AddSeconds($dc.expires_in)
-while ((Get-Date) -lt $deadline) {
-    Start-Sleep -Seconds $dc.interval
-    try {
-        $tok = Invoke-RestMethod -Method Post -Uri "https://login.microsoftonline.com/$tenant/oauth2/v2.0/token" `
-            -ContentType 'application/x-www-form-urlencoded' -Body @{
-                grant_type = 'urn:ietf:params:oauth:grant-type:device_code'
-                client_id = $clientId; device_code = $dc.device_code }
-        break   # $tok.access_token is live (~60 min)
-    } catch {
-        $err = $null; $body = $_.ErrorDetails.Message
-        if ($body) { try { $err = ($body | ConvertFrom-Json).error } catch {} }
-        if ($err -eq 'authorization_pending' -or $null -eq $err) { continue }
-        if ($err -eq 'slow_down') { Start-Sleep -Seconds 5; continue }
-        throw "Device flow failed: $err"
-    }
-}
-$headers = @{ Authorization = "Bearer $($tok.access_token)"; 'Content-Type' = 'application/json' }
-```
-
-Agent-specific gotchas learned the hard way:
-- **PS 5.1 error parsing:** read the poll error from `$_.ErrorDetails.Message` (as above). Reading
-  `$_.Exception.Response.GetResponseStream()` returns an already-drained stream → empty error →
-  the loop misreads `authorization_pending` as failure and aborts in seconds.
-- **Driving the code-entry page in an embedded browser:** the login page ignores programmatic
-  `value` injection (its view-model listens for key events). Click the field by accessibility
-  **ref**, then send **real keystrokes**. Coordinate-based clicks are unreliable there
-  (screenshots can be 2× scaled); ref-based clicks are not. The user must perform any
-  password/passkey step themselves; entering the device code and email is safe for the agent.
-- If the token must survive across separate PowerShell processes, DPAPI-protect it:
-  `ConvertFrom-SecureString (ConvertTo-SecureString $tok.access_token -AsPlainText -Force) | Out-File token.dpapi`
-  and reverse with `ConvertTo-SecureString` + Marshal on the way back in.
-- The token carries only `Application.ReadWrite.All` — `/organization`, `/me`, mail, etc. will 403.
-  Identify the session by decoding the JWT payload (claims `tid`, `upn`), not by calling Graph.
-
-### 7.4 Audit the registration
-
-```powershell
-$app = (Invoke-RestMethod -Headers $headers `
-    "https://graph.microsoft.com/v1.0/applications?`$filter=appId eq 'bcdc84f1-d37c-4581-b14a-a01f7b3a1312'").value[0]
-$app.signInAudience            # expect: AzureADandPersonalMicrosoftAccount     (§1)
-$app.isFallbackPublicClient    # expect: True                                    (§2)
-$app.publicClient.redirectUris # expect: exactly 'http://localhost'             (§2)
-$app.web.redirectUris          # expect: empty                                   (§2)
-$app.requiredResourceAccess | ConvertTo-Json -Depth 5   # compare against §3
-```
-
-To resolve permission GUIDs → names, read `oauth2PermissionScopes` from the resource's service
-principal (`/servicePrincipals?$filter=appId eq '<resourceAppId>'`). **Exception:** the Exchange
-Online SP does **not exist in this tenant** (no Exchange license), so its two GUIDs resolve to
-nothing locally and the portal shows them bare. That is expected, not drift:
-`652390e4-393a-48de-9484-05f9b1212954` = `IMAP.AccessAsUser.All`,
-`258f6531-6087-4cc4-bb90-092c5fb3ed3f` = `SMTP.Send`.
-
-### 7.5 Modify the registration
-
-`PATCH https://graph.microsoft.com/v1.0/applications/c9ca6292-3799-4b87-8e88-48ea7d04e692` with a
-JSON body containing only the properties to change. **`requiredResourceAccess` is replaced whole**,
-not merged — always send the complete §3 set (all Graph scopes + both EXO scopes), never just the
-addition. Resolve Graph scope GUIDs live from the Graph SP; use the two hardcoded EXO GUIDs above.
-Delegated permissions use `"type": "Scope"` (application permissions would be `"Role"` — QuickMail
-has none and should stay that way).
-
-After any change: re-run the §7.4 audit to verify, update §3 of this doc if the permission set
-changed, and remember every already-consented account gets **one** re-consent prompt (§6).
-
-### 7.6 Boundaries for agents
-
-- The tenant is effectively single-user (Kelly, via personal MSA). Adding owners/users requires
-  guest invitation flows that have not worked here; don't burn time on it without her direction.
-- Access-control changes (owners, role assignments) and any credential entry are the **user's**
-  actions — prepare commands, let her run them / type passwords herself.
-- Granting admin consent or accepting OAuth consent screens needs her explicit go-ahead each time.
+The maintainer's runbook for auditing or changing the live registration from a terminal (the tenant and object ids, and the device-code sign-in recipe) is kept outside the repository. If you fork QuickMail and register your own app, §§1–3 are the target state to configure, and the Microsoft Graph `applications` API is how to script it.

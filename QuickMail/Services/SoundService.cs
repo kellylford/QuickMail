@@ -1,0 +1,694 @@
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Reflection;
+using System.Threading;
+using QuickMail.Models;
+
+namespace QuickMail.Services;
+
+/// <inheritdoc cref="ISoundService"/>
+public sealed class SoundService : ISoundService
+{
+    /// <param name="Clip">What to play.</param>
+    /// <param name="IsPreview">Asked for by name, so mute doesn't apply.</param>
+    /// <param name="Fallback">What to play instead if a custom file turns out not to play.</param>
+    /// <param name="VolumePercent">A volume to use in place of the saved one.</param>
+    /// <param name="NavigationGeneration">For a key press's answer (<see cref="SoundOrigin.Navigation"/>), which
+    /// press it answers; a later press replaces it (#923). Zero for every other sound.</param>
+    private sealed record Request(SoundClip Clip, bool IsPreview, SoundClip? Fallback = null, int? VolumePercent = null,
+        long NavigationGeneration = 0)
+    {
+        public bool IsNavigation => NavigationGeneration != 0;
+    }
+
+    private static readonly TimeSpan MuteCheckEvery = TimeSpan.FromMilliseconds(100);
+
+    private readonly IConfigService _config;
+    private readonly string _soundsFolder;
+    private readonly ISoundOutput _output;
+    private readonly Func<string, string, Stream?> _openBuiltIn;
+    private readonly Func<bool> _isQuiet;
+    private readonly SoundPolicy _policy;
+
+    private readonly BlockingCollection<Request> _queue = [];
+    private readonly CancellationTokenSource _shutdown = new();
+    private readonly HashSet<string> _loggedFailures = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, byte> _ruleSoundedKeys = new(StringComparer.Ordinal);
+    private readonly Thread _worker;
+    private readonly object _currentGate = new();
+    private CancellationTokenSource? _current;
+    private Request? _currentRequest;
+    private int _disposed;
+
+    // Sounds queued or playing, and how many of them answer a key press (#923). Counted when one is
+    // queued, or claimed by TryPlayNow just before; counted down when it ends, is skipped, or is
+    // dropped from the queue. Both change together under _countGate, so TryPlayNow's "nothing else is
+    // playing, or only a key press's answer" and its claim of the slot are one step.
+    private readonly object _countGate = new();
+    private int _outstanding;
+    private int _outstandingNavigation;
+
+    /// <summary>The latest key press's answer; any earlier one still queued or playing is replaced by it.</summary>
+    private long _navigationGeneration;
+
+    /// <param name="config">Settings, read at each sound so a change applies at once.</param>
+    /// <param name="soundsFolder">The profile's folder of custom sounds.</param>
+    /// <param name="output">The audio engine.</param>
+    /// <param name="openBuiltIn">Opens a built-in sound by pack and name; defaults to the app's resources.</param>
+    /// <param name="isQuiet">Whether Windows reports it isn't a time for background sounds.</param>
+    /// <param name="utcNow">The clock for the flood rules.</param>
+    public SoundService(IConfigService config, string soundsFolder, ISoundOutput output,
+        Func<string, string, Stream?>? openBuiltIn = null, Func<bool>? isQuiet = null, Func<DateTime>? utcNow = null)
+    {
+        _config = config;
+        _soundsFolder = soundsFolder;
+        _output = output;
+        _openBuiltIn = openBuiltIn ?? OpenBuiltInResource;
+        _isQuiet = isQuiet ?? (() => false);
+        _policy = new SoundPolicy(utcNow ?? (() => DateTime.UtcNow));
+
+        // A background thread: a sound must never keep the process alive, and the test host fails a
+        // run in which a foreground thread outlives the tests.
+        _worker = new Thread(RunWorker) { IsBackground = true, Name = "QuickMail sounds" };
+        _worker.Start();
+    }
+
+    public void Play(SoundEvent soundEvent, bool background = false)
+    {
+        try
+        {
+            var config = _config.Load();
+            if (!config.PlayEventSounds) return;
+            var info = SoundCatalog.Info(soundEvent);
+            var origin = background && info.Origin == SoundOrigin.Direct ? SoundOrigin.Background : info.Origin;
+            var scheme = SoundCatalog.ActiveScheme(config);
+            Enqueue(SoundCatalog.Resolve(soundEvent, scheme), info.BuiltInSound, origin, config, scheme, scheme.Id);
+        }
+        catch (Exception ex)
+        {
+            LogService.Log($"Sound for {soundEvent} failed", ex);
+        }
+    }
+
+    public bool TryPlayNow(SoundEvent soundEvent)
+    {
+        var info = SoundCatalog.Info(soundEvent);
+        var isNavigation = info.Origin == SoundOrigin.Navigation;
+        var claimed = false;
+        try
+        {
+            if (Volatile.Read(ref _disposed) != 0) return false;
+            var config = _config.Load();
+            if (!config.PlayEventSounds || config.MuteSounds || config.SoundVolume <= 0) return false;
+            var scheme = SoundCatalog.ActiveScheme(config);
+            var sound = SoundCatalog.Resolve(soundEvent, scheme);
+            if (sound.Kind == SoundRefKind.None) return false;
+
+            // Claim the slot in the same step as checking it's free. A key press's answer may take it
+            // from an earlier one, a quick second press at the edge: that one is replaced, not waited for.
+            bool replacing;
+            lock (_countGate)
+            {
+                var onlyKeyPresses = isNavigation && _outstanding == _outstandingNavigation;
+                if (_outstanding > 0 && !onlyKeyPresses) return false;
+                replacing = _outstanding > 0;
+                Claim(isNavigation);
+                claimed = true;
+            }
+
+            if (!_policy.ShouldPlay(sound.ToStored(), info.Origin, config.MuteSounds, _isQuiet(), waiting: 0)) return false;
+            var generation = isNavigation ? Interlocked.Increment(ref _navigationGeneration) : 0;
+            if (replacing) CancelEarlierKeyPressSound(generation);
+
+            var schemePack = SoundCatalog.PackFor(SoundRef.None, scheme);
+            var clip = ToClip(sound, info.BuiltInSound, schemePack, scheme.Id);
+            if (clip is null) return false;
+            var backup = clip.FilePath is null ? null : BuiltInClip(SoundRef.BuiltIn(info.BuiltInSound), schemePack);
+            if (!TryAdd(new Request(clip, false, backup, NavigationGeneration: generation), alreadyClaimed: true)) return false;
+            claimed = false;   // the queue has it now, and counts it down when it ends
+            return true;
+        }
+        catch (Exception ex)
+        {
+            LogService.Log($"Sound for {soundEvent} failed", ex);
+            return false;
+        }
+        finally
+        {
+            if (claimed) Release(isNavigation);
+        }
+    }
+
+    /// <summary>A sound is playing or waiting to.</summary>
+    internal bool IsBusy
+    {
+        get { lock (_countGate) return _outstanding > 0; }
+    }
+
+    private void Claim(bool isNavigation)
+    {
+        lock (_countGate)
+        {
+            _outstanding++;
+            if (isNavigation) _outstandingNavigation++;
+        }
+    }
+
+    private void Release(bool isNavigation)
+    {
+        lock (_countGate)
+        {
+            _outstanding--;
+            if (isNavigation) _outstandingNavigation--;
+        }
+    }
+
+    /// <summary>Cuts off a key press's answer still playing, now a later press has its own.</summary>
+    private void CancelEarlierKeyPressSound(long generation)
+    {
+        lock (_currentGate)
+        {
+            if (_currentRequest is { IsNavigation: true } playing && playing.NavigationGeneration < generation)
+                _current?.Cancel();
+        }
+    }
+
+    public void PlayRule(string? storedSound, IEnumerable<string>? messageKeys = null)
+    {
+        try
+        {
+            var config = _config.Load();
+            var scheme = SoundCatalog.ActiveScheme(config);
+            var (sound, folder) = RuleSoundAndFolder(storedSound, scheme);
+            // A scheme can set its rule sound to None. Then nothing plays, so the new-mail sound and the
+            // toast's own sound aren't held back for this mail either.
+            if (sound.Kind == SoundRefKind.None) return;
+
+            foreach (var key in messageKeys ?? [])
+            {
+                // Bounded, as the new-mail key set is. Clearing risks at most one message sounding twice.
+                if (_ruleSoundedKeys.Count > 10_000) _ruleSoundedKeys.Clear();
+                _ruleSoundedKeys[key] = 0;
+            }
+
+            Enqueue(sound, SoundCatalog.DefaultRuleSound, SoundOrigin.Rule, config, scheme, folder);
+        }
+        catch (Exception ex)
+        {
+            LogService.Log("Rule sound failed", ex);
+        }
+    }
+
+    /// <summary>
+    /// What a rule plays. The editor has no "None" for a rule, so a rule told to play a sound plays one:
+    /// its own, or, for the default (stored as an unqualified <c>builtin:matched</c>) or a value that
+    /// can't be read, the scheme's "A rule matched" sound (#932).
+    /// </summary>
+    internal static SoundRef RuleSound(string? storedSound, SoundScheme scheme) => RuleSoundAndFolder(storedSound, scheme).Sound;
+
+    /// <summary>
+    /// <see cref="RuleSound"/>, and the scheme whose folder a custom file is in (#948): null for the
+    /// rule's own sound, which is in the rules' folder; the scheme's id for its "A rule matched".
+    /// </summary>
+    internal static (SoundRef Sound, string? SchemeId) RuleSoundAndFolder(string? storedSound, SoundScheme scheme)
+    {
+        if (SoundRef.TryParse(storedSound, out var parsed) && parsed.Kind != SoundRefKind.None && !SoundCatalog.IsDefaultRuleSound(parsed))
+            return (parsed, null);
+        return (SoundCatalog.Resolve(SoundEvent.RuleMatched, scheme), scheme.Id);
+    }
+
+    public void PreviewRule(string? storedSound)
+    {
+        try
+        {
+            var (sound, folder) = RuleSoundAndFolder(storedSound, SoundCatalog.ActiveScheme(_config.Load()));
+            Preview(sound.ToStored(), schemeId: folder);   // None just stops what is playing: the rule would play nothing
+        }
+        catch (Exception ex)
+        {
+            LogService.Log("Rule sound preview failed", ex);
+        }
+    }
+
+    public bool WasSoundedByRule(string messageKey) => _ruleSoundedKeys.ContainsKey(messageKey);
+
+    public void Preview(string storedSound, int? volumePercent = null, string? pack = null, string? schemeId = null, string? fallback = null)
+    {
+        try
+        {
+            if (Volatile.Read(ref _disposed) != 0) return;
+            StopAll();   // Previewing "None" is how someone stops the last preview.
+            if (!SoundRef.TryParse(storedSound, out var sound) || sound.Kind == SoundRefKind.None) return;
+            var schemePack = pack ?? SoundCatalog.PackFor(SoundRef.None, SoundCatalog.ActiveScheme(_config.Load()));
+            AddRequest(sound, fallback ?? SoundCatalog.DefaultRuleSound, schemePack, schemeId, isPreview: true, volumePercent);
+        }
+        catch (Exception ex)
+        {
+            LogService.Log("Sound preview failed", ex);
+        }
+    }
+
+    public void PreviewEvent(SoundEvent soundEvent)
+    {
+        try
+        {
+            if (Volatile.Read(ref _disposed) != 0) return;
+            StopAll();
+            var config = _config.Load();
+            var scheme = SoundCatalog.ActiveScheme(config);
+            var sound = SoundCatalog.Resolve(soundEvent, scheme);
+            if (sound.Kind == SoundRefKind.None) return;
+            AddRequest(sound, SoundCatalog.Info(soundEvent).BuiltInSound, SoundCatalog.PackFor(SoundRef.None, scheme), scheme.Id, isPreview: true);
+        }
+        catch (Exception ex)
+        {
+            LogService.Log($"Sound preview for {soundEvent} failed", ex);
+        }
+    }
+
+    public void StopAll()
+    {
+        try
+        {
+            if (Volatile.Read(ref _disposed) != 0) return;
+            while (_queue.TryTake(out var dropped)) Release(dropped.IsNavigation);
+            lock (_currentGate) _current?.Cancel();
+        }
+        catch (Exception ex)
+        {
+            LogService.Log("Stopping sounds failed", ex);
+        }
+    }
+
+    public bool SilencesToasts
+    {
+        get
+        {
+            try
+            {
+                var config = _config.Load();
+                return config.PlayEventSounds || config.MuteSounds;
+            }
+            catch (Exception ex)
+            {
+                LogService.Log("Checking a sound setting failed", ex);
+                return false;
+            }
+        }
+    }
+
+    public bool IsAudible(SoundEvent soundEvent)
+    {
+        try
+        {
+            var config = _config.Load();
+            return config.PlayEventSounds && !config.MuteSounds && config.SoundVolume > 0
+                && SoundCatalog.Resolve(soundEvent, SoundCatalog.ActiveScheme(config)).Kind != SoundRefKind.None;
+        }
+        catch (Exception ex)
+        {
+            LogService.Log("Checking a sound setting failed", ex);
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// The folder a scheme's files are in (#948), or for a null id, the rules' folder, which is the
+    /// sounds folder itself. Null for a scheme id that can't be a folder name, which has no files.
+    /// </summary>
+    private string? FolderFor(string? schemeId) =>
+        schemeId is null ? _soundsFolder
+        : SoundCatalog.SchemeFolderName(schemeId) is { } name ? Path.Combine(_soundsFolder, name)
+        : null;
+
+    public IReadOnlyList<string> CustomSoundFiles(string? schemeId)
+    {
+        try
+        {
+            if (FolderFor(schemeId) is not { } folder || !Directory.Exists(folder)) return [];
+            // Files only, so the rules' folder doesn't list the schemes' folders inside it.
+            return [.. Directory.GetFiles(folder)
+                .Select(f => Path.GetFileName(f)!)
+                .Where(SoundRef.IsSafeCustomFileName)
+                .Order(StringComparer.CurrentCultureIgnoreCase)];
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            LogService.Log("Listing custom sounds failed", ex);
+            return [];
+        }
+    }
+
+    public string? CustomSoundPath(string? schemeId, string fileName)
+    {
+        if (!SoundRef.IsSafeCustomFileName(fileName) || FolderFor(schemeId) is not { } folder) return null;
+        var path = Path.Combine(folder, fileName);
+        return File.Exists(path) ? path : null;
+    }
+
+    public bool TryCopySchemeSounds(string fromSchemeId, string toSchemeId)
+    {
+        if (FolderFor(fromSchemeId) is not { } from || FolderFor(toSchemeId) is not { } to
+            || string.Equals(from, to, StringComparison.OrdinalIgnoreCase)) return false;
+        try
+        {
+            if (!Directory.Exists(from)) return true;   // nothing of its own to copy
+            Directory.CreateDirectory(to);
+            foreach (var file in Directory.GetFiles(from))
+            {
+                var name = Path.GetFileName(file);
+                if (!SoundRef.IsSafeCustomFileName(name)) continue;
+                var target = Path.Combine(to, name);
+                if (!File.Exists(target) && !Directory.Exists(target)) File.Copy(file, target);
+            }
+            return true;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            LogService.Log("Copying a sound scheme's files failed", ex);
+            return false;
+        }
+    }
+
+    public bool TryDeleteSchemeSounds(string schemeId)
+    {
+        // Never the rules' folder, which a null id would name: only a scheme's own folder inside it.
+        if (schemeId is null || FolderFor(schemeId) is not { } folder) return true;
+        try
+        {
+            if (Directory.Exists(folder)) Directory.Delete(folder, recursive: true);
+            return true;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            LogService.Log("Deleting a sound scheme's files failed", ex);
+            return false;
+        }
+    }
+
+    public void NoteUnsavedSchemeFolders(IEnumerable<string> schemeIds) =>
+        SoundSchemeFolderCleanup.NoteUnsaved(_soundsFolder, schemeIds);
+
+    public void ForgetUnsavedSchemeFolders(IEnumerable<string> schemeIds) =>
+        SoundSchemeFolderCleanup.ForgetUnsaved(_soundsFolder, schemeIds);
+
+    public int? RemoveUnusedSchemeFolders(IEnumerable<string> schemesInUse)
+    {
+        // Only for a sounds folder where the profile keeps it, next to the config.ini that says what
+        // is owned; anywhere else there's nothing to check against, so nothing is removed.
+        var full = Path.GetFullPath(_soundsFolder).TrimEnd(Path.DirectorySeparatorChar);
+        if (!string.Equals(Path.GetFileName(full), SoundCatalog.CustomFolderName, StringComparison.OrdinalIgnoreCase)
+            || Path.GetDirectoryName(full) is not { } profileDir) return null;
+        return SoundSchemeFolderCleanup.Run(profileDir, schemesInUse);
+    }
+
+    public bool TryRemoveCustomSound(string? schemeId, string fileName, out string refusal)
+    {
+        refusal = string.Empty;
+        // A name that can't be in a folder, or a scheme with no folder: nothing to remove.
+        if (!SoundRef.IsSafeCustomFileName(fileName) || FolderFor(schemeId) is not { } folder) return true;
+        try
+        {
+            File.Delete(Path.Combine(folder, fileName));   // no error if it, or its folder, is already gone
+            return true;
+        }
+        catch (DirectoryNotFoundException)
+        {
+            return true;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            LogService.Log($"Removing the custom sound {fileName} failed", ex);
+            refusal = $"{fileName} could not be removed. It may be open in another program; try again later.";
+            return false;
+        }
+    }
+
+    public bool TryAddCustomSound(string? schemeId, string sourcePath, out string fileName, out string refusal)
+    {
+        fileName = string.Empty;
+        refusal = string.Empty;
+        if (FolderFor(schemeId) is not { } folder)
+        {
+            refusal = "QuickMail can't keep sound files for this sound scheme.";
+            return false;
+        }
+        var extension = Path.GetExtension(sourcePath).ToLowerInvariant();
+        if (extension is not (".wav" or ".mp3"))
+        {
+            refusal = "QuickMail can play WAV and MP3 files. Choose one of those.";
+            return false;
+        }
+
+        try
+        {
+            if (new FileInfo(sourcePath).Length > SoundCatalog.MaxCustomFileBytes)
+            {
+                refusal = $"That file is larger than {SoundCatalog.MaxCustomFileBytes / (1024 * 1024)} MB. Choose a shorter sound.";
+                return false;
+            }
+
+            try
+            {
+                _output.Check(sourcePath);
+            }
+            catch (SoundTooLongException ex)
+            {
+                LogService.Log("A chosen sound was too long", ex);
+                refusal = $"That sound is longer than {SoundCatalog.MaxCustomSoundLength.TotalSeconds:0} seconds. Choose a shorter one.";
+                return false;
+            }
+            catch (Exception ex) when (ex is not (UnauthorizedAccessException or FileNotFoundException or DirectoryNotFoundException))
+            {
+                // Includes EndOfStreamException, an IOException, from a file too short to have a header.
+                LogService.Log("A chosen sound could not be decoded", ex);
+                refusal = "That file could not be played. It may be damaged, or not really a sound file.";
+                return false;
+            }
+
+            Directory.CreateDirectory(folder);
+            fileName = NameInFolder(folder, sourcePath, extension);
+            var target = Path.Combine(folder, fileName);
+            if (!File.Exists(target)) File.Copy(sourcePath, target);
+            return true;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            LogService.Log("Adding a custom sound failed", ex);
+            fileName = string.Empty;
+            refusal = "That file could not be copied into QuickMail's sounds folder. Check that it can be opened, and try again.";
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// The name to file a chosen sound under: its own, or that name numbered when a different sound
+    /// already has it. Choosing the same file again finds the copy already there.
+    /// </summary>
+    private static string NameInFolder(string folder, string sourcePath, string extension)
+    {
+        var original = Path.GetFileName(sourcePath);
+        // A name that isn't safe here, such as COM1.wav, gets a plain one rather than refusing a good sound.
+        var stem = SoundRef.IsSafeCustomFileName(original) ? Path.GetFileNameWithoutExtension(original) : "Custom sound";
+        var candidate = stem + extension;
+        for (var n = 2; ; n++)
+        {
+            var target = Path.Combine(folder, candidate);
+            // A folder of that name takes the name too: a file is never written over anything (SCHEMES.md).
+            if (!Directory.Exists(target) && (!File.Exists(target) || SameBytes(target, sourcePath))) return candidate;
+            // Shortened if need be: past the length limit, the name would be refused when next read.
+            var shortened = stem.Length > 90 ? stem[..90] : stem;
+            candidate = $"{shortened} {n}{extension}";
+        }
+    }
+
+    private static bool SameBytes(string a, string b) =>
+        new FileInfo(a).Length == new FileInfo(b).Length && File.ReadAllBytes(a).AsSpan().SequenceEqual(File.ReadAllBytes(b));
+
+    /// <param name="folderSchemeId">The scheme whose folder a custom file is in; null for a rule's own (#948).</param>
+    /// <returns>Whether the sound was queued to play.</returns>
+    private bool Enqueue(SoundRef sound, string fallback, SoundOrigin origin, ConfigModel config, SoundScheme scheme, string? folderSchemeId)
+    {
+        if (Volatile.Read(ref _disposed) != 0) return false;
+        if (sound.Kind == SoundRefKind.None || config.SoundVolume <= 0) return false;
+        if (!_policy.ShouldPlay(sound.ToStored(), origin, config.MuteSounds, _isQuiet(), _queue.Count)) return false;
+        return AddRequest(sound, fallback, SoundCatalog.PackFor(SoundRef.None, scheme), folderSchemeId, isPreview: false);
+    }
+
+    /// <summary>Queues a sound, with the built-in sound to play instead if a custom file turns out not to play.</summary>
+    private bool AddRequest(SoundRef sound, string fallback, string schemePack, string? folderSchemeId, bool isPreview, int? volumePercent = null)
+    {
+        var clip = ToClip(sound, fallback, schemePack, folderSchemeId);
+        if (clip is null) return false;
+        var backup = clip.FilePath is null ? null : BuiltInClip(SoundRef.BuiltIn(fallback), schemePack);
+        return TryAdd(new Request(clip, isPreview, backup, volumePercent));
+    }
+
+    /// <param name="alreadyClaimed">TryPlayNow has counted it already; on failure, it gives the claim back itself.</param>
+    private bool TryAdd(Request request, bool alreadyClaimed = false)
+    {
+        if (Volatile.Read(ref _disposed) != 0) return false;
+        // Counted before it is added, so the worker can never finish it and count down first.
+        if (!alreadyClaimed) Claim(request.IsNavigation);
+        try
+        {
+            _queue.Add(request);
+            return true;
+        }
+        catch (InvalidOperationException)
+        {
+            // Shutting down between the check and the add: nothing left to play it.
+            if (!alreadyClaimed) Release(request.IsNavigation);
+            return false;
+        }
+    }
+
+    /// <summary>The clip for a sound. A custom file that has gone falls back to the built-in sound.</summary>
+    /// <param name="schemePack">The pack a built-in sound with none of its own plays in.</param>
+    /// <param name="folderSchemeId">The scheme whose folder a custom file is in; null for a rule's own (#948).
+    /// There is no looking anywhere else: a scheme plays only its own files.</param>
+    private SoundClip? ToClip(SoundRef sound, string fallback, string schemePack, string? folderSchemeId)
+    {
+        if (sound.Kind == SoundRefKind.Custom)
+        {
+            if (FolderFor(folderSchemeId) is { } folder)
+            {
+                var path = Path.GetFullPath(Path.Combine(folder, sound.Name));
+                var inFolder = string.Equals(Path.GetDirectoryName(path), Path.GetFullPath(folder).TrimEnd(Path.DirectorySeparatorChar), StringComparison.OrdinalIgnoreCase);
+                if (inFolder && File.Exists(path)) return new SoundClip(sound.ToStored(), path, null);
+            }
+            LogOnce($"missing:{sound.Name}", $"Custom sound '{sound.Name}' is missing; using the built-in sound.");
+            sound = SoundRef.BuiltIn(fallback);
+        }
+
+        return BuiltInClip(sound, schemePack);
+    }
+
+    private SoundClip BuiltInClip(SoundRef sound, string schemePack)
+    {
+        var name = sound.Name;
+        var pack = sound.Pack ?? schemePack;
+        return new SoundClip(sound.ToStored(), null, () => _openBuiltIn(pack, name)
+            ?? _openBuiltIn(SoundCatalog.DefaultPack, name)
+            ?? throw new FileNotFoundException($"No built-in sound '{name}'."));
+    }
+
+    private void RunWorker()
+    {
+        try
+        {
+            foreach (var request in _queue.GetConsumingEnumerable(_shutdown.Token))
+            {
+                try
+                {
+                    // A key press's answer that a later press has replaced is skipped, not played late.
+                    if (!request.IsNavigation || request.NavigationGeneration == Interlocked.Read(ref _navigationGeneration))
+                        PlayOne(request);
+                }
+                finally
+                {
+                    Release(request.IsNavigation);
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Shutting down.
+        }
+    }
+
+    private void PlayOne(Request request)
+    {
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(_shutdown.Token);
+        lock (_currentGate)
+        {
+            _current = cts;
+            _currentRequest = request;
+            // Replaced between being taken from the queue and starting: don't start it.
+            if (request.IsNavigation && request.NavigationGeneration != Interlocked.Read(ref _navigationGeneration)) cts.Cancel();
+        }
+        try
+        {
+            var config = _config.Load();
+            if (config.MuteSounds && !request.IsPreview) return;   // Muted while it waited.
+
+            // Muting cuts off what is playing too: a long custom sound shouldn't carry on over speech
+            // for half a minute after "Sounds muted." A preview was asked for, so it plays regardless.
+            using var muteWatch = request.IsPreview ? null : new Timer(_ => CancelIfMuted(cts), null, MuteCheckEvery, MuteCheckEvery);
+            var volume = Math.Clamp(request.VolumePercent ?? config.SoundVolume, 0, 100) / 100f;
+            try
+            {
+                _output.Play(request.Clip, volume, cts.Token);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException && request.Fallback is not null)
+            {
+                // A custom sound that's damaged or too long, which a settings file or a copy by hand
+                // can bring in. The toast has been silenced for this sound, so something must play.
+                LogPlayFailure(request.Clip, ex);
+                _output.Play(request.Fallback, volume, cts.Token);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Replaced by a preview, or shutting down.
+        }
+        catch (Exception ex)
+        {
+            LogPlayFailure(request.Fallback ?? request.Clip, ex);
+        }
+        finally
+        {
+            lock (_currentGate)
+            {
+                _current = null;
+                _currentRequest = null;
+            }
+        }
+    }
+
+    // No device, or a file that won't decode. Once per sound: this could otherwise repeat for every message.
+    private void LogPlayFailure(SoundClip clip, Exception ex)
+    {
+        bool first;
+        lock (_loggedFailures) first = _loggedFailures.Add(clip.Key);
+        if (first) LogService.Log($"Could not play sound {clip.Key}", ex);
+    }
+
+    private void CancelIfMuted(CancellationTokenSource playing)
+    {
+        try
+        {
+            if (_config.Load().MuteSounds) playing.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+            // The sound ended just as this fired: nothing left to cancel.
+        }
+    }
+
+    private void LogOnce(string key, string message)
+    {
+        lock (_loggedFailures)
+        {
+            if (!_loggedFailures.Add(key)) return;
+        }
+        LogService.Log(message);
+    }
+
+    internal static Stream? OpenBuiltInResource(string pack, string name) =>
+        Assembly.GetExecutingAssembly().GetManifestResourceStream($"QuickMail.Sounds.BuiltIn.{pack}.{name}.wav");
+
+    public void Dispose()
+    {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+        _shutdown.Cancel();
+        _queue.CompleteAdding();
+        _worker.Join(TimeSpan.FromSeconds(1));   // A stuck audio driver must not hold up exit.
+        if (_worker.IsAlive) return;             // Still using these; the process is ending anyway.
+        _queue.Dispose();
+        _shutdown.Dispose();
+    }
+}

@@ -14,7 +14,7 @@ permissions:
 
 jobs:
   # Protocol integration tests against a local GreenMail server (IMAP/SMTP), per
-  # docs/planning/live-content-testing-plan.md (issue #304). Runs in parallel with the
+  # docs/planning/Completed/live-content-testing-plan.md (issue #304). Runs in parallel with the
   # build job. GreenMail runs as a native Java process because the app's net10.0-windows
   # TFM requires a Windows runner, and Docker service containers are Linux-only.
   integration:
@@ -87,6 +87,55 @@ jobs:
           # excluded from the artifact (upload-artifact skips hidden paths by default).
           include-hidden-files: true
           retention-days: 7
+
+  # A fresh clone must build with no setup step (#859): QuickMail.csproj's
+  # WriteCredentialPlaceholders target writes whichever credential partial is missing. On
+  # GitHub Actions that target is off and CheckCredentialPartials fails the build instead, so
+  # a workflow that loses its write-credential-partials.ps1 step fails loudly; this job checks
+  # that too, then turns the target back on with -p:GITHUB_ACTIONS=false to build the way a
+  # contributor's machine does. Reads no secret. Skipped on tags: nothing here differs there.
+  fresh-clone-build:
+    if: github.ref_type != 'tag'
+    runs-on: windows-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: On CI, a missing partial fails the build
+        shell: pwsh
+        run: |
+          $out = dotnet build QuickMail/QuickMail.csproj -c Release -warnaserror 2>&1 | Out-String
+          if ($LASTEXITCODE -eq 0) { Write-Host $out; throw 'The build succeeded on CI with no credential partials; CheckCredentialPartials should have stopped it.' }
+          if ($out -notmatch 'write-credential-partials\.ps1') { Write-Host $out; throw 'The build failed, but not with the CheckCredentialPartials error.' }
+          if (Test-Path QuickMail/Services/*.Credentials.cs) { throw 'The build wrote a partial on CI.' }
+          Write-Host 'Failed as intended, naming the script.'
+          exit 0  # the runner otherwise exits with the failed build's $LASTEXITCODE
+
+      - name: Build with no partials, as a fresh clone does
+        shell: pwsh
+        run: |
+          dotnet build QuickMail/QuickMail.csproj -c Release -warnaserror -p:GITHUB_ACTIONS=false
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          foreach ($f in 'GoogleOAuthService', 'BugReportService') {
+            if (-not (Test-Path "QuickMail/Services/$f.Credentials.cs")) { throw "$f.Credentials.cs was not written." }
+          }
+
+      - name: Build with one partial present, which must be left alone
+        shell: pwsh
+        run: |
+          $kept = 'QuickMail/Services/GoogleOAuthService.Credentials.cs'
+          Add-Content -Path $kept -Value '// ci-marker: stands in for real values a release build writes'
+          $before = (Get-FileHash $kept).Hash
+          Remove-Item QuickMail/Services/BugReportService.Credentials.cs
+          dotnet build QuickMail/QuickMail.csproj -c Release -warnaserror -p:GITHUB_ACTIONS=false
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if ((Get-FileHash $kept).Hash -ne $before) { throw "$kept was overwritten." }
+          if (-not (Test-Path QuickMail/Services/BugReportService.Credentials.cs)) { throw 'BugReportService.Credentials.cs was not written.' }
 
   build:
     runs-on: windows-latest
@@ -654,3 +703,30 @@ jobs:
       contents: read
       pages: write
       id-token: write
+
+  # The winget manifest generator and its template, checked on every pull request and push
+  # so a change that would break the submission fails here, not after a release is out.
+  winget-manifest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Test scripts/winget-manifest.ps1 against the template
+        shell: pwsh
+        run: ./scripts/winget-manifest.tests.ps1
+
+  # Submit the release to the winget catalog (KellyLford.QuickMail). Like publish-guide, a
+  # direct call because a GITHUB_TOKEN-made release starts no workflow. It runs after the
+  # release is published (the Release step is in build), so the MSIs it hashes are the ones
+  # people download. A failure here leaves the release itself untouched; rerun the job, or
+  # run "Submit to winget" by hand with the version.
+  winget:
+    needs: [build, winget-manifest]
+    if: startsWith(github.ref, 'refs/tags/v')
+    uses: ./.github/workflows/winget-submit.yml
+    permissions:
+      contents: read
+    # The caller must name the secret even though it lives only in the winget environment,
+    # which the called job enters: without this it reaches the called workflow as an empty
+    # string, with no error (#1006). Named, not `secrets: inherit`, so no other secret goes.
+    secrets:
+      WINGET_TOKEN: ${{ secrets.WINGET_TOKEN }}

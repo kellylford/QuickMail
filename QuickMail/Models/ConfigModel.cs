@@ -335,8 +335,41 @@ public class ConfigModel
     /// <summary>Editing mode new compose windows start in. Drafts reopen in the mode they were saved in; templates always reopen in plain text.</summary>
     public ComposeMode DefaultComposeMode { get; set; } = ComposeMode.PlainText;
 
+    /// <summary>
+    /// Spell-check compose text in the background as it is typed or pasted. Off, compose windows
+    /// don't turn WPF's spell checker on until Check Spelling (F7) or Next/Previous Misspelling
+    /// (Ctrl+F7 / Ctrl+Shift+F7) asks for it: WPF's background check of a long pasted text with
+    /// many unknown words blocks the window for seconds and screen readers misread lines meanwhile
+    /// (#883, dotnet/wpf#6106). On by default.
+    /// </summary>
+    public bool CheckSpellingAsYouType { get; set; } = true;
+
     /// <summary>Automatically save composes as drafts while editing.</summary>
     public bool AutoSaveDrafts { get; set; } = true;
+
+    /// <summary>Ask before sending or queuing a message. Off preserves the existing send workflow.</summary>
+    public bool ConfirmBeforeSend { get; set; }
+
+    /// <summary>
+    /// Remember the people messages are sent to, in recipients.json, apart from the address book (#1037).
+    /// Off by default. Only the remembering: whether they are suggested is <see cref="SuggestPeopleEmailed"/>.
+    /// </summary>
+    public bool RememberRecipients { get; set; }
+
+    /// <summary>
+    /// Show address suggestions while typing in To, Cc, Bcc and an appointment's Invite field (#1037). On by
+    /// default. Off, no list ever appears and Tab and Enter keep what was typed, whatever the two below say.
+    /// </summary>
+    public bool SuggestAddresses { get; set; } = true;
+
+    /// <summary>Suggest contacts and groups from the address book, synced contacts included. On by default.</summary>
+    public bool SuggestFromAddressBook { get; set; } = true;
+
+    /// <summary>
+    /// Suggest people remembered from sent mail (<see cref="RememberRecipients"/>). On by default; it offers
+    /// nothing until remembering has been turned on.
+    /// </summary>
+    public bool SuggestPeopleEmailed { get; set; } = true;
 
     /// <summary>Seconds between automatic draft saves. Clamped to 30–600.</summary>
     public int AutoSaveIntervalSeconds { get; set; } = 120;
@@ -367,6 +400,16 @@ public class ConfigModel
     /// needing a restart.
     /// </summary>
     public bool ConnectionDiagnostics { get; set; } = false;
+
+    /// <summary>
+    /// Makes the space bar in every text field reach screen readers as a typed character
+    /// (issue #300). WPF inserts a space through an editing command and marks the key handled,
+    /// so Windows never sends the WM_CHAR a screen reader watches to end a word, and word echo
+    /// is silent until the next punctuation mark. Off by default, so only someone who turns it on
+    /// gets the change: with it on, typed-character echo was reported to stop speaking "space".
+    /// Takes effect immediately.
+    /// </summary>
+    public bool NvdaTypingFix { get; set; } = false;
 
     /// <summary>
     /// Whether File, Export Settings and File, Import Settings are offered (issue #507). Off by
@@ -410,6 +453,53 @@ public class ConfigModel
     /// not just the inbox — a watched thread's next reply can land anywhere. Default off.
     /// </summary>
     public bool NotifyOnWatchedConversation { get; set; } = false;
+
+    // ── Sounds (#912) ─────────────────────────────────────────────────────────────
+
+    /// <summary>Play sounds for mail events such as a message being sent. Default off. A rule's own
+    /// sound does not depend on this: adding one to a rule is already asking for it.</summary>
+    public bool PlayEventSounds { get; set; } = false;
+
+    /// <summary>Silences every sound, including rule sounds. Only an explicit preview still plays.</summary>
+    public bool MuteSounds { get; set; } = false;
+
+    /// <summary>How loud QuickMail's sounds play, 0-100, within whatever Windows is set to.</summary>
+    public int SoundVolume { get; set; } = 80;
+
+    /// <summary>
+    /// Check the sound scheme gallery, at most once a day, for updates to schemes added from it, and
+    /// say when one is waiting (#971). Default on. Only asked when a gallery scheme is here.
+    /// </summary>
+    public bool CheckSoundSchemeUpdates { get; set; } = true;
+
+    /// <summary>When QuickMail last checked the gallery for updates to sound schemes, in UTC; null if never.</summary>
+    public DateTime? LastSoundSchemeUpdateCheck { get; set; }
+
+    /// <summary>
+    /// The newer gallery versions already announced (#971): gallery id to the SHA-256 of the file last
+    /// said for it, so a waiting update is said once, not every day. Replaced as a whole, never changed in place.
+    /// </summary>
+    public Dictionary<string, string> AnnouncedSoundSchemeUpdates { get; set; } = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// The sound scheme in use (#932): a built-in pack's id ("glass", "softbell", "wood") or a scheme of
+    /// the person's own ("user-&lt;guid&gt;"). Replaces 0.8.67's SoundPack, which is read when this is absent.
+    /// An id this build doesn't have plays as Glass and is kept, as written, until someone chooses another.
+    /// </summary>
+    public string SoundSchemeId { get; set; } = SoundCatalog.DefaultPack;
+
+    /// <summary>
+    /// Every scheme with something stored, by id: one <c>[sounds.&lt;id&gt;]</c> section each. A built-in
+    /// scheme is here only if the person changed it; every scheme of their own is here. A section this
+    /// build doesn't understand is kept so that saving doesn't erase it. Replaced as a whole on save,
+    /// never changed in place: the sound worker reads it from another thread.
+    /// </summary>
+    public Dictionary<string, SoundScheme> SoundSchemes { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>A scheme as stored, or a built-in one as it ships. Null for an id that is neither.</summary>
+    public SoundScheme? FindSoundScheme(string id) =>
+        SoundSchemes.TryGetValue(id, out var scheme) ? scheme
+        : SoundCatalog.IsBuiltInSchemeId(id) ? SoundCatalog.BuiltInScheme(id) : null;
 
     /// <summary>
     /// When closing the main window, hide QuickMail to the notification area (system tray) instead

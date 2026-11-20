@@ -10,7 +10,7 @@ Populates an IMAP folder with realistic test messages using IMAP `APPEND` — no
    cp credentials.example.ini credentials.ini
    ```
 
-2. Edit `credentials.ini` — replace `your-password` with your actual password.
+2. Edit `credentials.ini`: fill in your test account's IMAP and SMTP server, user name and password. Use a throwaway test mailbox, not your real one.
 
 3. `credentials.ini` is gitignored and will never be committed.
 

@@ -181,7 +181,7 @@ public sealed class OutboxService : IOutboxService, IDisposable
 
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token, ct);
         var token = linked.Token;
-        int sent = 0, drafts = 0, failed = 0, skipped = 0, deferred = 0, awaitingSignIn = 0;
+        int sent = 0, drafts = 0, failed = 0, failedSends = 0, skipped = 0, deferred = 0, awaitingSignIn = 0;
         var touched = false;
         try
         {
@@ -214,7 +214,10 @@ public sealed class OutboxService : IOutboxService, IDisposable
                 {
                     case Outcome.Sent:          sent++;     break;
                     case Outcome.DraftUploaded: drafts++;   break;
-                    case Outcome.Failed:        failed++;   break;
+                    case Outcome.Failed:
+                        failed++;
+                        if (item.Kind == OutboxKind.Send) failedSends++;
+                        break;
                     case Outcome.Deferred:      deferred++; break;
                     case Outcome.AwaitingSignIn: awaitingSignIn++; break;
                     default:                    skipped++;  break;
@@ -226,7 +229,7 @@ public sealed class OutboxService : IOutboxService, IDisposable
             _drain.Release();
         }
 
-        var result = new OutboxFlushResult(sent, drafts, failed, skipped, deferred, awaitingSignIn);
+        var result = new OutboxFlushResult(sent, drafts, failed, skipped, deferred, awaitingSignIn, failedSends);
         if (touched) RaiseChanged();
         if (result.Any)
         {

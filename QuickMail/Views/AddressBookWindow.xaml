@@ -472,6 +472,127 @@
                     </Grid>
                 </Grid>
             </TabItem>
+
+            <!-- People I've Sent To (#1039): people remembered from sent mail who are not in the address
+                 book. Absent where there is no store (tests): the constructor collapses it, since whether
+                 there is one never changes. Its content binds to the SentTo view model. -->
+            <TabItem x:Name="SentToTab"
+                     Header="People I've Sent To"
+                     AutomationProperties.Name="People I've Sent To"
+                     KeyboardNavigation.TabNavigation="Local">
+                <DockPanel Margin="0,6,0,0" DataContext="{Binding SentTo}">
+                    <!-- Why the list is empty, or that remembering is off. Tab never reaches a TextBlock,
+                         so the same words are the list's help text below. -->
+                    <TextBlock DockPanel.Dock="Top"
+                               x:Name="SentToNotice"
+                               Text="{Binding Notice}"
+                               TextWrapping="Wrap"
+                               Foreground="{DynamicResource Theme.TextSecondary}"
+                               Margin="0,0,0,6">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Visibility" Value="Visible"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding Notice}" Value="">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+
+                    <!-- Insert into the message, as on the Contacts tab -->
+                    <StackPanel DockPanel.Dock="Top"
+                                Style="{StaticResource InsertRow}"
+                                Orientation="Horizontal"
+                                Margin="0,0,0,6">
+                        <TextBlock Text="Add selected person to:"
+                                   VerticalAlignment="Center" Margin="0,0,8,0"/>
+                        <Button Content="_To"
+                                Command="{Binding AddToToCommand}"
+                                IsEnabled="{Binding HasSelectedPerson}"
+                                AutomationProperties.Name="Add to To field"
+                                MinWidth="50" Margin="0,0,4,0" TabIndex="30"/>
+                        <Button Content="_Cc"
+                                Command="{Binding AddToCcCommand}"
+                                IsEnabled="{Binding HasSelectedPerson}"
+                                AutomationProperties.Name="Add to Cc field"
+                                MinWidth="50" Margin="0,0,4,0" TabIndex="31"/>
+                        <Button Content="_Bcc"
+                                Command="{Binding AddToBccCommand}"
+                                IsEnabled="{Binding HasSelectedPerson}"
+                                AutomationProperties.Name="Add to Bcc field"
+                                MinWidth="50" TabIndex="32"/>
+                    </StackPanel>
+
+                    <!-- Actions + the last outcome -->
+                    <StackPanel DockPanel.Dock="Bottom" Margin="0,8,0,0">
+                        <StackPanel Orientation="Horizontal">
+                            <!-- Click handlers, not commands: an async command disables its button while it
+                                 runs, and these buttons hold focus while they do (as Delete on Contacts). -->
+                            <Button x:Name="SaveSentToContactButton"
+                                    Content="_Save to Contacts"
+                                    Click="SaveSentToContact_Click"
+                                    IsEnabled="{Binding HasSelectedPerson}"
+                                    AutomationProperties.Name="Save selected person to contacts"
+                                    MinWidth="60" Margin="0,0,4,0" TabIndex="34"/>
+                            <Button x:Name="ForgetSentToButton"
+                                    Content="_Forget"
+                                    Click="ForgetSentTo_Click"
+                                    IsEnabled="{Binding HasSelectedPerson}"
+                                    AutomationProperties.Name="Forget selected person"
+                                    MinWidth="60" Margin="0,0,4,0" TabIndex="35"/>
+                            <Button x:Name="ForgetAllSentToButton"
+                                    Content="Forget _All…"
+                                    Click="ForgetAllSentTo_Click"
+                                    AutomationProperties.Name="Forget everyone"
+                                    MinWidth="60" Margin="0,0,4,0" TabIndex="36"/>
+                            <Border Margin="0,0,4,0"/>
+                            <Button Content="Close"
+                                    AutomationProperties.Name="Close address book"
+                                    MinWidth="60" TabIndex="37"
+                                    Click="Close_Click"/>
+                        </StackPanel>
+                        <TextBlock Text="{Binding ResultText}" TextWrapping="Wrap" Margin="0,4,0,0"/>
+                    </StackPanel>
+
+                    <!-- The list. Row name on the container (#644); type-ahead on the name (#371). -->
+                    <ListView x:Name="SentToList"
+                              ItemsSource="{Binding People}"
+                              SelectedItem="{Binding SelectedPerson}"
+                              SelectionMode="Single"
+                              AutomationProperties.Name="People I've sent to"
+                              AutomationProperties.HelpText="{Binding Notice}"
+                              IsTextSearchEnabled="True"
+                              TextSearch.TextPath="TypeAheadText"
+                              TabIndex="33"
+                              Grid.IsSharedSizeScope="True"
+                              KeyboardNavigation.TabNavigation="Once"
+                              KeyboardNavigation.DirectionalNavigation="Contained"
+                              PreviewKeyDown="SentToList_PreviewKeyDown">
+                        <ListView.ItemContainerStyle>
+                            <Style TargetType="ListViewItem" BasedOn="{StaticResource {x:Type ListViewItem}}">
+                                <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                                <Setter Property="AutomationProperties.Name" Value="{Binding AccessibleName}"/>
+                            </Style>
+                        </ListView.ItemContainerStyle>
+                        <ListView.ItemTemplate>
+                            <DataTemplate>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" MinWidth="120" SharedSizeGroup="SentToNameCol"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto" SharedSizeGroup="SentToWhenCol"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="{Binding DisplayName}" FontWeight="SemiBold" Margin="0,0,12,0"/>
+                                    <TextBlock Grid.Column="1" Text="{Binding EmailAddress}" Opacity="0.75" Margin="0,0,12,0"/>
+                                    <TextBlock Grid.Column="2" Text="{Binding LastSentText}" Opacity="0.6"/>
+                                </Grid>
+                            </DataTemplate>
+                        </ListView.ItemTemplate>
+                    </ListView>
+                </DockPanel>
+            </TabItem>
         </TabControl>
     </DockPanel>
 </Window>

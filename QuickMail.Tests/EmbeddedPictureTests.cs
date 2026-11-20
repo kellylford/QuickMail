@@ -21,6 +21,9 @@ public class EmbeddedPictureTests
 {
     private const string Base = "https://quickmail-images.invalid/key123/";
 
+    /// <summary>What every picture in a displayed message carries, so it does not hold the page's load (#959).</summary>
+    private const string Lazy = " loading=\"lazy\" decoding=\"async\"";
+
     private static string Render(string html, string? pictureBase = Base) =>
         MessageBodyHtmlBuilder.BuildMessageHtml(
             new MailMessageDetail { Subject = "s", HtmlBody = html }, embeddedPictureBase: pictureBase);
@@ -30,7 +33,7 @@ public class EmbeddedPictureTests
     {
         var html = Render("<p>Hi <img src=\"cid:logo@x\" alt=\"Our logo\" width=\"120\" height=\"40\"></p>");
 
-        Assert.Contains($"<img src=\"{Base}logo%40x\" alt=\"Our logo\" width=\"120\" height=\"40\">", html);
+        Assert.Contains($"<img src=\"{Base}logo%40x\" alt=\"Our logo\" width=\"120\" height=\"40\"{Lazy}>", html);
         Assert.Contains("img-src https://quickmail-images.invalid;", html);
         Assert.DoesNotContain("img-src 'none'", html);
     }
@@ -44,7 +47,7 @@ public class EmbeddedPictureTests
 
         var tag = html[html.IndexOf("<img", StringComparison.Ordinal)..];
         tag = tag[..(tag.IndexOf('>') + 1)];
-        Assert.Equal($"<img src=\"{Base}a%40x\" alt=\"A\">", tag); // "100px" is not a plain number either
+        Assert.Equal($"<img src=\"{Base}a%40x\" alt=\"A\"{Lazy}>", tag); // "100px" is not a plain number either
         Assert.DoesNotContain("onerror", html);
         Assert.DoesNotContain("evil", html);
     }
@@ -193,14 +196,14 @@ public class EmbeddedPictureTests
     public void UndescribedPicture_IsSilentLikeADecorativeOne()
     {
         var html = Render("<img src=\"cid:a@x\">");
-        Assert.Contains($"<img src=\"{Base}a%40x\" alt=\"\">", html);
+        Assert.Contains($"<img src=\"{Base}a%40x\" alt=\"\"{Lazy}>", html);
     }
 
     [Fact]
     public void LinkedPicture_KeepsItsLinkNamedByTheAltText()
     {
         var html = Render("<a href=\"https://example.com/\"><img src=\"cid:fb@x\" alt=\"Facebook\"></a>");
-        Assert.Contains($"<a href=\"https://example.com/\"><img src=\"{Base}fb%40x\" alt=\"Facebook\"></a>", html);
+        Assert.Contains($"<a href=\"https://example.com/\"><img src=\"{Base}fb%40x\" alt=\"Facebook\"{Lazy}></a>", html);
     }
 
     // ── Loading the pictures ─────────────────────────────────────────────────

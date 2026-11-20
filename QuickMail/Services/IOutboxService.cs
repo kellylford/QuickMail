@@ -13,7 +13,8 @@ namespace QuickMail.Services;
 /// </summary>
 // AwaitingSignIn (#614): items left waiting because their account needs a sign-in, which a drain
 // never prompts for. Kept apart from Deferred, which means the server could not be reached.
-public sealed record OutboxFlushResult(int Sent, int DraftsUploaded, int Failed, int Skipped, int Deferred = 0, int AwaitingSignIn = 0)
+// FailedSends (#912): how many of Failed were messages rather than drafts, which is what "send failed" means.
+public sealed record OutboxFlushResult(int Sent, int DraftsUploaded, int Failed, int Skipped, int Deferred = 0, int AwaitingSignIn = 0, int FailedSends = 0)
 {
     public static readonly OutboxFlushResult Nothing = new(0, 0, 0, 0);
 

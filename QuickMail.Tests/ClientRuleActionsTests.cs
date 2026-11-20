@@ -429,8 +429,12 @@ public class ClientRuleActionsTests
             return Task.CompletedTask;
         }
 
+        /// <summary>Set to make updating the store fail after the server has acted.</summary>
+        public Exception? ThrowOnDelete { get; init; }
+
         public override Task DeleteSummariesAsync(Guid accountId, string folderName, IEnumerable<string> messageIds)
         {
+            if (ThrowOnDelete is { } ex) throw ex;
             Deleted.AddRange(messageIds);
             return Task.CompletedTask;
         }
@@ -595,12 +599,14 @@ public class ClientRuleActionsTests
                 TargetFolder = "INBOX/Digests", CopyTargetFolder = "INBOX/Kept",
             }]);
 
-            var removed = await rules.ApplyRulesToExistingAsync(
+            var report = await rules.ApplyRulesToExistingAsync(
                 store, new Dictionary<Guid, string> { [account] = "INBOX" }, TestContext.Current.CancellationToken);
 
             Assert.Equal(["copy 7 to INBOX/Kept"], server.Calls);   // the move never ran
-            Assert.Empty(removed);
+            Assert.Empty(report.Removed);
             Assert.Empty(store.Deleted);                            // the cached row stays, as the message does
+            // Reported as a failure, not as a rule that matched nothing (#949).
+            Assert.Equal([new ExistingMailRuleResult("Keep and file", 0, 0, Failed: 1)], report.Rules);
         }
         finally { if (Directory.Exists(dir)) Directory.Delete(dir, true); }
     }
@@ -673,11 +679,44 @@ public class ClientRuleActionsTests
                 Action = RuleAction.MoveToFolder, TargetFolder = "folder-deleted",
             }]);
 
-            var removed = await rules.ApplyRulesToExistingAsync(
+            var report = await rules.ApplyRulesToExistingAsync(
                 store, new Dictionary<Guid, string> { [account] = "INBOX" }, TestContext.Current.CancellationToken);
 
-            Assert.Empty(removed);
+            Assert.Empty(report.Removed);
             Assert.Empty(store.Deleted);
+            Assert.Equal([new ExistingMailRuleResult("File", 0, 0, Failed: 1)], report.Rules);   // #949
+        }
+        finally { if (Directory.Exists(dir)) Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public async Task RunOnExistingMail_WhenTheStoreCannotBeUpdated_TheMoveStillCounts() // #949
+    {
+        // The server moved the message; only the local store's row is left behind. The rule did move it, so it is
+        // counted and reported as removed, and the caller refreshes its list.
+        var dir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
+        try
+        {
+            var account = Guid.NewGuid();
+            var server = new RecordingMailService();
+            var store = new RecordingStore { ThrowOnDelete = new IOException("database is locked") };
+            store.SeededSummaries[(account, "INBOX")] =
+            [
+                new MailMessageSummary { MessageId = "7", AccountId = account, FolderName = "INBOX", Subject = "Weekly digest" },
+            ];
+            var rules = new RuleService(server, store, dir);
+            rules.SaveRules([new MailRule
+            {
+                Name = "File", AccountId = account, SubjectContains = "digest",
+                Action = RuleAction.MoveToFolder, TargetFolder = "INBOX/Digests",
+            }]);
+
+            var report = await rules.ApplyRulesToExistingAsync(
+                store, new Dictionary<Guid, string> { [account] = "INBOX" }, TestContext.Current.CancellationToken);
+
+            Assert.Equal(["move 7 to INBOX/Digests"], server.Calls);
+            Assert.Equal([new ExistingMailRuleResult("File", Moved: 1, Deleted: 0)], report.Rules);
+            Assert.Equal(["7"], report.Removed.Select(m => m.MessageId));
         }
         finally { if (Directory.Exists(dir)) Directory.Delete(dir, true); }
     }
@@ -702,12 +741,13 @@ public class ClientRuleActionsTests
                 Action = RuleAction.CopyToFolder, CopyTargetFolder = "INBOX/Kept",
             }]);
 
-            var removed = await rules.ApplyRulesToExistingAsync(
+            var report = await rules.ApplyRulesToExistingAsync(
                 store, new Dictionary<Guid, string> { [account] = "INBOX" }, TestContext.Current.CancellationToken);
 
             Assert.Equal(["copy 7 to INBOX/Kept"], server.Calls);
-            Assert.Empty(removed);          // nothing left the Inbox, so nothing counts as moved or deleted
+            Assert.Empty(report.Removed);   // nothing left the Inbox, so nothing counts as moved or deleted
             Assert.Empty(store.Deleted);    // and the cached row stays
+            Assert.Equal([new ExistingMailRuleResult("Keep", 0, 0)], report.Rules);   // a copy that worked is no failure
         }
         finally { if (Directory.Exists(dir)) Directory.Delete(dir, true); }
     }

@@ -9,31 +9,14 @@ to go straight back to the folder QuickMail opens in. It works like Go to Inbox 
 programs, where your inbox is whatever you chose as your startup folder: one account's Inbox,
 All Inboxes, or All Mail if you have not chosen one. Focus moves to the message list.
 
-## Changed
-
-### The rule editor's address conditions
-
-The **From addresses** field has been renamed to **From any of these addresses** and moved out of **Advanced conditions & actions** to be next to
-**Sender contains**.
-
-Likewise, **Sent to addresses** is now called **Sent to any of these addresses**. These renames make it more obvious that a message matches when it has any one of the addresses listed.
-
-### Create Rule from Message fills in the sender's address and their name
-
-**Create Rule from Message** (`Ctrl+Shift+T`) now puts the sender's email address in **From any of
-these addresses**, checked, so the rule matches everything from that address and nothing from
-anyone else using the same name. Their name goes in **Sender contains**, unchecked; check it as
-well if you want a rule that needs both the address and the name. If QuickMail doesn't have the
-sender's address yet, it fills in the name alone, as before.
-
-### Improved display consistency in the Rules Manager list
-
-In the Rules Manager's list, a client-side rule now reads "If from" and the address, the same way
-a Microsoft 365 server-side rule already did, rather than "from contains": a full address has to
-match the sender's address as a whole.
-
 ## Fixed
 
+- **NVDA can speak each word as you type it.** With NVDA's typed-word echo on, typing in the
+  message body or any other QuickMail text field says nothing at each space, then speaks every word
+  run together at the next punctuation mark ("hellothisisatest"). Turn on **Settings → Advanced →
+  NVDA Typing Fix** to have the space bar reach NVDA as a typed character, the way it does in other
+  Windows programs, so each word is spoken as you finish it. It is off by default: with it on,
+  typed-character echo may no longer speak the space bar. (#300)
 - **Focus no longer jumps back to the message list after you have moved on.** Going to All Mail,
   another combined folder such as All Inboxes, or a saved view with Enter in the folder tree or Go
   to Folder puts you in its message list as soon as the messages already on this computer appear.
@@ -43,9 +26,6 @@ match the sender's address as a whole.
 - **Enter on the folder that is already open in the folder tree** moves you into its message list
   straight away. For All Mail and the other combined folders it used to wait for every account's
   server first.
-- **In the rule editor for client-side rules, addresses are remembered in From any of these addresses, even if the condition to use them is unchecked.** Before this, if you switched **From any of these addresses**
-  off and **Sender contains** on, then saved, the addresses box would be empty if you later wanted to turn that condition on. They are now kept, just disabled, like the text of every other condition you
-  turn off.
 
 ## Reporting Issues
 

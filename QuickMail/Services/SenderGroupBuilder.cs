@@ -12,10 +12,17 @@ public static class SenderGroupBuilder
     /// sorts each group newest-first. Groups are returned in an unspecified order — the caller
     /// applies the desired sort.
     /// </summary>
+    /// <summary>The From view group a message belongs to.</summary>
+    public static string FromKey(MailMessageSummary m) => m.From.Trim();
+
+    /// <summary>The To view group a message belongs to.</summary>
+    public static string ToKey(MailMessageSummary m) =>
+        string.IsNullOrWhiteSpace(m.To) ? "(no recipient)" : m.To.Trim();
+
     public static IReadOnlyList<SenderGroup> Build(IEnumerable<MailMessageSummary> messages)
     {
         return messages
-            .GroupBy(m => m.From.Trim(), StringComparer.OrdinalIgnoreCase)
+            .GroupBy(FromKey, StringComparer.OrdinalIgnoreCase)
             .Select(g =>
             {
                 var sorted = g.OrderByDescending(m => m.Date).ToList();
@@ -36,7 +43,7 @@ public static class SenderGroupBuilder
     public static IReadOnlyList<SenderGroup> BuildByTo(IEnumerable<MailMessageSummary> messages)
     {
         return messages
-            .GroupBy(m => string.IsNullOrWhiteSpace(m.To) ? "(no recipient)" : m.To.Trim(), StringComparer.OrdinalIgnoreCase)
+            .GroupBy(ToKey, StringComparer.OrdinalIgnoreCase)
             .Select(g =>
             {
                 var sorted = g.OrderByDescending(m => m.Date).ToList();

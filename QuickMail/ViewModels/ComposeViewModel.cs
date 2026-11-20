@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.IO;
@@ -167,9 +168,9 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
     public DraftSaveOutcome LastSaveOutcome { get; private set; } = DraftSaveOutcome.None;
 
     /// <summary>
-    /// Raised once when auto-save first has to keep the draft on this computer instead of the
-    /// server, so the window can say so (Status category) without nagging every interval. Reset by
-    /// the next server save.
+    /// Raised the first time auto-save has to keep the draft on this computer instead of the
+    /// server, so the window can say so (Status category) — at most once per compose window
+    /// (#901). Later local saves show only in <see cref="AutoSaveText"/>.
     /// </summary>
     public event Action<string>? AutoSaveNotice;
     private bool _localAutoSaveNoticed;
@@ -194,6 +195,100 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
     /// </summary>
     public Func<string, string, bool>? ConfirmationRequested { get; set; }
 
+    /// <summary>Set by the View for the send confirmation; false includes No, Cancel, and Escape.</summary>
+    public Func<string, string, bool>? SendConfirmationRequested { get; set; }
+
+    /// <summary>Fallback for hosts without a live preference provider.</summary>
+    public bool ConfirmBeforeSend { get; set; }
+
+    /// <summary>Reads the current composing preference, including changes made while composing.</summary>
+    public Func<bool>? ConfirmBeforeSendProvider { get; set; }
+
+    /// <summary>
+    /// Where the people a sent message went to are remembered, for address suggestions (#1037). Set by
+    /// the View; null records nothing.
+    /// </summary>
+    public IRecipientHistory? RecipientHistory { get; set; }
+
+    /// <summary>Reads Settings → Remember people I send to at send time. Null or false records nothing.</summary>
+    public Func<bool>? RememberRecipientsProvider { get; set; }
+
+    /// <summary>
+    /// The finished record of who a message went to, when there is one to wait for. Tests await it; the
+    /// send path does not, since remembering is never worth delaying the window's close for.
+    /// </summary>
+    internal Task? PendingRecipientRecord { get; private set; }
+
+    /// <summary>
+    /// Remembers every To, Cc and Bcc address of a message that has been sent or queued, when the user
+    /// has asked for that. Best effort: a failure is logged and never reaches the send.
+    /// </summary>
+    private void RememberRecipients(ComposeModel compose)
+    {
+        if (RecipientHistory is not { } history || RememberRecipientsProvider?.Invoke() != true) return;
+        // The accounts as they are now, and as they were when this window opened, and the one sending.
+        // AccountService returns an empty list rather than throwing when accounts.json cannot be read,
+        // so the read alone could quietly let the user's own address through; the other two cannot fail.
+        var accounts = new List<AccountModel>();
+        try { accounts.AddRange(_accountService.LoadAccounts()); }
+        catch (Exception ex) { LogService.Log("Send: could not read the accounts to leave the user's own addresses out", ex); }
+        accounts.AddRange(SenderAccounts);
+        if (SenderAccount is { } sender) accounts.Add(sender);
+        var people = WithoutOwnAddresses(RecipientsOf(compose), accounts);
+        if (people.Count == 0) return;
+        PendingRecipientRecord = Task.Run(async () =>
+        {
+            try { await history.RecordAsync(people); }
+            catch (Exception ex) { LogService.Log("Send: could not remember the recipients", ex); }
+        });
+    }
+
+    /// <summary>
+    /// Leaves out the user's own addresses — every account's address, and a shared mailbox's own address
+    /// (#1037). Nobody needs themselves suggested, and a message copied to oneself, or a reply-all that
+    /// includes one's own address, would otherwise put the user in their own list.
+    /// </summary>
+    internal static List<(string DisplayName, string EmailAddress)> WithoutOwnAddresses(
+        IEnumerable<(string DisplayName, string EmailAddress)> people, IEnumerable<AccountModel> accounts)
+    {
+        var own = OwnAddresses(accounts);
+        return people.Where(p => !own.Contains(p.EmailAddress.Trim())).ToList();
+    }
+
+    /// <summary>
+    /// The user's own addresses: each account's address, a shared mailbox's address, and a sign-in name
+    /// that is itself an address (an iCloud account on a custom domain signs in with its Apple ID).
+    /// </summary>
+    internal static HashSet<string> OwnAddresses(IEnumerable<AccountModel> accounts)
+    {
+        var own = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var a in accounts)
+        {
+            if (!string.IsNullOrWhiteSpace(a.Username)) own.Add(a.Username.Trim());
+            if (!string.IsNullOrWhiteSpace(a.SharedAddress)) own.Add(a.SharedAddress.Trim());
+            if (EmailAddressValidator.IsValid(a.LoginUsername)) own.Add(a.LoginUsername!.Trim());
+        }
+        return own;
+    }
+
+    /// <summary>Every address in To, Cc and Bcc with its name, read the way the message headers are built.</summary>
+    internal static List<(string DisplayName, string EmailAddress)> RecipientsOf(ComposeModel compose)
+    {
+        var list = new MimeKit.InternetAddressList();
+        AddressInput.AddTo(list, compose.To);
+        AddressInput.AddTo(list, compose.Cc);
+        AddressInput.AddTo(list, compose.Bcc);
+        return list.Mailboxes
+            .Where(m => !string.IsNullOrWhiteSpace(m.Address))
+            .GroupBy(m => m.Address, StringComparer.OrdinalIgnoreCase)
+            .Select(g => (g.Select(m => m.Name ?? string.Empty).FirstOrDefault(n => n.Length > 0) ?? string.Empty, g.Key))
+            .ToList();
+    }
+
+    // A modal confirmation runs a nested message loop before AsyncRelayCommand marks itself
+    // running. Guard that interval as well as the asynchronous send and post-send cleanup.
+    private bool _sendInProgress;
+
     /// <summary>
     /// The IAccountService this compose window was built with. Exposed so the address book
     /// opened from here (Ctrl+Shift+B) can name accounts in its account filter — without it
@@ -201,9 +296,13 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
     /// </summary>
     public IAccountService AccountService => _accountService;
 
+    private readonly ISoundService? _sounds;
+
     public ComposeViewModel(ISendMailService smtp, IAccountService accountService, ICredentialService credentials, IMailService imap, ITemplateService templateService, IMarkdownService? markdown = null,
-        IOutboxService? outbox = null, IConnectivityService? connectivity = null, Func<Guid, bool>? isAccountConnected = null)
+        IOutboxService? outbox = null, IConnectivityService? connectivity = null, Func<Guid, bool>? isAccountConnected = null,
+        ISoundService? sounds = null)
     {
+        _sounds = sounds;
         _isAccountConnected = isAccountConnected;
         _smtp = smtp;
         _accountService = accountService;
@@ -424,7 +523,9 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
         }
         _isSent = true;
         _isDirty = false;
+        RememberRecipients(compose);
         SetStatusOutcome(queuedMessage ?? "Message queued. It will be sent when you're online.");
+        _sounds?.Play(SoundEvent.MessageQueued);
         CloseRequested?.Invoke();
         return true;
     }
@@ -735,7 +836,8 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
             await ForgetLocalCopyAsync();
             AutoSaveText = $"Auto-saved {DateTime.Now:t}";
             _autoSaveFailureAnnounced = false;
-            _localAutoSaveNoticed = false;
+            // _localAutoSaveNoticed is deliberately not reset (#901): on a connection that comes
+            // and goes it was said again after every server save, in the middle of editing.
         }
         catch (OperationCanceledException) when (_autoSaveCts.IsCancellationRequested)
         {
@@ -797,6 +899,25 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private async Task SendAsync()
     {
+        if (_sendInProgress || _isSent) return;
+        if (IsBusy)
+        {
+            SetStatusOutcome("Still saving the draft. Try sending again in a moment.");
+            return;
+        }
+        _sendInProgress = true;
+        try
+        {
+            await SendCoreAsync();
+        }
+        finally
+        {
+            _sendInProgress = false;
+        }
+    }
+
+    private async Task SendCoreAsync()
+    {
         if (string.IsNullOrWhiteSpace(To))
         {
             SetStatusOutcome("Please enter at least one recipient.");
@@ -834,10 +955,16 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
             return;
         }
 
+        // Deliberately busy before the modal prompt so auto-save cannot start in its nested loop.
         IsBusy = true;
-        SetProgress("Sending…");
         try
         {
+            if ((ConfirmBeforeSendProvider?.Invoke() ?? ConfirmBeforeSend) && SendConfirmationRequested?.Invoke(
+                    "Send this message now? If the account is offline, it will be queued to send when connected.",
+                    "Confirm Send") != true)
+                return;
+
+            SetProgress("Sending…");
             var compose = BuildComposeModel(account.Id);
 
             // A shared mailbox sends through its parent's sign-in (#31), so while it is disconnected
@@ -865,6 +992,7 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
                 // attachment on a thin uplink. Queuing it would say "when you're online" to someone
                 // who is, and could send twice if the server had already taken the data.
                 SetStatusOutcome("Send timed out after 30 seconds. Try again.");
+                _sounds?.Play(SoundEvent.SendFailed);
                 return;
             }
             catch (Exception ex) when (ConnectionFailure.IsConnectionFailure(ex, CancellationToken.None))
@@ -882,8 +1010,10 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
                     return;
                 throw;
             }
-            SetStatusOutcome("Message sent.");
             _isSent = true;
+            RememberRecipients(compose);
+            SetStatusOutcome("Message sent.");
+            _sounds?.Play(SoundEvent.MessageSent);
             await ForgetLocalCopyAsync();
 
             // Append to Sent folder (best-effort — fire and forget so it doesn't block the UI).
@@ -922,6 +1052,7 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
         catch (Exception ex)
         {
             SetStatusOutcome($"Send failed: {ex.Message}");
+            _sounds?.Play(SoundEvent.SendFailed);
         }
         finally
         {
@@ -955,8 +1086,8 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
     public event Action<string>? LoadHtmlIntoEditorRequested;
 
     /// <summary>
-    /// Raised to insert plain text (e.g. a template) at the rich editor's caret
-    /// while in HTML mode.
+    /// Raised to insert plain text (e.g. a template) at the editor's caret, in
+    /// whichever editor the current mode uses.
     /// </summary>
     public event Action<string>? InsertTextIntoEditorRequested;
 
@@ -1031,9 +1162,21 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
     private bool HasFormattingWorthConfirming() => CurrentMode switch
     {
         ComposeMode.Markdown => !string.IsNullOrWhiteSpace(Body) && Body != _markdown.ToPlainText(Body),
-        ComposeMode.Html     => !(RichBodyProvider?.Invoke() ?? RichBodySnapshot.Empty).IsEmpty,
+        ComposeMode.Html     => HtmlHasFormattingWorthConfirming(RichBodyProvider?.Invoke() ?? RichBodySnapshot.Empty),
         _                    => false,
     };
+
+    // The Markdown of text with no formatting is that text, so when the two agree nothing is lost
+    // going to plain text — a Plain → HTML → Plain round trip doesn't ask (#887). A picture is
+    // always lost, and so is underline, which has no Markdown form; either always asks.
+    private bool HtmlHasFormattingWorthConfirming(RichBodySnapshot snap)
+    {
+        if (snap.IsEmpty) return false;
+        if (PicturesReferencedBy(snap.Html).Count > 0) return true;
+        if (snap.Html.Contains("<u>", StringComparison.OrdinalIgnoreCase)) return true;
+        static string Norm(string s) => s.Replace("\r\n", "\n").Trim();
+        return Norm(snap.Markdown) != Norm(snap.PlainText);
+    }
 
     /// <summary>Renders the current Markdown body as a full HTML document for the preview pane.</summary>
     public string RenderPreviewHtml() => _markdown.WrapDocument(_markdown.ToHtml(Body), Subject);
@@ -1079,9 +1222,11 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
                 .Replace("{date}", now.ToString("d"), StringComparison.OrdinalIgnoreCase)
                 .Replace("{time}", now.ToString("t"), StringComparison.OrdinalIgnoreCase);
 
-        if (CurrentMode == ComposeMode.Html)
-            InsertTextIntoEditorRequested?.Invoke(body);
-        else
+        // The editor inserts at the caret, as one undo step, on lines of its own (#888, #889).
+        // Unwired (tests), plain text falls back to appending.
+        if (InsertTextIntoEditorRequested != null)
+            InsertTextIntoEditorRequested(body);
+        else if (CurrentMode != ComposeMode.Html)
             Body += body;
         SetStatusOutcome($"Template '{template.Title}' inserted.");
     }

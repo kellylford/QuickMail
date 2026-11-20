@@ -6,7 +6,8 @@ containing:
 
 - `QuickMail-win.msi` — **the user-facing installer**: a standard Windows Installer wizard
   (WiX 5) with welcome, license acceptance, and conclusion pages fed from
-  `installer/velopack/*.txt` and the repo `LICENSE`
+  `installer/velopack/*.txt` and the repo `LICENSE`. The release workflow renames it to
+  `QuickMail-<version>-win.msi` (and `QuickMail-<version>-win-arm64.msi`) before uploading.
 - `QuickMail-win-Setup.exe` — Velopack's one-click installer (no wizard, no license page);
   produced by `vpk pack` but **not shipped** — the MSI is the installer users download.
   It was briefly shipped for winget (issue #536) and that was **reverted before any release
@@ -167,7 +168,7 @@ leaves ARM64 output in `bin/Release` until the next ordinary build.
   is why `Setup.exe` is not a release asset, and it is not specific to winget: it applies to
   anyone who runs `Setup.exe` on a machine where QuickMail was installed from the MSI.
   Measured on both architectures by `.github/workflows/winget-install-matrix.yml`
-  (scenarios 2, 6 and 7); full results in `docs/planning/winget-distribution-plan.md`.
+  (scenarios 2, 6 and 7); full results in `docs/planning/Completed/winget-distribution-plan.md`.
 
   Velopack writes its own uninstall entry under the key `QuickMail`, while an MSI install
   registers under `MSI:QuickMail`. Setup.exe does not remove the MSI's registration, so the
@@ -271,9 +272,9 @@ Run it on your own machine before trusting it broadly:
    creates the release.
 2. **Verify the release assets by eye.** On the GitHub release page, confirm all four updater
    files are attached: `QuickMail-0.8.0-full.nupkg`, `RELEASES`, `releases.win.json`,
-   `assets.win.json` (plus the `QuickMail-win.msi` and portable `QuickMail.exe`). A missing or
+   `assets.win.json` (plus the `QuickMail-<version>-win.msi` and portable `QuickMail.exe`). A missing or
    malformed feed is the most likely failure and the one that strands clients *silently*.
-3. **Install the baseline from the real release.** Download and run `QuickMail-win.msi` from
+3. **Install the baseline from the real release.** Download and run `QuickMail-<version>-win.msi` from
    the release page (not a local build) so the installed copy is exactly what users get.
 4. **Publish an update (0.8.1).** Bump `<Version>`, `<AssemblyVersion>`, and `<FileVersion>`
    in `QuickMail/QuickMail.csproj`, add `docs/release-notes-v0.8.1.md`, commit, then
@@ -300,9 +301,8 @@ Users on an Inno Setup install (v0.7.9.1 and earlier) need a one-time manual rei
 onto the auto-update track:
 
 1. Uninstall QuickMail via Settings → Apps, **declining** the offer to delete user data.
-2. Download and run `QuickMail-win.msi` from the releases page.
+2. Download and run `QuickMail-<version>-win.msi` from the releases page.
 3. Launch QuickMail — accounts, settings, and mail are exactly as they were.
 
-The retired Inno Setup script (`installer/quickmail.iss`, `installer/CodeDependencies.iss`,
-`installer/Languages/Custom.en.isl`) is kept in the repo for reference until the first
-Velopack release has shipped successfully.
+The retired Inno Setup scripts were removed after the Velopack installer shipped; they remain in
+git history.

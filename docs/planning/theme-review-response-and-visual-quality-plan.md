@@ -3,7 +3,7 @@
 **Date:** 2026-07-30
 **Input:** External AI ("Fusion AI") visual review of QuickMail's window and six themes.
 **Purpose:** Verify the review against the code, define the fixes, define the testing that makes visual quality self-sustaining, and define the process by which AI produces visually good work without a sighted human in the loop.
-**Related:** #180 (visual verification harness — open, spec-only), #175 (debug screenshot capture — dependency of #180), #177/#179 (theming, shipped), `docs/planning/theming-visual-design-pm-dev-spec.md`.
+**Related:** #180 (visual verification harness — open, spec-only), #175 (debug screenshot capture — dependency of #180), #177/#179 (theming, shipped), `docs/planning/Completed/theming-visual-design-pm-dev-spec.md`.
 
 ---
 

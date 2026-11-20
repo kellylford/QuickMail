@@ -134,11 +134,20 @@ public partial class MainViewModel
         _                          => $"{connected} account{(connected == 1 ? "" : "s")} connected",
     };
 
+    private bool _connectionLostSounded;
+
     /// <summary>"Offline. Showing cached messages." once per outage; "Back online." only after it was said.</summary>
-    private void AnnounceOfflineOnce()
+    /// <param name="atStartup">Starting up offline isn't a connection being lost: at sign-in, before
+    /// Wi-Fi is up, it would otherwise sound "lost" and then "restored" every time.</param>
+    private void AnnounceOfflineOnce(bool atStartup = false)
     {
         if (_announcedOffline) return;
         _announcedOffline = true;
+        if (!atStartup)
+        {
+            _connectionLostSounded = true;
+            _sounds?.Play(SoundEvent.ConnectionLost);
+        }
         Announce(OnlineMode ? "Offline." : "Offline. Showing cached messages.", AnnouncementCategory.Status);
     }
 
@@ -320,6 +329,8 @@ public partial class MainViewModel
             if (_announcedOffline)
             {
                 _announcedOffline = false;
+                if (_connectionLostSounded) _sounds?.Play(SoundEvent.ConnectionRestored);
+                _connectionLostSounded = false;
                 Announce("Back online.", AnnouncementCategory.Status);
             }
         }

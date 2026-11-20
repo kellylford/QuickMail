@@ -21,9 +21,11 @@ namespace QuickMail.Views;
 /// <para>Why a MultiBinding over every candidate property rather than one computed property on
 /// the model: the row must re-speak when any contributing value changes (marking read, applying
 /// a flag, a preview arriving), and binding each property individually is what gets us that
-/// change notification for free. The final binding is the user's layout, hung off the window's
-/// DataContext — assigning a new <see cref="RowSpeechSettings"/> there re-speaks every realized
-/// row at once, including recycled virtualized containers, with no list reload.</para>
+/// change notification for free. The final binding is the user's layout, from
+/// <see cref="RowSpeechSource"/> — assigning new settings there re-speaks every realized row at
+/// once, including recycled virtualized containers, with no list reload. It is a direct source and
+/// not a lookup through the window because a row with no realized container isn't in the window
+/// (#928).</para>
 /// </summary>
 public static class RowSpeech
 {
@@ -60,10 +62,10 @@ public static class RowSpeech
             mb.Bindings.Add(new Binding(path) { Mode = BindingMode.OneWay });
 
         // …and the layout itself, last.
-        mb.Bindings.Add(new Binding("DataContext.RowSpeech")
+        mb.Bindings.Add(new Binding(nameof(RowSpeechSource.Settings))
         {
             Mode = BindingMode.OneWay,
-            RelativeSource = new RelativeSource(RelativeSourceMode.FindAncestor, typeof(Window), 1),
+            Source = RowSpeechSource.Current,
         });
 
         BindingOperations.SetBinding(d, AutomationProperties.NameProperty, mb);

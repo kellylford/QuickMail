@@ -961,6 +961,444 @@ public sealed class SettingsTransferTests : IDisposable
         Assert.Equal("Inbox/News", ImportFolderHeal.Take(laptop, LaptopGraph)!["graph-news-id"]);
     }
 
+    // ── Custom sounds (#912) ───────────────────────────────────────────────────
+
+    private static void AddSound(string profile, string name, byte[] bytes)
+    {
+        var folder = Directory.CreateDirectory(Path.Combine(profile, SoundCatalog.CustomFolderName)).FullName;
+        File.WriteAllBytes(Path.Combine(folder, name), bytes);
+    }
+
+    [Theory]
+    [InlineData("sounds/Chime.wav", true)]
+    [InlineData("sounds/My Song.MP3", true)]
+    [InlineData("sounds/../../evil.wav", false)]
+    [InlineData("sounds/sub/evil.wav", false)]
+    [InlineData("sounds/glass/Chime.wav", true)]                                   // a scheme's own folder (#948)
+    [InlineData("sounds/user-0123456789abcdef0123456789abcdef/Chime.wav", true)]
+    [InlineData("sounds/glass/../evil.wav", false)]
+    [InlineData("sounds/glass/sub/evil.wav", false)]
+    [InlineData("sounds/user-a.b/evil.wav", false)]
+    [InlineData("sounds/glass/", false)]
+    [InlineData(@"sounds/..\evil.wav", false)]
+    [InlineData("sounds/C:evil.wav", false)]
+    [InlineData("sounds/evil.exe", false)]
+    [InlineData("sounds/", false)]
+    public void Open_AcceptsOnlyPlainSoundFiles(string name, bool accepted) =>
+        Assert.Equal(accepted, SettingsBundle.IsAcceptedName(name));
+
+    [Theory]
+    [InlineData(SettingsCategory.RulesAndViews)]
+    [InlineData(SettingsCategory.Preferences)]
+    public void Sounds_TravelWithWhatCanNameOne(SettingsCategory category)
+    {
+        var desktop = SeedDesktop();
+        byte[] sound = [1, 2, 3, 4];
+        AddSound(desktop, "Chime.wav", sound);
+        var laptop = SeedLaptop();
+
+        Import(Export(desktop, [category]), laptop);
+
+        Assert.Equal(sound, File.ReadAllBytes(Path.Combine(laptop, "sounds", "Chime.wav")));
+    }
+
+    [Fact]
+    public void Sounds_StayBehindWhenNothingChosenCanNameOne()
+    {
+        var desktop = SeedDesktop();
+        AddSound(desktop, "Chime.wav", [1, 2, 3]);
+
+        var bundle = SettingsBundle.Open(Export(desktop, [SettingsCategory.Templates]));
+
+        Assert.Empty(bundle.SoundEntries);
+    }
+
+    [Fact]
+    public void Sounds_AreAddedRatherThanMirrored()
+    {
+        var desktop = SeedDesktop();
+        AddSound(desktop, "Chime.wav", [1]);
+        var laptop = SeedLaptop();
+        AddSound(laptop, "Laptop only.wav", [2]);
+
+        var result = Import(Export(desktop), laptop);
+
+        Assert.True(File.Exists(Path.Combine(laptop, "sounds", "Laptop only.wav")));
+        Assert.True(File.Exists(Path.Combine(laptop, "sounds", "Chime.wav")));
+        Assert.Contains("Custom sounds: 1 sound added.", result.Lines);
+    }
+
+    [Fact]
+    public void Sounds_WithTheSameNameKeepTheOneHere()
+    {
+        var desktop = SeedDesktop();
+        AddSound(desktop, "Chime.wav", [9, 9]);
+        var laptop = SeedLaptop();
+        AddSound(laptop, "Chime.wav", [1]);
+
+        var result = Import(Export(desktop), laptop);
+
+        Assert.Equal([(byte)1], File.ReadAllBytes(Path.Combine(laptop, "sounds", "Chime.wav")));
+        Assert.Contains("Custom sounds: 0 sounds added, 1 already here kept.", result.Lines);
+    }
+
+    /// <summary>A real export, with extra entries added the way someone crafting a file could.</summary>
+    private string ExportWithExtraSounds(string profile, IReadOnlyCollection<SettingsCategory> categories, int count)
+    {
+        var path = Export(profile, categories);
+        using var zip = ZipFile.Open(path, ZipArchiveMode.Update);
+        for (var i = 0; i < count; i++)
+            zip.CreateEntry($"sounds/Extra {i}.wav");
+        return path;
+    }
+
+    [Fact]
+    public void Sounds_InAFileWhoseCategoriesCannotNameOneAreIgnored()
+    {
+        var laptop = SeedLaptop();
+
+        Import(ExportWithExtraSounds(SeedDesktop(), [SettingsCategory.Templates], 1), laptop);
+
+        Assert.False(Directory.Exists(Path.Combine(laptop, "sounds")));
+    }
+
+    [Fact]
+    public void Sounds_FromOneFileAreCapped()
+    {
+        var laptop = SeedLaptop();
+
+        Import(ExportWithExtraSounds(SeedDesktop(), [SettingsCategory.Preferences], SoundCatalog.MaxCustomFilesInImport + 5), laptop);
+
+        Assert.Equal(SoundCatalog.MaxCustomFilesInImport, Directory.GetFiles(Path.Combine(laptop, "sounds")).Length);
+    }
+
+    [Fact]
+    public void SoundChoices_AreReplacedByTheFilesEvenWhereItKeepsTheDefault()
+    {
+        // [sounds] lists only what was changed, so this desktop saying nothing about NewMail means the default.
+        var desktop = SeedDesktop();
+        var desktopCfg = ConfigService.ParseFile(File.ReadAllLines(Path.Combine(desktop, "config.ini")));
+        desktopCfg.ActiveSoundEvents()["MessageSent"] = "none";
+        File.WriteAllText(Path.Combine(desktop, "config.ini"), ConfigService.BuildFileText(desktopCfg));
+
+        var laptop = SeedLaptop();
+        var laptopCfg = ConfigService.ParseFile(File.ReadAllLines(Path.Combine(laptop, "config.ini")));
+        laptopCfg.ActiveSoundEvents()["NewMail"] = "custom:Laptop.wav";
+        File.WriteAllText(Path.Combine(laptop, "config.ini"), ConfigService.BuildFileText(laptopCfg));
+
+        Import(Export(desktop, [SettingsCategory.Preferences]), laptop);
+
+        var imported = ConfigService.ParseFile(File.ReadAllLines(Path.Combine(laptop, "config.ini")));
+        Assert.Equal("none", imported.ActiveSoundEvents()["MessageSent"]);
+        Assert.False(imported.ActiveSoundEvents().ContainsKey("NewMail"));
+    }
+
+    [Fact]
+    public void SoundChoices_SurviveAFileFromBeforeSoundsExisted()
+    {
+        var desktop = SeedDesktop();
+        var path = Path.Combine(desktop, "config.ini");
+        File.WriteAllLines(path, File.ReadAllLines(path).Where(l => !l.Contains("Sound", StringComparison.OrdinalIgnoreCase)));
+
+        var laptop = SeedLaptop();
+        var laptopCfg = ConfigService.ParseFile(File.ReadAllLines(Path.Combine(laptop, "config.ini")));
+        laptopCfg.ActiveSoundEvents()["NewMail"] = "none";
+        File.WriteAllText(Path.Combine(laptop, "config.ini"), ConfigService.BuildFileText(laptopCfg));
+
+        Import(Export(desktop, [SettingsCategory.Preferences]), laptop);
+
+        Assert.Equal("none", ConfigService.ParseFile(File.ReadAllLines(Path.Combine(laptop, "config.ini"))).ActiveSoundEvents()["NewMail"]);
+    }
+
+    [Fact]
+    public void SoundSchemes_AllTravelAndReplaceThisComputersOwn()
+    {
+        // #932: every scheme travels, the person's own included, with the scheme in use.
+        var desktop = SeedDesktop();
+        var desktopCfg = ConfigService.ParseFile(File.ReadAllLines(Path.Combine(desktop, "config.ini")));
+        desktopCfg.SoundSchemes["wood"] = new SoundScheme("wood", "Wood", isBuiltIn: true, pack: "wood",
+            events: new Dictionary<string, string> { ["TrashEmptied"] = "none" });
+        desktopCfg.SoundSchemes["user-calm"] = new SoundScheme("user-calm", "Calm = quiet", isBuiltIn: false,
+            events: new Dictionary<string, string> { ["NewMail"] = "custom:Desk.wav" });
+        desktopCfg.SoundSchemeId = "user-calm";
+        File.WriteAllText(Path.Combine(desktop, "config.ini"), ConfigService.BuildFileText(desktopCfg));
+        Directory.CreateDirectory(Path.Combine(desktop, "sounds"));
+        File.WriteAllBytes(Path.Combine(desktop, "sounds", "Desk.wav"), [1, 2, 3]);
+        File.WriteAllBytes(Path.Combine(desktop, "sounds", "Unused.wav"), [4, 5, 6]);
+
+        var laptop = SeedLaptop();
+        var laptopCfg = ConfigService.ParseFile(File.ReadAllLines(Path.Combine(laptop, "config.ini")));
+        laptopCfg.SoundSchemes["user-mine"] = new SoundScheme("user-mine", "Laptop only", isBuiltIn: false);
+        File.WriteAllText(Path.Combine(laptop, "config.ini"), ConfigService.BuildFileText(laptopCfg));
+
+        Import(Export(desktop, [SettingsCategory.Preferences]), laptop);
+
+        var imported = ConfigService.ParseFile(File.ReadAllLines(Path.Combine(laptop, "config.ini")));
+        Assert.Equal("user-calm", imported.SoundSchemeId);
+        Assert.Equal("Calm = quiet", imported.SoundSchemes["user-calm"].Name);
+        Assert.Equal("custom:Desk.wav", imported.SoundSchemes["user-calm"].Events["NewMail"]);
+        Assert.Equal("none", imported.SoundSchemes["wood"].Events["TrashEmptied"]);
+        Assert.False(imported.SoundSchemes.ContainsKey("user-mine"));
+        Assert.True(File.Exists(Path.Combine(laptop, "sounds", "Desk.wav")));
+        Assert.True(File.Exists(Path.Combine(laptop, "sounds", "Unused.wav")));
+        // As from QuickMail 0.8.69, every sound arrived in the shared folder, so the one a scheme uses
+        // is copied into that scheme's folder, where it plays from now (#948). Nothing uses the other.
+        Assert.Equal([(byte)1, 2, 3], File.ReadAllBytes(Path.Combine(laptop, "sounds", "user-calm", "Desk.wav")));
+        Assert.False(File.Exists(Path.Combine(laptop, "sounds", "user-calm", "Unused.wav")));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Sounds_ASchemeFolderBroughtWithoutItsSchemeIsRemovedAfterTheImport(bool withPreferences)
+    {
+        // #955: a file's scheme folder for a scheme that doesn't end up here (the preferences, which
+        // carry the schemes, weren't imported) is removed by the tidy-up that follows the import.
+        const string id = "user-0123456789abcdef0123456789abcdef";
+        var desktop = SeedDesktop();
+        var desktopCfg = ConfigService.ParseFile(File.ReadAllLines(Path.Combine(desktop, "config.ini")));
+        desktopCfg.SoundSchemes[id] = new SoundScheme(id, "Calm", isBuiltIn: false,
+            events: new Dictionary<string, string> { ["NewMail"] = "custom:Desk.wav" });
+        File.WriteAllText(Path.Combine(desktop, "config.ini"), ConfigService.BuildFileText(desktopCfg));
+        Directory.CreateDirectory(Path.Combine(desktop, "sounds", id));
+        File.WriteAllBytes(Path.Combine(desktop, "sounds", id, "Desk.wav"), [1]);
+        var laptop = SeedLaptop();
+        Directory.CreateDirectory(Path.Combine(laptop, "sounds", "user-fedcba9876543210fedcba9876543210"));   // the laptop's own, never written down
+
+        Import(Export(desktop, withPreferences ? [SettingsCategory.Preferences] : [SettingsCategory.RulesAndViews]), laptop);
+        Assert.True(File.Exists(Path.Combine(laptop, "sounds", id, "Desk.wav")));
+        SoundSchemeFolderCleanup.RunAtStartup(laptop);
+
+        Assert.Equal(withPreferences, Directory.Exists(Path.Combine(laptop, "sounds", id)));
+        Assert.True(Directory.Exists(Path.Combine(laptop, "sounds", "user-fedcba9876543210fedcba9876543210")));
+        Assert.False(File.Exists(Path.Combine(laptop, "sounds", SoundSchemeFolderCleanup.JournalFileName)));
+    }
+
+    [Fact]
+    public void Sounds_AnOldFilesSoundWhoseNameIsHereGivesItsSchemesTheFileThatIsHere()
+    {
+        // #955: a 0.8.69 file (every sound flat) brings a scheme using Desk.wav, and this computer
+        // already has a Desk.wav. The one here is kept, so it's the one the scheme gets a copy of.
+        var desktop = SeedDesktop();
+        var desktopCfg = ConfigService.ParseFile(File.ReadAllLines(Path.Combine(desktop, "config.ini")));
+        desktopCfg.SoundSchemes["user-calm"] = new SoundScheme("user-calm", "Calm", isBuiltIn: false,
+            events: new Dictionary<string, string> { ["NewMail"] = "custom:Desk.wav" });
+        desktopCfg.SoundSchemes["wood"] = new SoundScheme("wood", "Wood", isBuiltIn: true, pack: "wood",
+            events: new Dictionary<string, string> { ["MessageSent"] = "custom:Desk.wav" });
+        File.WriteAllText(Path.Combine(desktop, "config.ini"), ConfigService.BuildFileText(desktopCfg));
+        AddSound(desktop, "Desk.wav", [1, 2, 3]);
+
+        var laptop = SeedLaptop();
+        AddSound(laptop, "Desk.wav", [9, 9]);
+
+        Import(Export(desktop, [SettingsCategory.Preferences]), laptop);
+
+        Assert.Equal([(byte)9, 9], File.ReadAllBytes(Path.Combine(laptop, "sounds", "Desk.wav")));   // kept, as before
+        Assert.Equal([(byte)9, 9], File.ReadAllBytes(Path.Combine(laptop, "sounds", "user-calm", "Desk.wav")));
+        Assert.Equal([(byte)9, 9], File.ReadAllBytes(Path.Combine(laptop, "sounds", "wood", "Desk.wav")));
+    }
+
+    [Fact]
+    public void Sounds_AnOldFilesNameThatIsHereNeverFillsASchemeThisComputerAlreadyHad()
+    {
+        // Without the preferences, the schemes are this computer's own, and none of them was using
+        // the file the settings file found already here: nothing is copied for it.
+        var desktop = SeedDesktop();
+        AddSound(desktop, "Ding.wav", [1]);
+
+        var laptop = SeedLaptop();
+        AddSound(laptop, "Ding.wav", [2]);
+        var laptopCfg = ConfigService.ParseFile(File.ReadAllLines(Path.Combine(laptop, "config.ini")));
+        laptopCfg.SoundSchemes["wood"] = new SoundScheme("wood", "Wood", isBuiltIn: true, pack: "wood",
+            events: new Dictionary<string, string> { ["NewMail"] = "custom:Ding.wav" });
+        File.WriteAllText(Path.Combine(laptop, "config.ini"), ConfigService.BuildFileText(laptopCfg));
+
+        Import(Export(desktop, [SettingsCategory.RulesAndViews]), laptop);
+
+        Assert.False(File.Exists(Path.Combine(laptop, "sounds", "wood", "Ding.wav")));
+        Assert.Equal([(byte)2], File.ReadAllBytes(Path.Combine(laptop, "sounds", "Ding.wav")));
+    }
+
+    [Fact]
+    public void Sounds_ARulesSoundInANewerFileNeverStandsInForASchemesMissingFile()
+    {
+        // A 0.8.70 file: a scheme's sound in its folder, and a rule's in the root.
+        var desktop = SeedDesktop();
+        AddSound(desktop, "Ding.wav", [1]);
+        Directory.CreateDirectory(Path.Combine(desktop, "sounds", "glass"));
+        File.WriteAllBytes(Path.Combine(desktop, "sounds", "glass", "Other.wav"), [2]);
+        var bundle = Export(desktop, [SettingsCategory.RulesAndViews]);
+
+        // Here, Wood names a Ding.wav its folder no longer has (removed in Settings).
+        var laptop = SeedLaptop();
+        var laptopCfg = ConfigService.ParseFile(File.ReadAllLines(Path.Combine(laptop, "config.ini")));
+        laptopCfg.SoundSchemes["wood"] = new SoundScheme("wood", "Wood", isBuiltIn: true, pack: "wood",
+            events: new Dictionary<string, string> { ["NewMail"] = "custom:Ding.wav" });
+        File.WriteAllText(Path.Combine(laptop, "config.ini"), ConfigService.BuildFileText(laptopCfg));
+
+        Import(bundle, laptop);
+
+        Assert.True(File.Exists(Path.Combine(laptop, "sounds", "Ding.wav")));
+        Assert.False(File.Exists(Path.Combine(laptop, "sounds", "wood", "Ding.wav")));
+    }
+
+    [Fact]
+    public void Sounds_InSchemeFoldersTravelInTheirFolders()
+    {
+        var desktop = SeedDesktop();
+        void Put(string relative, byte b)
+        {
+            var path = Path.Combine(desktop, "sounds", relative);
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            File.WriteAllBytes(path, [b]);
+        }
+        Put("Rule.wav", 1);
+        Put(Path.Combine("not-a-scheme", "Ding.wav"), 2);   // no scheme's folder, so it stays behind
+        Put(Path.Combine("glass", "Ding.wav"), 3);
+        Put(Path.Combine("user-calm", "Ding.wav"), 4);
+        Put(SoundFolderMigration.MarkerFileName, 5);
+
+        var bundlePath = Export(desktop, [SettingsCategory.Preferences]);
+        var names = SettingsBundle.Open(bundlePath).SoundEntries.Select(e => e.Key).Order(StringComparer.Ordinal);
+        Assert.Equal(["sounds/Rule.wav", "sounds/glass/Ding.wav", "sounds/user-calm/Ding.wav"], names);
+
+        var laptop = SeedLaptop();
+        Import(bundlePath, laptop);
+
+        Assert.Equal([(byte)1], File.ReadAllBytes(Path.Combine(laptop, "sounds", "Rule.wav")));
+        Assert.Equal([(byte)3], File.ReadAllBytes(Path.Combine(laptop, "sounds", "glass", "Ding.wav")));
+        Assert.Equal([(byte)4], File.ReadAllBytes(Path.Combine(laptop, "sounds", "user-calm", "Ding.wav")));
+        Assert.False(File.Exists(Path.Combine(laptop, "sounds", "Ding.wav")));
+        Assert.False(Directory.Exists(Path.Combine(laptop, "sounds", "not-a-scheme")));
+    }
+
+    [Fact]
+    public void SoundSchemes_AFileFrom0867MovesItsListIntoTheStyleItWasChosenWith()
+    {
+        var desktop = SeedDesktop();
+        var path = Path.Combine(desktop, "config.ini");
+        var lines = File.ReadAllLines(path)
+            .Select(l => l.StartsWith("SoundScheme =", StringComparison.Ordinal) ? "SoundPack = softbell" : l)
+            .Append("[sounds]").Append("NewMail = none");
+        File.WriteAllLines(path, lines);
+
+        var laptop = SeedLaptop();
+        Import(Export(desktop, [SettingsCategory.Preferences]), laptop);
+
+        var imported = ConfigService.ParseFile(File.ReadAllLines(Path.Combine(laptop, "config.ini")));
+        Assert.Equal("softbell", imported.SoundSchemeId);
+        Assert.Equal("none", imported.SoundSchemes["softbell"].Events["NewMail"]);
+        Assert.False(imported.SoundSchemes.ContainsKey("glass"));
+        Assert.DoesNotContain("[sounds]", File.ReadAllText(Path.Combine(laptop, "config.ini")), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Sounds_ThatWouldOverfillTheFileAreLeftOutAndTheFileStillOpens()
+    {
+        var desktop = SeedDesktop();
+        var fit = (int)(SettingsBundle.MaxExportedSoundBytes / SoundCatalog.MaxCustomFileBytes);
+        for (var i = 0; i < fit + 3; i++)
+        {
+            var big = new byte[SoundCatalog.MaxCustomFileBytes];
+            big[0] = (byte)i;   // each a different sound: the limit counts the same sound once (#955)
+            AddSound(desktop, $"Sound {i:D2}.wav", big);
+        }
+
+        var bundle = SettingsBundle.Open(Export(desktop));
+
+        Assert.Equal(fit, bundle.SoundEntries.Count());
+    }
+
+    [Fact]
+    public void Sounds_TheSameSoundInSeveralSchemesCountsOnceTowardTheLimit()
+    {
+        // #955: each scheme has its own copy of a sound they share (#948). Five schemes sharing one
+        // sound must not make the export leave out a sixth, different one.
+        var desktop = SeedDesktop();
+        var fit = (int)(SettingsBundle.MaxExportedSoundBytes / SoundCatalog.MaxCustomFileBytes);
+        var shared = new byte[SoundCatalog.MaxCustomFileBytes];
+        shared[0] = 0xAA;
+        string[] schemes = ["glass", "wood", "softbell", "user-0123456789abcdef0123456789abcdef", "user-fedcba9876543210fedcba9876543210"];
+        foreach (var scheme in schemes)
+        {
+            Directory.CreateDirectory(Path.Combine(desktop, "sounds", scheme));
+            File.WriteAllBytes(Path.Combine(desktop, "sounds", scheme, "Shared.wav"), shared);
+        }
+        for (var i = 0; i < fit - 1; i++)
+        {
+            var own = new byte[SoundCatalog.MaxCustomFileBytes];
+            own[0] = (byte)i;
+            AddSound(desktop, $"Rule {i}.wav", own);
+        }
+
+        var bundle = SettingsBundle.Open(Export(desktop));
+
+        // Every scheme's copy, and every different sound, since together they are only "fit" sounds.
+        Assert.Equal(schemes.Length + fit - 1, bundle.SoundEntries.Count());
+        foreach (var scheme in schemes)
+            Assert.Contains($"sounds/{scheme}/Shared.wav", bundle.SoundEntries.Select(e => e.Key));
+    }
+
+    [Fact]
+    public void Sounds_CopiesOfOneSoundStillStopBeforeTheFileWouldBeTooBigToImport()
+    {
+        // Counted once toward the sounds' limit, but each copy is in the file, and an import refuses
+        // a file over its own cap. So the copies stop short of that, and the file still opens.
+        var desktop = SeedDesktop();
+        var shared = new byte[SoundCatalog.MaxCustomFileBytes];
+        var copies = (int)(SettingsBundle.MaxExportedTotalBytes / SoundCatalog.MaxCustomFileBytes) + 2;
+        for (var i = 0; i < copies; i++)
+        {
+            var id = $"user-{i:D32}";
+            Directory.CreateDirectory(Path.Combine(desktop, "sounds", id));
+            File.WriteAllBytes(Path.Combine(desktop, "sounds", id, "Same.wav"), shared);
+        }
+
+        var path = Export(desktop);
+        var bundle = SettingsBundle.Open(path);   // throws if the file were over the import's cap
+
+        var written = bundle.SoundEntries.Count();
+        Assert.InRange(written, 1, copies - 1);
+        Assert.True(bundle.Entries.Values.Sum(v => (long)v.Length) <= SettingsBundle.MaxExportedTotalBytes);
+    }
+
+    [Fact]
+    public void Sounds_OverTheSizeLimitAreNotExported()
+    {
+        var desktop = SeedDesktop();
+        AddSound(desktop, "Huge.wav", new byte[SoundCatalog.MaxCustomFileBytes + 1]);
+
+        Assert.Empty(SettingsBundle.Open(Export(desktop)).SoundEntries);
+    }
+
+    [Fact]
+    public void Sounds_AreRestoredWhenAnImportFails()
+    {
+        var desktop = SeedDesktop();
+        AddSound(desktop, "Chime.wav", [9, 9]);
+        AddSound(desktop, "Desktop only.wav", [3]);
+        Directory.CreateDirectory(Path.Combine(desktop, "sounds", "wood"));
+        File.WriteAllBytes(Path.Combine(desktop, "sounds", "wood", "Desk wood.wav"), [4]);   // a scheme's (#948)
+        var bundle = Export(desktop);
+        var laptop = SeedLaptop();
+        AddSound(laptop, "Chime.wav", [1]);
+        AddSound(laptop, "Laptop only.wav", [2]);
+        Directory.CreateDirectory(Path.Combine(laptop, "sounds", "glass"));
+        File.WriteAllBytes(Path.Combine(laptop, "sounds", "glass", "Laptop glass.wav"), [5]);
+
+        // The folder-name file is written after the sounds, so a lock on it fails the import once they're in.
+        var heal = Path.Combine(laptop, ImportFolderHeal.FileName);
+        File.WriteAllText(heal, "{}");
+        using (new FileStream(heal, FileMode.Open, FileAccess.Read, FileShare.Read))
+            Assert.Throws<SettingsImportFailedException>(() => Import(bundle, laptop));
+
+        Assert.False(File.Exists(Path.Combine(laptop, "sounds", "Desktop only.wav")));
+        Assert.Equal([(byte)1], File.ReadAllBytes(Path.Combine(laptop, "sounds", "Chime.wav")));
+        Assert.True(File.Exists(Path.Combine(laptop, "sounds", "Laptop only.wav")));
+        Assert.False(Directory.Exists(Path.Combine(laptop, "sounds", "wood")));   // the folder the import made, gone with its file
+        Assert.True(File.Exists(Path.Combine(laptop, "sounds", "glass", "Laptop glass.wav")));
+    }
+
     // ── Config classification (spec §5.2, R7) ──────────────────────────────────
 
     [Fact]
@@ -1000,8 +1438,11 @@ public sealed class SettingsTransferTests : IDisposable
             ".sender-address-backfilled", ".sender-address-backfill-progress",
             SettingsImporter.PendingFileName, SettingsImporter.ResultFileName, SettingsImporter.PendingCalendarFileName,
             ImportFolderHeal.FileName,
+            // People remembered from sent mail (#1037): a history that refills as you send, not a setting,
+            // and a list of who someone writes to has no place in a file they may share or post.
+            "recipients.json",
         };
-        var carried = SettingsBundle.CategoryFiles.Values.SelectMany(f => f).Append("themes").ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var carried = SettingsBundle.CategoryFiles.Values.SelectMany(f => f).Append("themes").Append(SoundCatalog.CustomFolderName).ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         var source = FindRepoDir("QuickMail");
         var pattern = new System.Text.RegularExpressions.Regex(@"Path\.Combine\((?:profile\.ProfileDir|profileDir|ProfileDir)\s*,\s*""([^""]+)""");

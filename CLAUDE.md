@@ -46,13 +46,19 @@ dotnet test QuickMail.Tests/QuickMail.Tests.csproj -c Release
 dotnet test QuickMail.Tests/QuickMail.Tests.csproj -c Release --filter "FullyQualifiedName~ClassName"
 ```
 
+**A test class that shows a window must be in `[Collection("WpfTests")]`** (or a collection with
+`DisableParallelization = true`). Collections run in parallel, and a window shown on another test
+thread takes keyboard focus from whichever focus or tab-order test is running in WpfTests, which then
+fails at random. `WindowTestCollectionGuard` fails any test that activates a window on its own STA
+thread outside those collections, every run. It cannot see a window shown on a thread the test
+starts, through another thread's dispatcher, or in a child process, so a test that does any of those
+still has to be put in the right collection by hand.
+
 All tests use `StubServices.cs` stub implementations to avoid real network and credential calls. Key test classes in `QuickMail.Tests/`:
 
 - **ViewModelConstructionTests** — VM instantiation with stub services (catches init crashes)
 - **XamlParseTests** — XAML loads without `XamlParseException` (requires STA thread via `[StaFact]`)
 - **LocalStoreServiceTests** — SQLite round-trip tests
-  - ⚠ Those three classes live in **`UnitTest1.cs`** (the never-renamed default file), not in files
-    matching their class names. Search by class name, not filename.
 - **SettingsViewModelTests** — settings persistence and hotkey binding logic
 - **CommandRegistryTests** / **ViewManagerHotkeyIntegrationTests** — command registration and hotkey override
 - **RuleServiceTests** / **UnifiedRulesViewModelTests** / **RuleEditorValidationTests** — rule matching, the rules window, and the rule editor's save checks
@@ -152,8 +158,10 @@ This sets GitHub Pages to serve what `publish-user-guide.yml` deploys (build typ
 
 A collaborator with write access must not be able to read a secret, sign, release, deploy the
 relay or publish the website from a branch of their own. Repository secrets cannot promise
-that — any workflow pushed to any branch can read them — so **every secret lives in a GitHub
-environment**, and the environment's protection decides which runs get in:
+that — any workflow pushed to any branch can read them — so **every secret belongs in a GitHub
+environment**, and the environment's protection decides which runs get in. The table is the
+intended layout. Where each secret actually is today is kept in the maintainer's private notes
+(Claude's project memory); check there before touching any secret:
 
 | Environment | Protection | Secrets | Entered by |
 |---|---|---|---|
@@ -161,17 +169,23 @@ environment**, and the environment's protection decides which runs get in:
 | `relay` | `main` only | `CLOUDFLARE_API_TOKEN`, `RELAY_GITHUB_APP_ID`, `RELAY_GITHUB_INSTALLATION_ID`, `RELAY_GITHUB_PRIVATE_KEY`, `BUG_REPORT_RELAY_KEY` | `deploy-relay.yml` `deploy` |
 | `live-smoke` | `main` only | `LIVE_IMAP_HOST`, `LIVE_IMAP_PORT`, `LIVE_IMAP_SSL`, `LIVE_SMTP_HOST`, `LIVE_SMTP_PORT`, `LIVE_SMTP_SSL`, `LIVE_USER`, `LIVE_PASSWORD` | `live-smoke.yml` |
 | `github-pages` | `main` and `v*` tags | none | `publish-user-guide.yml` |
+| `winget` | `main` and `v*` tags | `WINGET_TOKEN` (Kelly's classic PAT, `public_repo`: write to all his public repos, and his admin role bypasses the rulesets) | `winget-submit.yml`, called by `quickmail.yml`'s `winget` job after each release (tag-only; it must pass `WINGET_TOKEN` by name, or the reusable workflow gets an empty string, #1006), or by hand (real submissions Kelly only) |
+
+A job in an environment gets the environment's copy of a secret name if there is one, and the
+repository's otherwise. **Never delete a repository secret** (step 7 below) before its value
+has been entered in its environment and a run there has proved it: deleting first breaks
+signing, Google sign-in in released builds, bug reports, relay deploys and Live Smoke. GitHub
+never shows a secret's value, so moving one means entering it again; the copies cannot be
+compared afterwards. Fork pull requests run without secrets, and no workflow uses
+`pull_request_target`. **Before giving anyone write access**, check the private notes on where
+the secrets are and on the Live Smoke exposure (Live Smoke runs app code alongside the mailbox
+password); both must be resolved first.
 
 These protections lean on two repository rules as well, and neither may be loosened: the
 **"Tags: admins only"** tag ruleset (otherwise a collaborator could push a `v*` tag and the
 `github-pages` environment would admit their run), and **code-owner review on `main`**
 (otherwise a collaborator could merge an edited workflow to `main` and the main-only
 environments would hand it their secrets).
-
-Known gap: app code under `QuickMail/` is not code-owned, and the live smoke tests run it in
-the same process as the `LIVE_*` variables. Code a collaborator merged could read the
-mailbox password on the next Live Smoke run. A required reviewer on `live-smoke` closes it,
-at the cost of every scheduled run waiting for approval.
 
 - **Pull requests, `main` pushes, CodeQL, the flaky hunt and the winget matrix read no
   secrets.** They compile against empty placeholder credentials written by
@@ -195,7 +209,8 @@ in, or releases break or holes stay open):
 5. `main` ruleset: require review from Code Owners.
 6. Workflow permissions default: read.
 7. Delete **every** repository secret (`gh secret list` must come back empty), including any
-   no workflow uses. A repository secret left behind is readable from any branch.
+   no workflow uses. A repository secret left behind is readable from any branch. **Only
+   safe after step 1 is done and proven** (see above).
 
 **A tag run waits for Kelly's approval.** Pushing `v<version>` starts `quickmail.yml`, whose
 `build` job then waits on `azure-signing`. After Kelly says "go", approve **only the tag run he
@@ -231,7 +246,7 @@ Every service has a matching interface in `Services/I*.cs`. See `docs/ARCHITECTU
 - **Heavy HTML rendering**: build reading-pane HTML off the UI thread; large/table-heavy messages use simplified reader mode before `NavigateToString`.
 - **Plain-text links**: render http/https/mailto text as links, and open clicked links in the default browser rather than inside the reading pane.
 - **Folder picker**: `FolderPickerWindow` has two presentations. `useTreeView: true` opens a folder tree — use it wherever the user is choosing a destination folder they already know from the folder tree (move/copy message, move/copy folder, a rule's target folder; issues #250, #431), and default new destination pickers to it. The flat virtualized list with a search box (`/` moves focus to search) is now only what "Go to Folder" needs, being the only picker that also offers the virtual folders (All Inboxes, All Mail, …). Reach a destination picker through its named factory — `ForFolderMoveCopy`, `ForRuleTarget` — rather than the constructor: the factory is what the presentation tests can exercise without standing up the owning window, and a call site that goes back to `new FolderPickerWindow(...)` is exactly the regression #431 reported. **A picker must not open with nothing selected** — a tree with no selection announces the tree and no item, and leaves the user to work out that Down is what starts things. Every destination picker passes `initialFolder`: the folder the user came from, or for a rule the folder it already files into. Tree mode stands something in when that folder is not in the tree (the parent it is being moved out of, else the first real folder), and never opens on a header or path segment, which carry no folder and leave `Open` disabled.
-- **Folder destinations are account-scoped**: the mail backends move and copy by *name* over the source account's connection and never look at the destination's `AccountId`. Offering another account's folders is therefore not merely useless — with a name collision ("Archive") it silently acts on the wrong folder. `FolderPickerWindow.ForFolderMoveCopy` scopes to the one owning account, and `ForRuleTarget` to the rule's account (a rule files within one mailbox); any new destination picker must too. `ForRuleTarget` falls back to every account when the rule has no account or that account has no cached folders — an unscoped picker beats an empty one, and an empty tree is a dead end the user cannot get a folder out of. (`MainWindow.BuildMessageFolderPicker` scopes to the owning account**s** — plural, since a selection can span accounts — so the collision is still reachable there when messages from two accounts are moved at once. Not fixed here; do not copy that shape for a single-source picker.)
+- **Folder destinations are account-scoped**: the mail backends move and copy by *name* over the source account's connection and never look at the destination's `AccountId`. Offering another account's folders is therefore not merely useless — with a name collision ("Archive") it silently acts on the wrong folder. `FolderPickerWindow.ForFolderMoveCopy` scopes to the one owning account, and `ForRuleTarget` to the rule's account (a rule files within one mailbox); any new destination picker must too. `ForRuleTarget` falls back to every account when the rule has no account or that account has no cached folders — an unscoped picker beats an empty one, and an empty tree is a dead end the user cannot get a folder out of. **Messages** are the exception, since #929: `MainViewModel.TransferAsync` moves and copies them between accounts by downloading each original and calling `IMailService.AppendMessageAsync` on the destination's own account, so `MainWindow.BuildMessageFolderPicker` offers every account whose backend `CanAppendMessages` (IMAP and POP3; not Graph, which would file the message as a draft). Same-account groups still go through MOVE/COPY by name, which is correct there. Route any new message-transfer path through `TransferAsync`, never straight to `MoveMessagesAsync` with a destination from another account. Folders themselves stay account-scoped. **Opened messages** (a .eml file, an attached email; #939) live in `OpenedMessageService` under the reserved `OpenedMessageService.AccountId`, registered with the router, so every read path works on them unchanged. That id is in no account list: code that looks an account up by a message's `AccountId` must cope with finding none (`MainViewModel.SendingAccountFor` picks the default account for replies), and a window showing one has `IsInMailbox` false.
 - **A `Window` joins `Application.Current.Windows` at construction, not at `Show()`**, and leaves only on `Close()`. A window built and then dropped without being shown keeps the default `OnLastWindowClose` shutdown from firing — the zombie process that still holds the per-profile single-instance mutex (issue #252). If a factory may decide not to show what it just constructed, it must `Close()` it (see `ForFolderMoveCopy`), not return it for the caller to abandon.
 - **Logging**: `LogService` appends to `quickmail.log`; `LogService.Debug()` writes only when `/debug` is present. Avoid logging credentials or unnecessary PII.
 - **Inclusive language in documentation and UI text**: Use verbs like "activate", "select", "choose", or "press" instead of "click".
@@ -429,7 +444,7 @@ Not permitted in `.xaml.cs`:
 
 ## Keyboard Shortcuts — Enforced
 
-Every user-facing keyboard shortcut **must** be registered in `CommandRegistry` via a `Register(new CommandDefinition(...))` call. Registrations live in two places: most are in the `RegisterCommands` method in `MainViewModel.cs` (VM-backed actions — mail, view, account, help, etc.), and the remainder are in `MainWindow.xaml.cs` (window-level wiring). When adding a command, follow whichever file already registers the related commands. This is not optional: registration is what makes the shortcut appear in the **keyboard customizations** dialog and in the **Command Palette**.
+Every user-facing keyboard shortcut **must** be registered in `CommandRegistry` via a `Register(new CommandDefinition(...))` call. Registrations live in two files. `MainWindow.xaml.cs` registers the larger share, in `OnLoaded`: commands that need the window's controls or focus (focus moves, tabs, folder-tree and calendar commands, clipboard, save and print). `MainViewModel.cs` registers the VM-backed actions (mail, view, sort and filter, account, help) in `RegisterCommands`, plus the run-time ones: themes in `RegisterThemeCommands`, saved views in `RegisterOneViewCommand`, and `help.connectionDiagnostics` in `ApplyConnectionDiagnosticsSetting`; the `MainViewModel.SettingsImport.cs` partial registers `settings.export` / `settings.import`. Every one needs a row in `docs/KEYBOARD-SHORTCUTS.md` (`KeyboardShortcutsDocTests`). When adding a command, follow whichever file already registers the related commands. This is not optional: registration is what makes the shortcut appear in the **keyboard customizations** dialog and in the **Command Palette**.
 
 ### Rules
 

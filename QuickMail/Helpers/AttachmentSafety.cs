@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 
@@ -56,5 +57,28 @@ public static class AttachmentSafety
 
         name = name.TrimEnd('.', ' ');
         return name.Length == 0 ? "attachment" : name;
+    }
+
+    /// <summary>
+    /// A path in <paramref name="folder"/> for <paramref name="fileName"/> (sanitized here) that names
+    /// neither an existing file nor one in <paramref name="taken"/>: "report.pdf", then
+    /// "report (2).pdf", "report (3).pdf"… Saving several attachments into one folder meets the same
+    /// name often — "image001.png" in every signature — and overwriting would keep only the last one,
+    /// or silently replace a file the user already had there (#931). The path returned is added to
+    /// <paramref name="taken"/>, case-insensitively as Windows compares names.
+    /// </summary>
+    public static string UniquePath(string folder, string? fileName, ISet<string> taken, Func<string, bool>? exists = null)
+    {
+        exists ??= File.Exists;
+        var safe = SanitizeFileName(fileName);
+        var stem = Path.GetFileNameWithoutExtension(safe);
+        var ext  = Path.GetExtension(safe);
+
+        var path = Path.Combine(folder, safe);
+        for (var n = 2; taken.Contains(path) || exists(path); n++)
+            path = Path.Combine(folder, $"{stem} ({n}){ext}");
+
+        taken.Add(path);
+        return path;
     }
 }

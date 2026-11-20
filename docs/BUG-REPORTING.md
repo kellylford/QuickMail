@@ -40,12 +40,13 @@ relay exists to avoid.
 
 ## Where each piece is configured
 
-| Piece | Value | Where |
-|---|---|---|
-| Relay endpoint | `https://quickmail-bug-relay.quickmail.workers.dev/report` | Cloudflare Workers |
-| GitHub App | `quickmail-bug-reporter`, App ID `4506736` | <https://github.com/settings/apps/quickmail-bug-reporter> |
-| App installation | `151714686`, scoped to this repo, Issues read/write only | <https://github.com/settings/installations> |
-| Cloudflare account | `7c86d5a72a98b9de96e24f55aaecf9af`, under kelly@kellford.com | <https://dash.cloudflare.com> |
+| Piece | Where |
+|---|---|
+| Relay endpoint | A Cloudflare Worker deployed from `relay/` by `deploy-relay.yml`; its URL is the `BUG_REPORT_RELAY_URL` repository variable |
+| GitHub App | `quickmail-bug-reporter`, installed on this repository with Issues read/write only |
+| Cloudflare account | The maintainer's; its id is the `CLOUDFLARE_ACCOUNT_ID` repository variable |
+
+The account and installation ids are kept outside the repository.
 
 **Environment secrets** (<https://github.com/kellylford/QuickMail/settings/environments>).
 They are not repository secrets: any workflow a collaborator pushes to any branch can read a
@@ -256,7 +257,7 @@ gh run list --workflow=deploy-relay.yml --limit 3
 ## Things that look broken but are not
 
 - **Local builds never reach the relay.** No credentials are compiled in. Expected.
-- **`npm install` in `relay/` fails on this machine.** Windows ARM64; `workerd` has no arm64
+- **`npm install` in `relay/` fails on Windows ARM64.** `workerd` has no arm64
   build. It is not needed — `relay/package.json` deliberately declares no dependencies, and
   the tests use only the Node standard library. Deploy runs in CI. See `relay/README.md`.
 - **`gh workflow run deploy-relay.yml` returns 404 from a feature branch.** GitHub only
@@ -272,5 +273,5 @@ gh run list --workflow=deploy-relay.yml --limit 3
 - **#222** — reports were filed under the maintainer's personal account.
 - **#501 / PR #502** — replaced the embedded PAT with the GitHub App + relay. Live and verified
   2026-08-06; test issue #503 was authored by `app/quickmail-bug-reporter`.
-- `docs/BUG-REPORT-BOT-ACCOUNT.md` describes a machine-account approach that was **not**
-  adopted: it fixes attribution but leaves the credential in the binary.
+- A machine-account approach was considered and **not** adopted: it fixes attribution but
+  leaves the credential in the binary.

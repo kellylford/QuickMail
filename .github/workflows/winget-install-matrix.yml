@@ -81,23 +81,7 @@ jobs:
       # are written empty rather than pulled from secrets.
       - name: Write placeholder credential partials
         shell: pwsh
-        run: |
-          @'
-          namespace QuickMail.Services;
-          public partial class GoogleOAuthService
-          {
-              private const string ClientId     = "";
-              private const string ClientSecret = "";
-          }
-          '@ | Set-Content -Path "QuickMail/Services/GoogleOAuthService.Credentials.cs" -Encoding UTF8
-          @'
-          namespace QuickMail.Services;
-          public partial class BugReportService
-          {
-              private const string RelayUrl = "";
-              private const string RelayKey = "";
-          }
-          '@ | Set-Content -Path "QuickMail/Services/BugReportService.Credentials.cs" -Encoding UTF8
+        run: ./scripts/write-credential-partials.ps1
 
       # Native publish per leg. The release workflow cross-compiles ARM64 from an x64 runner;
       # here each leg builds for the machine it will actually install on, because the point is

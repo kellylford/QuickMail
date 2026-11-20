@@ -198,6 +198,8 @@ public class RowFieldSeparatorTests
         layouts.Save(layouts.Load());
 
         Assert.Equal(RowFieldSeparator.Comma, vm.RowSpeech.Separator);
+        // The rows read it from here, not from the view model (#928).
+        Assert.Equal(RowFieldSeparator.Comma, RowSpeechSource.Current.Settings.Separator);
     }
 
     // ── the chooser ───────────────────────────────────────────────────────────

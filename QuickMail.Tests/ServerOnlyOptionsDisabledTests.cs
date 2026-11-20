@@ -185,6 +185,8 @@ public class ServerOnlyOptionsDisabledTests
         if (type == typeof(string)) return "someone@example.com";
         if (type == typeof(ImportanceOption))
             return ServerRuleEditorViewModel.ImportanceOptions.First(o => o.Value == "high");
+        if (type == typeof(SoundChoice))
+            return new SoundChoice("builtin:reminder", "Reminder");
         throw new InvalidOperationException(
             $"No non-default value known for {type.Name}. Add one here so the new field is actually checked.");
     }

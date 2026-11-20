@@ -105,8 +105,10 @@ public partial class MainViewModel
                 _viewService.Save(views);
                 _configService.Save(cfg);
             }
-            if (archiveChanged)
+            if (archiveChanged || report.HiddenFoldersChanged)
                 _accountService.SaveAccounts([.. Accounts]);
+            if (report.HiddenFoldersChanged)
+                BuildFolderTree();   // the account's hidden folders now name this computer's folders (#963)
 
             // Shown in the status bar as well as spoken, and logged: the names of rules turned off must
             // not be lost to a muted announcement or to speech at startup.

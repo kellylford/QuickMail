@@ -227,7 +227,7 @@ public class TabStripNavigationTests
     [StaFact]
     public void SettingsDialog_EveryTabIsReachableWithTheArrowKeys()
     {
-        // The regression #528 reported, against the real dialog: its six tabs wrap onto two rows,
+        // The regression #528 reported, against the real dialog: its tabs wrap onto two rows,
         // which is what broke geometric navigation. Pressing Right once per tab must visit every
         // one of them and come back to where it started.
         //
@@ -260,7 +260,7 @@ public class TabStripNavigationTests
             var tabs = FindTabControl(dialog);
             Assert.NotNull(tabs);
             var items = tabs!.Items.Cast<TabItem>().ToArray();
-            Assert.Equal(6, items.Length);
+            Assert.Equal(7, items.Length);
 
             dialog.UpdateLayout();
             TabOrderWalker.Drain();

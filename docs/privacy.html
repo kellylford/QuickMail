@@ -75,7 +75,7 @@
 </div>
 
 <h1>QuickMail Privacy Policy</h1>
-<p class="effective">Effective date: September 24, 2026. Replaces the version dated August 27, 2026.</p>
+<p class="effective">Effective date: November 19, 2026. Replaces the version dated November 12, 2026.</p>
 
 <div class="callout">
   <strong>Short version:</strong> QuickMail is a Windows desktop application with no servers of its own.
@@ -110,6 +110,7 @@
     <tr><td><code>mail.db</code></td><td>The local SQLite cache of messages you have synced — headers and message bodies, so mail can be read and searched without waiting on the network.</td></tr>
     <tr><td><code>accounts.json</code></td><td>Your account settings: email addresses, server names, ports, security settings, signatures, and display preferences. <strong>Never passwords.</strong></td></tr>
     <tr><td><code>contacts.json</code>, <code>groups.json</code></td><td>Contacts you typed in yourself, contact groups, and the read-only copies of contacts synced from accounts you opted in.</td></tr>
+    <tr><td><code>recipients.json</code></td><td>Only if you turn on <em>Remember people I send to</em> (off by default): the names and addresses of people you have sent mail to, and when, so they can be suggested as you type. Kept apart from the address book; <em>Forget People I've Sent To</em> in Settings deletes it.</td></tr>
     <tr><td>Calendar data</td><td>Events copied from calendars you have connected, so the calendar works offline.</td></tr>
     <tr><td><code>config.ini</code></td><td>Your settings: theme, fonts, announcement preferences, keyboard customizations, saved views, and message-list field choices.</td></tr>
     <tr><td><code>rules.json</code>, templates, flags</td><td>Mail rules, message templates, and the named flags you create. Mail rules run inside QuickMail only; your provider never sees them.</td></tr>
@@ -328,6 +329,17 @@
       <td>A request for the public release list, identified only by the QuickMail version in the user agent. No account, mail, or usage data.</td>
     </tr>
     <tr>
+      <td>The Idea Place sound gallery on GitHub Pages (<code>theideaplace.github.io</code>)</td>
+      <td>When you open <strong>Browse schemes</strong> in Settings → Sounds, and when you add or update a scheme from it.
+        Also, if you have added a scheme from the gallery, at most once a day, a couple of minutes after QuickMail
+        starts, to check whether any scheme you added has a newer version. That check is skipped when the computer
+        is offline, and you can turn it off: clear <strong>Check for updates to sound schemes from the gallery</strong>
+        in Settings → Sounds (<code>CheckSoundSchemeUpdates = off</code> in <code>config.ini</code>).</td>
+      <td>A plain request for the gallery's list, and for a scheme only when you add or update it, from your IP
+        address, with QuickMail's user agent. The daily check asks only for the list; which schemes you have
+        is compared on your computer and never sent. No account, mail, or usage data.</td>
+    </tr>
+    <tr>
       <td>QuickMail's bug-report relay (a Cloudflare Worker)</td>
       <td><strong>Only</strong> when you choose <strong>Send</strong> in Report a Bug</td>
       <td>The report you wrote and previewed — see <a href="#bug-reports">Bug reports</a></td>
@@ -363,7 +375,7 @@
 <ul>
   <li>What you typed: a summary and what happened, plus — if you fill them in — what you expected and steps to reproduce</li>
   <li>An environment section: the QuickMail version, your Windows version, the .NET runtime version, the
-      active theme, the current view, the current sort order, the message open mode, and how many accounts
+      version of the Microsoft Edge WebView2 runtime that shows messages, the active theme, the current view, the current sort order, the message open mode, and how many accounts
       you have set up, how many shared mailboxes if any, and the mail protocols they connect over (IMAP,
       POP3, or Microsoft 365) &mdash; counts and protocol names only, never an address, a server name, or
       an account display name</li>
@@ -425,8 +437,9 @@
 <p>
   QuickMail collects no analytics, usage statistics, crash reporting, or telemetry of any kind. There is no
   identifier assigned to you or to your installation, and nothing reports that QuickMail has been launched
-  or used. The update check asks GitHub for a public list of releases; that is the whole of QuickMail's
-  routine contact with anything the developer runs.
+  or used. The update check asks GitHub for a public list of releases, and, if you have added a sound scheme
+  from the gallery, a daily check asks the gallery for its public list of schemes; that is the whole of
+  QuickMail's routine contact with anything the developer runs.
 </p>
 
 <h2>Data retention and deletion</h2>

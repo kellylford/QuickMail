@@ -383,7 +383,7 @@ public class GraphMailService : IMailService, IConnectionProbe
     {
         var f = await _client.GetAsync<GraphMailFolder>(
             Account(accountId), $"/me/mailFolders/{DeletedItemsFolderId}?$select=totalItemCount", ct);
-        return f?.TotalItemCount ?? 0;
+        return f?.TotalItemCount ?? throw new InvalidOperationException("Deleted Items gave no count.");
     }
     public Task<IReadOnlyDictionary<string, string>> FetchPreviewsAsync(
         Guid accountId, string folderName, IList<string> messageIds, int maxLines, CancellationToken ct = default)
@@ -536,6 +536,15 @@ public class GraphMailService : IMailService, IConnectionProbe
         await _client.PatchAsync(account, $"/me/mailFolders/{folderName}", new { displayName = newName }, ct);
         if (!string.IsNullOrEmpty(newParentFolderName))
             await _client.PostAsync(account, $"/me/mailFolders/{folderName}/move", new { destinationId = newParentFolderName }, ct);
+    }
+
+    public Task MoveFolderAsync(Guid accountId, string folderName, string? newParentFolderName, CancellationToken ct = default)
+    {
+        // The name is unchanged, so no PATCH: only the move. The top level of a mailbox is the
+        // hidden msgfolderroot that Inbox and Sent Items sit in, a well-known id Graph accepts as a
+        // destination (#954).
+        var destination = string.IsNullOrEmpty(newParentFolderName) ? RootFolderId : newParentFolderName;
+        return _client.PostAsync(Account(accountId), $"/me/mailFolders/{folderName}/move", new { destinationId = destination }, ct);
     }
 
     public Task CopyFolderAsync(Guid accountId, string folderName, string? destinationParentName, CancellationToken ct = default)

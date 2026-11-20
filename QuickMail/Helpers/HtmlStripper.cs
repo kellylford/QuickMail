@@ -38,18 +38,36 @@ public static class HtmlStripper
         var listStack = new Stack<int>();
         int linkTextStart = -1;
         string? linkHref = null;
+        int preDepth = 0;
+        // True when the last thing written was a line break written by a tag (<br />, </p>).
+        bool tagBreakLast = false;
         int i = 0;
 
         while (i < html.Length)
         {
             var c = html[i];
-            if (c != '<') { sb.Append(c); i++; continue; }
+            if (c != '<')
+            {
+                // The one source line break straight after a tag's break (<br />\n, </p>\n) is
+                // markup layout, not content: outside <pre> HTML doesn't render it. Kept, every
+                // <br /> became a blank line (#887). Line breaks in the text itself still pass
+                // through: some HTML-only mail is plain text with blank lines between paragraphs.
+                if (tagBreakLast && preDepth == 0 && c is '\n' or '\r')
+                {
+                    i += c == '\r' && i + 1 < html.Length && html[i + 1] == '\n' ? 2 : 1;
+                    tagBreakLast = false;
+                    continue;
+                }
+                tagBreakLast = false;
+                sb.Append(c); i++; continue;
+            }
 
             int end = html.IndexOf('>', i + 1);
             if (end < 0) { sb.Append(html, i, html.Length - i); break; }
 
             var tag = html.Substring(i + 1, end - i - 1);
             i = end + 1;
+            int lengthBeforeTag = sb.Length;
 
             var isClosing = tag.StartsWith('/');
             var name = TagName(tag);
@@ -76,6 +94,7 @@ public static class HtmlStripper
                 case "p" or "div" or "h1" or "h2" or "h3" or "h4" or "h5" or "h6"
                      or "table" or "blockquote" or "pre":
                     AppendBlockBreak(sb);
+                    if (name == "pre") preDepth = isClosing ? Math.Max(0, preDepth - 1) : preDepth + 1;
                     break;
 
                 case "tr":
@@ -141,6 +160,10 @@ public static class HtmlStripper
                         sb.Append(labelImages ? "[Image: " : "[").Append(WebUtility.HtmlDecode(alt)).Append(']');
                     break;
             }
+
+            // A tag that writes nothing (</span>, </a>) leaves the flag as it was.
+            if (sb.Length != lengthBeforeTag)
+                tagBreakLast = sb[^1] == '\n';
         }
 
         var decoded = WebUtility.HtmlDecode(sb.ToString());

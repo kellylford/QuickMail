@@ -235,6 +235,9 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     private bool _autoSaveDrafts;
 
+    [ObservableProperty]
+    private bool _confirmBeforeSend;
+
     /// <summary>Bound to a ComboBox of fixed choices; values are seconds.</summary>
     [ObservableProperty]
     private int _autoSaveIntervalSeconds;
@@ -242,6 +245,10 @@ public partial class SettingsViewModel : ObservableObject
     /// <summary>Bound to the Settings ComboBox by tag: "plain", "markdown", or "html".</summary>
     [ObservableProperty]
     private string _defaultComposeMode = "plain";
+
+    /// <summary>Background spell checking in compose (#883). Bound to the Composing checkbox.</summary>
+    [ObservableProperty]
+    private bool _checkSpellingAsYouType = true;
 
     // ── Windowing ──────────────────────────────────────────────────────────────────
 
@@ -349,6 +356,13 @@ public partial class SettingsViewModel : ObservableObject
     /// </summary>
     [ObservableProperty]
     private bool _connectionDiagnostics;
+
+    /// <summary>
+    /// Sends the space bar to screen readers as a typed character in every text field, so
+    /// typed-word echo works (issue #300). Off by default; applied immediately on save.
+    /// </summary>
+    [ObservableProperty]
+    private bool _nvdaTypingFix;
 
     /// <summary>Offers Export Settings and Import Settings on the File menu (#507). Off by default.</summary>
     [ObservableProperty]
@@ -492,12 +506,14 @@ public partial class SettingsViewModel : ObservableObject
         IThemeService? themeService = null,
         System.Collections.Generic.IEnumerable<string>? fontFamilies = null,
         IScreenshotCaptureService? screenshotCapture = null,
-        ILaunchAtSignInService? launchAtSignIn = null)
+        ILaunchAtSignInService? launchAtSignIn = null,
+        ISoundService? sounds = null)
     {
         _configService = configService;
         _screenshotCapture = screenshotCapture;
         _launchAtSignInService = launchAtSignIn;
         var cfg = configService.Load();
+        LoadSoundSettings(cfg, sounds);
 
         // Appearance: themes from the service; installed fonts from the View
         // (font enumeration is a presentation concern the caller supplies).
@@ -567,7 +583,13 @@ public partial class SettingsViewModel : ObservableObject
         GoogleSignIn                     = ReadFeature(cfg, FeatureFlag.GoogleAuth, false);
         OfferPop3                        = ReadFeature(cfg, FeatureFlag.Pop3Backend, false);
         AutoSaveDrafts                   = cfg.AutoSaveDrafts;
+        ConfirmBeforeSend                = cfg.ConfirmBeforeSend;
+        RememberRecipients               = cfg.RememberRecipients;
+        SuggestAddresses                 = cfg.SuggestAddresses;
+        SuggestFromAddressBook           = cfg.SuggestFromAddressBook;
+        SuggestPeopleEmailed             = cfg.SuggestPeopleEmailed;
         AutoSaveIntervalSeconds          = cfg.AutoSaveIntervalSeconds;
+        CheckSpellingAsYouType           = cfg.CheckSpellingAsYouType;
         DefaultComposeMode = cfg.DefaultComposeMode switch
         {
             Models.ComposeMode.Markdown => "markdown",
@@ -581,6 +603,7 @@ public partial class SettingsViewModel : ObservableObject
         StartupSyncScope                 = ConfigModel.ParseStartupSyncScope(cfg.StartupSyncScope);
         EnableLogging                    = cfg.EnableLogging;
         ConnectionDiagnostics            = cfg.ConnectionDiagnostics;
+        NvdaTypingFix                    = cfg.NvdaTypingFix;
         AllowSettingsTransfer            = cfg.AllowSettingsTransfer;
         MessageOpenMode = cfg.Windowing.MessageOpenMode switch
         {
@@ -682,7 +705,14 @@ public partial class SettingsViewModel : ObservableObject
             }
         }
         cfg.AutoSaveDrafts                   = AutoSaveDrafts;
+        cfg.ConfirmBeforeSend                = ConfirmBeforeSend;
+        cfg.RememberRecipients               = RememberRecipients;
+        cfg.SuggestAddresses                 = SuggestAddresses;
+        cfg.SuggestFromAddressBook           = SuggestFromAddressBook;
+        cfg.SuggestPeopleEmailed             = SuggestPeopleEmailed;
         cfg.AutoSaveIntervalSeconds          = AutoSaveIntervalSeconds;
+        cfg.CheckSpellingAsYouType           = CheckSpellingAsYouType;
+        SaveSoundSettings(cfg);
         cfg.DefaultComposeMode = DefaultComposeMode switch
         {
             "markdown" => Models.ComposeMode.Markdown,
@@ -696,6 +726,7 @@ public partial class SettingsViewModel : ObservableObject
         cfg.StartupSyncScope                 = StartupSyncScope;
         cfg.EnableLogging                    = EnableLogging;
         cfg.ConnectionDiagnostics            = ConnectionDiagnostics;
+        cfg.NvdaTypingFix                    = NvdaTypingFix;
         cfg.AllowSettingsTransfer            = AllowSettingsTransfer;
         cfg.Windowing.MessageOpenMode = MessageOpenMode switch
         {
@@ -711,6 +742,7 @@ public partial class SettingsViewModel : ObservableObject
             .ToList();
 
         _configService.Save(cfg);
+        TidySchemeFoldersAfterSave(cfg);   // only once the schemes without them are saved (#948, #955)
     }
 
     [RelayCommand]

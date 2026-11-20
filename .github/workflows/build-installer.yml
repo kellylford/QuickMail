@@ -198,7 +198,7 @@ jobs:
           # x64 stays on Velopack's default `win` channel — the one every existing install
           # already polls, so it must never be renamed. ARM64 gets its own `win-arm64`
           # channel so the two feeds can never offer each other's packages to the wrong
-          # machine. See docs/planning/windows-arm64-support-plan.md.
+          # machine. See docs/planning/Completed/windows-arm64-support-plan.md.
           $archArgs = @()
           if ($arch -eq 'arm64') { $archArgs = @('--runtime', 'win-arm64', '--channel', 'win-arm64') }
           # --azureTrustedSignFile signs the app binaries and Velopack Update/Setup.

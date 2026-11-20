@@ -279,7 +279,10 @@ public class ComposeViewModelOutboxTests
     }
 
     [Fact]
-    public async Task AutoSave_ServerSuccess_ResetsTheNoticeAndRemovesTheLocalRow()
+    // #901: the notice is said at most once per compose window. It used to be reset by a server
+    // save, so a connection that came and went said it again mid-edit; the status row still
+    // shows every local save.
+    public async Task AutoSave_ServerSuccess_RemovesTheLocalRow_AndTheNoticeIsNotSaidAgain()
     {
         var h = new Harness();
         h.Mail.AppendDraftFailure = Unreachable();
@@ -296,7 +299,26 @@ public class ComposeViewModelOutboxTests
         h.Mail.AppendDraftFailure = Unreachable();
         h.Vm.Body = "edited again";
         await h.Vm.AutoSaveAsync();
-        Assert.Equal(2, notices);
+        Assert.Equal(1, notices);
+        Assert.StartsWith("Kept on this computer", h.Vm.AutoSaveText, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task AutoSave_ManyLocalSavesWhileEditing_SayTheNoticeOnce()
+    {
+        var h = new Harness();
+        h.Mail.AppendDraftFailure = Unreachable();
+        var notices = new List<string>();
+        h.Vm.AutoSaveNotice += notices.Add;
+
+        for (int i = 0; i < 5; i++)
+        {
+            h.Vm.Body = $"edit {i}";
+            await h.Vm.AutoSaveAsync();
+            Assert.StartsWith("Kept on this computer", h.Vm.AutoSaveText, StringComparison.Ordinal);
+        }
+
+        Assert.Equal("Auto-save is keeping your draft on this computer until you're online.", Assert.Single(notices));
     }
 
     // ── Reopened from the Outbox ────────────────────────────────────────────────

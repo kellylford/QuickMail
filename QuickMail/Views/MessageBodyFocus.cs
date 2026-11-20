@@ -1,3 +1,7 @@
+using System;
+using System.Threading.Tasks;
+using System.Windows.Threading;
+
 namespace QuickMail.Views;
 
 /// <summary>
@@ -81,6 +85,59 @@ public static class MessageBodyFocus
         "body.focus({preventScroll:true});" +
         "return document.hasFocus()&&document.activeElement===body;" +
         "})()";
+
+    /// <summary>
+    /// The check that opens both scripts below (issue #959): "stale" when the document on show is not
+    /// the one carrying <paramref name="renderToken"/> (see
+    /// <see cref="Helpers.MessageBodyHtmlBuilder.WithRenderToken"/>), "loading" when it is but has not
+    /// finished loading — or, with <paramref name="waitForLoad"/> off, has not even been parsed. The
+    /// previous message's page is still on show for a moment after NavigateToString, and a page whose
+    /// load event has not fired is exactly what left the reader on the title.
+    /// </summary>
+    private static string NotReadyCheck(string renderToken, bool waitForLoad) =>
+        "const want=" + System.Text.Json.JsonSerializer.Serialize(renderToken) + ";" +
+        "const root=document.documentElement;" +
+        "if(!root||root.getAttribute('" + Helpers.MessageBodyHtmlBuilder.RenderTokenAttribute + "')!==want)return 'stale';" +
+        (waitForLoad
+            ? "if(document.readyState!=='complete')return 'loading';"
+            : "if(document.readyState==='loading')return 'loading';");
+
+    /// <summary>
+    /// Evaluates to "ready" when render <paramref name="renderToken"/>'s page is on show and loaded,
+    /// else "stale" or "loading" (see <see cref="NotReadyCheck"/>). Touches nothing, so it can be asked
+    /// again and again while the page arrives without focus moving anywhere.
+    /// </summary>
+    public static string ReadinessScriptFor(string renderToken, bool waitForLoad = true) =>
+        "(() => {" + NotReadyCheck(renderToken, waitForLoad) + "return 'ready';})()";
+
+    /// <summary>
+    /// <see cref="FocusScript"/> for one render (issue #959): answers "stale" or "loading", touching
+    /// nothing, when the page is not ready (see <see cref="NotReadyCheck"/>); otherwise runs the shared
+    /// script. Run against the previous message's page, the plain script would report focus that landed
+    /// in the wrong document.
+    /// </summary>
+    public static string FocusScriptFor(string renderToken, bool waitForLoad = true) =>
+        "(() => {" + NotReadyCheck(renderToken, waitForLoad) + "return " + FocusScript + ";})()";
+
+    /// <summary>
+    /// Focuses render <paramref name="renderToken"/>'s page once it is ready; see
+    /// <see cref="Helpers.MessageOpenFocusPolicy.RunAsync"/>. The time allowed runs from now.
+    /// </summary>
+    /// <param name="execute">Runs a script in the window's WebView2 and returns its JSON.</param>
+    internal static Task<Helpers.FocusScriptResult> FocusUntilReadyAsync(
+        Dispatcher dispatcher, Func<bool> isCurrent, Action focusHost, Func<string, Task<string?>> execute,
+        string renderToken, string where)
+    {
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        return Helpers.MessageOpenFocusPolicy.RunAsync(
+            isCurrent,
+            () => dispatcher.InvokeAsync(focusHost, DispatcherPriority.Input).Task,
+            waitForLoad => execute(ReadinessScriptFor(renderToken, waitForLoad)),
+            waitForLoad => execute(FocusScriptFor(renderToken, waitForLoad)),
+            () => clock.Elapsed,
+            pause => Task.Delay(pause),
+            where);
+    }
 
     /// <summary>
     /// What the reading pane and the message window announce once focus lands: "Message body. Subject".

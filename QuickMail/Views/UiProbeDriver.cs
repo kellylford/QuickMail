@@ -204,8 +204,40 @@ internal sealed class UiProbeDriver
                     w => w is SettingsDialog, path,
                     prepare: w => SelectTabByHeader((SettingsDialog)w, "tart"));
 
-            // #728. The General tab scrolled to Saving Messages: a combo box, a read-only field and a
-            // button row that sit below the fold of the tab, so no other capture shows them.
+            // #912. The only Settings pane with a list and its detail controls side by side.
+            case "settings-sounds":
+                return await CaptureChildWindowAsync(() => _window.ShowSettingsDialogForProbe(),
+                    w => w is SettingsDialog, path,
+                    prepare: w => SelectTabByHeader((SettingsDialog)w, "Sounds"));
+
+            // #971. The question for a gallery scheme added before changes were tracked: the longest
+            // text and the longest button row of any small dialog, so the one to check at 200%.
+            case "sound-scheme-update":
+                return await CaptureChildWindowAsync(() =>
+                    {
+                        var plan = new SoundSchemeUpdatePlan(new System.Collections.Generic.Dictionary<string, string>(),
+                            0, 1, 4, SoundSchemeUpdateMode.AddMissingOnly);
+                        new SoundSchemeUpdateDialog(SoundSchemeUpdate.Question("Maya Voicing Glass", plan, 0, filesDeletedIfReplaced: 2))
+                        { Owner = _window }.ShowDialog();
+                    },
+                    w => w is SoundSchemeUpdateDialog, path);
+
+            // General settings scrolled to Composing so the send preference is visible.
+            case "settings-composing":
+                return await CaptureChildWindowAsync(() => _window.ShowSettingsDialogForProbe(),
+                    w => w is SettingsDialog, path,
+                    prepare: w =>
+                    {
+                        SelectTabByHeader((SettingsDialog)w, "eneral");
+                        w.UpdateLayout();
+                        if (w.FindName("ConfirmBeforeSendCheckBox") is FrameworkElement checkbox)
+                        {
+                            checkbox.Focus();
+                            checkbox.BringIntoView();
+                        }
+                    });
+
+            // #728. Saving Messages sits below the fold of the General tab.
             case "settings-saving":
                 return await CaptureChildWindowAsync(() => _window.ShowSettingsDialogForProbe(),
                     w => w is SettingsDialog, path,
@@ -229,7 +261,7 @@ internal sealed class UiProbeDriver
                     w => w is RowFieldsWindow, path);
 
             default:
-                LogService.Log($"ui-probe: unknown surface \"{surface}\". Known: inbox, reading-pane, reading-pane-attachment, reading-pane-attachment-selected, compose-attachment, calendar, compose, theme-manager, address-book, accounts, flag-manager, rules, rule-editor, rule-editor-advanced, saved-views, settings-appearance, settings-startup, settings-saving, command-palette, folder-picker, row-fields.");
+                LogService.Log($"ui-probe: unknown surface \"{surface}\". Known: inbox, reading-pane, reading-pane-attachment, reading-pane-attachment-selected, compose-attachment, calendar, compose, theme-manager, address-book, accounts, flag-manager, rules, rule-editor, rule-editor-advanced, saved-views, settings-appearance, settings-startup, settings-sounds, settings-composing, settings-saving, command-palette, folder-picker, row-fields.");
                 return false;
         }
     }

@@ -275,6 +275,61 @@ public class Pop3LocalFolderTests
         Assert.Equal(lists.FullName, folders.Single(f => f.FullName == child.FullName).ParentId);
     }
 
+    // ── MoveFolderAsync: what the folder tree's Move Folder calls (#954) ─────────
+
+    [Fact]
+    public async Task MoveFolder_ToANewParent_KeepsTheNameAndTheMail()
+    {
+        var lists = await CreateAsync("Lists");
+        var dest  = await CreateAsync("Archive");
+        await _store.UpsertSummariesAsync([Msg(_account, "a", lists.FullName)]);
+
+        await _pop.MoveFolderAsync(_account, lists.FullName, dest.FullName);
+
+        var moved = (await _pop.GetFoldersAsync(_account)).Single(f => f.FullName == lists.FullName);
+        Assert.Equal(dest.FullName, moved.ParentId);
+        Assert.Equal("Lists", moved.DisplayName);
+        Assert.Equal(["a"], await IdsIn(lists.FullName));
+    }
+
+    [Fact]
+    public async Task MoveFolder_WithNoParent_PutsItAtTheTopLevel_AndItsChildrenGoWithIt()
+    {
+        var lists = await CreateAsync("Lists", parent: "Inbox");
+        var child = await CreateAsync("QuickMail", parent: lists.FullName);
+
+        await _pop.MoveFolderAsync(_account, lists.FullName, null);
+
+        var folders = await _pop.GetFoldersAsync(_account);
+        var moved = folders.Single(f => f.FullName == lists.FullName);
+        Assert.Equal(Pop3MailService.TopLevelParentId, moved.ParentId);
+        Assert.Equal(lists.FullName, folders.Single(f => f.FullName == child.FullName).ParentId);
+        // And the tree, and so the "already at the top level" check, agree.
+        Assert.True(MainViewModel.IsAtTopLevel(moved, folders));
+        Assert.Contains(FolderTreeBuilder.Build(folders), n => n.Folder?.FullName == lists.FullName);
+    }
+
+    [Fact]
+    public async Task MoveFolder_ToTheTopLevel_BesideAFolderOfTheSameName_IsRefused()
+    {
+        var nested = await CreateAsync("Trash", parent: "Inbox");   // a local folder named like a built-in
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _pop.MoveFolderAsync(_account, nested.FullName, null));
+        Assert.Equal("Inbox", (await _pop.GetFoldersAsync(_account)).Single(f => f.FullName == nested.FullName).ParentId);
+    }
+
+    [Fact]
+    public async Task MoveFolder_IntoItselfOrItsOwnChild_OrABuiltIn_IsRefused()
+    {
+        var lists = await CreateAsync("Lists");
+        var child = await CreateAsync("QuickMail", parent: lists.FullName);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _pop.MoveFolderAsync(_account, lists.FullName, lists.FullName));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _pop.MoveFolderAsync(_account, lists.FullName, child.FullName));
+        await Assert.ThrowsAsync<NotSupportedException>(() => _pop.MoveFolderAsync(_account, "Inbox", lists.FullName));
+        await Assert.ThrowsAsync<NotSupportedException>(() => _pop.MoveFolderAsync(_account, "Sent", null));
+    }
+
     [Fact]
     public async Task MovingIntoItselfOrItsOwnChild_IsRefused()
     {

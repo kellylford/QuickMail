@@ -36,7 +36,7 @@ public class MainViewModelOutboxTests
         public CommandRegistry Registry { get; } = new();
         public MainViewModel Vm { get; }
 
-        public Fixture(bool onlineMode = false, bool withOutbox = true)
+        public Fixture(bool onlineMode = false, bool withOutbox = true, ISoundService? sounds = null)
         {
             var folders = new Dictionary<Guid, List<MailFolderModel>>
             {
@@ -48,7 +48,8 @@ public class MainViewModelOutboxTests
                 new StubConfigService(), Registry, new StubViewService(),
                 new StubRuleService(), new StubSmtpService(),
                 onlineMode: onlineMode,
-                outboxService: withOutbox ? Outbox : null);
+                outboxService: withOutbox ? Outbox : null,
+                soundService: sounds);
             Vm.Accounts.Add(Account(Work, "Work"));
             Vm.Accounts.Add(Account(Home, "Home"));
         }
@@ -194,6 +195,37 @@ public class MainViewModelOutboxTests
     }
 
     // ── Delete ───────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task RemovingOutboxRowsPlaysTheDeleteSoundOnce()
+    {
+        var sounds = new RecordingSoundService();
+        var f = new Fixture(sounds: sounds);
+        f.Outbox.Items.Add(Row(Work, OutboxKind.Send, "One", 3));
+        f.Outbox.Items.Add(Row(Work, OutboxKind.Send, "Two", 1));
+        await f.ConnectAsync();
+        await f.SelectOutboxAsync();
+        f.Vm.ConfirmationRequested = (_, _) => true;
+
+        await f.Vm.DeleteMessagesAsync([.. f.Vm.Messages]);
+
+        Assert.Equal([SoundEvent.MessageDeleted], sounds.Played);
+    }
+
+    [Fact]
+    public async Task DecliningToRemoveAnOutboxRowPlaysNothing()
+    {
+        var sounds = new RecordingSoundService();
+        var f = new Fixture(sounds: sounds);
+        f.Outbox.Items.Add(Row(Work, OutboxKind.Send, "One", 3));
+        await f.ConnectAsync();
+        await f.SelectOutboxAsync();
+        f.Vm.ConfirmationRequested = (_, _) => false;
+
+        await f.Vm.DeleteMessagesAsync([.. f.Vm.Messages]);
+
+        Assert.Empty(sounds.Played);
+    }
 
     [Fact]
     public async Task DeleteRemovesFromTheQueueAfterAsking()

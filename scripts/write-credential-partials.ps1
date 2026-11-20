@@ -19,6 +19,12 @@
 #                Google sign-in and in-app bug reports silently stop working for everyone
 #                who installs it, and nothing else in the pipeline would notice.
 #
+# A local build needs neither mode: QuickMail.csproj's WriteCredentialPlaceholders target writes
+# the same empty placeholders for whichever file is missing (#859), and never overwrites one that
+# exists. Keep the placeholder text in the two places in step (CredentialPlaceholderTargetTests).
+# On GitHub Actions that target is off and the build fails if a file is missing, so every
+# workflow that builds the app must still run this script first.
+#
 # Values are escaped for a C# string literal, so a quote or backslash in a secret cannot
 # break the build or inject code.
 param(

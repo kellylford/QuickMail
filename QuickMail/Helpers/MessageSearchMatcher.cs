@@ -51,6 +51,14 @@ public sealed class MessageSearchMatcher
     /// Supplies what the full-text index found: the messages holding every wanted word, and the
     /// messages holding any unwanted one. Either may be null when the index could not answer.
     /// </summary>
+    /// <summary>Starts from another matcher's index answer until this one's own arrives, for a reload of
+    /// mostly the same rows: without it a row matched only on its body counts as gone in the meantime.</summary>
+    public void BorrowIndexHits(MessageSearchMatcher other)
+    {
+        _indexPositive = other._indexPositive;
+        _indexNegative = other._indexNegative;
+    }
+
     public void SetIndexHits(IEnumerable<SearchHit>? positive, IEnumerable<SearchHit>? negative)
     {
         _indexPositive = positive == null ? null : KeysOf(positive);

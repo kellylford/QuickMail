@@ -34,6 +34,9 @@ public partial class App : Application
     /// <summary>Start at Windows sign-in (#770). Exposed for Settings, like <see cref="Profile"/>.</summary>
     public ILaunchAtSignInService? LaunchAtSignIn { get; private set; }
 
+    /// <summary>The sound scheme gallery (#937): GitHub Pages, or the --soundGallery folder or URL.</summary>
+    public SoundGalleryService? SoundGallery { get; private set; }
+
     /// <summary>
     /// True when Windows started this process at sign-in and the user wants that to be unobtrusive
     /// (StartMinimizedAtSignIn): the main window starts minimized without taking focus, moves to the
@@ -45,6 +48,7 @@ public partial class App : Application
     // Held so OnExit can dispose them.
     private GraphSendMailService? _graphSendMail;
     private ContactService? _contactService;
+    private RecipientHistoryService? _recipientHistory;
     private GooglePeopleClient? _googlePeopleClient;
     private GoogleCalendarClient? _googleCalendarClient;
     private CalDavCalendarClient? _calDavCalendarClient;
@@ -61,6 +65,11 @@ public partial class App : Application
     private ThemeService? _themeService;
     private BugReportService? _bugReportService;
     private WindowsToastNotificationService? _notificationService;
+    private SoundService? _soundService;
+    // Files QuickMail has put on the Windows clipboard (#929): tidied at start, deleted at exit.
+    private ClipboardStaging? _clipboardStaging;
+    // Messages in no mailbox: opened .eml files and attached emails (#939).
+    private OpenedMessageService? _openedMessages;
     private AutoDiscoverService? _autoDiscoverService;
     private ConnectionTruthProbe? _truthProbe;
 
@@ -78,11 +87,18 @@ public partial class App : Application
             .OnBeforeUninstallFastCallback(_ =>
             {
                 RemoveStartupEntries();
+                RunHookStep("email file removal", () => EmailFileAssociation.Unregister());
                 LaunchUninstallDataPrompt();
             })
             // A Windows Installer upgrade runs the OLD copy's uninstall hook before installing
             // this one (#245), which took the startup entries away; put them back (#770).
-            .OnAfterInstallFastCallback(_ => RestoreStartupEntries())
+            .OnAfterInstallFastCallback(_ =>
+            {
+                RestoreStartupEntries();
+                RegisterEmailFiles();
+            })
+            // An update registers too, so copies installed before .eml opening (#939) get it.
+            .OnAfterUpdateFastCallback(_ => RegisterEmailFiles())
             .Run();
 
         // One instance per profile (issue #240): with close-to-tray the process can be running
@@ -157,6 +173,17 @@ public partial class App : Application
         }
     }
 
+    // Install and update hook: offers QuickMail in Open with for .eml files (#939). Never fails the install.
+    private static void RegisterEmailFiles() => RunHookStep("email file registration", () =>
+    {
+        if (Environment.ProcessPath is { } exe) EmailFileAssociation.Register(exe);
+    });
+
+    private static void RunHookStep(string what, Action step)
+    {
+        try { step(); }
+        catch (Exception ex) { WriteHookDiagnostic($"{what} failed: {ex}"); }
+    }
     // The install/uninstall hooks run before OnStartup, so LogService is not configured; they
     // write here instead (%TEMP%\quickmail-uninstall.log, which the data prompt also uses).
     private static void WriteHookDiagnostic(string text)
@@ -228,7 +255,9 @@ public partial class App : Application
         if (IsHelpRequest(e.Args))
         {
             MessageBox.Show(
-                "Usage: QuickMail.exe [options]\n\n" +
+                "Usage: QuickMail.exe [options] [file.eml]\n\n" +
+                "  file.eml              Open this email file in its own window. If QuickMail\n" +
+                "                        is already running, it opens there.\n\n" +
                 "Options:\n" +
                 "  --profileDir <path>   Store all data in <path> instead of the default\n" +
                 "                        %AppData%\\QuickMail directory. The directory is\n" +
@@ -236,6 +265,9 @@ public partial class App : Application
                 "  --online              Run in fully online mode: fetch everything live from\n" +
                 "                        IMAP on every folder selection. Nothing is read from\n" +
                 "                        or written to the local SQLite cache.\n\n" +
+                "  --soundGallery <path> Browse sound schemes in <path> (a folder or https URL)\n" +
+                "                        instead of the published gallery. It must be signed\n" +
+                "                        with the gallery's key.\n\n" +
                 "  --updateFeed <path>   Check for updates in <path> (a folder or URL of\n" +
                 "                        Velopack packages) instead of GitHub Releases.\n" +
                 "                        For testing update delivery.\n\n" +
@@ -398,6 +430,11 @@ public partial class App : Application
             // the throwaway probe account Test Connection builds, for instance — is routed by its
             // BackendKind rather than defaulting to IMAP.
             var mailRouter = new MailServiceRouter(new IMailService[] { imapBackend, graphBackend, pop3Backend }, BackendFor);
+            // Opened .eml files and attached emails live under one reserved account id (#939), so every
+            // path that reads a message through the router (pictures, attachments, Save, Print, Forward)
+            // works on them unchanged.
+            _openedMessages = new OpenedMessageService();
+            mailRouter.RegisterAccount(OpenedMessageService.AccountId, _openedMessages);
 
             // ui-probe (#180 Decision D): network hard-off at the DI root. EVERY
             // consumer of the mail/send/oauth services gets the offline no-op —
@@ -517,6 +554,17 @@ public partial class App : Application
 
             _contactService = new ContactService(profile);
             var contactService = _contactService;
+            _recipientHistory = new RecipientHistoryService(profile);
+            // Your own addresses are never remembered (#1037), but an earlier build did remember them, and
+            // an address can become yours later by being added as an account. Forget them each start; it
+            // writes nothing when none are there. Off the startup path, and best effort.
+            var ownAddresses = ViewModels.ComposeViewModel.OwnAddresses(accounts);
+            var history = _recipientHistory;
+            _ = Task.Run(async () =>
+            {
+                try { await history.ForgetAsync(ownAddresses); }
+                catch (Exception ex) { LogService.Log("Startup: could not forget the user's own addresses from the remembered people", ex); }
+            });
             _templateService = new TemplateService(profile);
             var templateService = _templateService;
             // accountService drives the one-time "All accounts" → per-account rule migration (#333 D1).
@@ -567,6 +615,10 @@ public partial class App : Application
             var contactSyncService  = new ContactSyncService(accountService, contactService, graphContactSource, googleContactSource, iCloudContactSource);
 
             var startupCfg = configService.Load();
+            // #300: before any window with a text field exists, so every editor that loads from
+            // here on sends Space to screen readers as a typed character.
+            TypedSpaceFix.Register();
+            TypedSpaceFix.SetEnabled(startupCfg.NvdaTypingFix);
             // ui-probe (#180): theme/scale land in the loaded config BEFORE
             // ThemeService.Initialize so the first render is already correct;
             // ThemeService never persists, so config.ini is untouched.
@@ -624,8 +676,27 @@ public partial class App : Application
                                                                  _calDavCalendarClient, credentialService);
 
             _updateCheckService = new UpdateCheckService(configService, ParseUpdateFeed(e.Args));
+            try
+            {
+                SoundGallery = new SoundGalleryService(ParseArgValue(e.Args, "--soundGallery"));
+            }
+            catch (ArgumentException ex)
+            {
+                LogService.Log("--soundGallery was not an https address or a folder; using the published gallery", ex);
+                SoundGallery = new SoundGalleryService();
+            }
             _bugReportService   = new BugReportService(credentialService);
             _notificationService = new WindowsToastNotificationService();
+            var soundsFolder = System.IO.Path.Combine(profile.ProfileDir, SoundCatalog.CustomFolderName);
+            // The one-time move of 0.8.69's shared sound files into each scheme's folder (#948), before
+            // the sound service starts, so nothing plays from a folder being changed.
+            if (!probeMode) SoundFolderMigration.RunAtStartup(profile.ProfileDir, ruleService.LoadRules);
+            // Then the folders of schemes that are no longer anywhere (#955), such as a new scheme
+            // left by QuickMail stopping while Settings was open. Nothing else is open at this point.
+            if (!probeMode) SoundSchemeFolderCleanup.RunAtStartup(profile.ProfileDir);
+            _soundService = probeMode ? null : new SoundService(
+                configService, soundsFolder, new NAudioSoundOutput(), isQuiet: WindowsQuietState.IsQuiet);
+            ruleService.Sounds = _soundService;
             // Answers the question the app cannot answer about itself: when an account shows as
             // disconnected, is it actually unreachable? Probes on a connection that shares nothing
             // with the pools or watchers. Label resolution reads the live account list.
@@ -635,6 +706,12 @@ public partial class App : Application
             _truthProbe = probeMode ? null : new ConnectionTruthProbe(
                 mailRouter,
                 id => accounts.FirstOrDefault(a => a.Id == id)?.AccountLabel ?? id.ToString());
+
+            // Off the startup path: tidying folders a crashed QuickMail left behind is not worth a delay.
+
+            _clipboardStaging = probeMode ? null : new ClipboardStaging();
+
+            if (_clipboardStaging is { } staging) _ = Task.Run(() => staging.DeleteAbandoned());
 
             var mainVm = new MainViewModel(
                 effectiveMail, accountService, credentialService, localStore, effectiveOAuth, syncService, configService, commandRegistry, viewService, ruleService, effectiveSmtp,
@@ -650,7 +727,12 @@ public partial class App : Application
                 watchService: watchService,
                 folderViewState: folderViewState,
                 outboxService: outboxService,
-                connectivity: _connectivity);
+                connectivity: _connectivity,
+                soundService: _soundService,
+                clipboard: probeMode ? null : ClipboardService.Default,
+                clipboardStaging: _clipboardStaging,
+                openedMessages: probeMode ? null : _openedMessages,
+                soundGallery: probeMode ? null : SoundGallery);   // #971: the daily check for scheme updates
             mainVm.RegisterAccountBackend = a => { if (!probeMode) mailRouter.RegisterAccount(a.Id, BackendFor(a)); };
             // #31: a credential-less shared mailbox borrows its parent account's token. The resolver runs
             // on background sweep threads, so it goes through ResolveAccountById — a thread-safe snapshot
@@ -665,7 +747,7 @@ public partial class App : Application
             mainVm.ApplySettingsTransferSetting(startupCfg.AllowSettingsTransfer);   // #507, off by default
             mainVm.LoadAccountList(accounts);
 
-            var mainWindow = new MainWindow(mainVm, effectiveSmtp, accountService, credentialService, effectiveMail, effectiveOAuth, commandRegistry, contactService, configService, localStore, viewService, ruleService, templateService, featureGate, flagService, customDictionary, themeService, _bugReportService, _notificationService, contactSyncService, graphCalendarSync, serverRuleService, providerCatalog, _autoDiscoverService, _truthProbe, rowLayoutService, watchService, outboxService, _connectivity);
+            var mainWindow = new MainWindow(mainVm, effectiveSmtp, accountService, credentialService, effectiveMail, effectiveOAuth, commandRegistry, contactService, configService, localStore, viewService, ruleService, templateService, featureGate, flagService, customDictionary, themeService, _bugReportService, _notificationService, contactSyncService, graphCalendarSync, serverRuleService, providerCatalog, _autoDiscoverService, _truthProbe, rowLayoutService, watchService, outboxService, _connectivity, _recipientHistory);
 
             // Clicking a new-mail toast brings QuickMail to the foreground and opens the referenced
             // message. OnActivated may fire on a background thread, so marshal to the UI thread first.
@@ -691,7 +773,26 @@ public partial class App : Application
             // another process; restore the window (and drop the tray icon) exactly as the
             // tray icon's Open action would. The signal arrives on a thread-pool thread.
             _singleInstance?.ListenForActivation(() =>
-                mainWindow.Dispatcher.BeginInvoke(() => mainWindow.RestoreFromTray()));
+                mainWindow.Dispatcher.BeginInvoke(() =>
+                {
+                    mainWindow.RestoreFromTray();
+                    OpenRequestedEmailFiles(mainVm, _singleInstance?.TakeOpenRequests() ?? []);
+                }));
+
+            // Started to open a .eml file (#939), from Explorer's Open with: shown once the main window
+            // has drawn, so the message window opens over it rather than behind it. Anything another
+            // launch left while this one was starting is taken up too.
+            if (!probeMode)
+            {
+                var atStart = SingleInstanceService.EmailFileFrom(e.Args) is { } first ? new List<string> { first } : [];
+                void OnRendered(object? s, EventArgs a)
+                {
+                    mainWindow.ContentRendered -= OnRendered;
+                    atStart.AddRange(_singleInstance?.TakeOpenRequests() ?? []);
+                    OpenRequestedEmailFiles(mainVm, atStart);
+                }
+                mainWindow.ContentRendered += OnRendered;
+            }
         }
         catch (Exception ex)
         {
@@ -703,8 +804,24 @@ public partial class App : Application
         }
     }
 
+    /// <summary>Opens each .eml file asked for, in its own message window (#939).</summary>
+    private static async void OpenRequestedEmailFiles(MainViewModel vm, IReadOnlyList<string> paths)
+    {
+        // async void: an event-style reaction on the UI thread; OpenEmailFileAsync reports its own failures.
+        foreach (var path in paths)
+        {
+            try { await vm.OpenEmailFileAsync(path); }
+            catch (Exception ex) { LogService.Log("OpenRequestedEmailFiles", ex); }
+        }
+    }
     protected override void OnExit(ExitEventArgs e)
     {
+        // Copied messages and attachments. Kept while the clipboard still offers them: Windows holds the
+        // paths after QuickMail has gone, and pasting into Explorer afterwards would find nothing. The next
+        // start tidies them (DeleteAbandoned). Otherwise nothing can paste them, so they go now.
+        _openedMessages?.Dispose();
+        if (_clipboardStaging != null && ClipboardService.Default.GetMarker() == null)
+            _clipboardStaging.DeleteMine();
         _changeNotifier?.Dispose(); // stops all watchers (IDLE + Graph poll) + severs the event chain
         _connectivity?.Dispose();   // stops listening to NetworkChange; after the notifiers, which feed it
         _graphNotifier?.Dispose();  // disposes the Graph poll CTS (StopWatchers already ran; idempotent)
@@ -718,11 +835,14 @@ public partial class App : Application
         _calDavCalendarClient?.Dispose();
         _cardDavContactClient?.Dispose();
         _contactService?.Dispose();
+        _recipientHistory?.Dispose();
         _templateService?.Dispose();
         _updateCheckService?.Dispose();
         _bugReportService?.Dispose();
         _themeService?.Dispose();   // unsubscribes SystemParameters/SystemEvents static events
         _notificationService?.Dispose(); // unhooks the toast-activation static event
+        _soundService?.Dispose();   // ends the sound worker; after everything that could ask for a sound
+        SoundGallery?.Dispose();
         _autoDiscoverService?.Dispose(); // releases the autoconfig HttpClient
         _truthProbe?.Dispose();     // cancels in-flight probes before releasing their token source
         ScreenshotCapture?.Dispose(); // flushes any in-flight PNG save (best effort, bounded)
@@ -746,6 +866,17 @@ public partial class App : Application
                 disable.Add(args[i + 1]);
         }
         return (enable, disable);
+    }
+
+    /// <summary>The value after a flag such as --soundGallery, or null if it isn't given.</summary>
+    private static string? ParseArgValue(string[] args, string flag)
+    {
+        for (int i = 0; i < args.Length - 1; i++)
+        {
+            if (string.Equals(args[i], flag, StringComparison.OrdinalIgnoreCase))
+                return args[i + 1];
+        }
+        return null;
     }
 
     private static bool IsHelpRequest(string[] args)
@@ -856,7 +987,11 @@ public partial class App : Application
             {
                 try
                 {
-                    if (System.IO.Directory.GetLastWriteTimeUtc(dir) < cutoff)
+                    // Folders that tidy themselves, by their own rules (#929, #939): the files QuickMail has
+                    // on the clipboard, and .eml files waiting to be opened. A folder's own timestamp does
+                    // not change when files deeper inside it do, so age would delete them from under use.
+                    var name = System.IO.Path.GetFileName(dir);
+                    if (name is "Clipboard" or "Open") continue;                    if (System.IO.Directory.GetLastWriteTimeUtc(dir) < cutoff)
                         System.IO.Directory.Delete(dir, recursive: true);
                 }
                 catch (Exception ex)

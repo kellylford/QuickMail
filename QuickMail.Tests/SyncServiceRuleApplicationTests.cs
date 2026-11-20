@@ -88,8 +88,8 @@ public class SyncServiceRuleApplicationTests : IDisposable
         public List<MailRule> LoadRules() => ThrowOnLoad is { } ex ? throw ex : NoRules ? [] : OneEnabledRule;
         public void SaveRules(List<MailRule> rules) { }
         public List<MailMessageSummary> TestRule(MailRule rule, IEnumerable<MailMessageSummary> messages) => [];
-        public Task<List<MailMessageSummary>> ApplyRulesToExistingAsync(ILocalStoreService store, IReadOnlyDictionary<Guid, string> inboxFolderByAccount, CancellationToken ct)
-            => Task.FromResult(new List<MailMessageSummary>());
+        public Task<ExistingMailRunReport> ApplyRulesToExistingAsync(ILocalStoreService store, IReadOnlyDictionary<Guid, string> inboxFolderByAccount, CancellationToken ct)
+            => Task.FromResult(ExistingMailRunReport.Empty);
     }
 
     // ── IMailService that returns a scripted batch from GetMessagesSinceAsync ─────

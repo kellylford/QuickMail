@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using QuickMail.Models;
@@ -26,9 +27,19 @@ public sealed class SettingsBundle
     public const string GroupMembersName = "group-members.json";
     public const string CalendarName = "calendar.ics";
     public const string ThemesPrefix = "themes/";
+    public const string SoundsPrefix = SoundCatalog.CustomFolderName + "/";
 
-    // A real file is about 20 KB. The cap only stops a hostile archive from filling memory.
+    // A real file is about 20 KB, plus any custom sounds. The cap only stops a hostile archive from filling memory.
     private const long MaxTotalBytes = 64L * 1024 * 1024;
+
+    // Well under MaxTotalBytes, because going over it makes the whole file unreadable on import. A
+    // sound that doesn't fit stays behind, and anything using it falls back to the built-in sound.
+    // Counted once per different sound (#955): a file several schemes use is written once for each.
+    internal const long MaxExportedSoundBytes = 32L * 1024 * 1024;
+
+    // What every entry of an exported file may add up to, with each scheme's copy of a shared sound
+    // counted in full: a little under MaxTotalBytes, so an import can always read what was exported.
+    internal const long MaxExportedTotalBytes = MaxTotalBytes - 1L * 1024 * 1024;
 
     /// <summary>The profile files each category carries, by their name in the profile directory.</summary>
     public static readonly IReadOnlyDictionary<SettingsCategory, string[]> CategoryFiles =
@@ -78,6 +89,9 @@ public sealed class SettingsBundle
     public IEnumerable<KeyValuePair<string, byte[]>> ThemeEntries =>
         Entries.Where(e => e.Key.StartsWith(ThemesPrefix, StringComparison.OrdinalIgnoreCase));
 
+    public IEnumerable<KeyValuePair<string, byte[]>> SoundEntries =>
+        Entries.Where(e => e.Key.StartsWith(SoundsPrefix, StringComparison.OrdinalIgnoreCase));
+
     // ── Reading ──────────────────────────────────────────────────────────────────
 
     public static SettingsBundle Open(string path)
@@ -111,7 +125,16 @@ public sealed class SettingsBundle
                 if (total > MaxTotalBytes) throw new SettingsBundleException(notASettingsFile);
                 using var es = entry.Open();
                 using var ms = new MemoryStream();
-                es.CopyTo(ms);
+                // Counted as it is read as well: the length above is only what the archive claims.
+                var buffer = new byte[81920];
+                long copied = 0;
+                var allowed = MaxTotalBytes - (total - entry.Length);
+                for (int read; (read = es.Read(buffer, 0, buffer.Length)) > 0;)
+                {
+                    copied += read;
+                    if (copied > allowed) throw new SettingsBundleException(notASettingsFile);
+                    ms.Write(buffer, 0, read);
+                }
                 entries[name] = ms.ToArray();
             }
         }
@@ -142,10 +165,15 @@ public sealed class SettingsBundle
         return new SettingsBundle(manifest, entries);
     }
 
-    /// <summary>A known profile file, or a theme file with a plain name directly under themes/.</summary>
+    /// <summary>
+    /// A known profile file, a theme file with a plain name directly under its folder, or a sound file:
+    /// a rule's, directly under <c>sounds/</c>, or a scheme's, in its scheme's folder under that (#948).
+    /// </summary>
     internal static bool IsAcceptedName(string name)
     {
         if (KnownFiles.Contains(name)) return true;
+        if (name.StartsWith(SoundsPrefix, StringComparison.OrdinalIgnoreCase))
+            return SoundEntryPath(name) is not null;
         if (!name.StartsWith(ThemesPrefix, StringComparison.OrdinalIgnoreCase)) return false;
         var file = name[ThemesPrefix.Length..];
         return file.Length > 0
@@ -153,6 +181,24 @@ public sealed class SettingsBundle
                && file.IndexOfAny(['/', '\\', ':']) < 0
                && file.IndexOfAny(Path.GetInvalidFileNameChars()) < 0
                && file != "." && file != "..";
+    }
+
+    /// <summary>
+    /// Where a <c>sounds/</c> entry goes, relative to the sounds folder: <c>&lt;file&gt;</c> for a rule's
+    /// sound, or <c>&lt;scheme folder&gt;\&lt;file&gt;</c> for a scheme's (#948). Null for any other name,
+    /// which is never extracted.
+    /// </summary>
+    internal static string? SoundEntryPath(string name)
+    {
+        if (!name.StartsWith(SoundsPrefix, StringComparison.OrdinalIgnoreCase)) return null;
+        var parts = name[SoundsPrefix.Length..].Split('/');
+        return parts switch
+        {
+            [var file] when SoundRef.IsSafeCustomFileName(file) => file,
+            [var folder, var file] when SoundRef.IsSafeCustomFileName(file) && SoundCatalog.SchemeFolderName(folder) is { } safe
+                && safe.Equals(folder, StringComparison.OrdinalIgnoreCase) => Path.Combine(safe, file),
+            _ => null,
+        };
     }
 
     // ── Writing ──────────────────────────────────────────────────────────────────
@@ -198,7 +244,8 @@ public sealed class SettingsBundle
             }).ToList(),
         };
 
-        using var zip = new ZipArchive(destination, ZipArchiveMode.Create, leaveOpen: true);
+        using var archive = new ZipArchive(destination, ZipArchiveMode.Create, leaveOpen: true);
+        var zip = new ZipOut(archive);
         AddText(zip, ManifestName, JsonSerializer.Serialize(manifest, JsonOptions));
 
         // Folder names travel with anything that names a folder: accounts (archive folder), rules and
@@ -234,12 +281,66 @@ public sealed class SettingsBundle
                     break;
             }
         }
+
+        // Custom sounds travel with what can name one: rules, and event sounds in the preferences.
+        if (manifest.Categories.Any(c => c is SettingsCategory.RulesAndViews or SettingsCategory.Preferences))
+            WriteSounds(zip, dir);
+    }
+
+    // The rules' sounds directly under sounds/, and each scheme's in its own folder under that (#948).
+    private static void WriteSounds(ZipOut zip, string profileDir)
+    {
+        var root = Path.Combine(profileDir, SoundCatalog.CustomFolderName);
+        if (!Directory.Exists(root)) return;
+
+        var folders = new List<(string Prefix, string Path)> { (SoundsPrefix, root) };
+        foreach (var dir in Directory.GetDirectories(root).OrderBy(d => d, StringComparer.OrdinalIgnoreCase))
+        {
+            var name = Path.GetFileName(dir);
+            if (SoundCatalog.SchemeFolderName(name) is { } safe && safe.Equals(name, StringComparison.OrdinalIgnoreCase))
+                folders.Add((SoundsPrefix + safe + "/", dir));
+        }
+
+        // Each scheme has its own copy of a file several of them use (#948), so the same sound can be
+        // here several times. The limit counts each different sound once (#955), so that copying a
+        // scheme doesn't make an export leave sounds out. Every copy is still written, as the import
+        // expects each in its scheme's folder; what bounds them all is that the import must still be
+        // able to read the file, so the whole file stays within what an import accepts.
+        long distinct = 0;
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        int leftOut = 0;
+        foreach (var (prefix, folder) in folders)
+        {
+            foreach (var file in Directory.GetFiles(folder).OrderBy(f => f, StringComparer.OrdinalIgnoreCase))
+            {
+                var name = Path.GetFileName(file);
+                var length = new FileInfo(file).Length;
+                if (!SoundRef.IsSafeCustomFileName(name) || length > SoundCatalog.MaxCustomFileBytes) continue;
+                var bytes = File.ReadAllBytes(file);
+                var key = Convert.ToHexString(SHA256.HashData(bytes));
+                var isNew = !seen.Contains(key);
+                if ((isNew && distinct + bytes.Length > MaxExportedSoundBytes)
+                    || zip.Written + bytes.Length > MaxExportedTotalBytes)
+                {
+                    leftOut++;
+                    continue;
+                }
+                if (isNew)
+                {
+                    seen.Add(key);
+                    distinct += bytes.Length;
+                }
+                AddBytes(zip, prefix + name, bytes);
+            }
+        }
+        if (leftOut > 0)
+            LogService.Log($"Settings export: left out {leftOut} sound file(s), as the sounds already fill the file.");
     }
 
     // Local contacts only: synced ones come back from their server and would only arrive stale. A
     // group can list a synced contact, so the address of every such member travels on its own,
     // letting the import find the same person on the other computer (spec R8).
-    private static void WriteAddressBook(ZipArchive zip, string dir)
+    private static void WriteAddressBook(ZipOut zip, string dir)
     {
         var contacts = ReadList<ContactModel>(Path.Combine(dir, "contacts.json"));
         var groups = ReadList<GroupModel>(Path.Combine(dir, "groups.json"));
@@ -296,19 +397,27 @@ public sealed class SettingsBundle
         return JsonSerializer.Deserialize<List<T>>(json) ?? [];
     }
 
-    private static void CopyIfExists(ZipArchive zip, string dir, string name)
+    private static void CopyIfExists(ZipOut zip, string dir, string name)
     {
         var path = Path.Combine(dir, name);
         if (File.Exists(path)) AddBytes(zip, name, File.ReadAllBytes(path));
     }
 
-    private static void AddText(ZipArchive zip, string name, string text) =>
+    private static void AddText(ZipOut zip, string name, string text) =>
         AddBytes(zip, name, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false).GetBytes(text));
 
-    private static void AddBytes(ZipArchive zip, string name, byte[] bytes)
+    private static void AddBytes(ZipOut zip, string name, byte[] bytes)
     {
-        var entry = zip.CreateEntry(name, CompressionLevel.Optimal);
+        var entry = zip.Archive.CreateEntry(name, CompressionLevel.Optimal);
         using var s = entry.Open();
         s.Write(bytes, 0, bytes.Length);
+        zip.Written += bytes.Length;
+    }
+
+    /// <summary>The archive being written, and how many bytes its entries hold so far, uncompressed, which is what an import counts.</summary>
+    private sealed class ZipOut(ZipArchive archive)
+    {
+        public ZipArchive Archive { get; } = archive;
+        public long Written { get; set; }
     }
 }

@@ -29,7 +29,7 @@ public static class MessageBodyHtmlBuilder
     /// </summary>
     private const string ResidualForbiddenTag =
         @"<(/?(?:script|style|svg|math|iframe|frame|frameset|object|embed|applet|video|audio|source|track|" +
-        @"canvas|form|img|image|link|base|meta|input|button|portal|title|html|head|body)(?=[\s/>]|$))";
+        @"canvas|form|textarea|select|img|image|link|base|meta|input|button|portal|title|html|head|body)(?=[\s/>]|$))";
 
     /// <summary>
     /// A start tag with something after its name: the name, then everything up to the closing
@@ -166,6 +166,24 @@ public static class MessageBodyHtmlBuilder
         return new MessageDocument(html, webPictures, blockedWebPictures);
     }
 
+    /// <summary>The attribute on a message document's &lt;html&gt; that names the render it belongs to (issue #959).</summary>
+    public const string RenderTokenAttribute = "data-qm-render";
+
+    /// <summary>
+    /// Marks <paramref name="html"/> as the document of render <paramref name="token"/>, on its
+    /// &lt;html&gt; start tag, so the focus script can tell this render's page from the one still on
+    /// show while it loads (<see cref="Views.MessageBodyFocus.FocusScriptFor"/>). Every document the
+    /// builders write starts with QuickMail's own &lt;html&gt; tag; the sender's are removed, so the first
+    /// one is ours. A document with none is returned unchanged, and focus then gives up on it as stale.
+    /// </summary>
+    public static string WithRenderToken(string html, string token)
+    {
+        var at = html.IndexOf("<html", StringComparison.OrdinalIgnoreCase);
+        if (at < 0) return html;
+        return html.Insert(at + "<html".Length,
+            " " + RenderTokenAttribute + "=\"" + WebUtility.HtmlEncode(token) + "\"");
+    }
+
     /// <summary>Injects the event card HTML just after the opening &lt;body&gt; tag.</summary>
     private static string InjectEventCard(string html, string eventCardHtml)
     {
@@ -271,7 +289,7 @@ public static class MessageBodyHtmlBuilder
         if (pictures is { Count: > 0 })
             body = RestorePictures(body, pictures, p => p.Web
                 ? sources.WebBase + p.Src
-                : sources.EmbeddedBase + Uri.EscapeDataString(p.Src));
+                : sources.EmbeddedBase + Uri.EscapeDataString(p.Src), lazy: true);
         // Written after the passes, like the pictures: QuickMail's own markup, never the sender's.
         if (blockedWebPictures > 0 && sources.NoteBlockedWebPictures)
             body = WebPicturesNotice + body;
@@ -434,7 +452,18 @@ public static class MessageBodyHtmlBuilder
     /// The address to write for a picture, or null when it cannot be had — then its description
     /// is written as text in its place, as when pictures are not shown at all.
     /// </param>
-    private static string RestorePictures(string body, List<SetAsidePicture> pictures, Func<SetAsidePicture, string?> srcFor) =>
+    /// <param name="lazy">
+    /// Writes <c>loading="lazy" decoding="async"</c> (issue #959): for the reading pane and message
+    /// window, whose pictures are answered by the host and may wait on a download. An eager picture
+    /// delays the document's load event, and so NavigationCompleted, until it arrives; a lazy one does
+    /// not, as long as scripting is enabled, as it is in those WebView2s (HTML standard, "update the
+    /// image data": delay load event is true for the Eager state, or when scripting is disabled). A
+    /// picture in view still loads straight away.
+    /// Not for a saved or printed page, whose pictures are already in the file and must all be there
+    /// when it is printed.
+    /// </param>
+    private static string RestorePictures(string body, List<SetAsidePicture> pictures, Func<SetAsidePicture, string?> srcFor,
+        bool lazy = false) =>
         PictureMarker.Replace(body, m =>
         {
             if (!int.TryParse(m.Groups[1].Value, System.Globalization.NumberStyles.None,
@@ -464,6 +493,7 @@ public static class MessageBodyHtmlBuilder
             sb.Append(" alt=\"").Append(WebUtility.HtmlEncode(p.Alt?.Trim() ?? string.Empty)).Append('"');
             if (p.Width is { } w) sb.Append(" width=\"").Append(w).Append('"');
             if (p.Height is { } h) sb.Append(" height=\"").Append(h).Append('"');
+            if (lazy) sb.Append(" loading=\"lazy\" decoding=\"async\"");
             return sb.Append('>').ToString();
         });
 
@@ -746,7 +776,17 @@ public static class MessageBodyHtmlBuilder
             body = Step(body, "<script\\b.*?" + EndTag("script"), RegexOptions.IgnoreCase | RegexOptions.Singleline);
             body = Step(body, "<style\\b.*?" + EndTag("style"), RegexOptions.IgnoreCase | RegexOptions.Singleline);
             body = Step(body, "<svg\\b.*?" + EndTag("svg"), RegexOptions.IgnoreCase | RegexOptions.Singleline);
-            body = Step(body, "<(iframe|object|embed|video|audio|canvas|form)\\b.*?" + EndTag("\\1"), RegexOptions.IgnoreCase | RegexOptions.Singleline);
+            // textarea and select go with their content: an editable box or a dropdown in a message is
+            // a Tab stop that puts a screen reader into forms mode mid-newsletter, and a select's
+            // option list means nothing as text. An unclosed one is escaped by ResidualForbiddenTag.
+            body = Step(body, "<(iframe|object|embed|video|audio|canvas|textarea|select)\\b.*?" + EndTag("\\1"), RegexOptions.IgnoreCase | RegexOptions.Singleline);
+            // A form loses its tags but keeps what is inside. Newsletters generated from ASP.NET
+            // pages wrap their WHOLE body in <form id="ctl00">, so removing the element with its
+            // content left the reading pane blank. Its controls are removed on their own (input and
+            // button below, textarea and select above), and the CSP's form-action 'none' stands.
+            // The tail is quote-aware, as the tokenizer reads a tag, so a ">" inside an attribute
+            // value does not leave the rest of the tag behind as visible text.
+            body = Step(body, "</?form(?=[\\s/>])(?:[^>\"']|\"[^\"]*\"|'[^']*')*>", RegexOptions.IgnoreCase | RegexOptions.Singleline);
             // Substitute each image's alt text before images are removed (issue #163). Removing the
             // element outright discards the only name the image has: the CSP blocks the pixels either
             // way, so what is lost is not the picture but the words describing it. Worst where the

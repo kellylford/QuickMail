@@ -14,7 +14,7 @@ public sealed record NotificationActivation(Guid AccountId, string? Folder, stri
 /// Shows Windows toast (app) notifications. The single implementation
 /// (<see cref="WindowsToastNotificationService"/>) wraps the Windows Community Toolkit
 /// notification platform; a null service (tests, unsupported OS) means notifications are
-/// simply not shown. See docs/planning/notifications-pm-dev-spec.md.
+/// simply not shown. See docs/planning/Completed/notifications-pm-dev-spec.md.
 /// </summary>
 public interface INotificationService
 {
@@ -29,7 +29,8 @@ public interface INotificationService
     /// genuinely-new set — already de-duplicated and gated by the caller. Best-effort:
     /// never throws.
     /// </summary>
-    void ShowNewMail(string accountLabel, Guid accountId, IReadOnlyList<MailMessageSummary> newMessages);
+    /// <param name="silent">No Windows notification sound, because QuickMail is playing its own (#912).</param>
+    void ShowNewMail(string accountLabel, Guid accountId, IReadOnlyList<MailMessageSummary> newMessages, bool silent = false);
 
     /// <summary>
     /// Show a one-off informational toast (e.g. the "still running in the notification area"
@@ -41,9 +42,13 @@ public interface INotificationService
     /// but titled so the user can tell at a glance that this is a thread they subscribed to
     /// rather than ordinary new mail.
     /// </summary>
-    void ShowWatchedMail(string accountLabel, Guid accountId, IReadOnlyList<MailMessageSummary> newMessages);
+    /// <param name="silent">No Windows notification sound, because QuickMail is playing its own (#912).</param>
+    void ShowWatchedMail(string accountLabel, Guid accountId, IReadOnlyList<MailMessageSummary> newMessages, bool silent = false);
 
-    void ShowInfo(string title, string message);
+    /// <param name="title">The toast's title.</param>
+    /// <param name="message">The toast's text.</param>
+    /// <param name="silent">No Windows notification sound, because QuickMail is playing its own (#912).</param>
+    void ShowInfo(string title, string message, bool silent = false);
 
     /// <summary>
     /// Raised when the user activates (clicks) a toast, carrying the message to open. May fire

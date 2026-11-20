@@ -204,6 +204,8 @@ public class MailServiceRouter : IMailService, IConnectionProbe
 
     public Task<IReadOnlyDictionary<string, FetchedSender>> FetchSenderEmailsAsync(Guid accountId, string folderName, IList<string> messageIds, CancellationToken ct = default)
         => For(accountId).FetchSenderEmailsAsync(accountId, folderName, messageIds, ct);
+    public Task<IReadOnlyDictionary<string, FetchedAttachmentFlag>> FetchAttachmentFlagsAsync(Guid accountId, string folderName, IList<string> messageIds, CancellationToken ct = default)
+        => For(accountId).FetchAttachmentFlagsAsync(accountId, folderName, messageIds, ct);
 
     public Task<int> PollAsync(Guid accountId, string folderName, CancellationToken ct = default)
         => For(accountId).PollAsync(accountId, folderName, ct);
@@ -229,6 +231,11 @@ public class MailServiceRouter : IMailService, IConnectionProbe
     public Task CopyMessagesAsync(Guid accountId, string folderName, IList<string> messageIds, string destinationFolder, CancellationToken ct = default)
         => For(accountId).CopyMessagesAsync(accountId, folderName, messageIds, destinationFolder, ct);
 
+    public bool CanAppendMessages(Guid accountId) => For(accountId).CanAppendMessages(accountId);
+
+    public Task AppendMessageAsync(Guid accountId, string folderName, System.IO.Stream original, bool isRead, bool isFlagged,
+                                   DateTimeOffset received, CancellationToken ct = default)
+        => For(accountId).AppendMessageAsync(accountId, folderName, original, isRead, isFlagged, received, ct);
     public Task MoveMessagesAsync(Guid accountId, string folderName, IList<string> messageIds, string destinationFolder, CancellationToken ct = default)
         => For(accountId).MoveMessagesAsync(accountId, folderName, messageIds, destinationFolder, ct);
 
@@ -240,6 +247,9 @@ public class MailServiceRouter : IMailService, IConnectionProbe
 
     public Task RenameFolderAsync(Guid accountId, string folderName, string newName, string? newParentFolderName, CancellationToken ct = default)
         => For(accountId).RenameFolderAsync(accountId, folderName, newName, newParentFolderName, ct);
+
+    public Task MoveFolderAsync(Guid accountId, string folderName, string? newParentFolderName, CancellationToken ct = default)
+        => For(accountId).MoveFolderAsync(accountId, folderName, newParentFolderName, ct);
 
     public Task CopyFolderAsync(Guid accountId, string folderName, string? destinationParentName, CancellationToken ct = default)
         => For(accountId).CopyFolderAsync(accountId, folderName, destinationParentName, ct);

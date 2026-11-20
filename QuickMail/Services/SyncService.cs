@@ -256,6 +256,17 @@ public partial class SyncService : ISyncService
             LogService.Log("Sender-address backfill failed; it continues next launch.", ex);
         }
         await DownloadOfflineBodiesAsync(accounts, cachedFolders, ct);
+        // The one-time attachment-flag pass (#931), after the offline bodies so it never holds back mail to read
+        // offline, and isolated the same way as the sender backfill: a store error costs only its own rows, which
+        // stay unchecked for the next launch.
+        try
+        {
+            await BackfillAttachmentFlagsAsync(accounts, ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            LogService.Log("Attachment-flag pass failed; it continues next launch.", ex);
+        }
     }
 
     private async Task FetchAllPreviewsAsync(

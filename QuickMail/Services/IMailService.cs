@@ -63,11 +63,15 @@ public interface IMailService : IDisposable
     Task NoOpAsync(Guid accountId, CancellationToken ct = default);
 
     /// <summary>
-    /// Counts messages in the Trash folder (if it exists) without opening other folders.
-    /// Returns 0 if Trash does not exist or is empty.
+    /// Counts messages in the Trash folder without opening other folders. 0 means known to be empty:
+    /// this throws if that can't be found out, <see cref="TrashFolderNotFoundException"/> if there is no such folder.
     /// </summary>
     Task<int> CountTrashMessagesAsync(Guid accountId, CancellationToken ct = default);
 
+    /// <summary>
+    /// Permanently deletes everything in the Trash folder, and returns how many messages that was.
+    /// Throws <see cref="TrashFolderNotFoundException"/> if the account has no such folder.
+    /// </summary>
     Task<int> EmptyTrashAsync(Guid accountId, CancellationToken ct = default);
 
     /// <summary>
@@ -138,6 +142,16 @@ public interface IMailService : IDisposable
         Guid accountId, string folderName, IList<string> messageIds, CancellationToken ct = default)
         => Task.FromResult<IReadOnlyDictionary<string, FetchedSender>>(new Dictionary<string, FetchedSender>());
 
+    /// <summary>
+    /// Whether each of the given messages in one folder has an attachment, keyed by message id, with its Message-ID so
+    /// the caller can check the id still names the message it cached (a renumbered folder), for the one-time
+    /// pass over mail cached before the list carried the flag (#931). Only IMAP needs it: Graph and POP3 summaries
+    /// always carried it, so the default finds nothing. Ids the server no longer has are missing from the result.
+    /// </summary>
+    Task<IReadOnlyDictionary<string, FetchedAttachmentFlag>> FetchAttachmentFlagsAsync(
+        Guid accountId, string folderName, IList<string> messageIds, CancellationToken ct = default)
+        => Task.FromResult<IReadOnlyDictionary<string, FetchedAttachmentFlag>>(new Dictionary<string, FetchedAttachmentFlag>());
+
     Task<int> PollAsync(Guid accountId, string folderName, CancellationToken ct = default);
 
     /// <summary>
@@ -182,14 +196,44 @@ public interface IMailService : IDisposable
         => Task.FromException(new MessageOriginalUnavailableException("This account cannot provide the original message."));
 
     // ── Copy / Move messages ─────────────────────────────────────────────────
+    /// <summary>
+    /// Whether <see cref="AppendMessageAsync"/> works for this account: whether messages from another
+    /// account can be moved or copied into it (#929). False by default.
+    /// </summary>
+    bool CanAppendMessages(Guid accountId) => false;
+
+    /// <summary>
+    /// Adds a message to <paramref name="folderName"/> from its original (the bytes
+    /// <see cref="CopyOriginalMessageToAsync"/> writes), keeping whether it was read and flagged and,
+    /// where the backend can, when it arrived. How messages move and copy between accounts (#929):
+    /// <see cref="MoveMessagesAsync"/> and <see cref="CopyMessagesAsync"/> work by folder name over the
+    /// source account's own connection and cannot reach another account.
+    /// </summary>
+    Task AppendMessageAsync(Guid accountId, string folderName, Stream original, bool isRead, bool isFlagged,
+                            DateTimeOffset received, CancellationToken ct = default)
+        => Task.FromException(new NotSupportedException("This account cannot take messages from another account."));
     Task CopyMessagesAsync(Guid accountId, string folderName, IList<string> messageIds, string destinationFolder, CancellationToken ct = default);
     Task MoveMessagesAsync(Guid accountId, string folderName, IList<string> messageIds, string destinationFolder, CancellationToken ct = default);
 
     // ── Folder CRUD ──────────────────────────────────────────────────────────
     Task CreateFolderAsync(Guid accountId, string? parentFolderName, string name, CancellationToken ct = default);
     Task DeleteFolderAsync(Guid accountId, string folderName, CancellationToken ct = default);
-    /// <summary>Moves a folder by renaming it under a new parent. Pass null for <paramref name="newParentFolderName"/> to move to the account root.</summary>
+    /// <summary>
+    /// Renames a folder and optionally moves it under <paramref name="newParentFolderName"/>. What a
+    /// null parent means differs between backends — Microsoft 365 and POP3 keep the folder where it
+    /// is, IMAP puts it at the top of the personal namespace — so to move a folder, including to the
+    /// top level, use <see cref="MoveFolderAsync"/>, whose null always means the top level.
+    /// </summary>
     Task RenameFolderAsync(Guid accountId, string folderName, string newName, string? newParentFolderName, CancellationToken ct = default);
+
+    /// <summary>
+    /// Moves a folder, keeping its name, under <paramref name="newParentFolderName"/>; null moves it
+    /// to the top level of the account, beside Inbox (#954). A backend that cannot put a folder there
+    /// throws with a sentence the caller can show as is. Default: not supported, for test doubles and
+    /// any backend with no folders of its own.
+    /// </summary>
+    Task MoveFolderAsync(Guid accountId, string folderName, string? newParentFolderName, CancellationToken ct = default)
+        => Task.FromException(new NotSupportedException("This account cannot move folders."));
     /// <summary>Recursively copies a folder and all its messages into a new parent folder.</summary>
     Task CopyFolderAsync(Guid accountId, string folderName, string? destinationParentName, CancellationToken ct = default);
 }

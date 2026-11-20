@@ -143,6 +143,28 @@ public partial class BugReportService : IBugReportService, IDisposable
             ? text
             : text[..maxLength] + "\n\n…(truncated — the full report was copied to your clipboard)";
 
+    /// <summary>
+    /// The version of the WebView2 runtime that shows messages, e.g. "142.0.3595.80" (issue #959: how
+    /// a message opens depends on it). Read once; "not installed" or "unknown" when it cannot be had.
+    /// </summary>
+    internal static readonly Lazy<string> WebView2RuntimeVersion = new(() =>
+    {
+        try
+        {
+            return Microsoft.Web.WebView2.Core.CoreWebView2Environment.GetAvailableBrowserVersionString()
+                   ?? "not installed";
+        }
+        catch (Microsoft.Web.WebView2.Core.WebView2RuntimeNotFoundException)
+        {
+            return "not installed";
+        }
+        catch (Exception ex)
+        {
+            LogService.Debug($"BugReportService: WebView2 version: {ex.Message}");
+            return "unknown";
+        }
+    });
+
     public string BuildReportText(BugReportModel report)
     {
         var sb = new StringBuilder();
@@ -165,6 +187,7 @@ public partial class BugReportService : IBugReportService, IDisposable
         sb.AppendLine($"- QuickMail version: {Helpers.AppVersion.Display}");
         sb.AppendLine($"- OS: {Environment.OSVersion.VersionString}");
         sb.AppendLine($"- .NET runtime: {Environment.Version}");
+        sb.AppendLine($"- WebView2 runtime: {WebView2RuntimeVersion.Value}");
 
         if (report.Context is { } ctx)
         {

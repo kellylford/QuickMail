@@ -73,9 +73,18 @@
             <MenuItem sc:CommandShortcut.Id="mail.copyToFolder" Header="_Copy to Folder…"
                       AutomationProperties.Name="Copy Sender Group to Folder"
                       Click="SenderGroupContextMenu_CopyToFolder_Click"/>
+            <MenuItem sc:CommandShortcut.Id="mail.copyMessages" Header="Cop_y Messages"
+                      AutomationProperties.Name="Copy Messages"
+                      Click="MenuCopyMessages_Click"/>
+            <MenuItem sc:CommandShortcut.Id="mail.cutMessages" Header="C_ut Messages"
+                      AutomationProperties.Name="Cut Messages"
+                      Click="MenuCutMessages_Click"/>
             <MenuItem sc:CommandShortcut.Id="mail.saveAs" Header="Sa_ve Messages As…"
                       AutomationProperties.Name="Save Messages from Sender As"
                       Click="MenuSaveAs_Click"/>
+            <MenuItem sc:CommandShortcut.Id="mail.saveAttachments" Header="Save All Attachme_nts…"
+                      AutomationProperties.Name="Save All Attachments"
+                      Click="MenuSaveAttachments_Click"/>
             <Separator/>
             <MenuItem Header="_Delete All from Sender"
                       AutomationProperties.Name="Delete All from Sender"
@@ -129,9 +138,18 @@
             <MenuItem sc:CommandShortcut.Id="mail.copyToFolder" Header="_Copy to Folder…"
                       AutomationProperties.Name="Copy Recipient Group to Folder"
                       Click="ToGroupContextMenu_CopyToFolder_Click"/>
+            <MenuItem sc:CommandShortcut.Id="mail.copyMessages" Header="Cop_y Messages"
+                      AutomationProperties.Name="Copy Messages"
+                      Click="MenuCopyMessages_Click"/>
+            <MenuItem sc:CommandShortcut.Id="mail.cutMessages" Header="C_ut Messages"
+                      AutomationProperties.Name="Cut Messages"
+                      Click="MenuCutMessages_Click"/>
             <MenuItem sc:CommandShortcut.Id="mail.saveAs" Header="Sa_ve Messages As…"
                       AutomationProperties.Name="Save Messages to Recipient As"
                       Click="MenuSaveAs_Click"/>
+            <MenuItem sc:CommandShortcut.Id="mail.saveAttachments" Header="Save All Attachme_nts…"
+                      AutomationProperties.Name="Save All Attachments"
+                      Click="MenuSaveAttachments_Click"/>
             <Separator/>
             <MenuItem Header="_Delete All to Recipient"
                       AutomationProperties.Name="Delete All to Recipient"
@@ -186,9 +204,18 @@
             <MenuItem sc:CommandShortcut.Id="mail.copyToFolder" Header="_Copy to Folder…"
                       AutomationProperties.Name="Copy Conversation to Folder"
                       Click="ConversationContextMenu_CopyToFolder_Click"/>
+            <MenuItem sc:CommandShortcut.Id="mail.copyMessages" Header="Cop_y Messages"
+                      AutomationProperties.Name="Copy Messages"
+                      Click="MenuCopyMessages_Click"/>
+            <MenuItem sc:CommandShortcut.Id="mail.cutMessages" Header="C_ut Messages"
+                      AutomationProperties.Name="Cut Messages"
+                      Click="MenuCutMessages_Click"/>
             <MenuItem sc:CommandShortcut.Id="mail.saveAs" Header="Sa_ve Conversation As…"
                       AutomationProperties.Name="Save Conversation As"
                       Click="MenuSaveAs_Click"/>
+            <MenuItem sc:CommandShortcut.Id="mail.saveAttachments" Header="Save All Attachme_nts…"
+                      AutomationProperties.Name="Save All Attachments"
+                      Click="MenuSaveAttachments_Click"/>
             <Separator/>
             <MenuItem Header="_Delete Conversation"
                       AutomationProperties.Name="Delete Conversation"
@@ -243,10 +270,19 @@
             <MenuItem sc:CommandShortcut.Id="mail.copyToFolder" Header="_Copy to Folder…"
                       AutomationProperties.Name="Copy to Folder"
                       Click="MessageContextMenu_CopyToFolder_Click"/>
+            <MenuItem sc:CommandShortcut.Id="mail.copyMessages" Header="Cop_y Messages"
+                      AutomationProperties.Name="Copy Messages"
+                      Click="MenuCopyMessages_Click"/>
+            <MenuItem sc:CommandShortcut.Id="mail.cutMessages" Header="C_ut Messages"
+                      AutomationProperties.Name="Cut Messages"
+                      Click="MenuCutMessages_Click"/>
             <MenuItem Header="Sa_ve As…"
                       sc:CommandShortcut.Id="mail.saveAs"
                       AutomationProperties.Name="Save As"
                       Click="MenuSaveAs_Click"/>
+            <MenuItem sc:CommandShortcut.Id="mail.saveAttachments" Header="Save All Attachme_nts…"
+                      AutomationProperties.Name="Save All Attachments"
+                      Click="MenuSaveAttachments_Click"/>
             <MenuItem Header="_Print…"
                       sc:CommandShortcut.Id="mail.print"
                       AutomationProperties.Name="Print"
@@ -288,6 +324,9 @@
             <MenuItem Header="_Copy Folder…"
                       AutomationProperties.Name="Copy Folder"
                       Click="FolderContextMenu_CopyFolder_Click"/>
+            <MenuItem sc:CommandShortcut.Id="mail.pasteMessages" Header="Paste Messa_ges"
+                      AutomationProperties.Name="Paste Messages"
+                      Click="FolderContextMenu_PasteMessages_Click"/>
             <Separator/>
             <MenuItem Header="Set as _Archive Folder"
                       AutomationProperties.Name="Set as Archive Folder"
@@ -305,6 +344,15 @@
             <MenuItem sc:CommandShortcut.Id="folder.clearStartupFolder" Header="Clear Startup _Folder"
                       AutomationProperties.Name="Clear Startup Folder"
                       Click="FolderContextMenu_ClearStartupFolder_Click"/>
+            <Separator/>
+            <!-- #963. H is free; "Show All H_idden Folders" takes I, since S (Startup) and H are
+                 both taken by then. -->
+            <MenuItem sc:CommandShortcut.Id="folder.hide" Header="_Hide Folder"
+                      AutomationProperties.Name="Hide Folder"
+                      Click="FolderContextMenu_HideFolder_Click"/>
+            <MenuItem sc:CommandShortcut.Id="folder.showHidden" Header="Show All H_idden Folders"
+                      AutomationProperties.Name="Show All Hidden Folders"
+                      Click="FolderContextMenu_ShowHiddenFolders_Click"/>
             <Separator/>
             <MenuItem Header="_Delete Folder"
                       AutomationProperties.Name="Delete Folder"
@@ -545,6 +593,14 @@
                         </Style>
                     </MenuItem.Style>
                 </MenuItem>
+                <!-- Copy, cut and paste messages (#929). Click, not Command, for the reason Move and Copy to
+                     Folder are: what they act on is the window's to resolve. -->
+                <MenuItem sc:CommandShortcut.Id="mail.copyMessages" Header="Cop_y Messages"
+                          Click="MenuCopyMessages_Click"/>
+                <MenuItem sc:CommandShortcut.Id="mail.cutMessages" Header="Cut Messag_es"
+                          Click="MenuCutMessages_Click"/>
+                <MenuItem sc:CommandShortcut.Id="mail.pasteMessages" Header="_Paste Messages"
+                          Click="MenuPasteMessages_Click"/>
                 <Separator/>
                 <MenuItem Header="_Grab Addresses from Message"
                           Click="MenuGrabAddresses_Click"
@@ -598,6 +654,14 @@
                 <MenuItem sc:CommandShortcut.Id="folder.collapseAll" Header="Collapse A_ll Folders"
                           Click="MenuCollapseAllFolders_Click"
                           AutomationProperties.Name="Collapse All Folders"/>
+                <Separator/>
+                <!-- #963. Same access keys as the folder tree's context menu. -->
+                <MenuItem sc:CommandShortcut.Id="folder.hide" Header="_Hide Folder"
+                          Click="MenuHideFolder_Click"
+                          AutomationProperties.Name="Hide Folder"/>
+                <MenuItem sc:CommandShortcut.Id="folder.showHidden" Header="Show All H_idden Folders"
+                          Click="MenuShowHiddenFolders_Click"
+                          AutomationProperties.Name="Show All Hidden Folders"/>
             </MenuItem>
 
             <!-- View -->
@@ -820,6 +884,12 @@
                           Click="MenuWatchedConversations_Click"
                           AutomationProperties.Name="Watched Conversations"/>
                 <Separator/>
+                <MenuItem Header="_Mute All Sounds"
+                          IsCheckable="True"
+                          IsChecked="{Binding MuteSounds, Mode=OneWay}"
+                          Click="MenuMuteSounds_Click"
+                          sc:CommandShortcut.Id="settings.toggleMuteSounds"/>
+                <Separator/>
                 <MenuItem Header="Command _Palette…"
                           Click="MenuCommandPalette_Click"
                           InputGestureText="Ctrl+Shift+P" AutomationProperties.AcceleratorKey="Ctrl+Shift+P"/>
@@ -843,6 +913,9 @@
                 <MenuItem sc:CommandShortcut.Id="help.keyboardTutorial" Header="_Keyboard Tutorial"
                           AutomationProperties.Name="Keyboard Tutorial"
                           Click="MenuKeyboardTutorial_Click"/>
+                <MenuItem sc:CommandShortcut.Id="help.soundTutorial" Header="_Sound Tutorial"
+                          AutomationProperties.Name="Sound Tutorial"
+                          Click="MenuSoundTutorial_Click"/>
                 <Separator/>
                 <MenuItem sc:CommandShortcut.Id="help.reportBug" Header="_Report a Bug"
                           AutomationProperties.Name="Report a Bug"
@@ -1378,6 +1451,15 @@
                                                             RelativeSource={RelativeSource AncestorType=ContextMenu}}"
                                                   CommandParameter="{Binding PlacementTarget.SelectedItem,
                                                             RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
+                                        <!-- Copy to the Windows clipboard as files (#929). -->
+                                        <MenuItem Header="_Copy" sc:CommandShortcut.Id="mail.copyAttachment"
+                                                  Command="{Binding PlacementTarget.DataContext.CopyAttachmentCommand,
+                                                            RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                  CommandParameter="{Binding PlacementTarget.SelectedItem,
+                                                            RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
+                                        <MenuItem Header="Copy A_ll" sc:CommandShortcut.Id="mail.copyAllAttachments"
+                                                  Command="{Binding PlacementTarget.DataContext.CopyAllAttachmentsCommand,
+                                                            RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
                                     </ContextMenu>
                                 </ListBox.ContextMenu>
                             </ListBox>
@@ -1701,8 +1783,11 @@
                                  Margin="4"/>
                     </Grid>
 
+                    <!-- IsTextSearchEnabled off: type-ahead here is MainWindow's own, on the sender. WPF's would
+                         match what's left over against the row's ToString() and jump the selection (#928). -->
                     <ListView x:Name="MessageList"
                               AutomationProperties.Name="Messages"
+                              IsTextSearchEnabled="False"
                               ContextMenu="{StaticResource MessageContextMenu}"
                               ItemsSource="{Binding Messages}"
                               SelectedItem="{Binding SelectedMessage, Mode=TwoWay}"

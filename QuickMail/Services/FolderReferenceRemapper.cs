@@ -28,6 +28,9 @@ public static class FolderReferenceRemapper
         public List<string> AffectedViews { get; } = [];
         /// <summary>True when the startup folder was remapped or fell back to All Mail.</summary>
         public bool StartupFolderChanged { get; set; }
+        /// <summary>True when the account's hidden-folder list was rewritten or pruned (#963). Not part of
+        /// <see cref="AnythingChanged"/>: the list is on the account, which the caller saves separately.</summary>
+        public bool HiddenFoldersChanged { get; set; }
 
         public bool AnythingChanged =>
             RemappedRules.Count > 0 || DisabledRules.Count > 0 || AffectedViews.Count > 0 || StartupFolderChanged;
@@ -59,7 +62,8 @@ public static class FolderReferenceRemapper
         IReadOnlyList<MailFolderModel> graphFolders,
         List<MailRule> allRules,
         List<SavedView> allViews,
-        ConfigModel config)
+        ConfigModel config,
+        List<string>? hiddenFolders = null)
     {
         var report = new Report();
 
@@ -161,6 +165,24 @@ public static class FolderReferenceRemapper
             {
                 config.StartupFolder = match;   // StartupFolderLabel stays; it is display text
                 report.StartupFolderChanged = true;
+            }
+        }
+
+        // Hidden folders (#963) live on the account, which the caller saves itself, so this is reported
+        // apart from AnythingChanged and left out of the spoken summary: a folder that stays hidden is not
+        // news. An entry that cannot be matched is dropped rather than kept — it would hide nothing and
+        // only make Show All Hidden Folders report folders that never come back.
+        if (hiddenFolders is { Count: > 0 })
+        {
+            var remapped = new List<string>();
+            foreach (var entry in hiddenFolders)
+                if (Match(entry) is { } match && !remapped.Contains(match, StringComparer.Ordinal))
+                    remapped.Add(match);
+            if (!remapped.SequenceEqual(hiddenFolders, StringComparer.Ordinal))
+            {
+                hiddenFolders.Clear();
+                hiddenFolders.AddRange(remapped);
+                report.HiddenFoldersChanged = true;
             }
         }
 

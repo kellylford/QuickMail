@@ -23,11 +23,6 @@ namespace QuickMail.Tests;
 [Collection("WpfTests")]
 public class FolderLabelRowSpeechTests
 {
-    /// <summary>Stands in for MainViewModel as the window DataContext RowSpeech binds through.</summary>
-    private sealed class RowSpeechHost
-    {
-        public RowSpeechSettings RowSpeech { get; } = RowSpeechSettings.Default;
-    }
 
     [StaFact]
     public void RealizedRow_AccessibleName_PicksUpALateFolderLabel()
@@ -44,7 +39,6 @@ public class FolderLabelRowSpeechTests
         {
             WindowStyle = WindowStyle.None, ShowInTaskbar = false, ShowActivated = false,
             Width = 600, Height = 200, Content = list,
-            DataContext = new RowSpeechHost(),
         };
         window.Show();
         try

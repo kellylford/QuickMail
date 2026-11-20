@@ -10,6 +10,10 @@ namespace QuickMail.Models;
 /// </summary>
 public sealed class ConversationGroup : INotifyPropertyChanged
 {
+    // A backstop for a row whose RowSpeech name is empty (#928); see MailMessageSummary.ToString.
+    public override string ToString() =>
+        string.IsNullOrWhiteSpace(Subject) ? "Conversation" : Subject;
+
     /// <summary>The normalised subject used as the grouping key.</summary>
     public string NormalizedSubject { get; init; } = string.Empty;
 
@@ -32,6 +36,16 @@ public sealed class ConversationGroup : INotifyPropertyChanged
         }
     }
 
+    /// <summary>
+    /// Stops listening to the messages. Rows outlive the groups built over them now that a reload keeps
+    /// them, so a group that has been replaced or discarded has to let go or it stays alive with them.
+    /// </summary>
+    public void ReleaseMessages()
+    {
+        foreach (var m in _messages)
+            m.PropertyChanged -= OnMessagePropertyChanged;
+    }
+
     private void OnMessagePropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName is nameof(MailMessageSummary.IsFlagged)
@@ -46,6 +60,18 @@ public sealed class ConversationGroup : INotifyPropertyChanged
         // The row speaks HasUnread and the unread counts (#800), so reading a message in the group
         // has to refresh the node's name — otherwise it keeps saying "Has unread" or "2 unread"
         // after that stops being true.
+        else if (e.PropertyName is nameof(MailMessageSummary.Subject)
+                 or nameof(MailMessageSummary.From)
+                 or nameof(MailMessageSummary.Date))
+        {
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Subject)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(LastSenderName)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(DateDisplay)));
+        }
+        else if (e.PropertyName is nameof(MailMessageSummary.Preview))
+        {
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Preview)));
+        }
         else if (e.PropertyName is nameof(MailMessageSummary.IsRead))
         {
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(HasUnread)));

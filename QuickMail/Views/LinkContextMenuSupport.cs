@@ -257,9 +257,9 @@ public static class LinkContextMenuSupport
         // markup is parsed — and then only the captures are used.
         //
         // HTML named access lets an element claim a property of document: <object
-        // name="createElement"> or an unclosed <form name="getElementsByTagName"> both survive the
-        // sanitizer (its element rule needs a closing tag, and name is not stripped) and replace
-        // the function. Calling one later throws, before the ownership assignment, and every
+        // name="createElement"> or <form name="getElementsByTagName"> replaces the function. The
+        // sanitizer removes both today (form tags always, kept content and all), but name is not
+        // stripped, and any named element that ever gets past it could do the same. Calling one later throws, before the ownership assignment, and every
         // failure report after that is silently dropped — the exact outcome this region exists to
         // prevent. Capturing createElement but then reading getElementsByTagName off the live
         // document only moved the hole, which is how the second version of this shipped.

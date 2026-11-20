@@ -44,6 +44,7 @@ public partial class ComposeWindow : Window
     // Track the current spelling error so Alt+1/2/3 can replace it with a suggestion.
     private int _currentSpellingWordStart = -1;
     private int _currentSpellingWordEnd = -1;
+    private string? _currentSpellingWord;
     private List<string>? _currentSpellingSuggestions;
 
     // Suppress spelling announcements during programmatic text changes (e.g. Alt+1 replacement).
@@ -77,12 +78,23 @@ public partial class ComposeWindow : Window
     // once, from either the deferred pre-warm or a spell-check entry point.
     private bool _spellCheckEnabled;
 
-    public ComposeWindow(ComposeViewModel vm, IContactService contactService, ITemplateService templateService, IConfigService configService, ICustomDictionaryService? customDictionary = null, IThemeService? themeService = null)
+    // "Check spelling as I type" as it was when this window opened (#883). Read once so the
+    // setting applies to messages opened afterwards, as Settings says: turning it back on must
+    // not switch the speller on in a message the user opened with it off.
+    private readonly bool _checkSpellingAsYouType;
+    private readonly IRecipientHistory? _recipientHistory;
+
+    public ComposeWindow(ComposeViewModel vm, IContactService contactService, ITemplateService templateService, IConfigService configService, ICustomDictionaryService? customDictionary = null, IThemeService? themeService = null, IRecipientHistory? recipientHistory = null)
     {
         _vm = vm;
         _contactService = contactService;
         _templateService = templateService;
         _configService = configService;
+        _recipientHistory = recipientHistory;
+        vm.ConfirmBeforeSendProvider = () => configService.Load().ConfirmBeforeSend;
+        vm.RecipientHistory = recipientHistory;
+        vm.RememberRecipientsProvider = () => configService.Load().RememberRecipients;
+        _checkSpellingAsYouType = configService.Load().CheckSpellingAsYouType;
         _customDictionary = customDictionary;
         _themeService = themeService;
         InitializeComponent();
@@ -127,6 +139,13 @@ public partial class ComposeWindow : Window
             MessageBox.Show(this, message, title, MessageBoxButton.YesNo, MessageBoxImage.Warning)
             == MessageBoxResult.Yes;
 
+        // YesNo alone ignores Escape in a native message box. Cancel makes Escape leave
+        // the compose intact, while No remains the initial choice for accidental key presses.
+        vm.SendConfirmationRequested = (message, title) =>
+            MessageBox.Show(this, message, title, MessageBoxButton.YesNoCancel, MessageBoxImage.Question,
+                MessageBoxResult.No)
+            == MessageBoxResult.Yes;
+
         // Win32 file dialogs are View-layer (CLAUDE.md MVVM rules); the VM requests
         // paths and the View owns the dialog.
         vm.OpenFilePathsRequested = () =>
@@ -145,7 +164,8 @@ public partial class ComposeWindow : Window
             return Task.FromResult<MessageTemplate?>(null);
         };
 
-        _suggestions = new AddressSuggestionController(this, _contactService, AutoCompletePopup, SuggestionList);
+        _suggestions = new AddressSuggestionController(this, _contactService, AutoCompletePopup, SuggestionList,
+            _recipientHistory, () => SuggestionSources.From(_configService.Load()));
         // The return trip from the list is not a fresh arrival in the field: don't read its chips again.
         _suggestions.EnteringSuggestions += () => _suppressNextFocusAnnouncement = true;
         foreach (var box in new[] { ToBox, CcBox, BccBox })
@@ -217,8 +237,14 @@ public partial class ComposeWindow : Window
         // only; a failure is announced once (Status category) by the VM event.
         vm.AutoSaveFailed += message =>
             AccessibilityHelper.Announce(this, message, category: AnnouncementCategory.Status);
-        vm.AutoSaveNotice += message =>
-            AccessibilityHelper.Announce(this, message, category: AnnouncementCategory.Status);
+        // The "kept on this computer" notice is background news: held until the user pauses, so
+        // it does not cut into what the screen reader is reading mid-edit (#901).
+        vm.AutoSaveNotice += QueueAutoSaveNotice;
+        Closed += (_, _) =>
+        {
+            _autoSaveNoticeTimer?.Stop();
+            _autoSaveNotice.Clear();
+        };
         var cfg = _configService.Load();
         if (cfg.AutoSaveDrafts)
         {
@@ -233,6 +259,41 @@ public partial class ComposeWindow : Window
     }
 
     private DispatcherTimer? _autoSaveTimer;
+
+    // #901: the auto-save notice waits for this long with no key or caret move in the window.
+    private readonly QuietTimeAnnouncement _autoSaveNotice = new(TimeSpan.FromSeconds(2));
+    private DispatcherTimer? _autoSaveNoticeTimer;
+
+    /// <summary>The clock the auto-save notice's pause is measured by; tests replace it.</summary>
+    internal Func<DateTime> NoticeClock { get; set; } = () => DateTime.UtcNow;
+
+    /// <summary>Holds the auto-save notice until the user pauses, then says it (Status category).</summary>
+    internal void QueueAutoSaveNotice(string message)
+    {
+        _autoSaveNotice.Queue(message, NoticeClock());
+        if (_autoSaveNoticeTimer == null)
+        {
+            _autoSaveNoticeTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
+            _autoSaveNoticeTimer.Tick += (_, _) => FlushAutoSaveNoticeIfQuiet();
+        }
+        _autoSaveNoticeTimer.Start();
+    }
+
+    /// <summary>A key or caret move: a held notice waits for the next pause.</summary>
+    private void NoteEditingActivity()
+    {
+        if (_autoSaveNotice.IsPending) _autoSaveNotice.NoteActivity(NoticeClock());
+    }
+
+    /// <summary>Says the held notice if the user has paused long enough; the timer's tick.</summary>
+    internal void FlushAutoSaveNoticeIfQuiet()
+    {
+        var text = _autoSaveNotice.TakeIfQuiet(NoticeClock());
+        if (text == null) return;
+        _autoSaveNoticeTimer?.Stop();
+        AccessibilityHelper.Announce(this, text, category: AnnouncementCategory.Status);
+    }
+
     private MarkdownPreviewWindow? _previewWindow;
 
     /// <summary>
@@ -585,6 +646,8 @@ public partial class ComposeWindow : Window
     // Ctrl+Enter → Send message (secondary shortcut alongside Alt+S).
     private async void Window_PreviewKeyDown(object sender, KeyEventArgs e)
     {
+        NoteEditingActivity();
+
         // Ctrl+Shift+P: open the command palette
         if (e.Key == Key.P && Keyboard.Modifiers == (ModifierKeys.Control | ModifierKeys.Shift))
         {
@@ -597,7 +660,8 @@ public partial class ComposeWindow : Window
         if (e.Key == Key.Return && Keyboard.Modifiers == ModifierKeys.Control)
         {
             CommitAllAddressInputs();
-            _vm.SendCommand.Execute(null);
+            if (_vm.SendCommand.CanExecute(null))
+                _vm.SendCommand.Execute(null);
             e.Handled = true;
             return;
         }
@@ -706,6 +770,7 @@ public partial class ComposeWindow : Window
     /// </summary>
     private void BodyBox_SelectionChanged(object sender, RoutedEventArgs e)
     {
+        NoteEditingActivity();
         if (_suppressSpellingAnnouncement) return;
         if (_caretMovedByTyping) return;
         if (!_configService.Load().AnnounceSpellingWhileNavigating) return;
@@ -714,6 +779,7 @@ public partial class ComposeWindow : Window
 
     private void RichBodyBox_SelectionChanged(object sender, RoutedEventArgs e)
     {
+        NoteEditingActivity();
         SyncParagraphStyleCombo();
         if (_suppressFormattingAnnouncement) return;
         if (_vm.CurrentMode != ComposeMode.Html) return;
@@ -721,7 +787,7 @@ public partial class ComposeWindow : Window
         var config = _configService.Load();
         AnnounceBlockTypeIfChanged(config);
 
-        if (!_caretMovedByTyping && config.AnnounceSpellingWhileNavigating)
+        if (!_suppressSpellingAnnouncement && !_caretMovedByTyping && config.AnnounceSpellingWhileNavigating)
             AnnounceSpellingAtCurrentPosition();
     }
 
@@ -752,9 +818,15 @@ public partial class ComposeWindow : Window
     /// Background priority moves the activation off the construction path to a point
     /// where the dispatcher is already pumping normally, so it no longer blocks the
     /// window from opening.
+    ///
+    /// Skipped when "Check spelling as I type" is off (<see cref="ConfigModel.CheckSpellingAsYouType"/>,
+    /// #883): WPF's background check of a long pasted text with many unknown words blocks
+    /// the window for seconds (dotnet/wpf#6106). The spell checker is then turned on only by
+    /// the commands that ask for it, through <see cref="EnsureSpellCheckEnabled"/>.
     /// </summary>
     private void EnableSpellCheckDeferred()
     {
+        if (!_checkSpellingAsYouType) return;
         Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() =>
         {
             // The window may have closed before this queued op ran; nothing to enable.
@@ -790,6 +862,9 @@ public partial class ComposeWindow : Window
     /// </summary>
     private void RegisterCustomDictionary()
     {
+        // With the speller still off ("Check spelling as I type" off, #883) there is nothing to
+        // refresh; EnsureSpellCheckEnabled registers the dictionary when it turns the speller on.
+        if (!_spellCheckEnabled) return;
         if (_customDictionary == null) return;
         if (!System.IO.File.Exists(_customDictionary.DictionaryPath)) return;
 
@@ -809,11 +884,16 @@ public partial class ComposeWindow : Window
         _richSpellingWordEnd = null;
         _currentSpellingWordStart = -1;
         _currentSpellingWordEnd = -1;
+        _currentSpellingWord = null;
         _currentSpellingSuggestions = null;
     }
 
-    private void AnnounceSpellingAtCurrentPosition()
+    /// <param name="prefix">Said first, in the same announcement (plain text and Markdown only).</param>
+    private void AnnounceSpellingAtCurrentPosition(string? prefix = null)
     {
+        // Caret moves and typing must not turn the speller on when the user has turned
+        // "Check spelling as I type" off (#883): only F7 and Ctrl+F7 / Ctrl+Shift+F7 do.
+        if (!_spellCheckEnabled && !_checkSpellingAsYouType) return;
         EnsureSpellCheckEnabled();
         if (_vm.CurrentMode == ComposeMode.Html)
         {
@@ -846,6 +926,15 @@ public partial class ComposeWindow : Window
         while (wordEnd < text.Length && !char.IsWhiteSpace(text[wordEnd]))
             wordEnd++;
 
+        // The speller checks the pieces of a web or email address as words; they are not
+        // misspellings (#902), and must not leave suggestions for Alt+1/2/3 to apply either.
+        int errorStart = BodyBox.GetSpellingErrorStart(checkIndex);
+        if (SpellScan.IsInAddress(text, errorStart >= 0 ? errorStart : checkIndex))
+        {
+            ClearSpellingContext();
+            return;
+        }
+
         if (wordStart == _lastAnnouncedSpellingIndex) return;
         _lastAnnouncedSpellingIndex = wordStart;
 
@@ -854,9 +943,10 @@ public partial class ComposeWindow : Window
 
         _currentSpellingWordStart = wordStart;
         _currentSpellingWordEnd = wordEnd;
+        _currentSpellingWord = word;
         _currentSpellingSuggestions = suggestions;
 
-        AccessibilityHelper.Announce(this, BuildSpellingAnnouncement(word, suggestions),
+        AccessibilityHelper.Announce(this, prefix + BuildSpellingAnnouncement(word, suggestions),
             category: AnnouncementCategory.Result);
     }
 
@@ -876,6 +966,8 @@ public partial class ComposeWindow : Window
 
         var wordRange = RichBodyBox.GetSpellingErrorRange(pos);
         if (wordRange == null) { ClearSpellingContext(); return; }
+        // Not a misspelling: part of a web or email address (#902).
+        if (SpellScan.IsInAddress(wordRange)) { ClearSpellingContext(); return; }
 
         if (_richSpellingWordStart != null &&
             _richSpellingWordStart.CompareTo(wordRange.Start) == 0)
@@ -964,20 +1056,7 @@ public partial class ComposeWindow : Window
             };
             if (suggestionIndex >= 0 && suggestionIndex < _currentSpellingSuggestions.Count)
             {
-                var replacement = _currentSpellingSuggestions[suggestionIndex];
-                var text = BodyBox.Text;
-                var before = text[.._currentSpellingWordStart];
-                var after = text[_currentSpellingWordEnd..];
-
-                _suppressSpellingAnnouncement = true;
-                BodyBox.Text = before + replacement + after;
-                BodyBox.CaretIndex = _currentSpellingWordStart + replacement.Length;
-                _suppressSpellingAnnouncement = false;
-
-                BodyBox.Focus();
-                AccessibilityHelper.Announce(this, $"Replaced with {replacement}.",
-                    category: AnnouncementCategory.Result);
-                ClearSpellingContext();
+                ReplaceCurrentPlainMisspelling(_currentSpellingSuggestions[suggestionIndex]);
                 e.Handled = true;
                 // Arm Alt-menu suppression so the Alt key release that follows this
                 // Alt+digit shortcut does not activate the menu bar (focus stealing).
@@ -1015,6 +1094,119 @@ public partial class ComposeWindow : Window
         // Spelling keys (F7 dialog, Ctrl+F7 / Ctrl+Shift+F7 inline) dispatch
         // through the command registry in Window_PreviewKeyDown — no hardcoded
         // branch here, so user rebinds always win.
+    }
+
+    /// <summary>
+    /// Inserts a block of text (a template) at the caret of the editor in use, on lines of its
+    /// own and as one undo step. It used to be appended to the end of a plain body, glued to the
+    /// last line (#888), and spliced into the middle of an HTML line (#889). The caret ends
+    /// after the inserted text.
+    /// </summary>
+    internal void InsertTextAtCaret(string text)
+    {
+        if (_vm.CurrentMode != ComposeMode.Html)
+        {
+            int caret = BodyBox.SelectionStart;
+            // Decide the line breaks from the text as it will be once the selection is replaced.
+            var remaining = BodyBox.Text.Remove(caret, BodyBox.SelectionLength);
+            var (insert, caretAfter) = TextInsertion.LinesAt(remaining, caret, text);
+            BodyBox.SelectedText = insert;
+            BodyBox.Select(caret + caretAfter, 0);
+            BodyBox.Focus();
+            return;
+        }
+
+        var lines = text.Replace("\r\n", "\n").TrimEnd('\n').Split('\n');
+        RichBodyBox.BeginChange();
+        try
+        {
+            if (!RichBodyBox.Selection.IsEmpty) RichBodyBox.Selection.Text = string.Empty;
+            var caret = RichBodyBox.Selection.Start;
+            var para = caret.Paragraph;
+            if (para == null)
+            {
+                RichBodyBox.Selection.Text = text; // not in a paragraph: nowhere to put blocks
+                return;
+            }
+
+            // The template goes in as new paragraphs of plain text beside the caret's paragraph,
+            // never into it: text added to a paragraph, or split off one, takes on its heading,
+            // code or bold formatting (as Enter does, see HandleRichEnter).
+            var newParas = lines.Select(l => new Paragraph(new Run(l))).ToList();
+            bool atStart = new TextRange(para.ContentStart, caret).Text.Length == 0;
+            bool atEnd = new TextRange(caret, para.ContentEnd).Text.Length == 0;
+            var siblings = para.SiblingBlocks!;
+            if (atStart && atEnd)
+            {
+                foreach (var p in newParas) siblings.InsertBefore(para, p);
+                siblings.Remove(para); // the template fills the empty line, as in plain text
+            }
+            else if (atStart)
+            {
+                foreach (var p in newParas) siblings.InsertBefore(para, p);
+            }
+            else if (atEnd)
+            {
+                Block after = para;
+                foreach (var p in newParas) { siblings.InsertAfter(after, p); after = p; }
+            }
+            else
+            {
+                var rest = caret.InsertParagraphBreak().Paragraph!;
+                foreach (var p in newParas) rest.SiblingBlocks!.InsertBefore(rest, p);
+            }
+            var end = newParas[^1].ContentEnd;
+            RichBodyBox.Selection.Select(end, end);
+        }
+        finally
+        {
+            RichBodyBox.EndChange();
+        }
+        RichBodyBox.Focus();
+    }
+
+    /// <summary>
+    /// Alt+1/2/3 in plain text and Markdown: replaces the misspelling last announced with
+    /// <paramref name="replacement"/>. The stored offsets are only trusted while the word is
+    /// still there — typing since the announcement shifts the text under them, and replacing
+    /// at stale offsets mangled the message (#885). When it has moved, the misspelling at the
+    /// caret is announced afresh instead, after saying nothing was replaced, so the next Alt+1
+    /// acts on what the user just heard.
+    /// The edit goes through the selection so it is one undo step (#886); assigning
+    /// <c>Text</c> wiped the undo history.
+    /// </summary>
+    internal void ReplaceCurrentPlainMisspelling(string replacement)
+    {
+        var text = BodyBox.Text;
+        int start = _currentSpellingWordStart, end = _currentSpellingWordEnd;
+        bool stillThere = start >= 0 && end > start && end <= text.Length
+                          && text.AsSpan(start, end - start).SequenceEqual(_currentSpellingWord);
+        if (!stillThere)
+        {
+            const string nothingReplaced = "Nothing replaced, the text has changed. ";
+            ClearSpellingContext();
+            AnnounceSpellingAtCurrentPosition(nothingReplaced);
+            if (_currentSpellingWordStart < 0)
+                AccessibilityHelper.Announce(this, nothingReplaced + "No misspelling at the cursor.",
+                    category: AnnouncementCategory.Result);
+            return;
+        }
+
+        // Saved and restored, not lowered outright, so an F7 session's suppression survives.
+        var wasSuppressed = _suppressSpellingAnnouncement;
+        _suppressSpellingAnnouncement = true;
+        try
+        {
+            BodyBox.Select(start, end - start);
+            BodyBox.SelectedText = replacement;
+            BodyBox.Select(start + replacement.Length, 0);
+        }
+        finally { _suppressSpellingAnnouncement = wasSuppressed; }
+
+        BodyBox.Focus();
+        AccessibilityHelper.Announce(this, $"Replaced with {replacement}.",
+            category: AnnouncementCategory.Result);
+        ClearSpellingContext();
     }
 
     private void RichBodyBox_PreviewKeyDown(object sender, KeyEventArgs e)
@@ -1256,7 +1448,8 @@ public partial class ComposeWindow : Window
 
     private void OpenAddressBook()
     {
-        var vm = new AddressBookViewModel(_contactService, contactSync: null, accountService: _vm.AccountService, configService: _configService);
+        var vm = new AddressBookViewModel(_contactService, contactSync: null, accountService: _vm.AccountService, configService: _configService,
+            recipientHistory: _recipientHistory);
         vm.SetInsertActions(
             toAction:  c => ToBox.AddAddress(c.DisplayName ?? string.Empty, c.EmailAddress),
             ccAction:  c => CcBox.AddAddress(c.DisplayName ?? string.Empty, c.EmailAddress),
@@ -1275,6 +1468,15 @@ public partial class ComposeWindow : Window
 
     private void RepeatSpellingAnnouncement()
     {
+        if (!_spellCheckEnabled && !_checkSpellingAsYouType)
+        {
+            // Nothing has been checked in this message yet (#883), so silence would sound
+            // exactly like "this word is spelled correctly". Say why, and how to check.
+            AccessibilityHelper.Announce(this,
+                "Spell checking is off for this message. Press Ctrl+F7 to check spelling.",
+                category: AnnouncementCategory.Result);
+            return;
+        }
         _lastAnnouncedSpellingIndex = -1;
         AnnounceSpellingAtCurrentPosition();
     }
@@ -1452,7 +1654,7 @@ public partial class ComposeWindow : Window
         _suppressFormattingAnnouncement = false;
     }
 
-    private void NavigateSpellingError(bool forward)
+    internal void NavigateSpellingError(bool forward)
     {
         EnsureSpellCheckEnabled();
         if (_vm.CurrentMode == ComposeMode.Html)
@@ -1464,17 +1666,31 @@ public partial class ComposeWindow : Window
         var text = BodyBox.Text;
         if (string.IsNullOrEmpty(text)) return;
 
-        int foundIndex = SpellScan.FindErrorIndex(BodyBox, BodyBox.CaretIndex, forward);
+        // TextBox.CaretIndex is the selection's START, so after Ctrl+F7 has selected a misspelling,
+        // searching forward from it found the same word again. Forward starts after the selection;
+        // backward from its start. With no selection both are the caret, which keeps a misspelling
+        // the caret sits inside as the one found.
+        int from = forward ? BodyBox.SelectionStart + BodyBox.SelectionLength : BodyBox.SelectionStart;
+        int foundIndex = SpellScan.FindReportableErrorIndex(BodyBox, from, forward);
 
         if (foundIndex >= 0)
         {
             var (wordStart, wordEnd) = SpellScan.ExpandWord(text, foundIndex);
 
-            BodyBox.SelectionStart = wordStart;
-            BodyBox.SelectionLength = wordEnd - wordStart;
-            BodyBox.Focus();
-
+            // Selecting the word moves the caret into it, which would run the navigation
+            // announcement for the same misspelling just before the one below (#898).
+            // _lastAnnouncedSpellingIndex is set first too, so a SelectionChanged that arrives
+            // after the flag is lowered is still recognised as this word.
             _lastAnnouncedSpellingIndex = wordStart;
+            var wasSuppressed = _suppressSpellingAnnouncement;
+            _suppressSpellingAnnouncement = true;
+            try
+            {
+                BodyBox.SelectionStart = wordStart;
+                BodyBox.SelectionLength = wordEnd - wordStart;
+                BodyBox.Focus();
+            }
+            finally { _suppressSpellingAnnouncement = wasSuppressed; }
 
             var word = text.Substring(wordStart, wordEnd - wordStart);
             var suggestions = BodyBox.GetSpellingError(foundIndex)
@@ -1482,6 +1698,7 @@ public partial class ComposeWindow : Window
 
             _currentSpellingWordStart = wordStart;
             _currentSpellingWordEnd = wordEnd;
+            _currentSpellingWord = word;
             _currentSpellingSuggestions = suggestions;
 
             AccessibilityHelper.Announce(this, BuildSpellingAnnouncement(word, suggestions),
@@ -1499,8 +1716,16 @@ public partial class ComposeWindow : Window
     {
         if (SpellScan.FindErrorRange(RichBodyBox, forward) is ({ } errorPos, { } wordRange))
         {
-            RichBodyBox.Selection.Select(wordRange.Start, wordRange.End);
-            RichBodyBox.Focus();
+            // As in plain text (#898): the selection change must not announce this word too.
+            _richSpellingWordStart = wordRange.Start;
+            var wasSuppressed = _suppressSpellingAnnouncement;
+            _suppressSpellingAnnouncement = true;
+            try
+            {
+                RichBodyBox.Selection.Select(wordRange.Start, wordRange.End);
+                RichBodyBox.Focus();
+            }
+            finally { _suppressSpellingAnnouncement = wasSuppressed; }
 
             var error = RichBodyBox.GetSpellingError(errorPos);
             var suggestions = error?.Suggestions.Take(3).ToList() ?? new List<string>();
@@ -1563,12 +1788,7 @@ public partial class ComposeWindow : Window
             }
         };
 
-        _vm.InsertTextIntoEditorRequested += text =>
-        {
-            RichBodyBox.Selection.Select(RichBodyBox.CaretPosition, RichBodyBox.CaretPosition);
-            RichBodyBox.Selection.Text = text;
-            RichBodyBox.Selection.Select(RichBodyBox.Selection.End, RichBodyBox.Selection.End);
-        };
+        _vm.InsertTextIntoEditorRequested += InsertTextAtCaret;
 
         // Compose is modeless and can stay open across a theme switch. The rich
         // editor reads theme brushes (blockquote foreground, table borders, code
@@ -1922,11 +2142,16 @@ public partial class ComposeWindow : Window
 
     private void ApplyMarkdownEdit(MarkdownEdit edit)
     {
+        // Saved and restored, not lowered outright, so an F7 session's suppression survives.
+        var wasSuppressed = _suppressSpellingAnnouncement;
         _suppressSpellingAnnouncement = true;
-        BodyBox.Select(edit.ReplaceStart, edit.ReplaceLength);
-        BodyBox.SelectedText = edit.Replacement;
-        BodyBox.Select(edit.SelectionStart, edit.SelectionLength);
-        _suppressSpellingAnnouncement = false;
+        try
+        {
+            BodyBox.Select(edit.ReplaceStart, edit.ReplaceLength);
+            BodyBox.SelectedText = edit.Replacement;
+            BodyBox.Select(edit.SelectionStart, edit.SelectionLength);
+        }
+        finally { _suppressSpellingAnnouncement = wasSuppressed; }
         if (!BodyBox.IsKeyboardFocusWithin)
             BodyBox.Focus();
     }

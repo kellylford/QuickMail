@@ -1,4 +1,5 @@
 using System;
+using System.ComponentModel;
 using System.Collections.Generic;
 
 namespace QuickMail.Models;
@@ -49,6 +50,38 @@ public sealed record RowSpeechSettings(
 {
     /// <summary>Shipped defaults, used before the service loads and by tests.</summary>
     public static RowSpeechSettings Default { get; } = new(RowFieldCatalog.DefaultLayouts(), false);
+}
+
+/// <summary>
+/// Where every list row on this thread gets its <see cref="RowSpeechSettings"/>, so a row's name binding
+/// has a source that needs no visual tree (#928). A row with no realized container is named through
+/// a stand-in that is never in the window, so a binding that looks up through the tree cannot
+/// resolve there: the name stayed empty until the dispatcher turned, and a screen reader asking
+/// in that gap heard the fallback, then the default layout instead of the user's.
+/// <para>One per thread rather than one per process because rows bind on their UI thread, and the
+/// tests run their windows on separate threads in parallel, where one test's layout must not reach
+/// another's rows. The app has one UI thread and so one of these.</para>
+/// </summary>
+public sealed class RowSpeechSource : INotifyPropertyChanged
+{
+    [ThreadStatic] private static RowSpeechSource? _current;
+
+    /// <summary>This thread's source. Read it on the UI thread.</summary>
+    public static RowSpeechSource Current => _current ??= new RowSpeechSource();
+
+    private RowSpeechSettings _settings = RowSpeechSettings.Default;
+
+    public RowSpeechSettings Settings
+    {
+        get => _settings;
+        set
+        {
+            _settings = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Settings)));
+        }
+    }
+
+    public event PropertyChangedEventHandler? PropertyChanged;
 }
 
 /// <summary>

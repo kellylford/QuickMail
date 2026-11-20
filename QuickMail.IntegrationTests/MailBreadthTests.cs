@@ -192,7 +192,7 @@ public sealed class MailBreadthTests
 
         using var smtp = new MailKit.Net.Smtp.SmtpClient();
         await smtp.ConnectAsync(GreenMailFixture.Host, GreenMailFixture.SmtpPort, MailKit.Security.SecureSocketOptions.None, ct);
-        await smtp.SendAsync(message, ct);
+        await smtp.SendAsync(new MailKit.SendRequest(message), ct);
         await smtp.DisconnectAsync(quit: true, ct);
     }
 }

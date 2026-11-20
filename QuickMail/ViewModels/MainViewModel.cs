@@ -6,6 +6,7 @@ using System.Collections.Specialized;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Runtime.ExceptionServices;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
@@ -60,6 +61,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
     // the key set de-dupes across repeated IDLE fires within the session.
     private readonly DateTimeOffset _notifyThresholdUtc = DateTimeOffset.UtcNow;
     private readonly HashSet<string> _notifiedMessageKeys = new();
+    private readonly HashSet<string> _soundedMessageKeys = new();   // See MaybePlayMailSounds.
+    private readonly ISoundService? _sounds;
+
+    /// <summary>For the windows that play or preview sounds; null where sound isn't available.</summary>
+    internal ISoundService? Sounds => _sounds;
+
     // A single evaluation yielding more genuinely-new messages than this is a catch-up backlog
     // (mail that piled up while the machine slept or the connection was down), not real-time
     // arrivals — so it does not raise a toast. See MaybeNotifyNewMail.
@@ -169,6 +176,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _syncService.OfflineBodyProgressChanged -= OnOfflineBodyProgress;
         _syncService.SenderEmailBackfillProgressChanged -= OnSenderEmailBackfillProgress;
         _syncService.SenderEmailBackfillEnded -= OnSenderEmailBackfillEnded;
+        _syncService.AttachmentFlagsFound -= OnAttachmentFlagsFound;
         DrainCts(ref _offlineBodyStatusCts);
         if (_rowLayoutService != null && _onRowLayoutsChanged != null)
         {
@@ -193,6 +201,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _graphCalendarSyncTimer?.Dispose();
         _graphCalendarSyncTimer = null;
         DrainCts(ref _graphCalSyncCts);
+        DrainCts(ref _soundUpdateCheckCts);
         _reminderTimer?.Dispose();
         _reminderTimer = null;
         GC.SuppressFinalize(this);
@@ -607,6 +616,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
         // In Tab mode a message tab may be in front; going home means the list tab.
         ActivateMessageListTab();
+        _messagesShownFor = null;   // going somewhere; see SelectFolderAsync
 
         if (view != null)
         {
@@ -1324,11 +1334,14 @@ public partial class MainViewModel : ObservableObject, IDisposable
     public bool AnnounceFlagStatus      => _announceFlagStatus;
 
     /// <summary>
-    /// The spoken field layout every list row binds to (see <c>Views.RowSpeech</c>). Assigning a
-    /// new instance and raising PropertyChanged is what pushes a layout change out to rows that
-    /// are already on screen — no reload, no re-fetch, virtualized containers included.
+    /// The spoken field layout, as last loaded. List rows don't bind to this: they read
+    /// <see cref="RowSpeechSource"/>, which <see cref="ReloadRowSpeech"/> also updates, and that is what
+    /// pushes a layout change out to rows already on screen (#928).
     /// </summary>
     public RowSpeechSettings RowSpeech { get; private set; } = RowSpeechSettings.Default;
+
+    // Captured here, on the UI thread: the source is per thread, and it's the one the rows bind to.
+    private readonly RowSpeechSource _rowSpeechSource = RowSpeechSource.Current;
 
     /// <summary>
     /// Re-reads the layouts, the labels preference and the field separator (#802), and re-speaks
@@ -1347,7 +1360,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
         catch { /* config unreadable — fall back to unlabelled, period-separated */ }
         RowSpeech = new RowSpeechSettings(_rowLayoutService.Load(), showLabels, separator);
-        OnPropertyChanged(nameof(RowSpeech));
+        _rowSpeechSource.Settings = RowSpeech;
     }
     /// <summary>Named-flag sub-filter id, set by saved views. Null = show all flagged messages.</summary>
     public string? ActiveFlagFilterId   => _activeFlagFilterId;
@@ -1545,6 +1558,13 @@ public partial class MainViewModel : ObservableObject, IDisposable
     /// </summary>
     [ObservableProperty]
     private bool _readAsPlainText;
+
+    /// <summary>
+    /// Bound one-way to the Tools-menu check state (#912). Kept in sync with
+    /// <see cref="ConfigModel.MuteSounds"/> by the toggle command and <see cref="ApplySettings"/>.
+    /// </summary>
+    [ObservableProperty]
+    private bool _muteSounds;
 
     // Running version for the Help "running version" entry, e.g. "0.7.9" (or "0.7.9.1" for a
     // hotfix). Shared with the About dialog and update check via AppVersion; deliberately not the
@@ -1885,8 +1905,18 @@ public partial class MainViewModel : ObservableObject, IDisposable
         IWatchService? watchService = null,
         IFolderViewStateService? folderViewState = null,
         IOutboxService? outboxService = null,
-        IConnectivityService? connectivity = null)
+        IConnectivityService? connectivity = null,
+        ISoundService? soundService = null,
+        IClipboardService? clipboard = null,
+        ClipboardStaging? clipboardStaging = null,
+        OpenedMessageService? openedMessages = null,
+        ISoundGalleryService? soundGallery = null)
     {
+        _openedMessages = openedMessages;
+        _soundGallery = soundGallery;
+        _sounds = soundService;
+        _clipboard = clipboard;
+        _clipboardStaging = clipboardStaging;
         _folderViewState = folderViewState;
         _outbox = outboxService;
         _connectivity = connectivity;
@@ -1926,6 +1956,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
         var cfg = _configService.Load();
         _readAsPlainText = cfg.ReadAsPlainText;
+        _muteSounds = cfg.MuteSounds;
         _previewLines = cfg.PreviewLines;
         _showPreview = _previewLines > 0;
         _syncDays = cfg.SyncDays;
@@ -1982,6 +2013,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _syncService.FolderSynced    += OnFolderSynced;
         _syncService.MessagesRemoved += OnMessagesRemoved;
         _syncService.FolderReadStatesReconciled += OnFolderReadStatesReconciled;
+        _syncService.AttachmentFlagsFound += OnAttachmentFlagsFound;
         _syncService.RulesApplied    += OnRulesApplied;
         if (_changeNotifier != null)
         {
@@ -2115,12 +2147,19 @@ public partial class MainViewModel : ObservableObject, IDisposable
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { rules = null; }
         var views = _viewService.Load();
         var cfg = _configService.Load();
-        report = FolderReferenceRemapper.Remap(accountId, graphFolders, rules ?? [], views, cfg);
+        // Hidden folders (#963) hold IMAP paths until now; rewrite them to the Graph ids too.
+        var account = Accounts.FirstOrDefault(a => a.Id == accountId);
+        report = FolderReferenceRemapper.Remap(accountId, graphFolders, rules ?? [], views, cfg, account?.HiddenFolders);
         if (report.AnythingChanged)
         {
             if (rules is not null) _ruleService.SaveRules(rules);
             _viewService.Save(views);
             _configService.Save(cfg);
+        }
+        if (report.HiddenFoldersChanged)
+        {
+            _accountService.SaveAccounts([.. Accounts]);
+            BuildFolderTree();
         }
         return rules is not null;
     }
@@ -2521,6 +2560,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     private async Task ApplyViewByIdAsync(Guid viewId, bool allFolders)
     {
+        _messagesShownFor = null;   // choosing a view is going somewhere; see SelectFolderAsync
         var view = SavedViews.FirstOrDefault(v => v.Id == viewId);
         if (view == null) return;
         await ApplyViewAsync(view, allFolders);
@@ -2629,7 +2669,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     {
         var expectedFolder = SelectedFolder;
         var loadVersion    = Interlocked.Increment(ref _folderLoadVersion);
-        Messages.Clear();
+        ClearMessagesUnlessReloading();
         StatusText = $"Loading {view.Name}…";
         IsBusy = true;
 
@@ -2783,6 +2823,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         ListDensity = cfg.AppearanceListDensity == "compact" ? "compact" : "comfortable";
 
         ReadAsPlainText   = cfg.ReadAsPlainText;
+        MuteSounds        = cfg.MuteSounds;
         _announceFlagStatus = cfg.AnnounceFlagStatus;
         OnPropertyChanged(nameof(AnnounceFlagStatus));
 
@@ -3086,6 +3127,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
             execute: () => TutorialRequested?.Invoke(this, EventArgs.Empty)));
 
         registry.Register(new CommandDefinition(
+            id: "help.soundTutorial", category: "Help", title: "Sound Tutorial",
+            execute: () => SoundTutorialRequested?.Invoke(this, EventArgs.Empty)));
+
+        registry.Register(new CommandDefinition(
             id: "help.about", category: "Help", title: "About QuickMail",
             execute: () => AboutRequested?.Invoke(this, EventArgs.Empty)));
 
@@ -3318,7 +3363,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             {
                 // No store to fall back on: say so at once rather than "connecting…" (#637).
                 StatusText = "Online mode — offline. Nothing to show until the connection returns.";
-                AnnounceOfflineOnce();
+                AnnounceOfflineOnce(atStartup: true);
                 SetConnectionPhase(ConnectionPhase.Idle);
                 return;
             }
@@ -3396,7 +3441,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
                     ? $"{cached.Count} messages (cached — offline)"
                     : $"{cached.Count} messages in {where} (cached — offline)"
                 : "Offline — no cached messages.";
-            AnnounceOfflineOnce();
+            AnnounceOfflineOnce(atStartup: true);
         }
         else
         {
@@ -3891,6 +3936,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
                                 // Ordering is load-bearing: both paths share _notifiedMessageKeys, so
                                 // running this first means a watched inbox message gets the watched
                                 // toast (which says more) rather than the generic one, and gets it once.
+                                MaybePlayMailSounds(account, incoming, isInbox);
                                 MaybeNotifyWatchedMail(account, incoming);
                                 // Toast only for the Inbox (as before) — filtered mail in custom folders
                                 // shouldn't pop notifications — but refresh counts for any folder change.
@@ -4107,41 +4153,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
         // here — in every folder, for the same reason SetMessages does.
         StampWatchedFlags(toInsert);
 
-        // Batch all inserts into a single CollectionChanged(Reset) notification.
-        // Without batching, each InsertMessageSorted fires CollectionChanged(Add) which
-        // causes the ListView to emit a UIA StructureChanged(ChildAdded) event per insert.
-        // When new messages arrive sorted before the focused item, each event shifts the
-        // focused item's UIA position, causing screen readers to re-announce it every time.
-        // A single Reset notification lets WPF re-bind once and screen readers see only
-        // one structural change for the whole batch.
-        //
-        // Side-effect: WPF's ListView TwoWay-bound SelectedItem may clear SelectedMessage
-        // transiently when the Reset fires (the Selector deselects before re-validating).
-        // Save the reference so it can be restored if that happens.
-        var prevSelected = SelectedMessage;
-        using (Messages.BeginBatchScope())
-        {
-            foreach (var msg in toInsert)
-                InsertMessageSorted(msg);
-
-            // #269: reconcile the visible list for messages whose read-state changed externally. A
-            // now-read message must leave the Unread view; a now-unread one must (re)appear if it
-            // matches. Done inside the batch so it costs one Reset, not one event per change.
-            foreach (var m in readReconciled)
-            {
-                var shouldShow = MatchesFilter(m) && MatchesDayLimit(m)
-                    && (string.IsNullOrWhiteSpace(SearchText) || MatchesSearch(m));
-                var isShown = Messages.Contains(m);
-                if (shouldShow && !isShown)
-                    InsertMessageSorted(m);
-                else if (!shouldShow && isShown)
-                    Messages.Remove(m);
-            }
-        }
-        // If WPF cleared SelectedMessage during the Reset but the message is still in
-        // the list, restore it so the reading pane header and command guards stay correct.
-        if (prevSelected != null && SelectedMessage == null && Messages.Contains(prevSelected))
-            SelectedMessage = prevSelected;
+        // One row at a time for the usual handful: Reset regenerates every row's container, including
+        // the focused one, and WPF then moved focus and selection to a different message.
+        var rowsChanged = ApplyArrivalsAndStateChanges(toInsert, readReconciled);
 
         if (toInsert.Count > 0)
         {
@@ -4156,7 +4170,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
         // so we don't harvest on every folder during a multi-folder sync.
         ScheduleCalendarHarvest();
 
-        RebuildActiveGroupView();
+        // Only when rows changed: a group row hears about read and flag changes by itself, and a sync with
+        // nothing new is the common case. Each rebuild costs a set of groups over every row.
+        if (rowsChanged || ActiveSort == MessageSort.FlaggedFirst) RebuildActiveGroupView();
     }
 
     // ── Read/unread reconcile (#462) ──────────────────────────────────────────────
@@ -4192,19 +4208,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
             if (affected.Count > 0)
             {
-                // A now-read message must leave the Unread view; a now-unread one must (re)appear if it
-                // matches. Batched so it costs one Reset, not one event per change (screen-reader-friendly).
-                using (Messages.BeginBatchScope())
-                {
-                    foreach (var m in affected)
-                    {
-                        var shouldShow = MatchesFilter(m) && MatchesDayLimit(m)
-                            && (string.IsNullOrWhiteSpace(SearchText) || MatchesSearch(m));
-                        var isShown = Messages.Contains(m);
-                        if (shouldShow && !isShown) InsertMessageSorted(m);
-                        else if (!shouldShow && isShown) Messages.Remove(m);
-                    }
-                }
+                ApplyArrivalsAndStateChanges([], affected);
                 RebuildActiveGroupView();
             }
         }
@@ -4253,6 +4257,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 if (incoming.Count > 0)
                     _ui.Post(() =>
                     {
+                        MaybePlayMailSounds(account, incoming, isInbox: true);
                         MaybeNotifyWatchedMail(account, incoming);
                         MaybeNotifyNewMail(account, incoming);
                     });
@@ -4348,7 +4353,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
 
         LogService.Log(diag);
-        _notifications.ShowNewMail(account.AccountLabel, account.Id, fresh);
+        _notifications.ShowNewMail(account.AccountLabel, account.Id, fresh, silent: ToastIsSilent(fresh));
     }
 
     /// <summary>
@@ -4389,7 +4394,54 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
 
         LogService.Log($"Watched notify [{account.AccountLabel}]: {fresh.Count} fresh in watched conversations.");
-        _notifications.ShowWatchedMail(account.AccountLabel, account.Id, fresh);
+        _notifications.ShowWatchedMail(account.AccountLabel, account.Id, fresh, silent: ToastIsSilent(fresh));
+    }
+
+    /// <summary>
+    /// Whether a toast for this mail should leave out the Windows sound: because sounds are on or muted,
+    /// or because a rule has already played one for it, which would otherwise make two.
+    /// </summary>
+    private bool ToastIsSilent(IReadOnlyList<MailMessageSummary> mail) =>
+        _sounds is not null && (_sounds.SilencesToasts
+            || mail.Any(m => _sounds.WasSoundedByRule(SoundCatalog.MessageKey(m.AccountId, m.MessageId))));
+
+    /// <summary>
+    /// Plays the sound for mail that has just arrived (#912). Separate from the toast path on purpose:
+    /// that one stops early when toasts are off, its key set is consumed in a tested order, and sharing
+    /// it would lose toasts under some combinations of settings. So this has its own set, and the same
+    /// rules for what counts: new since launch, the shared-mailbox opt-in, and no sound for a catch-up
+    /// backlog. As with toasts, the Inbox gets the new-mail sound and other folders only speak up for a
+    /// watched conversation. Keys are consumed even with sounds off, so turning them on doesn't set off
+    /// a sound for mail that came in earlier.
+    /// </summary>
+    internal void MaybePlayMailSounds(AccountModel account, IReadOnlyList<MailMessageSummary> incoming, bool isInbox)
+    {
+        if (_sounds is null) return;
+        if (account.IsShared && !account.NotifyOnNewMail) return;
+        if (_soundedMessageKeys.Count > 10_000) _soundedMessageKeys.Clear();
+
+        IReadOnlyList<MailMessageSummary> candidates = isInbox || _watchService is null
+            ? (isInbox ? incoming : [])
+            : incoming.Where(IsWatchedMessage).ToList();
+        var fresh = Helpers.NewMailFilter.SelectNew(candidates, _notifyThresholdUtc, _soundedMessageKeys);
+
+        // Mail a rule has sounded for has had its sound, however long the sync took to get here.
+        fresh = fresh.Where(m => !_sounds.WasSoundedByRule(SoundCatalog.MessageKey(m.AccountId, m.MessageId))).ToList();
+        if (fresh.Count == 0) return;
+
+        // One sound for the batch, the more specific when it can be heard. The backlog limit is applied
+        // to each set on its own, as the two toast paths apply it, so a wake-up's worth of ordinary mail
+        // doesn't swallow the reply someone is watching for.
+        var watched = _watchService is null ? 0 : fresh.Count(IsWatchedMessage);
+        if (watched is > 0 and <= MaxNotifyBatchSize && _sounds.IsAudible(SoundEvent.WatchedMail))
+        {
+            _sounds.Play(SoundEvent.WatchedMail);
+            return;
+        }
+
+        // A watched message whose own sound is off is still new mail, as long as it's in the Inbox.
+        if (isInbox && fresh.Count <= MaxNotifyBatchSize)
+            _sounds.Play(SoundEvent.NewMail);
     }
 
     // CA1859: the parameter type is fixed by the MessagesRemoved event delegate
@@ -4426,23 +4478,15 @@ public partial class MainViewModel : ObservableObject, IDisposable
         // Update account inbox counts for the messages we actually removed from _rawMessages.
         UpdateAccountCountsAfterRemoval(actuallyRemovedFromRaw);
 
-        bool removedOpen = false;
+        var leaving = new List<MailMessageSummary>(removed.Count);
         foreach (var msg in removed)
         {
             var key = (msg.MessageId, msg.AccountId, msg.FolderName);
-            if (!byKey.TryGetValue(key, out var existing)) continue;
-
-            if (SelectedMessage == existing) removedOpen = true;
-            Messages.Remove(existing);
-            byKey.Remove(key);
+            if (byKey.Remove(key, out var existing)) leaving.Add(existing);
         }
 
-        if (removedOpen)
-        {
-            SelectedMessage = Messages.Count > 0 ? Messages[0] : null;
-            MessageDetail   = null;
-            IsMessageOpen   = false;
-        }
+        LandBeforeBackgroundRemoval(leaving, closeOpenMessage: true);
+        foreach (var row in leaving) Messages.Remove(row);
 
         if (removed.Count > 0)
             StatusText = $"{Messages.Count} messages";
@@ -4518,10 +4562,15 @@ public partial class MainViewModel : ObservableObject, IDisposable
         // folder list (first run, fresh --profileDir, rebuilt mail.db) it is still empty, ranking is
         // neutral (date/name tie-break), and the representative settles on the first fetch — collapse
         // is correct either way.
+        var isReload = IsReloadOfShownFolder();
         string? stampedFor = null;
-        if (IsVirtualFolder(SelectedFolder))
-        {
+        var isVirtual = IsVirtualFolder(SelectedFolder);
+        if (isVirtual)
             list = MessageDeduplicator.CollapseForAggregate(list, ResolveFolderKind);
+        if (isReload)
+            list = AdoptShownRows(list, isVirtual);
+        if (isVirtual)
+        {
             ApplyFolderDisplayNames(list);
             stampedFor = SelectedFolder!.FullName;
         }
@@ -4537,9 +4586,217 @@ public partial class MainViewModel : ObservableObject, IDisposable
             foreach (var m in _rawMessages) m.Preview = TruncatePreview(m.Preview, _previewLines);
         // The index's last answer was about the messages that were here before; drop it so it is not applied
         // to these, and ask again once the list shows them (#717).
-        if (!string.IsNullOrWhiteSpace(SearchText)) _searchMatcher = null;
-        ApplyFiltersAndSearch();
-        RefreshSearchIndexForNewMessages();
+        // A reload keeps it until the new one arrives: the rows are largely the same, and without it every
+        // row matched only on its body would count as leaving and take the user's place with it.
+        if (!isReload && !string.IsNullOrWhiteSpace(SearchText)) _searchMatcher = null;
+        if (isReload) ApplyReloadedMessages();
+        else ApplyFiltersAndSearch();
+        _messagesShownFor = SelectedFolder is { } shown ? (shown.AccountId, shown.FullName) : null;
+        RefreshSearchIndexForNewMessages(isReload);
+    }
+
+    // ── Keeping the user's place across a reload ─────────────────────────────────
+    //
+    // A reload of the open folder is not the user going anywhere. Reconnecting, the end of the startup
+    // sync, a rule run and F5 all land here, and they used to replace every row with a new object:
+    // the selection had nothing left to point at, and focus went to the top of the list.
+
+    /// <summary>The most rows a change may touch and still be made one row at a time. Past this, one
+    /// replacement reads better than a structure-changed event per row.</summary>
+    private const int MaxInPlaceListEdits = 10;
+
+    /// <summary>The folder whose messages the list holds. Navigation clears it, so only a reload of
+    /// the same folder, with nobody having asked to go there, keeps the user's place.</summary>
+    private (Guid AccountId, string FullName)? _messagesShownFor;
+
+    /// <summary>Whether focus, in the active window, is on the message list. A background removal may
+    /// only move focus when it is, or in the message being closed: otherwise the user is somewhere else
+    /// and stays there.</summary>
+    public event Func<bool>? MessageListHasFocusQuery;
+
+    /// <summary>Whether focus, in the active window, is in the reading pane.</summary>
+    public event Func<bool>? ReadingPaneHasFocusQuery;
+
+    /// <summary>An empty list has no place to keep, and the rows arriving in it have to replace it:
+    /// the replacement is what moves focus into a folder that had nothing cached.</summary>
+    private bool IsReloadOfShownFolder() =>
+        Messages.Count > 0
+        && SelectedFolder is { } folder
+        && _messagesShownFor is { } shown
+        && shown.AccountId == folder.AccountId
+        && string.Equals(shown.FullName, folder.FullName, StringComparison.Ordinal);
+
+    private void ClearMessagesUnlessReloading()
+    {
+        if (!IsReloadOfShownFolder()) Messages.Clear();
+    }
+
+    /// <summary>
+    /// Swaps each freshly loaded message for the row already showing it, brought up to date. The row
+    /// instance is what the selection, the row's container and any open tab are holding on to.
+    /// </summary>
+    private List<MailMessageSummary> AdoptShownRows(List<MailMessageSummary> fresh, bool isVirtual)
+    {
+        Func<MailMessageSummary, string> keyOf = isVirtual
+            ? MessageDeduplicator.CollapseKeyFor
+            : MessageDeduplicator.PerFolderKeyFor;
+
+        var existing = new Dictionary<string, MailMessageSummary>(_rawMessages.Count);
+        // The list first: All Mail's and the saved views' server pass adds new rows to it alone, and a
+        // row on screen beats a hidden twin.
+        foreach (var row in Messages) existing.TryAdd(keyOf(row), row);
+        foreach (var row in _rawMessages) existing.TryAdd(keyOf(row), row);
+
+        var adopted = new List<MailMessageSummary>(fresh.Count);
+        foreach (var msg in fresh)
+        {
+            // Removed once used: two fresh rows with one key must not become one row shown twice.
+            if (existing.Remove(keyOf(msg), out var row))
+            {
+                // Trimmed first, or every kept row would announce a long preview and then the short one.
+                msg.Preview = _showPreview ? TruncatePreview(msg.Preview, _previewLines) : string.Empty;
+                row.CopyLoadedStateFrom(msg);
+                adopted.Add(row);
+            }
+            else
+            {
+                adopted.Add(msg);
+            }
+        }
+        return adopted;
+    }
+
+    private void ApplyReloadedMessages()
+    {
+        var target = ComputeVisibleMessages();
+        if (ListMerge.CanApplyInPlace(Messages, target, MaxInPlaceListEdits))
+        {
+            var staying = new HashSet<MailMessageSummary>(target);
+            LandBeforeBackgroundRemoval(Messages.Where(m => !staying.Contains(m)).ToList());
+            ListMerge.ApplyInPlace(Messages, target);
+            // Regardless of whether a row moved: a kept row's new subject can regroup it, and the rebuild
+            // changes nothing on screen if the groups come out the same.
+            RebuildActiveGroupView();
+        }
+        else
+        {
+            ReplaceMessagesKeepingPosition(new BatchObservableCollection<MailMessageSummary>(target));
+        }
+        ReportVisibleCount();
+    }
+
+    /// <summary>
+    /// Makes a change to the visible rows without moving the user: one row at a time when it is small,
+    /// so the focused row's container survives, and one replacement when it is not.
+    /// </summary>
+    /// <param name="leaving">The shown rows the change removes.</param>
+    /// <param name="edits">How many rows it inserts or removes.</param>
+    /// <param name="edit">The change, written against whichever list it is given.</param>
+    private void EditMessageList(
+        IReadOnlyList<MailMessageSummary> leaving, int edits, Action<IList<MailMessageSummary>> edit)
+    {
+        if (edits == 0) return;
+        LandBeforeBackgroundRemoval(leaving);
+        if (edits <= MaxInPlaceListEdits)
+        {
+            edit(Messages);
+            return;
+        }
+        var next = new BatchObservableCollection<MailMessageSummary>(Messages);
+        edit(next);
+        ReplaceMessagesKeepingPosition(next);
+    }
+
+    /// <summary>The row a replacement of <see cref="Messages"/> is keeping the user on, readable while
+    /// that replacement is being announced. The View needs it because WPF, once the new rows are laid
+    /// out, selects whichever row sits at the old focused index, overriding the selection made here.</summary>
+    internal MailMessageSummary? RowKeptByReplacement { get; private set; }
+
+    /// <summary>True while <see cref="Messages"/> is being replaced with nobody having asked to go
+    /// anywhere. Unlike a navigation, that does not bring focus into the list from somewhere else.</summary>
+    internal bool IsReplacingInBackground { get; private set; }
+
+    private void ReplaceMessagesKeepingPosition(BatchObservableCollection<MailMessageSummary> next)
+    {
+        var previous = SelectedMessage;
+        var previousIndex = previous == null ? -1 : Messages.IndexOf(previous);
+        // With a message open, its neighbour is never the answer: see LandBeforeBackgroundRemoval.
+        var keep = previous == null || next.Count == 0 ? null
+            : next.Contains(previous) ? previous
+            : IsMessageOpen ? null
+            : next[Math.Clamp(previousIndex, 0, next.Count - 1)];
+
+        RowKeptByReplacement = keep;
+        IsReplacingInBackground = true;
+        Messages = next;   // the ListView's two-way SelectedItem binding clears SelectedMessage here
+        IsReplacingInBackground = false;
+        RowKeptByReplacement = null;
+
+        if (previous != null) SelectedMessage = keep;
+    }
+
+    /// <summary>
+    /// A row the user did not touch is about to leave, and it may be the selected one. Selection moves
+    /// to its neighbour first, and focus goes with it if focus was on the list (#667 explains why the
+    /// focus move has to come before the removal). Focus anywhere else stays where it is.
+    /// </summary>
+    /// <param name="closeOpenMessage">The message is gone from the server, so an open copy closes.
+    /// False when it has only left this view, say by being read in the Unread filter.</param>
+    private void LandBeforeBackgroundRemoval(IReadOnlyList<MailMessageSummary> leaving, bool closeOpenMessage = false)
+    {
+        if (leaving.Count == 0 || SelectedMessage is not { } selected || !leaving.Contains(selected)) return;
+
+        // The reading pane is still showing this message. Selecting its neighbour would point Delete and
+        // Archive at a message the user cannot see, so nothing is selected until the pane closes.
+        // Asked first: closing the pane is what takes focus out of the message, and leaves it on an
+        // empty page if nothing moves it.
+        var focusOnList = MessageListHasFocusQuery?.Invoke() == true;
+        if (IsMessageOpen && !closeOpenMessage)
+        {
+            SelectedMessage = null;
+            // F6 back to the list with the message still open: the focused row is the one going. With
+            // nothing selected the view puts focus on the list itself (#670).
+            if (focusOnList && ViewMode == ViewMode.Messages) MessageListFocusNowRequested?.Invoke();
+            return;
+        }
+
+        var focusIsHere = focusOnList || (IsMessageOpen && ReadingPaneHasFocusQuery?.Invoke() == true);
+        if (closeOpenMessage && IsMessageOpen)
+        {
+            MessageDetail = null;
+            IsMessageOpen = false;
+        }
+
+        SelectedMessage = FindSurvivorOf(leaving);
+        // With no survivor this still asks: the row holding focus is about to go, and the view then
+        // puts focus on the list itself (#670).
+        if (focusIsHere && ViewMode == ViewMode.Messages)
+            MessageListFocusNowRequested?.Invoke();
+    }
+
+    private bool ShouldShowInList(MailMessageSummary m) =>
+        MatchesFilter(m) && MatchesDayLimit(m)
+        && (string.IsNullOrWhiteSpace(SearchText) || MatchesSearch(m));
+
+    /// <summary>
+    /// Inserts <paramref name="arrivals"/>, and brings the list into line for <paramref name="changed"/>,
+    /// messages whose read state changed: a now-read message leaves the Unread view and a now-unread
+    /// one comes back to it.
+    /// </summary>
+    /// <returns>Whether any row joined or left the list.</returns>
+    private bool ApplyArrivalsAndStateChanges(
+        List<MailMessageSummary> arrivals, List<MailMessageSummary> changed)
+    {
+        var comingBack = changed.Where(m => ShouldShowInList(m) && !Messages.Contains(m)).ToList();
+        var leaving    = changed.Where(m => !ShouldShowInList(m) && Messages.Contains(m)).ToList();
+
+        EditMessageList(leaving, arrivals.Count + comingBack.Count + leaving.Count, list =>
+        {
+            foreach (var m in leaving) list.Remove(m);
+            foreach (var m in arrivals) InsertMessageSorted(m, list);
+            foreach (var m in comingBack) InsertMessageSorted(m, list);
+        });
+        return arrivals.Count + comingBack.Count + leaving.Count > 0;
     }
 
     /// <summary>
@@ -4698,6 +4955,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
     // automatically triggers group rebuilds when Messages is replaced.
     private void ApplyFiltersAndSearch()
     {
+        Messages = new BatchObservableCollection<MailMessageSummary>(ComputeVisibleMessages());
+        ReportVisibleCount();
+    }
+
+    private List<MailMessageSummary> ComputeVisibleMessages()
+    {
         IEnumerable<MailMessageSummary> result = _rawMessages;
         if (ActiveFilter != MessageFilter.All)
             result = result.Where(MatchesFilter);
@@ -4715,8 +4978,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
             MessageSort.FlaggedFirst    => result.OrderBy(m => m.IsFlagged ? 0 : 1).ThenByDescending(m => m.Date),
             _                           => result.OrderByDescending(m => m.Date),
         };
-        Messages = new BatchObservableCollection<MailMessageSummary>(result);
+        return result.ToList();
+    }
 
+    private void ReportVisibleCount()
+    {
         // Keep the status bar count in sync with whatever is currently visible.
         // Folder-load methods set a more descriptive status text immediately after
         // calling SetMessages, so this value is overwritten during loads and only
@@ -4772,18 +5038,20 @@ public partial class MainViewModel : ObservableObject, IDisposable
     }
 
     // Binary-insert into the descending-by-date Messages collection.
-    private void InsertMessageSorted(MailMessageSummary msg)
+    private void InsertMessageSorted(MailMessageSummary msg) => InsertMessageSorted(msg, Messages);
+
+    private void InsertMessageSorted(MailMessageSummary msg, IList<MailMessageSummary> list)
     {
         if (!_showPreview) msg.Preview = string.Empty;
         else msg.Preview = TruncatePreview(msg.Preview, _previewLines);
-        int lo = 0, hi = Messages.Count;
+        int lo = 0, hi = list.Count;
         while (lo < hi)
         {
             int mid = (lo + hi) / 2;
-            if (Messages[mid].Date >= msg.Date) lo = mid + 1;
+            if (list[mid].Date >= msg.Date) lo = mid + 1;
             else hi = mid;
         }
-        Messages.Insert(lo, msg);
+        list.Insert(lo, msg);
     }
 
     // Copies server-fresh mutable state onto an existing message already in the list.
@@ -4838,18 +5106,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
             vanished.Select(m => (m.MessageId, m.AccountId, m.FolderName)));
         _rawMessages.RemoveAll(m => vanishedKeys.Contains((m.MessageId, m.AccountId, m.FolderName)));
 
-        bool removedOpen = vanished.Any(m => m == SelectedMessage);
+        LandBeforeBackgroundRemoval(vanished, closeOpenMessage: true);
         foreach (var m in vanished)
             Messages.Remove(m);
 
         UpdateAccountCountsAfterRemoval(vanished);
-
-        if (removedOpen)
-        {
-            SelectedMessage = Messages.Count > 0 ? Messages[0] : null;
-            MessageDetail   = null;
-            IsMessageOpen   = false;
-        }
     }
 
     // ── Account / folder selection ───────────────────────────────────────────────
@@ -5321,7 +5582,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         {
             if (_cachedFolders.TryGetValue(account.Id, out var folders) && folders.Count > 0)
             {
-                var accountRoots = FolderTreeBuilder.Build(folders, account);
+                var accountRoots = FolderTreeBuilder.Build(folders, account, account.HiddenFolders);
 
                 // Inject a per-account "All Mail" virtual folder as the first child
                 // of the account header node so users can see all mail for that account.
@@ -5528,9 +5789,15 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
         // The stale collections are always cleared; only the rebuilds are suppressed. Leaving
         // the previous folder's groups in place while navigating is what would be read out.
+        var oldConversations = Conversations;
+        var oldSenderGroups = SenderGroups;
+        var oldToGroups = ToGroups;
         Conversations = value == ViewMode.Conversations ? Conversations : [];
         SenderGroups  = value == ViewMode.From          ? SenderGroups  : [];
         ToGroups      = value == ViewMode.To            ? ToGroups      : [];
+        if (!ReferenceEquals(oldConversations, Conversations)) foreach (var g in oldConversations) g.ReleaseMessages();
+        if (!ReferenceEquals(oldSenderGroups, SenderGroups)) foreach (var g in oldSenderGroups) g.ReleaseMessages();
+        if (!ReferenceEquals(oldToGroups, ToGroups)) foreach (var g in oldToGroups) g.ReleaseMessages();
 
         if (!_suppressFilterRebuild)
         {
@@ -5599,7 +5866,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
             var groups = ordered.ToList();
             _ui.Post(() =>
             {
-                if (version == _conversationRebuildVersion)
+                if (version != _conversationRebuildVersion
+                    || ListMerge.SameGroups(Conversations, groups, g => g.NormalizedSubject, g => g.Messages))
+                {
+                    foreach (var g in groups) g.ReleaseMessages();
+                }
+                else
                 {
                     var expanded = Conversations
                         .Where(g => g.IsExpanded).Select(g => g.NormalizedSubject)
@@ -5607,7 +5879,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
                     foreach (var g in groups)
                         if (expanded.Contains(g.NormalizedSubject))
                             g.IsExpanded = true;
+                    var replaced = Conversations;
                     Conversations = new ObservableCollection<ConversationGroup>(groups);
+                    foreach (var g in replaced) g.ReleaseMessages();
                 }
             });
         }).LogFaults("conversation rebuild");
@@ -5633,7 +5907,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
             var groups = ordered.ToList();
             _ui.Post(() =>
             {
-                if (version == _senderGroupRebuildVersion)
+                if (version != _senderGroupRebuildVersion
+                    || ListMerge.SameGroups(SenderGroups, groups, g => g.SenderKey, g => g.Messages))
+                {
+                    foreach (var g in groups) g.ReleaseMessages();
+                }
+                else
                 {
                     var expanded = SenderGroups
                         .Where(g => g.IsExpanded).Select(g => g.SenderKey)
@@ -5641,7 +5920,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
                     foreach (var g in groups)
                         if (expanded.Contains(g.SenderKey))
                             g.IsExpanded = true;
+                    var replaced = SenderGroups;
                     SenderGroups = new ObservableCollection<SenderGroup>(groups);
+                    foreach (var g in replaced) g.ReleaseMessages();
                 }
             });
         }).LogFaults("sender group rebuild");
@@ -5667,7 +5948,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
             var groups = ordered.ToList();
             _ui.Post(() =>
             {
-                if (version == _toGroupRebuildVersion)
+                if (version != _toGroupRebuildVersion
+                    || ListMerge.SameGroups(ToGroups, groups, g => g.SenderKey, g => g.Messages))
+                {
+                    foreach (var g in groups) g.ReleaseMessages();
+                }
+                else
                 {
                     var expanded = ToGroups
                         .Where(g => g.IsExpanded).Select(g => g.SenderKey)
@@ -5675,7 +5961,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
                     foreach (var g in groups)
                         if (expanded.Contains(g.SenderKey))
                             g.IsExpanded = true;
+                    var replaced = ToGroups;
                     ToGroups = new ObservableCollection<SenderGroup>(groups);
+                    foreach (var g in replaced) g.ReleaseMessages();
                 }
             });
         }).LogFaults("to-recipient group rebuild");
@@ -5731,6 +6019,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private async Task SelectFolderAsync(MailFolderModel? folder)
     {
         if (folder == null || folder.IsHeader) return;
+
+        // Going to a folder, even the one already open, starts at its top. Only a reload keeps a place.
+        _messagesShownFor = null;
 
         // Intercept view sentinels BEFORE resetting filter/search — views set their own state.
         if (TryGetViewIdFromSentinel(folder.FullName, out var viewId))
@@ -5864,7 +6155,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
         {
             ReplaceCts(ref _folderCts, out var ct);
 
-            if (!OnlineMode)
+            // The cache's job is to show something while the server is asked. On a reload the rows are
+            // already showing, and the cache can be behind them: mail just fetched may not be written
+            // yet, and taking those rows away for a moment would lose the user's place on one of them.
+            if (!OnlineMode && (IsKnownOffline || !IsReloadOfShownFolder()))
             {
                 var cached = await _localStore.LoadFolderSummariesAsync(accountId, folder.FullName);
                 if (!IsCurrentFolderLoad(loadVersion, folder))
@@ -6298,15 +6592,14 @@ public partial class MainViewModel : ObservableObject, IDisposable
         // tree when the folder set actually changed, so an ordinary refresh doesn't disturb focus.
         await RefreshAllFolderListsAsync();
 
-        if (ActiveView != null)
-        {
-            await ApplyViewAsync(ActiveView);
-            return;
-        }
+        // A refresh of a saved view fetches and stops there. Applying the view again would close the open
+        // message and clear the search box, and a reconnect arrives here with nobody having asked for that.
         if (IsVirtualFolder(SelectedFolder))
             await FetchVirtualAsync(SelectedFolder!);
         else if (SelectedFolder != null && SelectedFolder.AccountId != Guid.Empty)
             await FetchFolderAsync();
+        else if (ActiveView != null)
+            await ApplyViewAsync(ActiveView);
     }
 
     /// <summary>
@@ -6421,7 +6714,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private async Task FetchAllMailAsync()
     {
         var loadVersion = Interlocked.Increment(ref _folderLoadVersion);
-        Messages.Clear();
+        ClearMessagesUnlessReloading();
         StatusText = "Loading All Mail…";
         IsBusy = true;
 
@@ -6662,6 +6955,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         {
             var view = SavedViews.FirstOrDefault(v => v.Id == viewId);
             if (view != null) return FetchViewFoldersAsync(view);
+            return SelectFolderAsync(AllMailFolder);   // the view was deleted while it was open
         }
         return Task.CompletedTask;
     }
@@ -6697,7 +6991,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     {
         var loadVersion = Interlocked.Increment(ref _folderLoadVersion);
         var expectedFolder = SelectedFolder;
-        Messages.Clear();
+        ClearMessagesUnlessReloading();
         StatusText = "Loading watched conversations…";
         IsBusy = true;
 
@@ -6771,7 +7065,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     {
         var loadVersion = Interlocked.Increment(ref _folderLoadVersion);
         var expectedFolder = SelectedFolder;
-        Messages.Clear();
+        ClearMessagesUnlessReloading();
         StatusText = "Loading flagged messages…";
         IsBusy = true;
 
@@ -6883,7 +7177,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         var loadVersion    = Interlocked.Increment(ref _folderLoadVersion);
         var expectedFolder = SelectedFolder;
         var kind           = direction == ContactMailDirection.From ? "from" : "to";
-        Messages.Clear();
+        ClearMessagesUnlessReloading();
         StatusText = $"Searching for mail {kind} {address}…";
         IsBusy = true;
 
@@ -7436,7 +7730,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
         var expectedFolder = SelectedFolder;
         var loadVersion = Interlocked.Increment(ref _folderLoadVersion);
-        Messages.Clear();
+        ClearMessagesUnlessReloading();
         StatusText = $"Loading {account.AccountLabel}…";
         IsBusy = true;
 
@@ -7643,7 +7937,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         var displayName = FolderScopedAggregateDisplayName(fullName);
         var expectedFolder = SelectedFolder;
         var loadVersion = Interlocked.Increment(ref _folderLoadVersion);
-        Messages.Clear();
+        ClearMessagesUnlessReloading();
         StatusText = $"Loading {displayName}…";
         IsBusy = true;
 
@@ -7786,12 +8080,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
     /// </summary>
     /// <param name="parkOnEmptyList">When every row is leaving, clear the selection and ask for focus on the list
     /// itself, before the rows go (#670, move and unwatch). Delete leaves it false.</param>
-    private MailMessageSummary? LandFocusBeforeRemoval(IReadOnlyList<MailMessageSummary> leaving, bool parkOnEmptyList = false)
+    private MailMessageSummary? FindSurvivorOf(IReadOnlyList<MailMessageSummary> leaving)
     {
-        // The group trees own their own focus after RebuildActiveGroupView replaces their items;
-        // this is the flat list's business only.
-        if (ViewMode != ViewMode.Messages) return null;
-
         var doomed = new HashSet<MailMessageSummary>(leaving);
 
         var first = int.MaxValue;
@@ -7800,14 +8090,24 @@ public partial class MainViewModel : ObservableObject, IDisposable
             var i = Messages.IndexOf(m);
             if (i >= 0 && i < first) first = i;
         }
-        if (first == int.MaxValue) return null;   // none of them are in the flat list
+        if (first == int.MaxValue) return null;
 
-        MailMessageSummary? landing = null;
-        for (var i = first + 1; i < Messages.Count && landing == null; i++)
-            if (!doomed.Contains(Messages[i])) landing = Messages[i];
-        for (var i = first - 1; i >= 0 && landing == null; i--)
-            if (!doomed.Contains(Messages[i])) landing = Messages[i];
+        for (var i = first + 1; i < Messages.Count; i++)
+            if (!doomed.Contains(Messages[i])) return Messages[i];
+        for (var i = first - 1; i >= 0; i--)
+            if (!doomed.Contains(Messages[i])) return Messages[i];
+        return null;
+    }
 
+    private MailMessageSummary? LandFocusBeforeRemoval(IReadOnlyList<MailMessageSummary> leaving, bool parkOnEmptyList = false)
+    {
+        // The group trees own their own focus after RebuildActiveGroupView replaces their items;
+        // this is the flat list's business only.
+        if (ViewMode != ViewMode.Messages) return null;
+
+        if (!leaving.Any(Messages.Contains)) return null;   // none of them are in the flat list
+
+        var landing = FindSurvivorOf(leaving);
         if (landing == null)
         {
             // The whole list is leaving, so there is no survivor to land on. Move and unwatch put focus on the list
@@ -7964,6 +8264,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 foreach (var acctId in toDelete.Select(m => m.AccountId).Distinct())
                     ScheduleFolderCountRefresh(acctId);
 
+            _sounds?.Play(SoundEvent.MessageDeleted);
             var count = toDelete.Count;
             if (Messages.Count == 0)
                 // The list is empty, so there is no next row being read and nothing to interrupt —
@@ -7987,6 +8288,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             // Honest uncertainty message — the delete may have partially or fully succeeded. Kept as a
             // Result (not MessageAction) so the failure is still heard even if delete/archive chatter is off.
             SetStatus("Delete may not have completed — refreshing.", AnnouncementCategory.Result);
+            _sounds?.Play(SoundEvent.ActionFailed);
             LogService.Log("DeleteMessages", ex);
 
             // Schedule targeted sync of affected folders to reconcile the UI with server state.
@@ -8197,6 +8499,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 foreach (var acctId in actionable.Select(m => m.AccountId).Distinct())
                     ScheduleFolderCountRefresh(acctId);
 
+            _sounds?.Play(SoundEvent.MessageArchived);
             var count = actionable.Count;
             if (count == 1 && Messages.Count > 0)
                 // Self-evident, same as a single delete (issue #667): the row has gone and the next
@@ -8214,6 +8517,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         {
             // Kept as a Result (not MessageAction) so the failure is heard even if archive chatter is off.
             SetStatus("Archive may not have completed — refreshing.", AnnouncementCategory.Result);
+            _sounds?.Play(SoundEvent.ActionFailed);
             LogService.Log("ArchiveMessages", ex);
 
             // Reconcile the affected source folders with server state after a short delay.
@@ -8272,9 +8576,19 @@ public partial class MainViewModel : ObservableObject, IDisposable
     /// </summary>
     public event Func<bool>? MessageListFocusNowRequested;
     public event EventHandler<(string Text, AnnouncementCategory Category)>? AnnouncementRequested;
+
+    /// <summary>
+    /// As <see cref="AnnouncementRequested"/>, but the View raises it without asking to interrupt
+    /// speech. Used where the screen reader is likely to be reading something the person needs, such
+    /// as the row an arrow key just reached (#923). A separate event
+    /// rather than a flag on the first, which a great many tests and windows already take as it is.
+    /// </summary>
+    public event EventHandler<(string Text, AnnouncementCategory Category)>? QueuedAnnouncementRequested;
+
     public event EventHandler? RulesManagerRequested;
     public event EventHandler<MailRule>? CreateRuleFromMessageRequested;
     public event EventHandler? TutorialRequested;
+    public event EventHandler? SoundTutorialRequested;
     public event EventHandler? AboutRequested;
     public event EventHandler? ReportBugRequested;
 
@@ -8372,6 +8686,23 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _configService.Save(cfg);
     }
 
+    /// <summary>
+    /// A key press in the message list met its top or bottom (issue #923), where the selection
+    /// doesn't move and so nothing else says so. Plays the "Reached the end of a list" sound when it
+    /// can start at once; otherwise says "Top of list" or "Bottom of list". That covers sounds off or
+    /// muted, a scheme with no sound for it (any scheme of the person's own made before this event
+    /// existed), and another sound still playing or waiting. Never both: the sound is the cue when
+    /// there is one. Said as a result, like "No unread messages below", and raised without asking to
+    /// interrupt, so as not to cut off the screen reader reading the row a held arrow key has just reached.
+    /// </summary>
+    public void SignalListEdge(ListEdge edge)
+    {
+        if (edge == ListEdge.None) return;
+        if (_sounds?.TryPlayNow(SoundEvent.ListEnd) == true) return;
+        QueuedAnnouncementRequested?.Invoke(this,
+            (edge == ListEdge.Top ? "Top of list" : "Bottom of list", AnnouncementCategory.Result));
+    }
+
     private void Announce(string text, AnnouncementCategory category = AnnouncementCategory.Result)
     {
         if (!string.IsNullOrEmpty(text))
@@ -8461,7 +8792,34 @@ public partial class MainViewModel : ObservableObject, IDisposable
         RetargetToGroupNewest();
         var detail = await EnsureDetailAsync();
         if (detail == null) return;
-        ComposeRequested?.Invoke(ComposeViewModel.CreateReply(detail, detail.AccountId));
+        ReplyToMessage(detail, all: false);
+    }
+
+    /// <summary>
+    /// Replies to <paramref name="detail"/>, or to everyone on it. Called directly for a message that is
+    /// not in the list, such as an opened .eml file (#939).
+    /// </summary>
+    public void ReplyToMessage(MailMessageDetail detail, bool all)
+    {
+        var accountId = SendingAccountFor(detail);
+        if (!all)
+        {
+            ComposeRequested?.Invoke(ComposeViewModel.CreateReply(detail, accountId));
+            return;
+        }
+        var ownAddress = Accounts.FirstOrDefault(a => a.Id == accountId)?.Username ?? string.Empty;
+        ComposeRequested?.Invoke(ComposeViewModel.CreateReplyAll(detail, accountId, ownAddress));
+    }
+
+    /// <summary>
+    /// The account a reply or forward is sent from: the message's own, or for a message not in any
+    /// account (an opened .eml file, #939) the default account, as a new message would use.
+    /// </summary>
+    private Guid SendingAccountFor(MailMessageSummary message)
+    {
+        if (!OpenedMessageService.IsOpenedMessage(message)) return message.AccountId;
+        var account = Accounts.FirstOrDefault(a => a.IsDefault) ?? SelectedAccount ?? Accounts.FirstOrDefault();
+        return account?.Id ?? message.AccountId;
     }
 
     [RelayCommand]
@@ -8470,8 +8828,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         RetargetToGroupNewest();
         var detail = await EnsureDetailAsync();
         if (detail == null) return;
-        var ownAddress = Accounts.FirstOrDefault(a => a.Id == detail.AccountId)?.Username ?? string.Empty;
-        ComposeRequested?.Invoke(ComposeViewModel.CreateReplyAll(detail, detail.AccountId, ownAddress));
+        ReplyToMessage(detail, all: true);
     }
 
     [RelayCommand]
@@ -8481,8 +8838,17 @@ public partial class MainViewModel : ObservableObject, IDisposable
         RetargetToGroupNewest();
         var detail = await EnsureDetailAsync();
         if (detail == null) return;
+        await ForwardMessageAsync(detail);
+    }
 
-        var model = ComposeViewModel.CreateForward(detail, detail.AccountId);
+    /// <summary>
+    /// Forwards <paramref name="detail"/>, asking which attachments to include. Called directly for a
+    /// message that is not in the list, such as an opened .eml file (#939), whose window must not
+    /// change the list's selection to reach it.
+    /// </summary>
+    public async Task ForwardMessageAsync(MailMessageDetail detail)
+    {
+        var model = ComposeViewModel.CreateForward(detail, SendingAccountFor(detail));
 
         if (detail.Attachments.Count > 0)
         {
@@ -8941,93 +9307,194 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
         StatusText = "Emptying trash…";
         IsBusy = true;
-        bool trashEmptied = false;
+        var startedIn = SelectedFolder;
+        var failures = new List<(AccountModel Account, string Reason)>();
+        var noTrashFolder = new List<AccountModel>();
+        var removedMail = new List<AccountModel>();
+        var totalDeleted = 0;
+        var confirmedByCheck = false;
         try
         {
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(60));
-            int totalDeleted = 0;
+            // Every account gets its turn, with its own time limit, and is judged on its own: one that
+            // can't be reached doesn't stop the others, and one that worked can't stand in for one that didn't.
             foreach (var account in accountsToEmpty)
-                totalDeleted += await _imap.EmptyTrashAsync(account.Id, cts.Token);
-
-            var msg = totalDeleted == 1 ? "1 message deleted from trash." : $"{totalDeleted} messages deleted from trash.";
-            StatusText = msg;
-            Announce(msg);
-            trashEmptied = true;
-            LogService.Log($"EmptyTrash: deleted {totalDeleted} messages");
-        }
-        catch (OperationCanceledException)
-        {
-            StatusText = "Empty trash timed out.";
-        }
-        catch (Exception ex)
-        {
-            // Post-failure verification: check if trash is actually empty on the server.
-            // If it is, the operation succeeded despite the exception (TCP drop on ACK).
-            LogService.Log("EmptyTrash", ex);
-            try
             {
-                using var verifyCts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-                foreach (var account in accountsToEmpty)
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+                try
                 {
-                    int remaining = await _imap.CountTrashMessagesAsync(account.Id, verifyCts.Token);
-                    if (remaining == 0)
+                    var deleted = await _imap.EmptyTrashAsync(account.Id, cts.Token);
+                    totalDeleted += deleted;
+                    if (deleted > 0) removedMail.Add(account);
+                }
+                catch (TrashFolderNotFoundException)
+                {
+                    noTrashFolder.Add(account);
+                }
+                catch (Exception ex)
+                {
+                    LogService.Log($"EmptyTrash failed for {account.Id}", ex);
+                    if (await TrashConfirmedEmptyAsync(account))
                     {
-                        // Server succeeded — report success
-                        trashEmptied = true;
-                        LogService.Log("EmptyTrash: verification passed — trash is empty on server");
-                        break;
+                        confirmedByCheck = true;   // The connection dropped on the reply: it did work.
+                        removedMail.Add(account);
+                    }
+                    else
+                    {
+                        failures.Add((account, EmptyTrashFailureReason(ex)));
                     }
                 }
             }
-            catch (Exception verifyEx)
-            {
-                LogService.Log("EmptyTrash: verification failed", verifyEx);
-            }
-
-            // If not verified as empty, report the error
-            if (!trashEmptied)
-            {
-                StatusText = $"Empty trash failed: {ex.Message}";
-                Announce($"Empty trash failed: {ex.Message}", AnnouncementCategory.Result);
-            }
+            LogService.Log($"EmptyTrash: deleted {totalDeleted} messages, {failures.Count} accounts failed");
         }
         finally
         {
             IsBusy = false;
         }
 
-        if (trashEmptied)
+        // Neither a failed account nor one with no trash folder has had anything emptied, so what's
+        // listed for them, and the count remembered for them, are still true.
+        var emptied = accountsToEmpty
+            .Where(a => failures.All(f => f.Account.Id != a.Id) && !noTrashFolder.Contains(a))
+            .ToList();
+
+        // Zero out the cached trash MessageCount for each emptied account so that if the user runs Empty
+        // Trash again in this session, the confirmation dialog shows 0 rather than the stale count
+        // recorded at connection time.
+        foreach (var account in emptied)
         {
-            // Zero out the cached trash MessageCount for each account so that if the user
-            // runs Empty Trash again in this session, the confirmation dialog shows 0 rather
-            // than the stale count recorded at connection time.
-            foreach (var account in accountsToEmpty)
+            if (_cachedFolders.TryGetValue(account.Id, out var folders))
             {
-                if (_cachedFolders.TryGetValue(account.Id, out var folders))
-                {
-                    foreach (var f in folders.Where(f => f.Kind == SpecialFolderKind.Trash))
-                        f.MessageCount = 0;
-                }
+                foreach (var f in folders.Where(f => f.Kind == SpecialFolderKind.Trash))
+                    f.MessageCount = 0;
             }
         }
 
-        // Only update the message list if the user is currently looking at the trash.
-        // If they're in their inbox, All Mail, etc., those messages are completely
-        // unaffected — leave the view and focus exactly as they are.
-        if (trashEmptied && viewingTrash)
+        // Only update the message list if the user is still looking at the trash they started from.
+        // If they're in their inbox, All Mail, etc., those messages are completely unaffected, and
+        // that includes having moved there while this ran: leave the view and focus exactly as they are.
+        if (viewingTrash && emptied.Count > 0
+            && SelectedFolder?.FullName == startedIn?.FullName && SelectedFolder?.AccountId == startedIn?.AccountId)
         {
-            // Clear _rawMessages alongside Messages so ApplyFiltersAndSearch cannot
-            // restore the just-deleted messages if the user changes sort/filter/search
-            // while still in the trash view.  (In online mode the background sync skips
-            // trash folders, so _rawMessages is never cleaned up automatically.)
-            _rawMessages.Clear();
-            Messages.Clear();
-            SelectedMessage = null;
-            MessageDetail   = null;
-            IsMessageOpen   = false;
-            MessageListFocusRequested?.Invoke();
+            RemoveEmptiedTrashFromList(emptied);
         }
 
+        StatusText = DescribeEmptyTrash(accountsToEmpty.Count, failures, noTrashFolder, removedMail, totalDeleted, confirmedByCheck);
+        Announce(StatusText, AnnouncementCategory.Result);
+        if (failures.Count > 0)
+            _sounds?.Play(SoundEvent.ActionFailed);
+        else if (removedMail.Count > 0)
+            _sounds?.Play(SoundEvent.TrashEmptied);   // A trash with nothing in it wasn't emptied by this.
+    }
+
+    /// <summary>Takes the emptied accounts' messages out of the list on show, which is a trash view.</summary>
+    private void RemoveEmptiedTrashFromList(List<AccountModel> emptied)
+    {
+        var gone = emptied.Select(a => a.Id).ToHashSet();
+        bool IsGone(MailMessageSummary? m) => m is not null && gone.Contains(m.AccountId);
+
+        // What's open and what's selected can differ, since arrowing doesn't change what's open, so
+        // what's open decides. An account that wasn't emptied still has its messages.
+        if (MessageDetail is { } open ? gone.Contains(open.AccountId) : IsGone(SelectedMessage))
+        {
+            MessageDetail = null;
+            IsMessageOpen = false;
+        }
+
+        // Land first, as delete and move do: see LandFocusBeforeRemoval (#667, #670). Only when the
+        // selection is among the rows leaving, or there is none: otherwise the user's place stays where it is.
+        var leaving = Messages.Where(IsGone).ToList();
+        var selectionLeaving = leaving.Count > 0 && (SelectedMessage is null || IsGone(SelectedMessage));
+        var landed = selectionLeaving ? LandFocusBeforeRemoval(leaving, parkOnEmptyList: true) : null;
+
+        if (leaving.Count == Messages.Count)
+        {
+            Messages.Clear();
+        }
+        else
+        {
+            // One at a time, as delete does, since a batch raises a Reset, which regenerates the
+            // focused row's container.
+            foreach (var m in leaving)
+                Messages.Remove(m);
+        }
+
+        // Clear _rawMessages alongside Messages so ApplyFiltersAndSearch cannot
+        // restore the just-deleted messages if the user changes sort/filter/search
+        // while still in the trash view.  (In online mode the background sync skips
+        // trash folders, so _rawMessages is never cleaned up automatically.)
+        _rawMessages.RemoveAll(IsGone);
+
+        if (IsGone(SelectedMessage))
+        {
+            // In the group views, clearing it keeps the per-message hotkeys off a row nobody chose. See delete.
+            SelectedMessage = ViewMode == ViewMode.Messages ? Messages.FirstOrDefault() : null;
+        }
+
+        RebuildActiveGroupView();
+
+        if (ViewMode == ViewMode.Messages && selectionLeaving && landed == null && Messages.Count > 0)
+            MessageListFocusRequested?.Invoke();
+    }
+
+    /// <summary>
+    /// After an Empty Trash that reported failure, whether this account's trash is known to be empty,
+    /// as it is when the connection dropped on the server's reply. False whenever that can't be
+    /// established: being unable to check says nothing about the mail.
+    /// </summary>
+    private async Task<bool> TrashConfirmedEmptyAsync(AccountModel account)
+    {
+        try
+        {
+            using var verifyCts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            return await _imap.CountTrashMessagesAsync(account.Id, verifyCts.Token) == 0;
+        }
+        catch (Exception ex)
+        {
+            LogService.Log($"EmptyTrash: could not check {account.Id}", ex);
+            return false;
+        }
+    }
+
+    private const string EmptyTrashTimedOut = "it timed out";
+
+    /// <summary>Why an account's trash wasn't emptied, in words fit to read out. The log has the detail.</summary>
+    private static string EmptyTrashFailureReason(Exception ex)
+    {
+        if (ex is OperationCanceledException) return EmptyTrashTimedOut;
+        return ConnectionFailure.IsConnectionFailure(ex) ? "could not reach the server" : ex.Message.TrimEnd('.');
+    }
+
+    private static string DescribeEmptyTrash(
+        int accounts, List<(AccountModel Account, string Reason)> failures, List<AccountModel> noTrashFolder,
+        List<AccountModel> removedMail, int totalDeleted, bool confirmedByCheck)
+    {
+        if (noTrashFolder.Count == accounts) return "No trash folder found.";
+
+        // Its messages stay listed, so it needs saying whatever happened to the other accounts.
+        var noFolder = noTrashFolder.Count > 0
+            ? $" No trash folder found for {string.Join(", ", noTrashFolder.Select(a => a.AccountLabel))}."
+            : string.Empty;
+
+        if (failures.Count > 0)
+        {
+            if (accounts == 1)
+            {
+                return failures[0].Reason == EmptyTrashTimedOut
+                    ? "Empty trash timed out."
+                    : $"Empty trash failed: {failures[0].Reason}.";
+            }
+
+            // Saying what did work matters: it can't be undone, and its messages have left the list.
+            var worked = removedMail.Count > 0
+                ? $"Emptied trash for {string.Join(", ", removedMail.Select(a => a.AccountLabel))}. "
+                : string.Empty;
+            return worked + string.Join(" ", failures.Select(f => $"Could not empty {f.Account.AccountLabel}: {f.Reason}.")) + noFolder;
+        }
+
+        // A dropped reply leaves the count unknown, so that case can't say how many.
+        if (confirmedByCheck) return "Trash emptied." + noFolder;
+        if (totalDeleted > 0) return (totalDeleted == 1 ? "1 message deleted from trash." : $"{totalDeleted} messages deleted from trash.") + noFolder;
+        return "Trash was already empty." + noFolder;
     }
 
     [RelayCommand]
@@ -9430,7 +9897,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
         RebuildFolderListFromCache();
     }
 
-    /// <summary>Moves a folder to a new parent (IMAP RENAME) and refreshes the tree.</summary>
     /// <summary>
     /// Whether <paramref name="folder"/> already sits directly under <paramref name="destination"/>.
     ///
@@ -9460,12 +9926,52 @@ public partial class MainViewModel : ObservableObject, IDisposable
         return full.IndexOfAny(['/', '.'], dest.Length + 1) < 0;
     }
 
-    public async Task MoveFolderToAsync(FolderTreeNode node, MailFolderModel destination)
+    /// <summary>
+    /// Whether <paramref name="folder"/> is at the top level of its account — directly under the
+    /// account in the folder tree, beside Inbox. Decided by building the tree the user sees from
+    /// <paramref name="accountFolders"/>, so it agrees with it whichever way the account nests its
+    /// folders: by path for IMAP, by parent id (with a top-level parent that is not in the list) for
+    /// Microsoft 365 and POP3.
+    /// </summary>
+    internal static bool IsAtTopLevel(MailFolderModel folder, IEnumerable<MailFolderModel> accountFolders) =>
+        FolderTreeBuilder.Build(accountFolders).Any(n =>
+            n.Folder is { } f &&
+            f.AccountId == folder.AccountId &&
+            string.Equals(f.FullName, folder.FullName, StringComparison.Ordinal));
+
+    /// <summary>
+    /// What to say instead of moving or copying when <paramref name="node"/>'s folder is already
+    /// where it would go; null when it is not. A null <paramref name="destination"/> is the top level
+    /// of the folder's account (#954). Moving there again is not harmless — IMAP refuses a rename to
+    /// the same name, and a Microsoft 365 copy beside the original makes a duplicate — so it is
+    /// reported as a no-op, the same as picking the folder's own parent.
+    /// </summary>
+    private string? AlreadyThereMessage(FolderTreeNode node, MailFolderModel folder, MailFolderModel? destination)
+    {
+        if (destination != null)
+            return IsAlreadyUnder(folder, destination)
+                ? $"'{node.Label}' is already in {destination.DisplayName}."
+                : null;
+
+        if (!_cachedFolders.TryGetValue(folder.AccountId, out var accountFolders) ||
+            !IsAtTopLevel(folder, accountFolders))
+            return null;
+
+        return Accounts.FirstOrDefault(a => a.Id == folder.AccountId) is { } account
+            ? $"'{node.Label}' is already at the top level of {account.AccountLabel}."
+            : $"'{node.Label}' is already at the top level.";
+    }
+
+    /// <summary>
+    /// Moves a folder under <paramref name="destination"/>, or to the top level of its account when
+    /// <paramref name="destination"/> is null (#954), and refreshes the tree.
+    /// </summary>
+    public async Task MoveFolderToAsync(FolderTreeNode node, MailFolderModel? destination)
     {
         if (node.Folder == null) return;
-        if (IsAlreadyUnder(node.Folder, destination))
+        if (AlreadyThereMessage(node, node.Folder, destination) is { } already)
         {
-            StatusText = $"'{node.Label}' is already in {destination.DisplayName}.";
+            StatusText = already;
             Announce(StatusText);
             return;
         }
@@ -9474,14 +9980,18 @@ public partial class MainViewModel : ObservableObject, IDisposable
         try
         {
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-            await _imap.RenameFolderAsync(
+            await _imap.MoveFolderAsync(
                 node.Folder.AccountId,
                 node.Folder.FullName,
-                node.Folder.DisplayName,
-                destination.FullName,
+                destination?.FullName,
                 cts.Token);
+            // Hidden folders inside it now have other names; drop the old ones before the refresh
+            // builds the tree, so they cannot hide a folder created at the old path later (#963).
+            ForgetHiddenFolders(node.Folder.AccountId, node.Folder.FullName);
             await RefreshFolderListAsync(node.Folder.AccountId);
-            StatusText = $"Folder '{node.Label}' moved.";
+            StatusText = destination == null
+                ? $"Folder '{node.Label}' moved to the top level."
+                : $"Folder '{node.Label}' moved.";
         }
         catch (Exception ex)
         {
@@ -9491,13 +10001,16 @@ public partial class MainViewModel : ObservableObject, IDisposable
         finally { IsBusy = false; }
     }
 
-    /// <summary>Copies a folder (and all its messages) to a new parent and refreshes the tree.</summary>
-    public async Task CopyFolderToAsync(FolderTreeNode node, MailFolderModel destination)
+    /// <summary>
+    /// Copies a folder (and all its messages) under <paramref name="destination"/>, or to the top
+    /// level of its account when <paramref name="destination"/> is null (#954), and refreshes the tree.
+    /// </summary>
+    public async Task CopyFolderToAsync(FolderTreeNode node, MailFolderModel? destination)
     {
         if (node.Folder == null) return;
-        if (IsAlreadyUnder(node.Folder, destination))
+        if (AlreadyThereMessage(node, node.Folder, destination) is { } already)
         {
-            StatusText = $"'{node.Label}' is already in {destination.DisplayName}.";
+            StatusText = already;
             Announce(StatusText);
             return;
         }
@@ -9509,10 +10022,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
             await _imap.CopyFolderAsync(
                 node.Folder.AccountId,
                 node.Folder.FullName,
-                destination.FullName,
+                destination?.FullName,
                 cts.Token);
             await RefreshFolderListAsync(node.Folder.AccountId);
-            StatusText = $"Folder '{node.Label}' copied.";
+            StatusText = destination == null
+                ? $"Folder '{node.Label}' copied to the top level."
+                : $"Folder '{node.Label}' copied.";
         }
         catch (Exception ex)
         {
@@ -9557,6 +10072,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             // the View land focus on the neighbour (a full rebuild would collapse and reset focus).
             RemoveFolderFromCacheOptimistically(node.Folder.AccountId, node.Folder);
             RemoveNodeFromTree(node);
+            ForgetHiddenFolders(node.Folder.AccountId, node.Folder.FullName);
             // The folder's mail went to Trash, whose badge — part of its spoken name — would
             // otherwise keep the old count until the next full folder fetch (#794).
             ScheduleFolderCountRefresh(node.Folder.AccountId);
@@ -9666,10 +10182,18 @@ public partial class MainViewModel : ObservableObject, IDisposable
             : null;
     }
 
-    /// <summary>Moves the given messages to a destination folder and removes them from the current view.</summary>
-    public async Task MoveSelectedMessagesToFolderAsync(IReadOnlyList<MailMessageSummary> messages, MailFolderModel destination)
+    /// <summary>
+    /// Moves the given messages to a destination folder and removes them from the current view.
+    /// Messages from the destination's own account move with the server's MOVE; messages from another
+    /// account are copied across and their originals put in their own account's Trash (#929). If the
+    /// move stops partway, the messages that did move still leave the list, and the user is told how
+    /// many went.
+    /// </summary>
+    public async Task<bool> MoveSelectedMessagesToFolderAsync(
+        IReadOnlyList<MailMessageSummary> messages, MailFolderModel destination, bool moveFocus = true,
+        List<MailMessageSummary>? movedOut = null)
     {
-        if (messages.Count == 0) return;
+        if (messages.Count == 0) return false;
 
         if (AlreadyIn(messages, destination))
         {
@@ -9677,102 +10201,91 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 ? $"That message is already in {destination.DisplayName}."
                 : $"Those messages are already in {destination.DisplayName}.";
             Announce(StatusText);
-            return;
+            return false;
         }
+        if (!CanTakeMessagesInto(messages, destination, move: true)) return false;
 
         var label  = messages.Count == 1 ? "message" : $"{messages.Count} messages";
         // A single move is silent, as a single delete is (#667): it would talk over the message being read.
         SetStatus($"Moving {label}…",
             messages.Count == 1 ? AnnouncementCategory.Silent : AnnouncementCategory.MessageAction);
-        IsBusy     = true;
+        IsBusy = true;
+        // The caller's list when it wants to know which went even if the move stopped partway (a paste,
+        // which then keeps only the rest on the clipboard).
+        var moved = movedOut ?? new List<MailMessageSummary>(messages.Count);
+        var notRemoved = new List<MailMessageSummary>();
         try
         {
             // Own token per move (same rationale as delete) — a follow-up action no longer cancels
             // this move's in-flight IMAP work. Cancels only at app shutdown. (#311)
             using var actionCts = CancellationTokenSource.CreateLinkedTokenSource(_messageActionShutdownCts.Token);
-            var ct = actionCts.Token;
-
-            var groups = messages.GroupBy(m => (m.AccountId, m.FolderName));
-            foreach (var group in groups)
+            await TransferAsync(messages, destination, move: true, moved, notRemoved, actionCts.Token);
+            RefreshDestinationCounts(messages, destination);
+            RemoveFiledRows(moved, moveFocus, () =>
             {
-                var uids = group.Select(m => m.MessageId).ToList();
-                await _imap.MoveMessagesAsync(
-                    group.Key.AccountId, group.Key.FolderName, uids,
-                    destination.FullName, ct);
-                if (!OnlineMode)
-                    await _localStore.DeleteSummariesAsync(group.Key.AccountId, group.Key.FolderName, uids);
-            }
-
-            // Moving an unread message changes both the source and destination folder counts; refresh
-            // after the server move lands (only when an unread message actually moved) (#227 follow-up).
-            if (messages.Any(m => !m.IsRead))
-                foreach (var acctId in messages.Select(m => m.AccountId).Distinct())
-                    ScheduleFolderCountRefresh(acctId);
-
-            // The open message may be one of those leaving: clear the reading pane first, as delete, archive
-            // and unwatch do, or it keeps showing a message that is no longer in the list.
-            var selectionLeaving = SelectedMessage != null && messages.Contains(SelectedMessage);
-            if (selectionLeaving)
-            {
-                MessageDetail = null;
-                IsMessageOpen = false;
-            }
-
-            // Land focus on the surviving row before the moved rows leave, as delete does (#670): removing the
-            // row that holds keyboard focus is what a screen reader describes as "unavailable". Only when the
-            // selection is among them: this runs after the server move, and the user may have moved on.
-            var landed = selectionLeaving ? LandFocusBeforeRemoval(messages, parkOnEmptyList: true) : null;
-            foreach (var msg in messages)
-                Messages.Remove(msg);
-
-            // Was missing the To-view branch before §2.1; helper covers all three.
-            RebuildActiveGroupView();
-
-            RememberMessageDestination(destination, copy: false);
-
-            var moved = $"{messages.Count} {(messages.Count == 1 ? "message" : "messages")} moved to {destination.DisplayName}.";
-            if (Messages.Count == 0)
-                // As delete says it: no next row is being read, so there is nothing to interrupt, and "empty"
-                // is a state the user cannot otherwise get from a list that shows nothing.
-                SetStatus($"{moved} Folder is now empty.", AnnouncementCategory.MessageAction);
-            else if (messages.Count == 1)
-                // Self-evident, as a single delete is (#667): the row has gone and the next one has just
-                // been read, and the destination was the user's own choice a moment ago. Status bar only.
-                SetStatusSilently(moved);
-            else
-                SetStatus(moved, AnnouncementCategory.MessageAction);
-
-            if (ViewMode == ViewMode.Messages)
-            {
-                // Only when the selection was among the moved rows and LandFocusBeforeRemoval could not land
-                // (a second focus move reads the row out twice). With the selection elsewhere the user has
-                // moved on while the server move ran, and focus stays where they put it.
-                if (selectionLeaving && Messages.Count > 0 && (landed == null || !Messages.Contains(landed)))
-                    MessageListFocusRequested?.Invoke();
-            }
-            else if (selectionLeaving)
-            {
-                // Conversations/From/To: LandOnX in the view handles focus after the rebuild. Clear the moved
-                // selection, as delete, archive and unwatch do, so the per-message hotkeys don't act on a
-                // message that has gone.
-                SelectedMessage = null;
-            }
+                RememberMessageDestination(destination, copy: false);
+                _sounds?.Play(SoundEvent.MessageMoved);
+                var text = $"{moved.Count} {(moved.Count == 1 ? "message" : "messages")} moved to {DestinationLabel(messages, destination)}.";
+                if (Messages.Count == 0)
+                    // As delete says it: no next row is being read, so there is nothing to interrupt, and "empty"
+                    // is a state the user cannot otherwise get from a list that shows nothing.
+                    SetStatus($"{text} Folder is now empty.", AnnouncementCategory.MessageAction);
+                else if (moved.Count == 1 && moveFocus)
+                    // Self-evident, as a single delete is (#667): the row has gone and the next one has just
+                    // been read, and the destination was the user's own choice a moment ago. Status bar only.
+                    // Not so from the folder tree (a paste, #929): the user is on a folder, not the list, and
+                    // would hear nothing at all.
+                    SetStatusSilently(text);
+                else
+                    SetStatus(text, AnnouncementCategory.MessageAction);
+            });
+            return true;
         }
-        catch (OperationCanceledException) { SetStatus("Move cancelled.", AnnouncementCategory.MessageAction); }
+        catch (OperationCanceledException) when (moved.Count == 0)
+        {
+            SetStatus("Move cancelled.", AnnouncementCategory.MessageAction);
+        }
         catch (Exception ex)
         {
+            LogService.Log("MoveMessages", ex);
+            _sounds?.Play(SoundEvent.ActionFailed);
             // A Result, not MessageAction, as a failed delete is, so the failure is heard even with message-
             // action announcements turned off.
-            SetStatus($"Failed to move: {ex.Message}", AnnouncementCategory.Result);
-            LogService.Log("MoveMessages", ex);
+            if (moved.Count > 0 || notRemoved.Count > 0) RefreshDestinationCounts(messages, destination);
+            if (moved.Count == 0 && notRemoved.Count == 0)
+            {
+                SetStatus($"Failed to move: {ex.Message}", AnnouncementCategory.Result);
+            }
+            else
+            {
+                // Those that went have gone from the server's view of this folder; leaving their rows would
+                // show messages that are no longer here.
+                var where = DestinationLabel(messages, destination);
+                var rest = ex is OriginalsNotRemovedException
+                    ? $" {notRemoved.Count} more {(notRemoved.Count == 1 ? "was" : "were")} copied there, but " +
+                      $"{(notRemoved.Count == 1 ? "its original" : "their originals")} could not be removed: {ex.Message}"
+                    : $" The rest could not be moved: {ex.Message}";
+                RemoveFiledRows(moved, moveFocus, () => SetStatus(
+                    $"Moved {moved.Count} of {messages.Count} messages to {where}.{rest}", AnnouncementCategory.Result));
+            }
         }
-        finally { IsBusy = false; }
+        finally
+        {
+            IsBusy = false;
+            // Copied across already, so not to be pasted again: a second paste would make a second copy.
+            movedOut?.AddRange(notRemoved);
+        }
+        return false;
     }
 
-    /// <summary>Copies the given messages to a destination folder without removing them from the current view.</summary>
-    public async Task CopySelectedMessagesToFolderAsync(IReadOnlyList<MailMessageSummary> messages, MailFolderModel destination)
+    /// <summary>
+    /// Copies the given messages to a destination folder without removing them from the current view.
+    /// Within one account this is the server's COPY; from another account each original is copied
+    /// across (#929).
+    /// </summary>
+    public async Task<bool> CopySelectedMessagesToFolderAsync(IReadOnlyList<MailMessageSummary> messages, MailFolderModel destination)
     {
-        if (messages.Count == 0) return;
+        if (messages.Count == 0) return false;
 
         if (AlreadyIn(messages, destination))
         {
@@ -9780,33 +10293,630 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 ? $"That message is already in {destination.DisplayName}."
                 : $"Those messages are already in {destination.DisplayName}.";
             Announce(StatusText);
-            return;
+            return false;
         }
+        if (!CanTakeMessagesInto(messages, destination, move: false)) return false;
 
         var label  = messages.Count == 1 ? "message" : $"{messages.Count} messages";
         StatusText = $"Copying {label}…";
         IsBusy     = true;
+        var copied = new List<MailMessageSummary>(messages.Count);
         try
         {
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(60));
-            var groups    = messages.GroupBy(m => (m.AccountId, m.FolderName));
-            foreach (var group in groups)
-                await _imap.CopyMessagesAsync(
-                    group.Key.AccountId, group.Key.FolderName,
-                    group.Select(m => m.MessageId).ToList(),
-                    destination.FullName, cts.Token);
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(_messageActionShutdownCts.Token);
+            // A deadline only for the server's own COPY: copying across accounts downloads every message,
+            // and a fixed minute would cut a large selection off partway.
+            if (messages.All(m => m.AccountId == destination.AccountId))
+                cts.CancelAfter(TimeSpan.FromSeconds(60));
+            await TransferAsync(messages, destination, move: false, copied, [], cts.Token);
+            RefreshDestinationCounts(messages, destination);
 
             RememberMessageDestination(destination, copy: true);
 
-            StatusText = $"{messages.Count} {(messages.Count == 1 ? "message" : "messages")} copied to {destination.DisplayName}.";
+            StatusText = $"{messages.Count} {(messages.Count == 1 ? "message" : "messages")} copied to {DestinationLabel(messages, destination)}.";
             Announce(StatusText);
+            return true;
         }
         catch (Exception ex)
         {
-            StatusText = $"Failed to copy: {ex.Message}";
             LogService.Log("CopyMessages", ex);
+            _sounds?.Play(SoundEvent.ActionFailed);
+            // A Result, as a failed move is, so the failure is heard: setting the status text alone
+            // spoke it only to someone with background status announcements on.
+            SetStatus(copied.Count == 0
+                ? $"Failed to copy: {ex.Message}"
+                : $"Copied {copied.Count} of {messages.Count} messages to {DestinationLabel(messages, destination)}. " +
+                  $"The rest could not be copied: {ex.Message}",
+                AnnouncementCategory.Result);
         }
         finally { IsBusy = false; }
+        return false;
+    }
+
+    /// <summary>
+    /// The destination's unread count changes when unread messages arrive in it. Within one account the
+    /// source refresh (RemoveFiledRows) covers it; another account needs its own.
+    /// </summary>
+    private void RefreshDestinationCounts(IReadOnlyList<MailMessageSummary> messages, MailFolderModel destination)
+    {
+        if (messages.Any(m => !m.IsRead) && messages.Any(m => m.AccountId != destination.AccountId))
+            ScheduleFolderCountRefresh(destination.AccountId);
+    }
+    /// <summary>
+    /// False, having said why, when some of the messages come from another account and the
+    /// destination's account cannot take messages from elsewhere (Microsoft 365 for now: Graph files a
+    /// message created from its original as a draft).
+    /// </summary>
+    private bool CanTakeMessagesInto(IReadOnlyList<MailMessageSummary> messages, MailFolderModel destination, bool move)
+    {
+        if (messages.All(m => m.AccountId == destination.AccountId) || _imap.CanAppendMessages(destination.AccountId))
+            return true;
+        SetStatus($"Messages from another account cannot be {(move ? "moved" : "copied")} into " +
+                  $"{DestinationLabel(messages, destination)} yet.", AnnouncementCategory.Result);
+        _sounds?.Play(SoundEvent.ActionFailed);
+        return false;
+    }
+
+    /// <summary>Whether the folder picker may offer this account's folders to messages from another account.</summary>
+    public bool CanTakeMessagesFromOtherAccounts(Guid accountId) => _imap.CanAppendMessages(accountId);
+
+    /// <summary>
+    /// The destination as the user should hear it: the folder name, and the account too when it is not
+    /// where the messages came from, since "moved to Inbox" says nothing about which Inbox.
+    /// </summary>
+    private string DestinationLabel(IReadOnlyList<MailMessageSummary> messages, MailFolderModel destination)
+    {
+        if (messages.All(m => m.AccountId == destination.AccountId)) return destination.DisplayName;
+        var account = Accounts.FirstOrDefault(a => a.Id == destination.AccountId);
+        return account == null ? destination.DisplayName : $"{destination.DisplayName} in {account.AccountLabel}";
+    }
+
+    /// <summary>
+    /// Moves or copies the messages into <paramref name="destination"/>, adding each one to
+    /// <paramref name="done"/> as it lands, so a caller that catches a failure knows exactly which went.
+    /// Messages already in the destination's account use the server's own MOVE or COPY, one request per
+    /// source folder. Messages from another account go one at a time: the original is downloaded, added
+    /// to the destination, and — for a move — only then put in its own account's Trash, so a failure at
+    /// any step never loses a message (at worst it is in both places).
+    /// </summary>
+    private async Task TransferAsync(IReadOnlyList<MailMessageSummary> messages, MailFolderModel destination,
+                                     bool move, List<MailMessageSummary> done, List<MailMessageSummary> notRemoved,
+                                     CancellationToken ct)
+    {
+        var acrossAccounts = messages.Count(m => m.AccountId != destination.AccountId);
+        var verb = move ? "Moving" : "Copying";
+        var position = 0;
+
+        foreach (var group in messages.GroupBy(m => (m.AccountId, m.FolderName)))
+        {
+            var ids = group.Select(m => m.MessageId).ToList();
+            if (group.Key.AccountId == destination.AccountId)
+            {
+                if (move)
+                {
+                    await _imap.MoveMessagesAsync(group.Key.AccountId, group.Key.FolderName, ids, destination.FullName, ct);
+                    if (!OnlineMode)
+                        await _localStore.DeleteSummariesAsync(group.Key.AccountId, group.Key.FolderName, ids);
+                }
+                else
+                {
+                    await _imap.CopyMessagesAsync(group.Key.AccountId, group.Key.FolderName, ids, destination.FullName, ct);
+                }
+                done.AddRange(group);
+                position += ids.Count;
+                continue;
+            }
+
+            // Copied across one at a time; for a move, the originals of those that landed are then removed
+            // together, in one request for the folder, even when a later copy failed.
+            var landed = new List<MailMessageSummary>();
+            Exception? failure = null;
+            try
+            {
+                foreach (var message in group)
+                {
+                    ct.ThrowIfCancellationRequested();
+                    position++;
+                    if (acrossAccounts > 1)
+                        SetStatus($"{verb} {position} of {messages.Count}…", AnnouncementCategory.Status);
+
+                    using (var original = new MemoryStream())
+                    {
+                        await _imap.CopyOriginalMessageToAsync(message.AccountId, message.FolderName, message.MessageId, original, ct);
+                        if (original.Length == 0)
+                            throw new MessageOriginalUnavailableException("The server returned an empty message.");
+                        original.Position = 0;
+                        await _imap.AppendMessageAsync(destination.AccountId, destination.FullName, original,
+                                                       message.IsRead, message.IsFlagged, message.Date, ct);
+                    }
+                    if (move) landed.Add(message);
+                    else done.Add(message);
+                }
+            }
+            catch (Exception ex) { failure = ex; }
+
+            if (move && landed.Count > 0)
+            {
+                var landedIds = landed.Select(m => m.MessageId).ToList();
+                try
+                {
+                    // Already in Trash: it cannot go to Trash again (an IMAP MOVE onto itself), and the copy
+                    // that has just landed is what the user meant to keep, so the original is deleted.
+                    if (IsTrashFolder(group.Key.AccountId, group.Key.FolderName))
+                        await _imap.PermanentlyDeleteBatchAsync(group.Key.AccountId, group.Key.FolderName, landedIds, ct);
+                    else
+                        await _imap.MoveToTrashBatchAsync(group.Key.AccountId, group.Key.FolderName, landedIds, ct);
+                    if (!OnlineMode)
+                        await _localStore.DeleteSummariesAsync(group.Key.AccountId, group.Key.FolderName, landedIds);
+                    done.AddRange(landed);
+                }
+                catch (Exception ex)
+                {
+                    // Copied but still where it was: in both places, never lost. Reported, and kept apart
+                    // from the failures so a paste does not copy it across a second time.
+                    notRemoved.AddRange(landed);
+                    failure ??= new OriginalsNotRemovedException(ex);
+                }
+            }
+
+            if (failure != null) ExceptionDispatchInfo.Capture(failure).Throw();
+        }
+    }
+
+    /// <summary>Messages were copied to the other account, but their originals could not be removed.</summary>
+    private sealed class OriginalsNotRemovedException(Exception inner) : Exception(inner.Message, inner);
+
+    private bool IsTrashFolder(Guid accountId, string folderName) =>
+        CachedFolders.TryGetValue(accountId, out var folders) &&
+        folders.Any(f => f.Kind == SpecialFolderKind.Trash &&
+                         string.Equals(f.FullName, folderName, StringComparison.Ordinal));
+    /// <summary>
+    /// After messages have moved away: takes their rows out of the list, landing focus first as delete
+    /// does (#670), and refreshes the folder counts. <paramref name="reportOutcome"/> runs after the rows
+    /// have gone and before any queued focus move, which is where the outcome is spoken.
+    /// </summary>
+    private void RemoveFiledRows(List<MailMessageSummary> leaving, bool moveFocus, Action reportOutcome)
+    {
+        if (leaving.Count == 0) { reportOutcome(); return; }
+
+        // Moving an unread message changes both the source and destination folder counts; refresh
+        // after the server move lands (only when an unread message actually moved) (#227 follow-up).
+        if (leaving.Any(m => !m.IsRead))
+            foreach (var acctId in leaving.Select(m => m.AccountId).Distinct())
+                ScheduleFolderCountRefresh(acctId);
+
+        // The open message may be one of those leaving: clear the reading pane first, as delete, archive
+        // and unwatch do, or it keeps showing a message that is no longer in the list.
+        var selectionLeaving = SelectedMessage != null && leaving.Contains(SelectedMessage);
+        if (selectionLeaving)
+        {
+            MessageDetail = null;
+            IsMessageOpen = false;
+        }
+
+        // Land focus on the surviving row before the moved rows leave, as delete does (#670): removing the
+        // row that holds keyboard focus is what a screen reader describes as "unavailable". Only when the
+        // selection is among them: this runs after the server move, and the user may have moved on.
+        // With moveFocus false (a paste from the folder tree, #929) focus stays where the user is, and only the
+        // selection moves off the rows that are leaving.
+        var landed = selectionLeaving && moveFocus ? LandFocusBeforeRemoval(leaving, parkOnEmptyList: true) : null;
+        if (selectionLeaving && !moveFocus && ViewMode == ViewMode.Messages)
+            SelectedMessage = FindSurvivorOf(leaving);
+        foreach (var msg in leaving)
+            Messages.Remove(msg);
+
+        // Was missing the To-view branch before §2.1; helper covers all three.
+        RebuildActiveGroupView();
+
+        reportOutcome();
+
+        if (ViewMode == ViewMode.Messages)
+        {
+            // Only when the selection was among the moved rows and LandFocusBeforeRemoval could not land
+            // (a second focus move reads the row out twice). With the selection elsewhere the user has
+            // moved on while the server move ran, and focus stays where they put it.
+            if (selectionLeaving && moveFocus && Messages.Count > 0 && (landed == null || !Messages.Contains(landed)))
+                MessageListFocusRequested?.Invoke();
+        }
+        else if (selectionLeaving)
+        {
+            // Conversations/From/To: LandOnX in the view handles focus after the rebuild. Clear the moved
+            // selection, as delete, archive and unwatch do, so the per-message hotkeys don't act on a
+            // message that has gone.
+            SelectedMessage = null;
+        }
+    }
+    // ── Copy, cut and paste messages (#929) ──────────────────────────────────
+
+    /// <summary>The messages waiting to be pasted. See <see cref="ViewModels.MessageClipboard"/>.</summary>
+    public MessageClipboard MessageClipboard { get; } = new();
+
+    // ── Opening .eml files and attached emails (#939) ─────────────────────────
+
+    // Holds messages that are in no mailbox. Null where nothing can be opened (tests that do not
+    // exercise it); the router sends its account id to it in the app.
+    private readonly OpenedMessageService? _openedMessages;
+
+    /// <summary>Raised with a message to show in its own window: an opened .eml file or attached email.</summary>
+    public event Action<MailMessageDetail>? OpenedMessageRequested;
+
+    /// <summary>The service holding opened messages, for the window to let go of one when it closes.</summary>
+    public OpenedMessageService? OpenedMessages => _openedMessages;
+
+    /// <summary>
+    /// Opens a .eml file from disk (#939): what QuickMail does when started with one, from Explorer's
+    /// Open with. A file that is missing or not an email is said so, rather than ignored.
+    /// </summary>
+    public async Task OpenEmailFileAsync(string path)
+    {
+        var name = Path.GetFileName(path);
+        byte[] bytes;
+        try { bytes = await File.ReadAllBytesAsync(path); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+        {
+            LogService.Log("OpenEmailFile", ex);
+            SetStatus($"Could not open {name}: {ex.Message}", AnnouncementCategory.Result);
+            return;
+        }
+        OpenEmail(bytes, name);
+    }
+
+    /// <summary>
+    /// Shows an email held only as bytes, an attached email or a file's contents, in its own window.
+    /// Returns false, having said why, when the bytes are not an email.
+    /// </summary>
+    public bool OpenEmail(byte[] original, string name, bool reportFailure = true)
+    {
+        if (_openedMessages == null) return false;
+        MailMessageDetail detail;
+        try { detail = _openedMessages.Open(original); }
+        catch (FormatException ex)
+        {
+            // Not said for an attachment merely labelled as an email: the caller hands it to its Windows
+            // program instead, and a failure sound for something that then opens would say the opposite.
+            if (!reportFailure) return false;
+            SetStatus($"Could not open {name}: {ex.Message}", AnnouncementCategory.Result);
+            _sounds?.Play(SoundEvent.ActionFailed);
+            return false;
+        }
+        OpenedMessageRequested?.Invoke(detail);
+        return true;
+    }
+
+    /// <summary>
+    /// An attachment that is an email in its own right: a forwarded message, or a .eml file someone sent.
+    /// Opened inside QuickMail rather than handed to Windows, which may have nothing else to open it with.
+    /// </summary>
+    internal static bool IsAttachedEmail(AttachmentModel attachment) =>
+        string.Equals(attachment.ContentType, "message/rfc822", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(Path.GetExtension(attachment.FileName), ".eml", StringComparison.OrdinalIgnoreCase);
+
+    // The Windows clipboard and the folder its files are written to. Null in tests that do not
+    // exercise them: copy and paste then work inside QuickMail alone, never touching the machine's
+    // real clipboard (see IClipboardService for why that matters).
+    private readonly IClipboardService? _clipboard;
+    private readonly ClipboardStaging? _clipboardStaging;
+
+    /// <summary>The token of the current copy, as put on the Windows clipboard.</summary>
+    private string? _messageClipboardToken;
+
+    /// <summary>
+    /// Bumped by every copy, cut, attachment copy and paste. Work started under an older value has been
+    /// overtaken and must not report: a newer copy deletes the older one's files as it starts.
+    /// </summary>
+    private int _clipboardGeneration;
+
+    /// <summary>True while a paste runs, so a held or repeated Ctrl+V cannot start a second one.</summary>
+    private bool _pasteInProgress;
+
+    /// <summary>Cancels a copy's download of originals when a newer copy replaces it.</summary>
+    private CancellationTokenSource? _messageStagingCts;
+
+    /// <summary>
+    /// Above this many messages, a copy goes on the clipboard for pasting into folders only, without
+    /// .eml files: Select All and Ctrl+C in a large folder would otherwise download every message in it.
+    /// </summary>
+    internal const int MaxMessagesCopiedAsFiles = 100;
+
+    /// <summary>
+    /// Copies messages: a later paste into a folder copies them there. They also go on the Windows
+    /// clipboard as .eml files, so they paste into Explorer (saving them) or into a message being
+    /// written (attaching them), as Outlook does.
+    /// </summary>
+    public Task CopyMessagesToClipboardAsync(IReadOnlyList<MailMessageSummary> messages)
+        => PutMessagesOnClipboardAsync(messages, cut: false);
+
+    /// <summary>
+    /// Cuts messages: nothing moves yet. They move when pasted into a folder, as files do in
+    /// Explorer, so a cut that is never pasted leaves everything where it was. Like a copy, they go on
+    /// the Windows clipboard as .eml files; pasting those elsewhere never removes anything.
+    /// </summary>
+    public Task CutMessagesToClipboardAsync(IReadOnlyList<MailMessageSummary> messages)
+        => PutMessagesOnClipboardAsync(messages, cut: true);
+
+    private async Task PutMessagesOnClipboardAsync(IReadOnlyList<MailMessageSummary> messages, bool cut)
+    {
+        if (messages.Count == 0)
+        {
+            // Reached from the Message menu with nothing selected; the keys are not available then.
+            SetStatus(cut ? "Select messages to cut first." : "Select messages to copy first.", AnnouncementCategory.Result);
+            return;
+        }
+
+        if (cut) MessageClipboard.Cut(messages);
+        else     MessageClipboard.Copy(messages);
+
+        // Spoken: nothing on screen changes, so this is the only sign the copy happened.
+        var done = (messages.Count == 1 ? "Message " : $"{messages.Count} messages ") + (cut ? "cut." : "copied.");
+
+        CancelMessageStaging();
+
+        if (_clipboard == null)
+        {
+            SetStatus(done, AnnouncementCategory.Result);
+            return;
+        }
+
+        // The marker goes on at once, so a paste a moment later works while the originals are still
+        // downloading, and a copy of anything else afterwards is seen to have replaced this one.
+        var token = Guid.NewGuid().ToString("N");
+        var generation = ++_clipboardGeneration;
+        if (!_clipboard.SetMarker(token))
+        {
+            MessageClipboard.Clear();
+            _messageClipboardToken = null;
+            SetStatus($"Could not {(cut ? "cut" : "copy")} the {(messages.Count == 1 ? "message" : "messages")}: " +
+                      "the clipboard is in use by another program. Try again.", AnnouncementCategory.Result);
+            return;
+        }
+        _messageClipboardToken = token;
+
+        if (_clipboardStaging == null)
+        {
+            SetStatus(done, AnnouncementCategory.Result);
+            return;
+        }
+        if (messages.Count > MaxMessagesCopiedAsFiles)
+        {
+            SetStatus($"{done} Too many to copy as files too; you can paste them into a folder.", AnnouncementCategory.Result);
+            return;
+        }
+
+        var cts = CancellationTokenSource.CreateLinkedTokenSource(_messageActionShutdownCts.Token);
+        _messageStagingCts = cts;
+        if (messages.Count > 1)
+            SetStatus(cut ? $"Cutting {messages.Count} messages…" : $"Copying {messages.Count} messages…", AnnouncementCategory.Status);
+        try
+        {
+            var paths = await _clipboardStaging.StageMessagesAsync(_imap, messages.ToList(), cts.Token);
+            // Left alone if the user has copied something else while the originals downloaded:
+            // writing the files now would throw away what they copied since.
+            if (cts.IsCancellationRequested || generation != _clipboardGeneration || _clipboard.GetMarker() != token) return;
+            _clipboard.SetFiles(paths, token);
+            SetStatus(done, AnnouncementCategory.Result);
+        }
+        catch (OperationCanceledException) { /* replaced by a newer copy, or shutting down */ }
+        catch (Exception) when (generation != _clipboardGeneration)
+        {
+            // Replaced by a newer copy or a paste meanwhile (which may have deleted these files, or moved
+            // the messages): what went wrong here is no longer anything the user is waiting for.
+        }
+        catch (Exception ex)
+        {
+            // The copy still pastes into folders; only the files for other programs are missing.
+            LogService.Log("CopyMessages/Stage", ex);
+            var reason = ex is MessageOriginalUnavailableException ? ex.Message : "the original could not be downloaded.";
+            SetStatus($"{done} They can be pasted into a folder, but not as files: {reason}", AnnouncementCategory.Result);
+        }
+        finally
+        {
+            if (ReferenceEquals(_messageStagingCts, cts)) _messageStagingCts = null;
+            cts.Dispose();
+        }
+    }
+
+    // ── Copy attachments (#929) ──────────────────────────────────────────────
+
+    [RelayCommand]
+    private Task CopyAttachment(AttachmentModel? attachment) =>
+        attachment == null ? Task.CompletedTask : CopyAttachmentsToClipboardAsync(MessageDetail, [attachment]);
+
+    [RelayCommand]
+    private Task CopyAllAttachments() =>
+        CopyAttachmentsToClipboardAsync(MessageDetail, MessageDetail?.Attachments.ToList() ?? []);
+
+    /// <summary>
+    /// Puts attachments on the Windows clipboard as files, downloading any not yet fetched, so they
+    /// paste into Explorer, the desktop, or a message being written. <paramref name="report"/> speaks
+    /// the outcome somewhere other than the main window (a message window): a notification raised on
+    /// the main window is not heard while the user is in another one.
+    /// </summary>
+    public async Task CopyAttachmentsToClipboardAsync(
+        MailMessageDetail? detail, IReadOnlyList<AttachmentModel> attachments, Action<string>? report = null)
+    {
+        void Say(string text)
+        {
+            if (report == null) { SetStatus(text, AnnouncementCategory.Result); return; }
+            SetStatusSilently(text);
+            report(text);
+        }
+
+        if (detail == null) return;
+        if (attachments.Count == 0) { Say("This message has no attachments."); return; }
+        if (_clipboard == null || _clipboardStaging == null) return;
+
+        var label = attachments.Count == 1 ? attachments[0].FileName : $"{attachments.Count} attachments";
+        // Overtakes any copy still writing its files: the new set replaces them on the clipboard.
+        CancelMessageStaging();
+        var generation = ++_clipboardGeneration;
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(_messageActionShutdownCts.Token);
+        cts.CancelAfter(TimeSpan.FromMinutes(2));
+        try
+        {
+            if (attachments.Any(a => !a.IsLoaded))
+                SetStatus($"Downloading {label}…", AnnouncementCategory.Status);
+            foreach (var att in attachments.Where(a => !a.IsLoaded))
+            {
+                if (att.PartSpecifier == null)
+                    throw new InvalidOperationException($"{att.FileName} cannot be downloaded.");
+                att.Content = await _imap.DownloadAttachmentAsync(
+                    detail.AccountId, detail.FolderName, detail.MessageId, att.PartSpecifier, cts.Token);
+            }
+
+            if (generation != _clipboardGeneration) return;
+            var paths = await _clipboardStaging.StageFilesAsync(
+                attachments.Select(a => (a.FileName, a.Content!)).ToList(), cts.Token);
+            if (generation != _clipboardGeneration) return;
+
+            // The clipboard now holds attachments, not messages: a copy of messages made earlier is
+            // replaced, as anything copied in another program replaces it.
+            CancelMessageStaging();
+            MessageClipboard.Clear();
+            _messageClipboardToken = null;
+            if (!_clipboard.SetFiles(paths, Guid.NewGuid().ToString("N")))
+            {
+                Say($"Could not copy {label}: the clipboard is in use by another program.");
+                return;
+            }
+            Say($"{label} copied.");
+        }
+        catch (OperationCanceledException) when (_messageActionShutdownCts.IsCancellationRequested) { }
+        catch (Exception) when (generation != _clipboardGeneration)
+        {
+            // Overtaken by a newer copy, which deleted this one's files as it started.
+        }
+        catch (Exception ex)
+        {
+            _connectivity?.NoteOperationOutcome(detail.AccountId, ex, "attachment-download-failed");
+            LogService.Log("CopyAttachments", ex);
+            Say(OfflineOrErrorStatus(ex,
+                () => "Attachments are not available offline.",
+                () => $"Could not copy {label}: {ex.Message}", CancellationToken.None));
+        }
+    }
+
+    private void CancelMessageStaging()
+    {
+        _messageStagingCts?.Cancel();
+        _messageStagingCts?.Dispose();
+        _messageStagingCts = null;
+    }
+    /// <summary>
+    /// Forgets the copied messages if the Windows clipboard no longer holds them: the user has copied
+    /// something else since, and pasting then must not resurrect messages they moved on from.
+    /// </summary>
+    private void ForgetCopyIfReplaced()
+    {
+        if (_clipboard == null || MessageClipboard.IsEmpty) return;
+        if (_clipboard.GetMarker() != _messageClipboardToken)
+            MessageClipboard.Clear();
+    }
+    /// <summary>
+    /// Pastes the copied or cut messages into <paramref name="destination"/>: a copy runs Copy to
+    /// Folder, a cut runs Move to Folder and is then cleared, so a second paste does not try to move
+    /// messages that have already gone. A copy stays and can be pasted again elsewhere.
+    /// <paramref name="moveFocus"/> is false for a paste into the folder tree: focus stays on the folder the
+    /// user pasted into rather than jumping back to the message list.
+    /// </summary>
+    public async Task PasteMessagesAsync(MailFolderModel? destination, bool moveFocus = true)
+    {
+        // A held or doubled Ctrl+V: the first paste is still downloading and adding messages one at a
+        // time, and the cut is cleared only when it finishes, so a second would copy them all again.
+        if (_pasteInProgress) return;
+        _pasteInProgress = true;
+        try { await PasteMessagesCoreAsync(destination, moveFocus); }
+        finally { _pasteInProgress = false; }
+    }
+
+    private async Task PasteMessagesCoreAsync(MailFolderModel? destination, bool moveFocus)
+    {        ForgetCopyIfReplaced();
+        var clip = MessageClipboard;
+        var plan = clip.Plan(destination, IsVirtualFolder);
+        switch (plan)
+        {
+            case MessagePasteKind.Nothing:
+                SetStatus("Nothing to paste. Copy or cut messages first.", AnnouncementCategory.Result);
+                return;
+            case MessagePasteKind.NoDestination:
+                // All Inboxes, a saved view, a header in the folder tree: none of them is one folder
+                // the messages could go into.
+                SetStatus("Choose a folder to paste into.", AnnouncementCategory.Result);
+                return;
+            case MessagePasteKind.SameFolder:
+                SetStatus(clip.Messages.Count == 1
+                    ? $"That message is already in {destination!.DisplayName}."
+                    : $"Those messages are already in {destination!.DisplayName}.",
+                    AnnouncementCategory.Result);
+                return;
+        }
+
+        var target = destination!;
+        // Messages already in the destination are left alone: moving a message into its own folder,
+        // or copying it there, would only make a duplicate.
+        var toPaste = CurrentRowsFor(clip.Messages.Where(m =>
+            m.AccountId != target.AccountId ||
+            !string.Equals(m.FolderName, target.FullName, StringComparison.Ordinal)));
+
+        if (plan == MessagePasteKind.Move)
+        {
+            // The cut's .eml files may still be downloading; the messages are about to move, and a download
+            // racing the move would fail and report a failure nobody caused.
+            CancelMessageStaging();
+            _clipboardGeneration++;            var moved = new List<MailMessageSummary>();
+            var ok = await MoveSelectedMessagesToFolderAsync(toPaste, target, moveFocus, moved);
+            clip.Remove(moved);
+            if (!ok) return;
+            clip.Clear();
+        }
+        else if (!await CopySelectedMessagesToFolderAsync(toPaste, target))
+        {
+            return;
+        }
+
+        // Pasted into the folder on screen: fetch it now, or the messages the user just put there would
+        // not appear until the next sync and the paste would look as if it had done nothing.
+        if (SelectedFolder is { } shown && shown.AccountId == target.AccountId &&
+            string.Equals(shown.FullName, target.FullName, StringComparison.Ordinal))
+            await PickUpPastedMessagesAsync(target);
+    }
+
+    /// <summary>
+    /// Syncs the folder messages were just pasted into; <see cref="OnFolderSynced"/> merges them into the
+    /// list. A failure is only logged: the paste itself succeeded and said so, and the next sync picks the
+    /// messages up anyway.
+    /// </summary>
+    private async Task PickUpPastedMessagesAsync(MailFolderModel folder)
+    {
+        var account = Accounts.FirstOrDefault(a => a.Id == folder.AccountId);
+        if (account == null) return;
+        try
+        {
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(_messageActionShutdownCts.Token);
+            cts.CancelAfter(TimeSpan.FromSeconds(60));
+            if (OnlineMode)
+                await _syncService.SyncOneFolderOnlineAsync(account, folder, cts.Token);
+            else
+                await _syncService.SyncOneFolderAsync(account, folder, cts.Token);
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex) { LogService.Log("PasteMessages/PickUp", ex); }
+    }
+
+    /// <summary>
+    /// The rows on screen for these messages, where they are still in the list. The list replaces
+    /// its rows with fresh objects when it reloads in the background (#925), and a move removes the
+    /// rows it filed by reference, so handing it the copied objects would leave the moved messages
+    /// showing. A message no longer in the list (another folder is shown now) is passed as copied.
+    /// </summary>
+    private List<MailMessageSummary> CurrentRowsFor(IEnumerable<MailMessageSummary> messages)
+    {
+        var onScreen = new Dictionary<(Guid, string, string), MailMessageSummary>();
+        foreach (var row in Messages)
+            onScreen.TryAdd(MessageClipboard.KeyOf(row), row);
+
+        return messages
+            .Select(m => onScreen.TryGetValue(MessageClipboard.KeyOf(m), out var row) ? row : m)
+            .ToList();
     }
 
     // ── Conversation context menu commands ────────────────────────────────────
@@ -10213,9 +11323,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
     // ── Attachment commands ─────────────────────────────────────────────────────
 
     [RelayCommand]
-    private async Task SaveAttachmentAsync(AttachmentModel? attachment)
+    private Task SaveAttachmentAsync(AttachmentModel? attachment) =>
+        attachment == null || MessageDetail == null ? Task.CompletedTask : SaveAttachmentOfAsync(MessageDetail, attachment);
+
+    /// <summary>Saves one attachment of <paramref name="detail"/>. Called directly by a window showing a message that is not the reading pane's, such as an opened .eml file (#939).</summary>
+    public async Task SaveAttachmentOfAsync(MailMessageDetail detail, AttachmentModel attachment)
     {
-        if (attachment == null || MessageDetail == null) return;
         var att = attachment;
         if (!att.IsLoaded)
         {
@@ -10226,12 +11339,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
             {
                 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(60));
                 att.Content = await _imap.DownloadAttachmentAsync(
-                    MessageDetail.AccountId, MessageDetail.FolderName,
-                    MessageDetail.MessageId, att.PartSpecifier, cts.Token);
+                    detail.AccountId, detail.FolderName,
+                    detail.MessageId, att.PartSpecifier, cts.Token);
             }
             catch (Exception ex)
             {
-                _connectivity?.NoteOperationOutcome(MessageDetail.AccountId, ex, "attachment-download-failed");
+                _connectivity?.NoteOperationOutcome(detail.AccountId, ex, "attachment-download-failed");
                 StatusText = OfflineOrErrorStatus(ex,
                     () => "Attachments are not available offline.",
                     () => $"Download failed: {ex.Message}", CancellationToken.None);
@@ -10250,50 +11363,214 @@ public partial class MainViewModel : ObservableObject, IDisposable
     }
 
     [RelayCommand]
-    private async Task SaveAllAttachmentsAsync()
+    private Task SaveAllAttachmentsAsync() =>
+        MessageDetail == null ? Task.CompletedTask : SaveAllAttachmentsOfAsync(MessageDetail);
+
+    /// <summary>Saves every attachment of <paramref name="detail"/> into one folder the user picks.</summary>
+    public async Task SaveAllAttachmentsOfAsync(MailMessageDetail detail)
     {
-        if (MessageDetail == null || MessageDetail.Attachments.Count == 0) return;
+        if (detail.Attachments.Count == 0) return;
 
         var folder = SaveFolderPathRequested?.Invoke("Choose folder to save attachments");
         if (folder == null) return;
 
+        await WriteAttachmentsAsync([detail], folder);
+    }
+
+    /// <summary>
+    /// Save All Attachments from the message list (#931): every attachment of the given messages,
+    /// into one folder the user picks, without opening any of them. The window resolves what is
+    /// selected — a multi-selection, a group header's messages — as it does for Save As.
+    /// Each message is read from the cache, else fetched without marking it read: saving a
+    /// message's attachments is not reading it. The folder is asked for only once there is
+    /// something to save, so a message with none says so rather than opening a dialog for nothing.
+    /// </summary>
+    public async Task SaveAttachmentsOfMessagesAsync(IReadOnlyList<MailMessageSummary> messages)
+    {
+        var targets = messages.Where(m => !IsOutboxRow(m)).ToList();
+        if (targets.Count == 0)
+        {
+            if (messages.Count > 0)
+                SetStatusEvenIfUnchanged("Messages waiting in the Outbox have no attachments to save until they are sent.",
+                    AnnouncementCategory.Result);
+            return;
+        }
+
+        // Each message on its own: one that cannot be read (another account offline, a POP3 message
+        // no longer stored) must not stop the others, and its own account is the one noted.
+        var withAttachments = new List<MailMessageDetail>();
+        var unreadable = 0;
+        Exception? firstFailure = null;
         IsBusy = true;
-        StatusText = "Saving attachments…";
+        if (targets.Count > 1)
+            SetStatus($"Checking {targets.Count} messages for attachments…", AnnouncementCategory.Status);
         try
         {
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(120));
-            foreach (var att in MessageDetail.Attachments)
+            foreach (var message in targets)
             {
-                if (!att.IsLoaded && att.PartSpecifier != null)
-                    att.Content = await _imap.DownloadAttachmentAsync(
-                        MessageDetail.AccountId, MessageDetail.FolderName,
-                        MessageDetail.MessageId, att.PartSpecifier, cts.Token);
-
-                if (att.Content != null)
+                try
                 {
-                    // Sanitized so a crafted server-supplied filename can't write
-                    // outside the chosen save folder.
-                    var safeFileName = AttachmentSafety.SanitizeFileName(att.FileName);
-                    await File.WriteAllBytesAsync(Path.Combine(folder, safeFileName), att.Content);
+                    var detail = await LoadDetailForAttachmentsAsync(message, _messageActionShutdownCts.Token);
+                    if (detail.Attachments.Count > 0) withAttachments.Add(detail);
+                }
+                catch (OperationCanceledException) when (_messageActionShutdownCts.IsCancellationRequested) { return; }
+                catch (Exception ex)
+                {
+                    unreadable++;
+                    firstFailure ??= ex;
+                    _connectivity?.NoteOperationOutcome(message.AccountId, ex, "attachment-download-failed");
+                    LogService.Log($"SaveAttachmentsOfMessages: could not read a message ({ex.GetType().Name})", ex);
                 }
             }
-            StatusText = "All attachments saved.";
-        }
-        catch (Exception ex)
-        {
-            _connectivity?.NoteOperationOutcome(MessageDetail.AccountId, ex, "attachment-download-failed");
-            StatusText = OfflineOrErrorStatus(ex,
-                () => "Attachments are not available offline.",
-                () => $"Save all failed: {ex.Message}", CancellationToken.None);
-            LogService.Log("SaveAllAttachments", ex);
         }
         finally { IsBusy = false; }
+
+        if (withAttachments.Count == 0)
+        {
+            string text;
+            if (unreadable == 0)
+                text = targets.Count == 1 ? "This message has no attachments."
+                                          : "None of the selected messages have attachments.";
+            else if (unreadable == targets.Count)
+                text = OfflineOrErrorStatus(firstFailure!,
+                    () => "Attachments are not available offline.",
+                    () => targets.Count == 1 ? "Could not read the message from the server."
+                                             : "Could not read the messages from the server.",
+                    CancellationToken.None);
+            else
+                text = $"None of the messages that could be read have attachments. {Unreadable(unreadable)}";
+            SetStatusEvenIfUnchanged(text, AnnouncementCategory.Result);
+            return;
+        }
+
+        var folder = SaveFolderPathRequested?.Invoke("Choose folder to save attachments");
+        if (folder == null) return;
+
+        await WriteAttachmentsAsync(withAttachments, folder, unreadable);
+    }
+
+    private static string Unreadable(int count) =>
+        count == 1 ? "1 message could not be read." : $"{count} messages could not be read.";
+
+    /// <summary>
+    /// The message with its attachment list: the open message when it is this one (its attachments
+    /// may already be downloaded), else the cached copy, else the server's — fetched on the prefetch
+    /// path, which does not mark it read. The store and the server are separate scopes, so a store
+    /// failure (--online mode) still reaches the server (#637).
+    /// </summary>
+    private async Task<MailMessageDetail> LoadDetailForAttachmentsAsync(MailMessageSummary message, CancellationToken ct)
+    {
+        if (message is MailMessageDetail given) return given;
+        if (IsOpenMessage(message)) return MessageDetail!;
+
+        MailMessageDetail? detail = null;
+        try { detail = await _localStore.LoadDetailAsync(message.AccountId, message.FolderName, message.MessageId); }
+        catch (Exception ex) { LogService.Log("SaveAttachmentsOfMessages: local store unavailable — asking the server", ex); }
+        if (detail != null) return detail;
+
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        cts.CancelAfter(TimeSpan.FromSeconds(60));
+        return await _imap.PrefetchMessageDetailAsync(message.AccountId, message.FolderName, message.MessageId, cts.Token);
+    }
+
+    private bool IsOpenMessage(MailMessageSummary message) =>
+        MessageDetail is { } open
+        && open.MessageId == message.MessageId
+        && open.AccountId == message.AccountId
+        && open.FolderName == message.FolderName;
+
+    /// <summary>
+    /// Downloads what is not yet loaded and writes every attachment of <paramref name="details"/>
+    /// into <paramref name="folder"/>. Names are sanitized (a crafted server-supplied name must not
+    /// write outside the folder) and made unique, so two attachments called "image001.png", or a
+    /// file already in the folder, are not overwritten. A download that fails is the server's
+    /// problem and is noted against that message's account; a write that fails is the disk's, and
+    /// is not. Either way the rest are still saved, and the outcome says what was and was not.
+    /// </summary>
+    private async Task WriteAttachmentsAsync(List<MailMessageDetail> details, string folder, int unreadable = 0)
+    {
+        IsBusy = true;
+        SetStatus("Saving attachments…", AnnouncementCategory.Status);
+        var saved = 0;
+        var notDownloaded = 0;
+        var notWritten = 0;
+        Exception? downloadFailure = null;
+        string? writeFailure = null;
+        var taken = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        try
+        {
+            foreach (var detail in details)
+            {
+                // The open message keeps what it downloaded (its attachment list uses it); any other
+                // message's bytes are dropped once written, so a large selection is not all held at once.
+                var keep = ReferenceEquals(detail, MessageDetail);
+                foreach (var att in detail.Attachments)
+                {
+                    if (!att.IsLoaded)
+                    {
+                        if (att.PartSpecifier == null) { notDownloaded++; continue; }
+                        using var cts = CancellationTokenSource.CreateLinkedTokenSource(_messageActionShutdownCts.Token);
+                        cts.CancelAfter(TimeSpan.FromSeconds(120));
+                        try
+                        {
+                            att.Content = await _imap.DownloadAttachmentAsync(
+                                detail.AccountId, detail.FolderName, detail.MessageId, att.PartSpecifier, cts.Token);
+                        }
+                        catch (OperationCanceledException) when (_messageActionShutdownCts.IsCancellationRequested) { return; }
+                        catch (Exception ex)
+                        {
+                            notDownloaded++;
+                            downloadFailure ??= ex;
+                            _connectivity?.NoteOperationOutcome(detail.AccountId, ex, "attachment-download-failed");
+                            LogService.Log("SaveAllAttachments: download", ex);
+                            continue;
+                        }
+                    }
+
+                    try
+                    {
+                        await File.WriteAllBytesAsync(AttachmentSafety.UniquePath(folder, att.FileName, taken), att.Content!);
+                        saved++;
+                    }
+                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException or ArgumentException)
+                    {
+                        notWritten++;
+                        writeFailure ??= ex.Message;
+                        LogService.Log("SaveAllAttachments: write", ex);
+                    }
+                    finally
+                    {
+                        if (!keep) att.Content = null;
+                    }
+                }
+            }
+        }
+        finally { IsBusy = false; }
+
+        if (saved == 0 && notWritten == 0 && notDownloaded > 0 && downloadFailure is not null
+            && ConnectionFailure.IsConnectionFailure(downloadFailure, CancellationToken.None))
+        {
+            SetStatusEvenIfUnchanged("Attachments are not available offline.", AnnouncementCategory.Result);
+            return;
+        }
+
+        var parts = new List<string> { saved == 1 ? "Saved 1 attachment." : $"Saved {saved} attachments." };
+        if (notDownloaded > 0)
+            parts.Add(notDownloaded == 1 ? "1 could not be downloaded from the server."
+                                         : $"{notDownloaded} could not be downloaded from the server.");
+        if (notWritten > 0)
+            parts.Add(notWritten == 1 ? $"1 could not be saved: {writeFailure}" : $"{notWritten} could not be saved: {writeFailure}");
+        if (unreadable > 0) parts.Add(Unreadable(unreadable));
+        SetStatusEvenIfUnchanged(string.Join(" ", parts), AnnouncementCategory.Result);
     }
 
     [RelayCommand]
-    private async Task OpenAttachmentAsync(AttachmentModel? attachment)
+    private Task OpenAttachmentAsync(AttachmentModel? attachment) =>
+        attachment == null || MessageDetail == null ? Task.CompletedTask : OpenAttachmentOfAsync(MessageDetail, attachment);
+
+    /// <summary>Opens one attachment of <paramref name="detail"/>: an attached email in QuickMail's own window (#939), anything else with its Windows program. Called directly by a window showing another message.</summary>
+    public async Task OpenAttachmentOfAsync(MailMessageDetail detail, AttachmentModel attachment)
     {
-        if (attachment == null || MessageDetail == null) return;
         var att = attachment;
         if (!att.IsLoaded)
         {
@@ -10304,12 +11581,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
             {
                 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(60));
                 att.Content = await _imap.DownloadAttachmentAsync(
-                    MessageDetail.AccountId, MessageDetail.FolderName,
-                    MessageDetail.MessageId, att.PartSpecifier, cts.Token);
+                    detail.AccountId, detail.FolderName,
+                    detail.MessageId, att.PartSpecifier, cts.Token);
             }
             catch (Exception ex)
             {
-                _connectivity?.NoteOperationOutcome(MessageDetail.AccountId, ex, "attachment-download-failed");
+                _connectivity?.NoteOperationOutcome(detail.AccountId, ex, "attachment-download-failed");
                 StatusText = OfflineOrErrorStatus(ex,
                     () => "Attachments are not available offline.",
                     () => $"Download failed: {ex.Message}", CancellationToken.None);
@@ -10318,6 +11595,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
             }
             IsBusy = false;
         }
+
+        // An attached email opens in QuickMail's own window (#939). Falls through to Windows only when
+        // the bytes turn out not to be an email after all, where the file's own program is the best bet.
+        if (IsAttachedEmail(att) && _openedMessages != null && att.Content is { Length: > 0 } && OpenEmail(att.Content, att.FileName, reportFailure: false))
+            return;
 
         // Sanitized so a crafted server-supplied name (e.g. "../../Startup/evil.exe")
         // can't escape the temp folder.
@@ -10542,7 +11824,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
             return;
         }
 
-        var account = Accounts.FirstOrDefault(a => a.Id == detail!.AccountId);
+        // An invite opened from a .eml file (#939) is answered from the default account, as a reply is.
+        var accountId = SendingAccountFor(detail!);
+        var account = Accounts.FirstOrDefault(a => a.Id == accountId);
         if (account == null)
         {
             // Through the card as well: focus is inside the WebView2 at this point, which is the very
@@ -10937,7 +12221,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 var title = string.IsNullOrWhiteSpace(e.Summary) ? "Appointment" : e.Summary;
                 var body = $"In {minutes} minute{(minutes == 1 ? "" : "s")}, at {start:t}"
                            + (string.IsNullOrWhiteSpace(e.Location) ? "" : $". {e.Location}");
-                _notifications?.ShowInfo(title, body);
+                _notifications?.ShowInfo(title, body, silent: _sounds?.SilencesToasts == true);
+                _sounds?.Play(SoundEvent.CalendarReminder);
                 Announce($"Reminder. {title} in {minutes} minute{(minutes == 1 ? "" : "s")}, at {start:t}.",
                          AnnouncementCategory.Result);
             }
@@ -11140,3 +12425,4 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
     }
 }
+
