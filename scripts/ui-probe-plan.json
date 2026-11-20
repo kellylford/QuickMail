@@ -12,7 +12,27 @@
       "scale": 100
     },
     {
+      "surface": "reading-pane-attachment",
+      "theme": "parchment",
+      "scale": 100
+    },
+    {
+      "surface": "reading-pane-attachment-selected",
+      "theme": "parchment",
+      "scale": 100
+    },
+    {
+      "surface": "compose-attachment",
+      "theme": "parchment",
+      "scale": 100
+    },
+    {
       "surface": "compose",
+      "theme": "parchment",
+      "scale": 100
+    },
+    {
+      "surface": "compose-html",
       "theme": "parchment",
       "scale": 100
     },
@@ -27,6 +47,11 @@
       "scale": 100
     },
     {
+      "surface": "settings-sounds",
+      "theme": "parchment",
+      "scale": 100
+    },
+    {
       "surface": "theme-manager",
       "theme": "parchment",
       "scale": 100
@@ -37,7 +62,27 @@
       "scale": 100
     },
     {
+      "surface": "accounts",
+      "theme": "parchment",
+      "scale": 100
+    },
+    {
+      "surface": "flag-manager",
+      "theme": "parchment",
+      "scale": 100
+    },
+    {
       "surface": "rules",
+      "theme": "parchment",
+      "scale": 100
+    },
+    {
+      "surface": "rule-editor",
+      "theme": "parchment",
+      "scale": 100
+    },
+    {
+      "surface": "rule-editor-advanced",
       "theme": "parchment",
       "scale": 100
     },
@@ -72,7 +117,27 @@
       "scale": 100
     },
     {
+      "surface": "reading-pane-attachment",
+      "theme": "dark",
+      "scale": 100
+    },
+    {
+      "surface": "reading-pane-attachment-selected",
+      "theme": "dark",
+      "scale": 100
+    },
+    {
+      "surface": "compose-attachment",
+      "theme": "dark",
+      "scale": 100
+    },
+    {
       "surface": "compose",
+      "theme": "dark",
+      "scale": 100
+    },
+    {
+      "surface": "compose-html",
       "theme": "dark",
       "scale": 100
     },
@@ -87,6 +152,11 @@
       "scale": 100
     },
     {
+      "surface": "settings-sounds",
+      "theme": "dark",
+      "scale": 100
+    },
+    {
       "surface": "theme-manager",
       "theme": "dark",
       "scale": 100
@@ -97,7 +167,27 @@
       "scale": 100
     },
     {
+      "surface": "accounts",
+      "theme": "dark",
+      "scale": 100
+    },
+    {
+      "surface": "flag-manager",
+      "theme": "dark",
+      "scale": 100
+    },
+    {
       "surface": "rules",
+      "theme": "dark",
+      "scale": 100
+    },
+    {
+      "surface": "rule-editor",
+      "theme": "dark",
+      "scale": 100
+    },
+    {
+      "surface": "rule-editor-advanced",
       "theme": "dark",
       "scale": 100
     },
@@ -132,7 +222,17 @@
       "scale": 150
     },
     {
+      "surface": "reading-pane-attachment",
+      "theme": "parchment",
+      "scale": 150
+    },
+    {
       "surface": "compose",
+      "theme": "parchment",
+      "scale": 150
+    },
+    {
+      "surface": "compose-html",
       "theme": "parchment",
       "scale": 150
     },
@@ -147,6 +247,11 @@
       "scale": 150
     },
     {
+      "surface": "settings-sounds",
+      "theme": "parchment",
+      "scale": 150
+    },
+    {
       "surface": "theme-manager",
       "theme": "parchment",
       "scale": 150
@@ -157,7 +262,27 @@
       "scale": 150
     },
     {
+      "surface": "accounts",
+      "theme": "parchment",
+      "scale": 150
+    },
+    {
+      "surface": "flag-manager",
+      "theme": "parchment",
+      "scale": 150
+    },
+    {
       "surface": "rules",
+      "theme": "parchment",
+      "scale": 150
+    },
+    {
+      "surface": "rule-editor",
+      "theme": "parchment",
+      "scale": 150
+    },
+    {
+      "surface": "rule-editor-advanced",
       "theme": "parchment",
       "scale": 150
     },
@@ -180,6 +305,21 @@
       "surface": "row-fields",
       "theme": "parchment",
       "scale": 150
+    },
+    {
+      "surface": "sound-scheme-update",
+      "theme": "parchment",
+      "scale": 100
+    },
+    {
+      "surface": "sound-scheme-update",
+      "theme": "dark",
+      "scale": 100
+    },
+    {
+      "surface": "sound-scheme-update",
+      "theme": "parchment",
+      "scale": 200
     }
   ]
 }

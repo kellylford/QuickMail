@@ -201,6 +201,7 @@ public class ImapConnectionInstrumentationTests : IDisposable
         public Task<OAuthResult> SignInInteractiveWithContactsAsync(AccountModel a, CancellationToken ct = default) => throw Fail();
         public Task RequestContactsConsentAsync(AccountModel a, CancellationToken ct = default) => throw Fail();
         public Task RequestCalendarConsentAsync(AccountModel a, CancellationToken ct = default) => throw Fail();
+        public Task RequestSharedMailboxConsentAsync(AccountModel a, CancellationToken ct = default) => throw Fail();
         public Task SignOutAsync(AccountModel a) => throw Fail();
     }
 }

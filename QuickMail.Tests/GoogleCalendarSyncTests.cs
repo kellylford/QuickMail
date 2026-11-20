@@ -387,6 +387,118 @@ public class GoogleCalendarSyncTests : IDisposable
         Assert.DoesNotContain("/calendars/primary/", handler.Urls[0]);
     }
 
+    /// <summary>
+    /// The sync records the account's calendar list, with writability. A subscribed feed comes back
+    /// with accessRole "reader" and must not be offered as somewhere to file an appointment; a
+    /// calendar with no events in the window is still offerable.
+    /// </summary>
+    [Fact]
+    public async Task Sync_RecordsTheCalendarList_WithWritability()
+    {
+        var handler = new RecordingHandler(
+            Json(@"{ ""items"": [
+                     { ""id"": ""kelly@gmail.com"", ""summary"": ""Kelly"", ""primary"": true, ""accessRole"": ""owner"" },
+                     { ""id"": ""fam123@group.calendar.google.com"", ""summary"": ""Family"", ""accessRole"": ""writer"" },
+                     { ""id"": ""holidays@group.v.calendar.google.com"", ""summary"": ""Holidays"", ""accessRole"": ""reader"" } ] }"));
+
+        await Service(handler).SyncAllAsync(TestContext.Current.CancellationToken);
+
+        var sources = await _store.LoadCalendarSourcesAsync();
+        Assert.Equal(3, sources.Count);
+        Assert.Contains(sources, s => s.CalendarId == "kelly@gmail.com" && s.CanWrite);
+        Assert.Contains(sources, s => s.CalendarId == "fam123@group.calendar.google.com" && s.CanWrite);
+        Assert.Contains(sources, s => s.CalendarId == "holidays@group.v.calendar.google.com" && !s.CanWrite);
+    }
+
+    /// <summary>
+    /// A new appointment is TAGGED with the primary calendar's real id, not with the "primary"
+    /// alias the write used (#569).
+    ///
+    /// The alias is fine to write through, but it is not what anything else calls that calendar:
+    /// the read-down tags its rows with the real id, and so does the folder tree's per-calendar
+    /// node. A row left tagged "primary" therefore fails that node's filter and is invisible while
+    /// the user is looking at it — until the next sync's replace-slice restamps it with the real id
+    /// and it appears, which is exactly the "press F5 and now it shows up" the issue describes.
+    /// </summary>
+    [Fact]
+    public async Task CreateEvent_TagsTheRowWithThePrimaryCalendarsRealId()
+    {
+        var handler = new RecordingHandler(GoogleEventResponse("gid-new"), Json(@"{ ""items"": [ { ""id"": ""fam123@group.calendar.google.com"", ""summary"": ""Family"" }, { ""id"": ""kelly@gmail.com"", ""summary"": ""Kelly"", ""primary"": true } ] }"));
+
+        await Service(handler).CreateEventAsync(GoogleAccount(), GoogleEvt("", ""),
+                                                TestContext.Current.CancellationToken);
+
+        var row = Assert.Single(await _store.LoadCalendarEventsAsync());
+        Assert.Equal("kelly@gmail.com", row.CalendarId);
+        Assert.Equal("Kelly", row.CalendarName);   // so the Calendar column reads right at once
+    }
+
+    /// <summary>
+    /// The tag is a display concern, and the appointment is already on the server by the time it is
+    /// resolved, so a calendar list that cannot be fetched must not cost the user their save. The
+    /// row falls back to what it was tagged with before this existed.
+    /// </summary>
+    [Fact]
+    public async Task CreateEvent_WhenTheCalendarListFails_StillStoresTheAppointment()
+    {
+        var handler = new RecordingHandler(
+            GoogleEventResponse("gid-new"), Json("nope", HttpStatusCode.InternalServerError));
+
+        var created = await Service(handler).CreateEventAsync(GoogleAccount(), GoogleEvt("", ""),
+                                                              TestContext.Current.CancellationToken);
+
+        Assert.Equal("gid-new", created.Uid);
+        var row = Assert.Single(await _store.LoadCalendarEventsAsync());
+        Assert.Equal("gid-new", row.Uid);
+        // Falls back to exactly what it was tagged with before any of this existed.
+        Assert.Equal("primary", row.CalendarId);
+        Assert.Equal(string.Empty, row.CalendarName);
+    }
+
+    /// <summary>
+    /// No entry flagged primary — a delegated or subscribe-only account. Google identifies the
+    /// primary calendar by the account's own address, so that is what to match on. Picking an
+    /// arbitrary calendar instead would file the appointment under a node it does not belong to,
+    /// which is worse than leaving it untagged: it would still be missing from the node the user is
+    /// on, and would now also appear under one it is not.
+    /// </summary>
+    [Fact]
+    public async Task CreateEvent_WhenNoCalendarIsFlaggedPrimary_MatchesTheAccountAddress()
+    {
+        var handler = new RecordingHandler(GoogleEventResponse("gid-new"), Json(@"{ ""items"": [ { ""id"": ""fam123@group.calendar.google.com"", ""summary"": ""Family"" }, { ""id"": ""kelly@gmail.com"", ""summary"": ""Kelly"" } ] }"));
+
+        await Service(handler).CreateEventAsync(GoogleAccount(), GoogleEvt("", ""),
+                                                TestContext.Current.CancellationToken);
+
+        var row = Assert.Single(await _store.LoadCalendarEventsAsync());
+        Assert.Equal("kelly@gmail.com", row.CalendarId);
+    }
+
+    /// <summary>A calendar the user has removed from their list is not a place to file anything.</summary>
+    [Fact]
+    public async Task CreateEvent_IgnoresADeletedPrimaryEntry()
+    {
+        var handler = new RecordingHandler(GoogleEventResponse("gid-new"), Json(@"{ ""items"": [ { ""id"": ""kelly@gmail.com"", ""summary"": ""Kelly"", ""primary"": true, ""deleted"": true } ] }"));
+
+        await Service(handler).CreateEventAsync(GoogleAccount(), GoogleEvt("", ""),
+                                                TestContext.Current.CancellationToken);
+
+        // Nothing usable, so the alias stands rather than a calendar the user has thrown away.
+        Assert.Equal("primary", Assert.Single(await _store.LoadCalendarEventsAsync()).CalendarId);
+    }
+
+    /// <summary>A nameless calendar still needs a label for the Calendar column to read.</summary>
+    [Fact]
+    public async Task CreateEvent_WhenThePrimaryCalendarHasNoName_LabelsItCalendar()
+    {
+        var handler = new RecordingHandler(GoogleEventResponse("gid-new"), Json(@"{ ""items"": [ { ""id"": ""kelly@gmail.com"", ""summary"": ""   "", ""primary"": true } ] }"));
+
+        await Service(handler).CreateEventAsync(GoogleAccount(), GoogleEvt("", ""),
+                                                TestContext.Current.CancellationToken);
+
+        Assert.Equal("Calendar", Assert.Single(await _store.LoadCalendarEventsAsync()).CalendarName);
+    }
+
     [Fact]
     public async Task CreateEvent_BlankCalendarId_FallsBackToPrimary()
     {
@@ -397,5 +509,76 @@ public class GoogleCalendarSyncTests : IDisposable
 
         Assert.Equal("POST", handler.Methods[0]);
         Assert.Contains("/calendars/primary/events", handler.Urls[0]);
+    }
+
+    // ── Google's own kinds of event (#326) ──────────────────────────────────────
+
+    private static string WithEventType(string eventJson, string eventType)
+        => eventJson.Replace("\"status\":", $"\"eventType\": \"{eventType}\", \"status\":");
+
+    [Fact]
+    public async Task Sync_KeepsGooglesEventType_AndTreatsDefaultAsOrdinary()
+    {
+        var handler = OneCalendarHandler(Json(Page(null,
+            WithEventType(EventJson("gid-b", "Happy birthday!", startDate: "2026-08-01", endDate: "2026-08-02"), "birthday"),
+            WithEventType(EventJson("gid-o", "Away", startDateTime: "2026-08-03T09:00:00Z", endDateTime: "2026-08-03T17:00:00Z"), "outOfOffice"),
+            WithEventType(EventJson("gid-d", "Lunch", startDateTime: "2026-08-04T12:00:00Z", endDateTime: "2026-08-04T13:00:00Z"), "default"),
+            EventJson("gid-n", "Old event", startDateTime: "2026-08-05T12:00:00Z", endDateTime: "2026-08-05T13:00:00Z"))));
+
+        await Service(handler).SyncAllAsync(TestContext.Current.CancellationToken);
+
+        // Read back from the real store: the kind has to survive a restart to be any use.
+        var rows = (await _store.LoadCalendarEventsAsync()).ToDictionary(r => r.Uid);
+        Assert.Equal("birthday", rows["gid-b"].ProviderEventType);
+        Assert.Equal("outOfOffice", rows["gid-o"].ProviderEventType);
+        Assert.Equal(string.Empty, rows["gid-d"].ProviderEventType);
+        Assert.Equal(string.Empty, rows["gid-n"].ProviderEventType);
+    }
+
+    [Fact]
+    public async Task UpdateEvent_StoresTheServersEventType()
+    {
+        var handler = new RecordingHandler(Json(WithEventType(EventJson(
+            "gid-x", "Lunch", startDateTime: "2026-08-01T16:00:00+00:00", endDateTime: "2026-08-01T17:00:00+00:00"),
+            "focusTime")));
+
+        await Service(handler).UpdateEventAsync(GoogleAccount(), GoogleEvt("gid-x", "primary"),
+                                                TestContext.Current.CancellationToken);
+
+        Assert.Equal("focusTime", Assert.Single(await _store.LoadCalendarEventsAsync()).ProviderEventType);
+    }
+
+    [Fact]
+    public async Task DeleteRefusedForABirthday_CarriesTheStatus_AndIsExplained()
+    {
+        // The exact refusal Google sent for a birthday delete (issue #294).
+        var handler = new RecordingHandler(Json("""
+            { "error": { "errors": [ { "domain": "calendar", "reason": "eventTypeRestriction",
+            "message": "Attempt made to modify 'birthday' event in a way that is not valid for this event type." } ],
+            "code": 400 } }
+            """, HttpStatusCode.BadRequest));
+        var evt = GoogleEvt("gid-b", "primary");
+        evt.ProviderEventType = "birthday";
+
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(() =>
+            Service(handler).DeleteEventAsync(GoogleAccount(), evt, TestContext.Current.CancellationToken));
+
+        Assert.Equal(HttpStatusCode.BadRequest, ex.StatusCode);
+        Assert.Equal(
+            "Google doesn't let other programs change birthday events. Change the birthday on the contact in Google Contacts.",
+            CalendarChangeRefusal.DescribeFailure(ex, evt, "Google"));
+    }
+
+    [Fact]
+    public async Task UpdateRefusedAsForbidden_CarriesTheStatus()
+    {
+        var handler = new RecordingHandler(Json("""{ "error": { "code": 403, "message": "Forbidden" } }""",
+                                                HttpStatusCode.Forbidden));
+
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(() =>
+            Service(handler).UpdateEventAsync(GoogleAccount(), GoogleEvt("gid-x", "primary"),
+                                              TestContext.Current.CancellationToken));
+
+        Assert.Equal(HttpStatusCode.Forbidden, ex.StatusCode);
     }
 }

@@ -8,14 +8,14 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# Read-only by default; each job asks for exactly what it needs below.
 permissions:
-  contents: write   # create the GitHub release
-  id-token: write   # OIDC token azure/login exchanges for Azure creds (signing)
+  contents: read
 
 jobs:
   # Protocol integration tests against a local GreenMail server (IMAP/SMTP), per
-  # docs/planning/live-content-testing-plan.md (issue #304). Runs in parallel with the
-  # build job. GreenMail runs as a native Java process because the app's net8.0-windows
+  # docs/planning/Completed/live-content-testing-plan.md (issue #304). Runs in parallel with the
+  # build job. GreenMail runs as a native Java process because the app's net10.0-windows
   # TFM requires a Windows runner, and Docker service containers are Linux-only.
   integration:
     runs-on: windows-latest
@@ -25,39 +25,14 @@ jobs:
 
       - uses: actions/setup-dotnet@v6
         with:
-          dotnet-version: '8.0.x'
+          dotnet-version: '10.0.x'
 
       # The gitignored credential partial classes are required to compile QuickMail.csproj.
-      # Same generation as the build job; the values themselves are never used by these tests.
-      - name: Write Google OAuth credentials
+      # These tests never use the values, so they are empty placeholders on every event: this
+      # job runs code from any branch a collaborator pushes, so it must never see a secret.
+      - name: Write placeholder credential partials
         shell: pwsh
-        env:
-          GOOGLE_CLIENT_ID:     ${{ secrets.GOOGLE_CLIENT_ID }}
-          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
-        run: |
-          @"
-          namespace QuickMail.Services;
-          public partial class GoogleOAuthService
-          {
-              private const string ClientId     = "$env:GOOGLE_CLIENT_ID";
-              private const string ClientSecret = "$env:GOOGLE_CLIENT_SECRET";
-          }
-          "@ | Set-Content -Path "QuickMail/Services/GoogleOAuthService.Credentials.cs" -Encoding UTF8
-
-      - name: Write bug-report credentials
-        shell: pwsh
-        env:
-          BUG_REPORT_RELAY_URL: ${{ vars.BUG_REPORT_RELAY_URL }}
-          BUG_REPORT_RELAY_KEY: ${{ secrets.BUG_REPORT_RELAY_KEY }}
-        run: |
-          @"
-          namespace QuickMail.Services;
-          public partial class BugReportService
-          {
-              private const string RelayUrl = "$env:BUG_REPORT_RELAY_URL";
-              private const string RelayKey = "$env:BUG_REPORT_RELAY_KEY";
-          }
-          "@ | Set-Content -Path "QuickMail/Services/BugReportService.Credentials.cs" -Encoding UTF8
+        run: ./scripts/write-credential-partials.ps1
 
       - name: Cache GreenMail jar
         uses: actions/cache@v6
@@ -113,52 +88,103 @@ jobs:
           include-hidden-files: true
           retention-days: 7
 
-  build:
+  # A fresh clone must build with no setup step (#859): QuickMail.csproj's
+  # WriteCredentialPlaceholders target writes whichever credential partial is missing. On
+  # GitHub Actions that target is off and CheckCredentialPartials fails the build instead, so
+  # a workflow that loses its write-credential-partials.ps1 step fails loudly; this job checks
+  # that too, then turns the target back on with -p:GITHUB_ACTIONS=false to build the way a
+  # contributor's machine does. Reads no secret. Skipped on tags: nothing here differs there.
+  fresh-clone-build:
+    if: github.ref_type != 'tag'
     runs-on: windows-latest
-    # Runs in the `azure-signing` environment so the OIDC token's subject is
-    # repo:kellylford/QuickMail:environment:azure-signing, which the Azure
-    # federated credential trusts (wildcard tag subjects aren't supported in this
-    # tenant). This is ONLY a claim-matching mechanism, not a deployment gate — do
-    # not add protection rules to this environment or every build, including PRs,
-    # will require approval. Signing still only runs on v* tags (below).
-    environment: azure-signing
+    timeout-minutes: 20
 
     steps:
       - uses: actions/checkout@v7
 
       - uses: actions/setup-dotnet@v6
         with:
-          dotnet-version: '8.0.x'
+          dotnet-version: '10.0.x'
 
-      - name: Write Google OAuth credentials
+      - name: On CI, a missing partial fails the build
+        shell: pwsh
+        run: |
+          $out = dotnet build QuickMail/QuickMail.csproj -c Release -warnaserror 2>&1 | Out-String
+          if ($LASTEXITCODE -eq 0) { Write-Host $out; throw 'The build succeeded on CI with no credential partials; CheckCredentialPartials should have stopped it.' }
+          if ($out -notmatch 'write-credential-partials\.ps1') { Write-Host $out; throw 'The build failed, but not with the CheckCredentialPartials error.' }
+          if (Test-Path QuickMail/Services/*.Credentials.cs) { throw 'The build wrote a partial on CI.' }
+          Write-Host 'Failed as intended, naming the script.'
+          exit 0  # the runner otherwise exits with the failed build's $LASTEXITCODE
+
+      - name: Build with no partials, as a fresh clone does
+        shell: pwsh
+        run: |
+          dotnet build QuickMail/QuickMail.csproj -c Release -warnaserror -p:GITHUB_ACTIONS=false
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          foreach ($f in 'GoogleOAuthService', 'BugReportService') {
+            if (-not (Test-Path "QuickMail/Services/$f.Credentials.cs")) { throw "$f.Credentials.cs was not written." }
+          }
+
+      - name: Build with one partial present, which must be left alone
+        shell: pwsh
+        run: |
+          $kept = 'QuickMail/Services/GoogleOAuthService.Credentials.cs'
+          Add-Content -Path $kept -Value '// ci-marker: stands in for real values a release build writes'
+          $before = (Get-FileHash $kept).Hash
+          Remove-Item QuickMail/Services/BugReportService.Credentials.cs
+          dotnet build QuickMail/QuickMail.csproj -c Release -warnaserror -p:GITHUB_ACTIONS=false
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if ((Get-FileHash $kept).Hash -ne $before) { throw "$kept was overwritten." }
+          if (-not (Test-Path QuickMail/Services/BugReportService.Credentials.cs)) { throw 'BugReportService.Credentials.cs was not written.' }
+
+  build:
+    runs-on: windows-latest
+    # contents: write creates the GitHub release; id-token: write lets azure/login exchange
+    # the OIDC token for Azure credentials. Both are only used on v* tag runs, but a job's
+    # permissions cannot depend on the event, and splitting the release into its own job
+    # would rename or duplicate this required `build` check. Neither grants anything on a
+    # PR run: a collaborator already has write access, and the OIDC subject of a run outside
+    # the environment is not one the Azure federated credential trusts.
+    permissions:
+      contents: write
+      id-token: write
+    # The `azure-signing` environment holds every secret this job can use (the Azure ids and
+    # the release copies of the Google OAuth and bug-report credentials), and its OIDC
+    # subject, repo:kellylford/QuickMail:environment:azure-signing, is the only one the
+    # Azure federated credential trusts (wildcard tag subjects aren't supported in this
+    # tenant). It REQUIRES KELLY'S APPROVAL, and that is the point: repository secrets are
+    # readable by any workflow a collaborator pushes to any branch, environment secrets only
+    # by a job the environment's protection lets in. So only v* tag runs enter it; PR, main
+    # and dispatch runs build with placeholder credentials, read no secrets and never wait.
+    # Do not remove the reviewer, and do not make this environment unconditional: either one
+    # would put signing and the release secrets back within reach of any branch. An empty
+    # string here means "no environment".
+    environment: ${{ startsWith(github.ref, 'refs/tags/v') && 'azure-signing' || '' }}
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+
+      # Real values only on a tag run, which is inside azure-signing; the script fails the
+      # release if any is missing rather than shipping an app whose Google sign-in and bug
+      # reports silently do not work. Every other run gets empty placeholders.
+      - name: Write release credential partials
+        if: startsWith(github.ref, 'refs/tags/v')
         shell: pwsh
         env:
           GOOGLE_CLIENT_ID:     ${{ secrets.GOOGLE_CLIENT_ID }}
           GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
-        run: |
-          @"
-          namespace QuickMail.Services;
-          public partial class GoogleOAuthService
-          {
-              private const string ClientId     = "$env:GOOGLE_CLIENT_ID";
-              private const string ClientSecret = "$env:GOOGLE_CLIENT_SECRET";
-          }
-          "@ | Set-Content -Path "QuickMail/Services/GoogleOAuthService.Credentials.cs" -Encoding UTF8
-
-      - name: Write bug-report credentials
-        shell: pwsh
-        env:
           BUG_REPORT_RELAY_URL: ${{ vars.BUG_REPORT_RELAY_URL }}
           BUG_REPORT_RELAY_KEY: ${{ secrets.BUG_REPORT_RELAY_KEY }}
-        run: |
-          @"
-          namespace QuickMail.Services;
-          public partial class BugReportService
-          {
-              private const string RelayUrl = "$env:BUG_REPORT_RELAY_URL";
-              private const string RelayKey = "$env:BUG_REPORT_RELAY_KEY";
-          }
-          "@ | Set-Content -Path "QuickMail/Services/BugReportService.Credentials.cs" -Encoding UTF8
+        run: ./scripts/write-credential-partials.ps1 -Release
+
+      - name: Write placeholder credential partials
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+        shell: pwsh
+        run: ./scripts/write-credential-partials.ps1
 
       - name: Test
         shell: pwsh
@@ -170,6 +196,12 @@ jobs:
           # honestly assert "nothing else is running", so they run here. If this variable is ever
           # dropped, the guard below fails the job rather than letting them silently run nowhere.
           QUICKMAIL_RUN_INPUT_TESTS: "1"
+          # Child-process tests (ProcessTests: the uninstall data prompt's script, run through
+          # powershell.exe) are opt-in for the same reason, and guarded below the same way.
+          QUICKMAIL_RUN_PROCESS_TESTS: "1"
+          # If foreground threads outlive the run, xunit force-exits and fails it although every
+          # test passed. ForegroundThreadReport writes their stacks here; printed below and uploaded.
+          QUICKMAIL_FOREGROUND_THREAD_REPORT: ${{ github.workspace }}/QuickMail.Tests/TestResults/foreground-threads.txt
         # Both classes that were excluded here for driving the real clipboard now assert against an
         # injected IClipboardService instead, so nothing in the unit suite touches the OS clipboard
         # and the filter that skipped them is gone. It had been silently costing two whole classes of
@@ -188,6 +220,11 @@ jobs:
           dotnet test QuickMail.Tests/QuickMail.Tests.csproj -c Release `
             --logger "trx;LogFileName=results.trx"
           $testExit = $LASTEXITCODE
+          if (Test-Path $env:QUICKMAIL_FOREGROUND_THREAD_REPORT) {
+            Write-Host "::group::Foreground threads alive at exit"
+            Get-Content $env:QUICKMAIL_FOREGROUND_THREAD_REPORT | Write-Host
+            Write-Host "::endgroup::"
+          }
           $trx = "QuickMail.Tests/TestResults/results.trx"
           if (-not (Test-Path $trx)) {
             Write-Error "No trx produced at $trx (dotnet test exit=$testExit); failing."
@@ -238,6 +275,35 @@ jobs:
             exit 1
           }
           Write-Host "Synthesized-input tests executed: $($inputResults.Count) passed, 0 skipped."
+
+          # Same guarantee for the child-process tests: every UninstallDataPromptTests case passed,
+          # none skipped. They protect the uninstall prompt's upgrade-or-uninstall decision (#245),
+          # and are skipped on developer machines on the strength of CI running them.
+          $processResults = @($doc.TestRun.Results.UnitTestResult |
+            Where-Object { $_.testName -like '*UninstallDataPromptTests*' })
+          $notPassed = @($processResults | Where-Object { $_.outcome -ne 'Passed' })
+          if ($processResults.Count -eq 0 -or $notPassed.Count -gt 0) {
+            $detail = if ($processResults.Count -eq 0) { "none were recorded at all" }
+                      else { "not passed: " + (($notPassed | ForEach-Object { "$($_.testName) [$($_.outcome)]" }) -join ', ') }
+            Write-Error ("Child-process tests did not all run here ($detail). They are skipped by " +
+                         "default and rely on QUICKMAIL_RUN_PROCESS_TESTS=1 being set for this step.")
+            exit 1
+          }
+          Write-Host "Child-process tests executed: $($processResults.Count) passed, 0 skipped."
+
+          # And the #782 crash test: it runs QuickMail's compose editor in a child process because the
+          # crash it guards against is a FailFast that would take the test host with it. If it is
+          # skipped, or never reached because the host died earlier, a regression would ship green.
+          $crashResults = @($doc.TestRun.Results.UnitTestResult |
+            Where-Object { $_.testName -like '*ComposeTableAutomationTests*' })
+          $crashNotPassed = @($crashResults | Where-Object { $_.outcome -ne 'Passed' })
+          if ($crashResults.Count -eq 0 -or $crashNotPassed.Count -gt 0) {
+            $detail = if ($crashResults.Count -eq 0) { "none were recorded at all" }
+                      else { "not passed: " + (($crashNotPassed | ForEach-Object { "$($_.testName) [$($_.outcome)]" }) -join ', ') }
+            Write-Error ("The compose-editor crash test (#782) did not run and pass here ($detail).")
+            exit 1
+          }
+          Write-Host "Compose-editor crash test executed: $($crashResults.Count) passed."
 
           # Coverage report. `total -le 0` above cannot tell a run that finished from one whose host
           # died partway: the tests that never ran are simply absent from the trx, `failed` stays 0,
@@ -299,7 +365,9 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: test-results
-          path: QuickMail.Tests/TestResults/results.trx
+          path: |
+            QuickMail.Tests/TestResults/results.trx
+            QuickMail.Tests/TestResults/foreground-threads.txt
           retention-days: 7
 
       - name: Publish
@@ -393,9 +461,14 @@ jobs:
             }
           }
 
+      # vpk is pinned in .github/vpk-version, read by every workflow that packs. Unpinned, it
+      # moved under us: 0.8.47 packed with 1.2.0 and 0.8.48 with 1.2.158, and nobody noticed
+      # (#536). A bump is a deliberate change: run the winget install-matrix workflow with the
+      # new version as its input, re-check the feed listing below, then edit the file.
       - name: Install vpk
         if: startsWith(github.ref, 'refs/tags/v')
-        run: dotnet tool install -g vpk
+        shell: pwsh
+        run: dotnet tool install -g vpk --version (Get-Content .github/vpk-version -Raw).Trim()
 
       # Fetch the previous release's Velopack assets so vpk pack can generate a delta
       # package. If this step is skipped or fails, packing still succeeds but ships a
@@ -615,3 +688,53 @@ jobs:
           # the release page. If a future release needs the same treatment, add the input
           # for that release and REMOVE IT IN THE SAME PR THAT TAGS THE NEXT ONE — or
           # simply tag it, then untick "Set as the latest release" once by hand.
+
+  # Publish the user guide for the release the build job just created.
+  #
+  # This exists because publish-user-guide.yml's `release: published` trigger never
+  # fires here: the Release step above creates the release with GITHUB_TOKEN, and
+  # GitHub does not start workflow runs from events a GITHUB_TOKEN raised. So the
+  # guide has only ever gone out when somebody remembered to run it by hand -- and
+  # when nobody did, 0.8.44 shipped while the site kept saying 0.8.43. Calling the
+  # workflow directly needs no PAT and cannot be forgotten.
+  #
+  # The guide's content must come from the same tagged commit the release was built from --
+  # which a `needs: build` job in this run gives by construction. Because build waits for
+  # Kelly's approval of azure-signing on a tag, so does this.
+  publish-guide:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    uses: ./.github/workflows/publish-user-guide.yml
+    # The called workflow deploys through the official Pages action into the github-pages
+    # environment; these are the most it may ask for.
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+
+  # The winget manifest generator and its template, checked on every pull request and push
+  # so a change that would break the submission fails here, not after a release is out.
+  winget-manifest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Test scripts/winget-manifest.ps1 against the template
+        shell: pwsh
+        run: ./scripts/winget-manifest.tests.ps1
+
+  # Submit the release to the winget catalog (KellyLford.QuickMail). Like publish-guide, a
+  # direct call because a GITHUB_TOKEN-made release starts no workflow. It runs after the
+  # release is published (the Release step is in build), so the MSIs it hashes are the ones
+  # people download. A failure here leaves the release itself untouched; rerun the job, or
+  # run "Submit to winget" by hand with the version.
+  winget:
+    needs: [build, winget-manifest]
+    if: startsWith(github.ref, 'refs/tags/v')
+    uses: ./.github/workflows/winget-submit.yml
+    permissions:
+      contents: read
+    # The caller must name the secret even though it lives only in the winget environment,
+    # which the called job enters: without this it reaches the called workflow as an empty
+    # string, with no error (#1006). Named, not `secrets: inherit`, so no other secret goes.
+    secrets:
+      WINGET_TOKEN: ${{ secrets.WINGET_TOKEN }}

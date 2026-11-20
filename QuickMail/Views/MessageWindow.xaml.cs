@@ -1,13 +1,16 @@
 using System;
+using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
+using System.Linq;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Interop;
 using System.Windows.Threading;
 using Microsoft.Web.WebView2.Core;
 using QuickMail.Helpers;
@@ -25,8 +28,6 @@ namespace QuickMail.Views;
 [SuppressMessage("Design", "CA1001", Justification = "_loadCts is cancelled and replaced in OnClosing; WPF never calls Dispose on a Window, so implementing IDisposable would be dead code.")]
 public partial class MessageWindow : Window
 {
-    private static readonly TimeSpan WebViewNavigationTimeout = TimeSpan.FromSeconds(4);
-
     private readonly MessageWindowViewModel _vm;
     private bool _webViewReady;
     private int  _renderVersion;
@@ -44,8 +45,14 @@ public partial class MessageWindow : Window
     // Local command registry for the command palette (issue 53).
     private readonly CommandRegistry _localRegistry = new();
 
+    /// <summary>Pairs this window's navigations with the links the user activated (#728 review).</summary>
+    private readonly LinkActivationGate _linkGate = new();
+
     // F6 focus cycle: 0=Toolbar, 1=Headers, 2=Body
     private int _f6FocusStop;
+
+    // Lets the link context menu claim the Escape that dismisses it (issue #671).
+    private LinkContextMenuSupport.LinkMenuState? _linkMenu;
 
     public MessageWindow(
         MessageWindowViewModel vm,
@@ -78,8 +85,67 @@ public partial class MessageWindow : Window
         vm.PropertyChanged += _vmPropertyChangedHandler;
 
         RegisterLocalCommands();
+        if (_configService != null)
+            _localRegistry.ApplyUserOverrides(TranslateMainOverrides(_configService.Load().CustomHotkeys));
+        // After the commands and the user's keys, so the menus and toolbar show them at once (#849).
+        CommandShortcut.SetRegistry(this, _localRegistry);
 
         Loaded += OnLoaded;
+    }
+
+    /// <summary>
+    /// This window's commands that are the main window's commands for the same action, keyed by this
+    /// window's id. Keys are customized in Settings against the main window's ids, so a key the user
+    /// reassigned there is carried over to the same action here through this table. Without it the
+    /// message window kept the default keys whatever the user had chosen.
+    /// </summary>
+    internal static readonly IReadOnlyDictionary<string, string> MainCommandIds =
+        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["message.reply"]           = "mail.reply",
+            ["message.replyAll"]        = "mail.replyAll",
+            ["message.forward"]         = "mail.forward",
+            ["message.delete"]          = "mail.delete",
+            ["message.markRead"]        = "mail.markRead",
+            ["message.copyAttachment"]  = "mail.copyAttachment",
+            ["message.copyAllAttachments"] = "mail.copyAllAttachments",
+            ["message.grabAddresses"]   = "contacts.grabAddresses",
+            ["message.createRule"]      = "mail.createRuleFromMessage",
+            ["window.manageRules"]      = "mail.rules",
+            ["window.togglePlainText"]  = "view.togglePlainText",
+            ["window.loadPictures"]     = "view.loadPictures",
+            ["window.focusAttachments"] = "view.focusAttachments",
+            ["message.save"]            = "mail.save",
+            ["message.saveAs"]          = "mail.saveAs",
+            ["message.print"]           = "mail.print",
+            ["window.toggleWatch"]      = "mail.toggleWatch",
+            ["window.acceptInvite"]     = "mail.acceptInvite",
+            ["window.tentativeInvite"]  = "mail.tentativeInvite",
+            ["window.declineInvite"]    = "mail.declineInvite",
+            ["window.close"]            = "mail.closeMessage",
+        };
+
+    /// <summary>Takes the main window's key assignments after Settings has changed them (#849).</summary>
+    internal void ApplyMainWindowKeys(IEnumerable<HotkeyBinding> mainBindings) =>
+        _localRegistry.ApplyUserOverrides(TranslateMainOverrides(mainBindings));
+
+    /// <summary>The user's key assignments for the main window's commands, re-keyed to this window's ids.</summary>
+    internal static List<HotkeyBinding> TranslateMainOverrides(IEnumerable<HotkeyBinding> mainBindings)
+    {
+        var byMainId = mainBindings
+            .Where(b => !string.IsNullOrEmpty(b.CommandId))
+            .GroupBy(b => b.CommandId, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.ToList(), StringComparer.OrdinalIgnoreCase);
+        var local = new List<HotkeyBinding>();
+        foreach (var (localId, mainId) in MainCommandIds)
+        {
+            if (!byMainId.TryGetValue(mainId, out var bindings)) continue;
+            local.AddRange(bindings.Select(b => new HotkeyBinding
+            {
+                CommandId = localId, Gesture = b.Gesture, Key = b.Key, Modifiers = b.Modifiers,
+            }));
+        }
+        return local;
     }
 
     private void RegisterLocalCommands()
@@ -97,22 +163,37 @@ public partial class MessageWindow : Window
         _localRegistry.Register(new CommandDefinition(
             id: "message.forward", category: "Mail", title: "Forward",
             execute: () => _vm.ForwardCommand.Execute(null),
-            defaultKey: Key.F, defaultModifiers: ModifierKeys.Control));
+            defaultKey: Key.F, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift));
 
         _localRegistry.Register(new CommandDefinition(
             id: "message.delete", category: "Mail", title: "Delete",
             execute: () => _vm.DeleteMessageCommand.Execute(null),
-            defaultKey: Key.Delete, defaultModifiers: ModifierKeys.None));
+            defaultKey: Key.Delete, defaultModifiers: ModifierKeys.None,
+            isAvailable: () => _vm.IsInMailbox));
 
         _localRegistry.Register(new CommandDefinition(
             id: "message.markRead", category: "Mail", title: "Mark as Read",
             execute: () => _vm.MarkReadCommand.Execute(null),
-            defaultKey: Key.Q, defaultModifiers: ModifierKeys.Control));
+            defaultKey: Key.Q, defaultModifiers: ModifierKeys.Control,
+            isAvailable: () => _vm.IsInMailbox));
 
         _localRegistry.Register(new CommandDefinition(
             id: "message.grabAddresses", category: "Contacts", title: "Grab Addresses from Message",
             execute: () => _vm.GrabAddressesCommand.Execute(null),
             defaultKey: Key.G, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift));
+
+        // The main window's gestures for the same two actions. Neither was here, so a message read in
+        // its own window could not become a rule, nor could the Rules Manager be reached from it.
+        _localRegistry.Register(new CommandDefinition(
+            id: "message.createRule", category: "Mail", title: "Create Rule from Message",
+            execute: () => _vm.CreateRuleFromMessageCommand.Execute(null),
+            defaultKey: Key.T, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift,
+            isAvailable: () => _vm.IsInMailbox));
+
+        _localRegistry.Register(new CommandDefinition(
+            id: "window.manageRules", category: "Mail", title: "Manage Rules",
+            execute: () => _vm.ManageRulesCommand.Execute(null),
+            defaultKey: Key.L, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift));
 
         _localRegistry.Register(new CommandDefinition(
             id: "window.togglePlainText", category: "View", title: "Toggle Plain Text View",
@@ -120,13 +201,20 @@ public partial class MessageWindow : Window
             defaultKey: Key.H, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift));
 
         _localRegistry.Register(new CommandDefinition(
+            id: "window.loadPictures", category: "View", title: "Load Pictures",
+            execute: LoadWebPictures,
+            defaultKey: Key.U, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift));
+
+        _localRegistry.Register(new CommandDefinition(
             id: "window.previousMessage", category: "Mail", title: "Previous Message",
             execute: () => _vm.PreviousMessageCommand.Execute(null),
+            defaultKey: Key.Left, defaultModifiers: ModifierKeys.Alt,
             isAvailable: () => _vm.CanNavigatePrevious));
 
         _localRegistry.Register(new CommandDefinition(
             id: "window.nextMessage", category: "Mail", title: "Next Message",
             execute: () => _vm.NextMessageCommand.Execute(null),
+            defaultKey: Key.Right, defaultModifiers: ModifierKeys.Alt,
             isAvailable: () => _vm.CanNavigateNext));
 
         _localRegistry.Register(new CommandDefinition(
@@ -136,7 +224,46 @@ public partial class MessageWindow : Window
 
         _localRegistry.Register(new CommandDefinition(
             id: "window.moveToMainWindow", category: "View", title: "Move to Main Window",
-            execute: () => _vm.MoveToMainWindowCommand.Execute(null)));
+            execute: () => _vm.MoveToMainWindowCommand.Execute(null),
+            isAvailable: () => _vm.IsInMailbox));
+
+        // Copy attachments to the Windows clipboard as files (#929). Scoped to the attachment list,
+        // so Ctrl+C anywhere else in this window keeps copying text.
+        _localRegistry.Register(new CommandDefinition(
+            id: "message.copyAttachment", category: "Mail", title: "Copy Attachment",
+            description: "Copy the selected attachment, to paste into Explorer or a message",
+            execute: async () =>
+            {
+                if (AttachmentList.SelectedItem is AttachmentModel att)
+                    await _vm.CopyAttachmentCommand.ExecuteAsync(att);
+            },
+            defaultKey: Key.C, defaultModifiers: ModifierKeys.Control,
+            isAvailable: () => AttachmentList.IsKeyboardFocusWithin && AttachmentList.SelectedItem is AttachmentModel));
+
+        _localRegistry.Register(new CommandDefinition(
+            id: "message.copyAllAttachments", category: "Mail", title: "Copy All Attachments",
+            description: "Copy every attachment of this message, to paste into Explorer or a message",
+            execute: async () => await _vm.CopyAllAttachmentsCommand.ExecuteAsync(null),
+            isAvailable: () => _vm.MessageDetail?.Attachments.Count > 0));
+
+        // Save, Save As and Print (#728) - the same gestures as the main window's. The work is routed
+        // back to MainViewModel (SaveAction and friends), with this window's own dialogs (SaveUi).
+        _localRegistry.Register(new CommandDefinition(
+            id: "message.save", category: "Mail", title: "Save",
+            description: "Save this message in your default format and folder, without asking",
+            execute: () => _vm.SaveMessageCommand.Execute(null),
+            defaultKey: Key.S, defaultModifiers: ModifierKeys.Control));
+
+        _localRegistry.Register(new CommandDefinition(
+            id: "message.saveAs", category: "Mail", title: "Save As…",
+            description: "Choose where to save this message, and in which format",
+            execute: () => _vm.SaveMessageAsCommand.Execute(null),
+            defaultKey: Key.F12, defaultModifiers: ModifierKeys.None));
+
+        _localRegistry.Register(new CommandDefinition(
+            id: "message.print", category: "Mail", title: "Print…",
+            execute: () => _vm.PrintMessageCommand.Execute(null),
+            defaultKey: Key.P, defaultModifiers: ModifierKeys.Control));
 
         // Ctrl+Shift+W here too, so watching a thread works at the moment you are actually reading
         // it. This window owns a separate registry, which is why the main window's registration
@@ -194,6 +321,11 @@ public partial class MessageWindow : Window
     {
         AccessibilityHelper.RegisterDebugInputTrace(this);
 
+        // Alt pressed while reading: see MenuBarAccess.
+        HwndSource.FromHwnd(new WindowInteropHelper(this).Handle)?.AddHook(OnWmKeyMenu);
+        MainMenuBar.IsKeyboardFocusWithinChanged += OnMenuBarFocusWithinChanged;
+        Activated += (_, _) => { if (_menuEnteredFromBody) Dispatcher.InvokeAsync(ReturnToBodyAfterMenu, DispatcherPriority.Input); };
+
         try
         {
             var env = _sharedEnv ?? await CoreWebView2Environment.CreateAsync(null,
@@ -201,10 +333,27 @@ public partial class MessageWindow : Window
                              "QuickMail", "WebView2"));
             await MessageBody.EnsureCoreWebView2Async(env);
             _webViewReady = true;
+            // Pictures sent inside a message are served from the message itself (#729).
+            _pictureHost = EmbeddedPictureHost.Attach(MessageBody.CoreWebView2, env);
 
+            // Off, then on again once the handler that empties the menu is attached. The setting
+            // DEFAULTS to true, so without turning it off first a throw before the handler was
+            // wired would leave Chromium's own menu live on untrusted content. It has to end up
+            // true because ContextMenuRequested is not raised at all with it off, and that event
+            // is how the link menu is built (#671). Chromium's own items never reach the user —
+            // LinkContextMenuSupport clears the collection and adds only ours, so Save as,
+            // Inspect and Open link in new window (the in-app popup #483 was about) are gone.
             MessageBody.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
+            _linkMenu = LinkContextMenuSupport.Attach(
+                MessageBody.CoreWebView2, env, ClipboardService.Default,
+                ReportLinkMenuResult, address => _vm.ComposeToAction?.Invoke(address));
+            MessageBody.CoreWebView2.Settings.AreDefaultContextMenusEnabled = true;
             MessageBody.CoreWebView2.Settings.AreDevToolsEnabled             = false;
             MessageBody.CoreWebView2.Settings.IsStatusBarEnabled             = false;
+            // IsScriptEnabled is deliberately left at its default of true — see the note at the
+            // matching block in MainWindow. Turning it off blocks page script but also stops every
+            // callback a host-injected script registers, which would strand focus inside this
+            // document by killing the keydown relay below.
 
             ApplyWebViewColorScheme();
 
@@ -212,9 +361,9 @@ public partial class MessageWindow : Window
             //
             // Focus lands INSIDE this document as soon as the window opens, so a gesture that is
             // only handled by the WPF key ladder is unreachable in practice — which is why watching
-            // a thread had to be relayed here as well as registered there. Note the Ctrl+Shift+W
-            // test must accept 'W': the browser reports the upper-case key when Shift is held, so
-            // the lower-case-only Ctrl+W branch below cannot match it (and must not).
+            // a thread had to be relayed here as well as registered there. Both Ctrl+W tests accept
+            // either case, since Caps Lock flips it, so Ctrl+W's checks that Shift is up: the case of
+            // the key says nothing about Shift.
             await MessageBody.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(
                 "window.addEventListener('keydown',function(e){" +
                 "if(e.key==='Escape'){window.chrome.webview.postMessage('escape');e.preventDefault();}" +
@@ -223,19 +372,48 @@ public partial class MessageWindow : Window
                 "else if(e.key==='F6'&&e.shiftKey){window.chrome.webview.postMessage('shift-f6');e.preventDefault();}" +
                 "else if(e.altKey&&(e.key==='a'||e.key==='A')){window.chrome.webview.postMessage('focus-attachments');e.preventDefault();}" +
                 "else if(e.ctrlKey&&e.shiftKey&&(e.key==='w'||e.key==='W')){window.chrome.webview.postMessage('ctrl-shift-w');e.preventDefault();}" +
-                "else if(e.ctrlKey&&e.key==='w'){window.chrome.webview.postMessage('ctrl-w');e.preventDefault();}" +
+                "else if(e.ctrlKey&&!e.shiftKey&&(e.key==='w'||e.key==='W')){window.chrome.webview.postMessage('ctrl-w');e.preventDefault();}" +
                 "else if(e.ctrlKey&&e.shiftKey&&(e.key==='p'||e.key==='P')){window.chrome.webview.postMessage('ctrl-shift-p');e.preventDefault();}" +
-                "});");
+                // Create Rule from Message and Manage Rules, for the same reason as Ctrl+Shift+W.
+                "else if(e.ctrlKey&&e.shiftKey&&!e.altKey&&(e.key==='t'||e.key==='T')){window.chrome.webview.postMessage('ctrl-shift-t');e.preventDefault();}" +
+                "else if(e.ctrlKey&&e.shiftKey&&!e.altKey&&(e.key==='l'||e.key==='L')){window.chrome.webview.postMessage('ctrl-shift-l');e.preventDefault();}" +
+                // Save, Save As and Print (#728); see the reading pane's copy of this script.
+                "else if(e.ctrlKey&&!e.shiftKey&&!e.altKey&&(e.key==='s'||e.key==='S')){window.chrome.webview.postMessage('ctrl-s');e.preventDefault();}" +
+                "else if(e.ctrlKey&&!e.shiftKey&&!e.altKey&&(e.key==='p'||e.key==='P')){window.chrome.webview.postMessage('ctrl-p');e.preventDefault();}" +
+                "else if(e.key==='F12'&&!e.ctrlKey&&!e.shiftKey&&!e.altKey){window.chrome.webview.postMessage('f12');e.preventDefault();}" +
+                "});" +
+                // Which link the user activated, so a navigation can be matched to it (#728 review).
+                LinkActivationGate.ReportActivationsScript +
+                // Alt+letter opens that menu, as it does outside the message.
+                MenuBarAccess.AltKeyRelayScript);
 
             MessageBody.CoreWebView2.WebMessageReceived += (_, args) =>
             {
                 var msg = args.TryGetWebMessageAsString();
                 switch (msg)
                 {
+                    // Deliberately unguarded by the link menu: a relayed escape means the DOCUMENT
+                    // saw the keydown, and while a native context menu owns input the page sees
+                    // nothing. So this can only be a real "close the window" Escape.
                     case "escape":     Dispatcher.InvokeAsync(Close,                DispatcherPriority.Input); break;
-                    case "ctrl-w":     Dispatcher.InvokeAsync(Close,                DispatcherPriority.Input); break;
-                    case "ctrl-shift-w": Dispatcher.InvokeAsync(RequestWatchToggle, DispatcherPriority.Input); break;
+                    // The relayed gestures run whatever the registry has on that key, so a key the user
+                    // reassigned in Settings means here what it means everywhere else in the window.
+                    case "ctrl-w":       RelayGesture(Key.W, ModifierKeys.Control); break;
+                    case "ctrl-shift-w": RelayGesture(Key.W, ModifierKeys.Control | ModifierKeys.Shift); break;
+                    case "ctrl-shift-t": RelayGesture(Key.T, ModifierKeys.Control | ModifierKeys.Shift); break;
+                    case "ctrl-shift-l": RelayGesture(Key.L, ModifierKeys.Control | ModifierKeys.Shift); break;
                     case "ctrl-shift-p": Dispatcher.InvokeAsync(OpenCommandPalette, DispatcherPriority.Input); break;
+                    case "ctrl-s":       RelayGesture(Key.S, ModifierKeys.Control); break;
+                    case "ctrl-p":       RelayGesture(Key.P, ModifierKeys.Control); break;
+                    case "f12":          RelayGesture(Key.F12, ModifierKeys.None); break;
+                    case { } alt when alt.StartsWith(MenuBarAccess.AltKeyMessagePrefix, StringComparison.Ordinal)
+                                      && alt.Length == MenuBarAccess.AltKeyMessagePrefix.Length + 1:
+                        var altLetter = alt[^1];
+                        Dispatcher.InvokeAsync(() => OnAltKeyFromBody(altLetter), DispatcherPriority.Input);
+                        break;
+                    case { } activated when activated.StartsWith(LinkActivationGate.ActivationMessagePrefix, StringComparison.Ordinal):
+                        _linkGate.NoteActivated(activated[LinkActivationGate.ActivationMessagePrefix.Length..]);
+                        break;
                     case "shift-tab":  Dispatcher.InvokeAsync(FocusLastHeaderField,  DispatcherPriority.Input); break;
                     case "focus-attachments": Dispatcher.InvokeAsync(FocusAttachmentList, DispatcherPriority.Input); break;
                     case "f6":         Dispatcher.InvokeAsync(() => CycleFocus(true),  DispatcherPriority.Input); break;
@@ -251,14 +429,23 @@ public partial class MessageWindow : Window
                     uri.StartsWith("data:",  StringComparison.OrdinalIgnoreCase))
                     return;
                 args.Cancel = true;
-                // The event card's RSVP buttons are quickmail: links. Cancelling the navigation is
-                // what keeps this document — and its aria-live status region — alive across the reply.
-                if (uri.StartsWith("quickmail:", StringComparison.OrdinalIgnoreCase))
+                // Only a navigation the user started leaves the message; one the document starts by
+                // itself (a <meta> refresh) goes nowhere. See the reading pane's handler. #728 review.
+                if (!args.IsUserInitiated)
                 {
-                    HandleQuickMailUri(uri);
+                    LogService.Debug("MessageWindow: cancelled a navigation the document started on its own.");
                     return;
                 }
-                OpenExternal(uri);
+                // The event card's RSVP buttons are quickmail: links. Cancelling the navigation is
+                // what keeps this document — and its aria-live status region — alive across the reply.
+                // Matched to the link the user activated, as in the reading pane.
+                _linkGate.Request(uri, () =>
+                {
+                    if (uri.StartsWith("quickmail:", StringComparison.OrdinalIgnoreCase))
+                        HandleQuickMailUri(uri);
+                    else
+                        OpenExternal(uri);
+                });
             };
 
             // A link with target="_blank" — or one activated with Ctrl/Shift/middle-click —
@@ -269,7 +456,19 @@ public partial class MessageWindow : Window
             MessageBody.CoreWebView2.NewWindowRequested += (_, args) =>
             {
                 args.Handled = true;
-                OpenExternal(args.Uri);
+                if (!args.IsUserInitiated) return;   // as NavigationStarting above
+                var target = args.Uri;
+                _linkGate.Request(target, () => OpenExternal(target));
+            };
+            // A link carrying a download attribute raises DownloadStarting and nothing else — no
+            // NavigationStarting, so none of the checks above — and WebView2's default is to save the
+            // sender's file, under the sender's name, into Downloads. A message never downloads
+            // anything; attachments are saved through QuickMail's own Save. #728 review, third pass.
+            MessageBody.CoreWebView2.DownloadStarting += (_, args) =>
+            {
+                args.Cancel = true;
+                args.Handled = true;
+                LogService.Debug("Message body: refused a download started from the message.");
             };
 
             if (_vm.MessageDetail != null)
@@ -310,6 +509,15 @@ public partial class MessageWindow : Window
                 detail = await _imap.GetMessageDetailAsync(
                     summary.AccountId, summary.FolderName, summary.MessageId, ct);
             }
+            else
+            {
+                // A detail cached before the from_addr column existed carries the summary's display
+                // name in place of the sender's address, so this window's From line — and a reply
+                // started from it — would show a bare name (issue #636). Re-fetching is the only
+                // repair: the address is stored nowhere else in the database.
+                detail = await DetailFromAddressRepair.RepairAsync(
+                    detail, _localStore, _imap, background: false, ct);
+            }
 
             ct.ThrowIfCancellationRequested();
             if (detail == null) return;
@@ -344,6 +552,78 @@ public partial class MessageWindow : Window
 
     /// <summary>The sticky "read as plain text" preference (issue #34), read live at render time.</summary>
     private bool ReadAsPlainText() => _configService?.Load().ReadAsPlainText ?? false;
+
+    private EmbeddedPictureHost? _pictureHost;
+
+    /// <summary>The message the user chose Load Pictures for (#508); it lasts while that message is open.</summary>
+    private string? _webPicturesAllowedFor;
+
+    /// <summary>How many pictures from the web the document on show left out.</summary>
+    private int _blockedWebPictures;
+
+    private static string PictureKey(MailMessageDetail detail) =>
+        $"{detail.AccountId:N}|{detail.FolderName}|{detail.MessageId}";
+
+    /// <summary>
+    /// Builds the message document off the UI thread, with the pictures this message may show: its
+    /// own (#729) unless that setting is off, and those from the web (#508) when the setting says
+    /// so or the user chose Load Pictures for it. Hands the host the web addresses to serve. The
+    /// document carries render <paramref name="version"/>'s token, for the focus script (#959).
+    /// </summary>
+    private async Task<string> BuildMessageDocumentAsync(MailMessageDetail detail, bool plainText, int version)
+    {
+        var cfg = _configService?.Load();
+        var web = (cfg?.LoadWebPictures ?? false) || _webPicturesAllowedFor == PictureKey(detail);
+        var sources = _pictureHost?.BeginMessage(cfg?.ShowEmbeddedPictures ?? true, web, plainText, detail,
+                          () => EmbeddedPictureLoader.LoadAsync(_imap, detail))
+                      ?? PictureSources.None;
+        var themeCss = BuildThemeCss();
+        var document = await Task.Run(() =>
+            MessageBodyHtmlBuilder.BuildMessageDocument(detail, themeCss, plainText, _themeService, sources));
+        _pictureHost?.ServeWebPictures(sources, document.WebPictures);
+        _blockedWebPictures = document.BlockedWebPictures;
+        return MessageBodyHtmlBuilder.WithRenderToken(document.Html, RenderToken(version));
+    }
+
+    /// <summary>Re-renders the open message in place. Never moves focus.</summary>
+    private void RerenderInPlace()
+    {
+        // A re-render replaces the document, so any menu it belonged to is gone with it.
+        _linkMenu?.Released();
+        _ = Dispatcher.InvokeAsync(async () =>
+        {
+            if (!_webViewReady || _vm.MessageDetail is not { } detail) return;
+            var version = Interlocked.Increment(ref _renderVersion);
+            var html = await BuildMessageDocumentAsync(detail, ReadAsPlainText(), version);
+            if (version != _renderVersion) return;
+            try { MessageBody.CoreWebView2.Stop(); } catch { /* best effort */ }
+            MessageBody.CoreWebView2.NavigateToString(html);
+        });
+    }
+
+    /// <summary>
+    /// Load Pictures (#508): shows this message's pictures from the web, re-rendering it in place.
+    /// Lasts while this message is open; Previous and Next start the next one blocked again.
+    /// </summary>
+    private void LoadWebPictures()
+    {
+        string text;
+        if (_vm.MessageDetail is not { } detail)
+            text = "No message is open.";
+        else if (ReadAsPlainText())
+            text = "Pictures are not shown in plain text view.";
+        else if ((_configService?.Load().LoadWebPictures ?? false) || _webPicturesAllowedFor == PictureKey(detail))
+            text = "Pictures from the web are already shown.";
+        else if (_blockedWebPictures == 0)
+            text = "This message has no pictures from the web.";
+        else
+        {
+            _webPicturesAllowedFor = PictureKey(detail);
+            RerenderInPlace();
+            text = "Loading pictures.";
+        }
+        AccessibilityHelper.Announce(this, text, interrupt: true, category: AnnouncementCategory.Result);
+    }
 
     /// <summary>
     /// UID of the invite the in-flight RSVP belongs to. A send takes seconds, and this window has
@@ -380,12 +660,19 @@ public partial class MessageWindow : Window
     /// <summary>Handles quickmail: pseudo-URIs from this window's event card buttons.</summary>
     private void HandleQuickMailUri(string uri)
     {
-        if (uri.StartsWith("quickmail:ics-accept", StringComparison.OrdinalIgnoreCase))
-            RespondToInvite(InviteResponse.Accept);
-        else if (uri.StartsWith("quickmail:ics-tentative", StringComparison.OrdinalIgnoreCase))
-            RespondToInvite(InviteResponse.Tentative);
-        else if (uri.StartsWith("quickmail:ics-decline", StringComparison.OrdinalIgnoreCase))
-            RespondToInvite(InviteResponse.Decline);
+        // Only QuickMail's own links, which carry this run's token; one the sender wrote does nothing.
+        if (!QuickMailLinks.TryParse(uri, out var action))
+        {
+            LogService.Log("MessageWindow: ignored a quickmail: link that QuickMail did not create.");
+            return;
+        }
+        switch (action)
+        {
+            case "ics-accept":    RespondToInvite(InviteResponse.Accept);    break;
+            case "ics-tentative": RespondToInvite(InviteResponse.Tentative); break;
+            case "ics-decline":   RespondToInvite(InviteResponse.Decline);   break;
+            case MessageBodyHtmlBuilder.LoadPicturesAction: LoadWebPictures(); break;
+        }
     }
 
     private void RespondToInvite(InviteResponse response)
@@ -403,17 +690,10 @@ public partial class MessageWindow : Window
     /// <summary>Re-renders the open message with fresh theme CSS. Never moves focus.</summary>
     private void OnThemeChanged(object? sender, EventArgs e)
     {
+        // A re-render replaces the document, so any menu it belonged to is gone with it.
+        _linkMenu?.Released();
         ApplyWebViewColorScheme();
-        _ = Dispatcher.InvokeAsync(async () =>
-        {
-            if (!_webViewReady || _vm.MessageDetail is not { } detail) return;
-            var version = Interlocked.Increment(ref _renderVersion);
-            var plainText = ReadAsPlainText();
-            var html = await Task.Run(() => MessageBodyHtmlBuilder.BuildMessageHtml(detail, BuildThemeCss(), plainText, _themeService));
-            if (version != _renderVersion) return;
-            try { MessageBody.CoreWebView2.Stop(); } catch { /* best effort */ }
-            MessageBody.CoreWebView2.NavigateToString(html);
-        });
+        RerenderInPlace();
     }
 
     /// <summary>
@@ -423,6 +703,8 @@ public partial class MessageWindow : Window
     /// </summary>
     private void TogglePlainTextView()
     {
+        // A re-render replaces the document, so any menu it belonged to is gone with it.
+        _linkMenu?.Released();
         if (_configService is null) return;
         var cfg = _configService.Load();
         cfg.ReadAsPlainText = !cfg.ReadAsPlainText;
@@ -433,8 +715,7 @@ public partial class MessageWindow : Window
             if (_webViewReady && _vm.MessageDetail is { } detail)
             {
                 var version = Interlocked.Increment(ref _renderVersion);
-                var plainText = cfg.ReadAsPlainText;
-                var html = await Task.Run(() => MessageBodyHtmlBuilder.BuildMessageHtml(detail, BuildThemeCss(), plainText, _themeService));
+                var html = await BuildMessageDocumentAsync(detail, cfg.ReadAsPlainText, version);
                 if (version != _renderVersion) return;
                 try { MessageBody.CoreWebView2.Stop(); } catch { /* best effort */ }
                 MessageBody.CoreWebView2.NavigateToString(html);
@@ -464,27 +745,26 @@ public partial class MessageWindow : Window
 
     private async Task ShowMessageBodyAsync(MailMessageDetail detail)
     {
+        // A re-render replaces the document, so any menu it belonged to is gone with it.
+        _linkMenu?.Released();
         if (!_webViewReady) return;
 
         var version = Interlocked.Increment(ref _renderVersion);
+        var opened = System.Diagnostics.Stopwatch.StartNew();
         var plainText = ReadAsPlainText();
+        // A newly shown message starts with its pictures from the web blocked again.
+        if (_webPicturesAllowedFor != PictureKey(detail)) _webPicturesAllowedFor = null;
         // The builder prepends the calendar invite event card when this message is an invitation.
-        var html = await Task.Run(() => MessageBodyHtmlBuilder.BuildMessageHtml(detail, BuildThemeCss(), plainText, _themeService));
+        var html = await BuildMessageDocumentAsync(detail, plainText, version);
         if (version != _renderVersion) return;
 
-        var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-        void OnNavigated(object? s, CoreWebView2NavigationCompletedEventArgs ev)
-        {
-            MessageBody.CoreWebView2.NavigationCompleted -= OnNavigated;
-            tcs.TrySetResult(ev.IsSuccess);
-        }
-        MessageBody.CoreWebView2.NavigationCompleted += OnNavigated;
-        try { MessageBody.CoreWebView2.Stop(); } catch { /* best effort */ }
-        MessageBody.CoreWebView2.NavigateToString(html);
-
-        var completed = await Task.WhenAny(tcs.Task, Task.Delay(WebViewNavigationTimeout)) == tcs.Task;
+        // As the reading pane: this render's own completion, or the grace period, then focus
+        // retries until the page on show carries this render's token (#959).
+        LogService.Debug($"[FOCUS] Message window: UID {detail.MessageId}, render {version}, document built in {opened.ElapsedMilliseconds} ms.");
+        using var navigation = MessageBodyNavigation.Navigate(MessageBody.CoreWebView2, html, "MessageWindow.ShowMessageBody");
+        var completed = await navigation.WaitAsync(MessageOpenFocusPolicy.LoadGrace);
         if (!completed)
-            MessageBody.CoreWebView2.NavigationCompleted -= OnNavigated;
+            LogService.Log($"MessageWindow.ShowMessageBody: WebView navigation timed out for UID {detail.MessageId}");
 
         if (version != _renderVersion) return;
 
@@ -504,44 +784,129 @@ public partial class MessageWindow : Window
 
     private async Task FocusMessageBodyAsync(int version, string? subject)
     {
-        var focusLabel = string.IsNullOrWhiteSpace(subject)
-            ? "Message body"
-            : $"Message body. {subject.Trim()}";
-
-        await Dispatcher.InvokeAsync(() =>
-        {
-            MessageBody.Focus();
-            Keyboard.Focus(MessageBody);
-        }, DispatcherPriority.Input);
-
-        for (var attempt = 0; attempt < 5; attempt++)
-        {
-            if (version != _renderVersion) return;
-
-            await Dispatcher.InvokeAsync(FocusMessageBodyHost, DispatcherPriority.Input);
-
-            try
-            {
-                if (await TryFocusDocumentAsync(focusLabel))
-                    break;
-            }
-            catch (Exception ex)
-            {
-                if (attempt == 4)
-                    LogService.Log("MessageWindow.FocusMessageBody", ex);
-            }
-
-            await Task.Delay(100);
-        }
-
-        if (version != _renderVersion) return;
-
-        await Dispatcher.InvokeAsync(() =>
+        // One loop per render: a second would announce twice (#959 review).
+        if (!_openFocus.TryBegin(version))
         {
             FocusMessageBodyHost();
-            _f6FocusStop = 2; // body is now focused
-            AccessibilityHelper.Announce(this, focusLabel, interrupt: true, category: AnnouncementCategory.Result);
+            return;
+        }
+        try
+        {
+            var focusLabel = MessageBodyFocus.Label(subject);
+
+            await Dispatcher.InvokeAsync(() =>
+            {
+                MessageBody.Focus();
+                Keyboard.Focus(MessageBody);
+            }, DispatcherPriority.Input);
+
+            // Stops quietly if the user moves focus elsewhere while the page arrives.
+            var result = await MessageBodyFocus.FocusUntilReadyAsync(
+                Dispatcher,
+                () => version == _renderVersion && MessageBodyHoldsFocus,
+                FocusMessageBodyHost,
+                ExecuteInMessageBodyAsync,
+                RenderToken(version),
+                "MessageWindow.FocusMessageBody");
+
+            if (version != _renderVersion) return;
+
+            await Dispatcher.InvokeAsync(() =>
+            {
+                // Not into another message's page, and not pulling back a user who moved on.
+                if (!MessageOpenFocusPolicy.ShouldFinish(result, MessageBodyHoldsFocus)) return;
+                FocusMessageBodyHost();
+                _f6FocusStop = 2; // body is now focused
+                AccessibilityHelper.Announce(this, focusLabel, interrupt: true, category: AnnouncementCategory.Result);
+            }, DispatcherPriority.Input);
+        }
+        finally
+        {
+            _openFocus.End(version);
+        }
+    }
+
+    /// <summary>The render whose open focus loop is running, if any (#959 review); see <see cref="MessageOpenFocusGate"/>.</summary>
+    private readonly MessageOpenFocusGate _openFocus = new();
+
+    /// <summary>
+    /// True while keyboard focus is on the message body or its host. A null focused element counts:
+    /// it is what WPF reports while the WebView2's own window holds focus.
+    /// </summary>
+    private bool MessageBodyHoldsFocus => MessageBody.IsKeyboardFocusWithin || Keyboard.FocusedElement is null;
+
+    /// <summary>Set when the menu bar was entered by an Alt pressed in the message body.</summary>
+    private bool _menuEnteredFromBody;
+
+    /// <summary>
+    /// Alt pressed while the message body has focus reaches Windows, not WPF, and came back as the
+    /// system menu. Answer it with the menu bar instead, as the main window does. Alt+Space still
+    /// opens the system menu.
+    /// </summary>
+    private IntPtr OnWmKeyMenu(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+    {
+        if (!MenuBarAccess.IsKeyboardMenuKey(msg, wParam, lParam, out var letter)) return IntPtr.Zero;
+        // Already in the menus (Alt+F just opened File, say): this is the Alt being released, not a new press.
+        if (MainMenuBar.IsKeyboardFocusWithin) return IntPtr.Zero;
+        var focused = Keyboard.FocusedElement;
+        var inBody = MessageBody.IsKeyboardFocusWithin || focused is null || ReferenceEquals(focused, this);
+        if (!inBody) return IntPtr.Zero;
+
+        handled = true;
+        Dispatcher.InvokeAsync(() =>
+        {
+            _menuEnteredFromBody = true;
+            if (letter == '\0') MenuBarAccess.EnterMenuMode(MainMenuBar);
+            else if (!MenuBarAccess.OpenByAccessKey(MainMenuBar, letter)) _menuEnteredFromBody = false;
         }, DispatcherPriority.Input);
+        return IntPtr.Zero;
+    }
+
+    /// <summary>Alt+letter pressed in the message body: that gesture's command, else that menu.</summary>
+    private void OnAltKeyFromBody(char letter)
+    {
+        if (Enum.TryParse<Key>(char.IsDigit(letter) ? "D" + letter : letter.ToString().ToUpperInvariant(), out var key)
+            && _localRegistry.FindByGesture(key, ModifierKeys.Alt) is { } command)
+        {
+            command.Execute();
+            return;
+        }
+        _menuEnteredFromBody = true;
+        if (!MenuBarAccess.OpenByAccessKey(MainMenuBar, letter)) _menuEnteredFromBody = false;
+    }
+
+    private void OnMenuBarFocusWithinChanged(object sender, DependencyPropertyChangedEventArgs e)
+    {
+        if ((bool)e.NewValue || !_menuEnteredFromBody) return;
+        Dispatcher.InvokeAsync(ReturnToBodyAfterMenu, DispatcherPriority.Input);
+    }
+
+    private void ReturnToBodyAfterMenu()
+    {
+        if (!_menuEnteredFromBody || !IsActive) return;
+        _menuEnteredFromBody = false;
+        var focused = Keyboard.FocusedElement;
+        if (focused is null || ReferenceEquals(focused, this))
+            FocusMessageBodyHost();
+    }
+
+    private MessageSaveUi? _messageSaveUi;
+
+    /// <summary>This window's Save As / Print dialogs and PDF renderer (#728), owned by this window.</summary>
+    internal MessageSaveUi SaveUi => _messageSaveUi ??= new MessageSaveUi(this, () => _sharedEnv, MoveFocusOutOfMessageBody);
+
+    /// <summary>
+    /// Before a modal dialog, parks focus on the Date header field if it is in the message body (or
+    /// WPF reports nothing focused, which is what focus inside the WebView2 looks like, #672), and
+    /// returns how to put it back. See <see cref="MessageSaveUi"/> for why.
+    /// </summary>
+    private Action? MoveFocusOutOfMessageBody()
+    {
+        var focused = Keyboard.FocusedElement;
+        var inBody = MessageBody.IsKeyboardFocusWithin || focused is null || ReferenceEquals(focused, this);
+        if (!inBody) return null;
+        DateField.Focus();
+        return FocusMessageBodyHost;
     }
 
     private void FocusMessageBodyHost()
@@ -559,28 +924,33 @@ public partial class MessageWindow : Window
     private void MessageBody_GotKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
     {
         _f6FocusStop = 2;
-        _ = TryFocusDocumentAsync(_vm.MessageDetail?.Subject is { } s && !string.IsNullOrWhiteSpace(s)
-            ? $"Message body. {s.Trim()}"
-            : "Message body");
+
+        // While a message is opening, its own focus loop raised this (moving focus to the host) and
+        // decides when the page is ready; focusing it here would land in a page still loading (#959).
+        if (_openFocus.IsRunning(_renderVersion)) return;
+
+        _ = TryFocusDocumentAsync();
     }
 
-    private async Task<bool> TryFocusDocumentAsync(string focusLabel)
+    // The user moved here themselves: a page still loading is focused, only an earlier one is not (#959).
+    private async Task<bool> TryFocusDocumentAsync() =>
+        MessageOpenFocusPolicy.Parse(await ExecuteInMessageBodyAsync(
+            MessageBodyFocus.FocusScriptFor(RenderToken(_renderVersion), waitForLoad: false))) == FocusScriptResult.Focused;
+
+    /// <summary>
+    /// Runs a script in the message body. Focus goes to the message's first text so reading starts on
+    /// open; see MessageBodyFocus. The scripts carry the render's token, so they touch nothing while
+    /// another page is on show (#959).
+    /// </summary>
+    private async Task<string?> ExecuteInMessageBodyAsync(string script)
     {
-        if (MessageBody.CoreWebView2 == null) return false;
-        var label = JsonSerializer.Serialize(focusLabel);
-        var result = await MessageBody.CoreWebView2.ExecuteScriptAsync(
-            "(() => {" +
-            "const body=document.body;" +
-            "if(!body)return false;" +
-            "window.focus();" +
-            "body.setAttribute('tabindex','0');" +
-            "body.setAttribute('role','document');" +
-            $"body.setAttribute('aria-label',{label});" +
-            "body.focus({preventScroll:true});" +
-            "return document.hasFocus()&&document.activeElement===body;" +
-            "})()");
-        return string.Equals(result, "true", StringComparison.OrdinalIgnoreCase);
+        if (MessageBody.CoreWebView2 == null) return null;
+        return await MessageBody.CoreWebView2.ExecuteScriptAsync(script);
     }
+
+    /// <summary>The token a document of render <paramref name="version"/> carries (#959).</summary>
+    private static string RenderToken(int version) =>
+        version.ToString(System.Globalization.CultureInfo.InvariantCulture);
 
     // ── F6 focus cycle (issue 53 Bug 1) ──────────────────────────────────────────
     // Three stops: 0 = toolbar, 1 = header fields, 2 = message body.
@@ -610,49 +980,21 @@ public partial class MessageWindow : Window
         var key = e.Key == Key.System ? e.SystemKey : e.Key;
         var mod = Keyboard.Modifiers;
 
-        if (key == Key.Escape || (key == Key.W && mod == ModifierKeys.Control))
+        // A link menu is up: skip the close, and leave the key UNHANDLED. Handling it here would
+        // keep the key from reaching Chromium, and the menu could then not be dismissed at all.
+        // Left alone, it passes down and Chromium closes its own menu (#671).
+        //
+        // Only while the body actually has focus: a claim left standing by a mouse dismissal would
+        // otherwise swallow an Escape pressed from the toolbar or a header field, with nothing to
+        // connect it to a link.
+        if (key == Key.Escape && MessageBody.IsKeyboardFocusWithin
+            && _linkMenu?.TryConsumeEscape() == true)
+        {
+            // Deliberately not handled.
+        }
+        else if (key == Key.Escape)
         {
             Close();
-            e.Handled = true;
-        }
-        else if (key == Key.Left && mod == ModifierKeys.Alt)
-        {
-            _vm.PreviousMessageCommand.Execute(null);
-            e.Handled = true;
-        }
-        else if (key == Key.Right && mod == ModifierKeys.Alt)
-        {
-            _vm.NextMessageCommand.Execute(null);
-            e.Handled = true;
-        }
-        else if (key == Key.R && mod == ModifierKeys.Control)
-        {
-            _vm.ReplyCommand.Execute(null);
-            e.Handled = true;
-        }
-        else if (key == Key.R && mod == (ModifierKeys.Control | ModifierKeys.Shift))
-        {
-            _vm.ReplyAllCommand.Execute(null);
-            e.Handled = true;
-        }
-        else if (key == Key.F && mod == ModifierKeys.Control)
-        {
-            _vm.ForwardCommand.Execute(null);
-            e.Handled = true;
-        }
-        else if (key == Key.Delete && mod == ModifierKeys.None)
-        {
-            _vm.DeleteMessageCommand.Execute(null);
-            e.Handled = true;
-        }
-        else if (key == Key.Q && mod == ModifierKeys.Control)
-        {
-            _vm.MarkReadCommand.Execute(null);
-            e.Handled = true;
-        }
-        else if (key == Key.G && mod == (ModifierKeys.Control | ModifierKeys.Shift))
-        {
-            _vm.GrabAddressesCommand.Execute(null);
             e.Handled = true;
         }
         else if (key == Key.F6 && mod == ModifierKeys.None)
@@ -665,30 +1007,44 @@ public partial class MessageWindow : Window
             CycleFocus(false);
             e.Handled = true;
         }
-        else if (key == Key.H && mod == (ModifierKeys.Control | ModifierKeys.Shift))
-        {
-            TogglePlainTextView();
-            e.Handled = true;
-        }
-        else if (key == Key.A && mod == ModifierKeys.Alt)
-        {
-            FocusAttachmentList();
-            e.Handled = true;
-        }
-        // Before the Ctrl+W branch would ever be reached: this window dispatches gestures with a
-        // hand-written ladder rather than through the registry, and the branches test `mod` for
-        // equality, so Ctrl+Shift+W cannot fall through to Ctrl+W. Kept adjacent so that stays true.
-        else if (key == Key.W && mod == (ModifierKeys.Control | ModifierKeys.Shift))
-        {
-            RequestWatchToggle();
-            e.Handled = true;
-        }
         else if (key == Key.P && mod == (ModifierKeys.Control | ModifierKeys.Shift))
         {
             OpenCommandPalette();
             e.Handled = true;
         }
+        // Everything else through the registry, so the keys the user assigned in Settings apply here.
+        // Handled whenever a command owns the key, available or not, as the hand-written ladder this
+        // replaces did: Alt+Left on the first message must not fall through to the page. The exception
+        // is a text-editing gesture whose command is unavailable: Copy Attachment's Ctrl+C outside the
+        // attachment list must reach the header field or the page, or nothing in this window can be
+        // copied with Ctrl+C (#978).
+        else if (_localRegistry.FindByGesture(key, mod) is { } command)
+        {
+            e.Handled = DispatchRegistryGesture(command, key, mod);
+        }
     }
+
+    /// <summary>
+    /// Runs <paramref name="command"/> if it is available, and says whether the key should be marked
+    /// handled: always when it ran, and when it did not unless the key is a text-editing gesture (#978).
+    /// </summary>
+    internal static bool DispatchRegistryGesture(CommandDefinition command, Key key, ModifierKeys mod)
+    {
+        if (command.IsAvailable?.Invoke() ?? true)
+        {
+            command.Execute();
+            return true;
+        }
+        return TextEditingGestures.SwallowWhenUnavailable(key, mod);
+    }
+
+    /// <summary>A gesture relayed out of the message body: run what the registry has on it, once input settles.</summary>
+    private void RelayGesture(Key key, ModifierKeys modifiers) =>
+        Dispatcher.InvokeAsync(() =>
+        {
+            if (_localRegistry.FindByGesture(key, modifiers) is { } command && (command.IsAvailable?.Invoke() ?? true))
+                command.Execute();
+        }, DispatcherPriority.Input);
 
     private void OpenCommandPalette()
     {
@@ -708,6 +1064,10 @@ public partial class MessageWindow : Window
             _themeService.ThemeChanged -= OnThemeChanged;
         _loadCts.Cancel();
         _loadCts.Dispose();
+        // A message still opening stops quietly (no "focus did not land", no announcement on a closed
+        // window), and the picture requests it was waiting on are answered now (#959).
+        Interlocked.Increment(ref _renderVersion);
+        _pictureHost?.End();
     }
 
     private void AttachmentList_GotKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
@@ -731,14 +1091,16 @@ public partial class MessageWindow : Window
             focusItem.Focus();
     }
 
-    // Shift+F10 / Apps: open the attachment ContextMenu directly.
+    // Shift+F10: open the attachment ContextMenu directly. The Applications key is deliberately
+    // NOT handled here — Windows raises WM_CONTEXTMENU for it on key up, so opening the menu on key
+    // down only gets it torn down again (issue #631). See ContextMenuKeys for the full account.
     // Enter opens the selected attachment; Alt+Enter shows its properties.
     private void AttachmentList_PreviewKeyDown(object sender, KeyEventArgs e)
     {
         var key = e.Key == Key.System ? e.SystemKey : e.Key;
         LogService.Debug($"[ATTLOG] MsgWin_AttachList_PreviewKeyDown: eKey={e.Key}, sysKey={e.SystemKey}, computed={key}, mod={e.KeyboardDevice.Modifiers}");
 
-        if ((key == Key.F10 && e.KeyboardDevice.Modifiers == ModifierKeys.Shift) || key == Key.Apps)
+        if (ContextMenuKeys.OpensMenuOnKeyDown(key, e.KeyboardDevice.Modifiers))
         {
             LogService.Debug($"[ATTLOG] MsgWin_AttachList_PreviewKeyDown: opening ContextMenu directly, IsNull={AttachmentList.ContextMenu == null}");
             if (AttachmentList.ContextMenu != null)
@@ -821,6 +1183,42 @@ public partial class MessageWindow : Window
 
     // Message content is untrusted; only allow-listed schemes (http/https/mailto)
     // may leave the app via ShellExecute. See ExternalUriPolicy.
+    /// <summary>
+    /// Reports a link-menu outcome into the open document: a host-window announcement is dropped
+    /// while focus is inside the WebView2 (issue #329), and it is there for the whole life of this
+    /// menu. Empty text means the action succeeded and retires any notice an earlier failure left —
+    /// success itself says nothing.
+    ///
+    /// Whether the region is LIVE, and so spoken without being sought, follows the AnnounceResults
+    /// preference like every other action outcome. This window has no free-text status bar to
+    /// mirror it into — its bar carries the position text — so the document is the only channel.
+    /// </summary>
+    private void ReportLinkMenuResult(string text) => _ = ReportLinkMenuResultAsync(text);
+
+    /// <summary>
+    /// Two ordered steps: the region is made live (or not) BEFORE its text changes. A region made
+    /// live in the same pass as its content is not reliably announced, which is the same reason it
+    /// is created at document load rather than on demand.
+    /// </summary>
+    private async Task ReportLinkMenuResultAsync(string text)
+    {
+        var core = MessageBody.CoreWebView2;
+        if (!_webViewReady || core is null) return;
+
+        try
+        {
+            // A clear is never live: removing text is the retraction, and an empty string is the
+            // case AccessibilityHelper.Announce refuses outright. There is nothing to hear.
+            await core.ExecuteScriptAsync(LinkContextMenuSupport.LiveScript(
+                      text.Length > 0 && AccessibilityHelper.WouldAnnounce(AnnouncementCategory.Result)));
+            await core.ExecuteScriptAsync(LinkContextMenuSupport.TextScript(text));
+        }
+        catch (Exception ex)
+        {
+            LogService.Log("ReportLinkMenuResult", ex);
+        }
+    }
+
     private static void OpenExternal(string uri) =>
         Helpers.ExternalUriPolicy.TryOpenExternal(uri);
 }

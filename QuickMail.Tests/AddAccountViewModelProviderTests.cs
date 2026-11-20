@@ -541,16 +541,12 @@ public class AddAccountViewModelProviderTests
     {
         var vm = NewVm(new StubAutoDiscover(null));
         vm.Username = "kelly@nowhere.example";
-        var events = new List<(bool Found, string Message)>();
-        vm.DiscoveryCompleted += (found, msg) => events.Add((found, msg));
 
         await vm.DiscoverSettingsCommand.ExecuteAsync(null);
 
-        // Never a silent empty state — the user must be told, and left where they now have to type.
+        // Never a silent empty state — the user must be told, and the fields to fill in opened.
         Assert.True(vm.IsAdvancedExpanded);
         Assert.Contains("No settings found", vm.StatusText, StringComparison.Ordinal);
-        Assert.Single(events);
-        Assert.False(events[0].Found);
     }
 
     [Fact]

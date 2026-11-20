@@ -10,13 +10,13 @@ namespace QuickMail.Tests;
 /// <c>ForRuleTarget</c> and so would stay green if the rule editors went back to constructing a flat
 /// <c>FolderPickerWindow</c> themselves — precisely the state this change fixed.
 ///
-/// <para>Neither editor can be stood up without a live rules ViewModel and an owner window, so this
-/// reads the source instead. Same shape as <see cref="FolderMoveCopyCallSiteTests"/>.</para>
+/// <para>The editor cannot be stood up without a live rules ViewModel and an owner window, so this
+/// reads the source instead. Same shape as <see cref="FolderMoveCopyCallSiteTests"/>. The theories
+/// keep their shape for the day a second editor exists; until then each has one row.</para>
 /// </summary>
 public class RuleTargetPickerCallSiteTests
 {
     [Theory]
-    [InlineData("Views/RulesManagerWindow.xaml.cs")]
     [InlineData("Views/ServerRuleEditorWindow.xaml.cs")]
     public void TheRuleEditorsBuildTheirFolderPickerThroughForRuleTarget(string file)
     {
@@ -35,7 +35,6 @@ public class RuleTargetPickerCallSiteTests
     /// than a literal null.
     /// </summary>
     [Theory]
-    [InlineData("Views/RulesManagerWindow.xaml.cs", "accountId")]
     [InlineData("Views/ServerRuleEditorWindow.xaml.cs", "_ruleAccountId")]
     public void TheRuleEditorsScopeThePickerToTheRulesAccount(string file, string accountArgument)
     {
@@ -47,16 +46,65 @@ public class RuleTargetPickerCallSiteTests
     }
 
     /// <summary>
+    /// The New Folder button only appears when the editor hands <c>ForRuleTarget</c> a creator, and
+    /// no presentation test can see that from inside the picker: a missing argument still produces a
+    /// perfectly good tree, just one with nothing to create a folder with (issue #645).
+    /// </summary>
+    [Theory]
+    [InlineData("Views/ServerRuleEditorWindow.xaml.cs")]
+    public void TheRuleEditorsGiveThePickerAWayToCreateAFolder(string file)
+    {
+        var body = MethodBody(file, "OnPickFolderRequested");
+
+        var call = Regex.Match(body, @"ForRuleTarget\s*\((?<args>[^;]*?)\)\s*;", RegexOptions.Singleline);
+        Assert.True(call.Success, $"could not find the ForRuleTarget call in {file}.");
+        Assert.Contains("folderCreator", call.Groups["args"].Value, StringComparison.Ordinal);
+
+        // The other half of the contract: a folder created inside the picker still has to reach the
+        // main window's folder tree, which could not be rebuilt while the picker's modal loop was
+        // running. Dropping this call is a silent staleness bug, not a crash.
+        Assert.Contains("PickerClosed()", body, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// And the other end of the wire: <c>MainWindow</c> is the only place that owns a
+    /// <c>MainViewModel</c>, so if it stops handing the rules window a
+    /// <c>FolderCreationSupport</c> it has nothing to pass on and the button quietly disappears.
+    ///
+    /// <para>Since #550 there is a single rules window, <c>UnifiedRulesWindow</c>, so there is only the
+    /// one construction to check.</para>
+    ///
+    /// <para>Whole-file rather than one method: <c>MethodBody</c> anchors on the first line that
+    /// calls the name, and <c>OpenRulesManager</c> is invoked from two event wire-ups long before it
+    /// is declared. The construction below appears exactly once in the file anyway.</para>
+    /// </summary>
+    [Fact]
+    public void MainWindowHandsTheRulesWindowAWayToCreateAFolder()
+    {
+        var source = Source("Views/MainWindow.xaml.cs");
+
+        // Scoped to the construction: both method names appear all over this file already, from the
+        // move/copy picker wiring, so asserting them against the whole source would pass with the
+        // rules wiring deleted.
+        var support = Regex.Match(
+            source, @"new\s+FolderCreationSupport\s*\((?<args>.*?)\)\s*;", RegexOptions.Singleline);
+        Assert.True(support.Success, "MainWindow no longer builds a FolderCreationSupport for the rules window.");
+        Assert.Contains("CreateFolderReturningFoldersAsync", support.Groups["args"].Value, StringComparison.Ordinal);
+        Assert.Contains("CommitPendingFolderTreeRebuild", support.Groups["args"].Value, StringComparison.Ordinal);
+
+        var construction = Regex.Match(source, @"new\s+UnifiedRulesWindow\s*\((?<args>[^;]*?)\)", RegexOptions.Singleline);
+        Assert.True(construction.Success, "MainWindow no longer constructs a UnifiedRulesWindow.");
+        Assert.Contains("folderCreation", construction.Groups["args"].Value, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// Text of one method, from its signature to the first closing brace at the same indentation.
     /// Crude, but these files' braces are consistently indented, and a miss fails loudly rather than
     /// silently matching the wrong text.
     /// </summary>
     private static string MethodBody(string relativePath, string methodName)
     {
-        var path = Path.Combine(RepoRoot(), "QuickMail", relativePath.Replace('/', Path.DirectorySeparatorChar));
-        Assert.True(File.Exists(path), $"{path} not found.");
-
-        var source = File.ReadAllText(path);
+        var source = Source(relativePath);
         var start  = Regex.Match(
             source, $@"^(?<indent>[ \t]*)\S[^\r\n]*\b{Regex.Escape(methodName)}\s*\(", RegexOptions.Multiline);
         Assert.True(start.Success, $"{methodName} not found in {relativePath} — renamed or removed?");
@@ -66,6 +114,13 @@ public class RuleTargetPickerCallSiteTests
         Assert.True(end.Success, $"could not find the end of {methodName} in {relativePath}.");
 
         return source.Substring(start.Index, end.Index + end.Length);
+    }
+
+    private static string Source(string relativePath)
+    {
+        var path = Path.Combine(RepoRoot(), "QuickMail", relativePath.Replace('/', Path.DirectorySeparatorChar));
+        Assert.True(File.Exists(path), $"{path} not found.");
+        return File.ReadAllText(path);
     }
 
     private static string RepoRoot()

@@ -74,6 +74,14 @@ internal sealed class GraphEmailAddress
         => string.IsNullOrEmpty(Name) || string.Equals(Name, Address, StringComparison.OrdinalIgnoreCase)
             ? Address ?? string.Empty
             : $"{Name} <{Address}>";
+
+    /// <summary>
+    /// The sender as the message list shows and speaks it (#801): the name where there is one, otherwise the
+    /// address — the same rule AddressListFormat.Display applies to IMAP and POP3, so a list row reads the same
+    /// whichever backend fetched it. The address itself goes in MailMessageSummary.FromEmail.
+    /// </summary>
+    public string AsDisplayString()
+        => string.IsNullOrWhiteSpace(Name) ? Address ?? string.Empty : Name.Trim();
 }
 
 internal sealed class GraphRecipient
@@ -123,6 +131,9 @@ internal sealed class GraphMessage
     [JsonPropertyName("hasAttachments")] public bool HasAttachments { get; set; }
     [JsonPropertyName("attachments")] public List<GraphAttachment>? Attachments { get; set; }
     [JsonPropertyName("flag")] public GraphFollowUpFlag? Flag { get; set; }
+
+    /// <summary>The folder a message is in. Only selected by server search (#717), whose results span folders.</summary>
+    [JsonPropertyName("parentFolderId")] public string? ParentFolderId { get; set; }
 
     /// <summary>
     /// Present on a delta-query entry when the message was removed from the tracked folder — deleted,
@@ -176,6 +187,13 @@ internal sealed class GraphCalendar
 {
     [JsonPropertyName("id")] public string Id { get; set; } = string.Empty;
     [JsonPropertyName("name")] public string? Name { get; set; }
+
+    /// <summary>
+    /// Whether the signed-in user may write to this calendar. False for one shared with them
+    /// read-only — offering it as a save target could only produce a failure. Graph defaults it to
+    /// false when unselected, so anything reading this must ask for it in <c>$select</c>.
+    /// </summary>
+    [JsonPropertyName("canEdit")] public bool CanEdit { get; set; }
 }
 
 /// <summary>
@@ -194,6 +212,20 @@ internal sealed class GraphCalendarEvent
     [JsonPropertyName("isAllDay")] public bool IsAllDay { get; set; }
     [JsonPropertyName("isOrganizer")] public bool IsOrganizer { get; set; }
     [JsonPropertyName("responseStatus")] public GraphResponseStatus? ResponseStatus { get; set; }
+    [JsonPropertyName("attendees")] public List<GraphAttendee>? Attendees { get; set; }
+}
+
+/// <summary>
+/// One invitee (issue #866). On read, <see cref="Status"/> is their answer; on write only the
+/// address and <see cref="Type"/> are sent, and Exchange emails the invitation itself.
+/// </summary>
+internal sealed class GraphAttendee
+{
+    [JsonPropertyName("emailAddress")] public GraphEmailAddress? EmailAddress { get; set; }
+    /// <summary>"required" | "optional" | "resource".</summary>
+    [JsonPropertyName("type")] public string? Type { get; set; }
+    [JsonPropertyName("status"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public GraphResponseStatus? Status { get; set; }
 }
 
 /// <summary>Graph's dateTimeTimeZone shape: a wall-clock string plus the zone it is expressed in.</summary>
@@ -225,4 +257,10 @@ internal sealed class GraphCreateEventBody
     [JsonPropertyName("location"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public GraphLocation? Location { get; set; }
     [JsonPropertyName("isAllDay")] public bool IsAllDay { get; set; }
+    /// <summary>
+    /// Who is invited (issue #866). Null leaves a PATCH's attendees as they are; an empty list
+    /// removes everyone. Sent only when the user changed who is invited.
+    /// </summary>
+    [JsonPropertyName("attendees"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public List<GraphAttendee>? Attendees { get; set; }
 }

@@ -1,5 +1,55 @@
 # QuickMail v0.8.42 Release Notes
 
+## New: shared mailboxes
+
+If your organization has given you access to a shared mailbox — a `support@`, `info@`, or `sales@` address a team reads together — you can now add it to QuickMail, and it appears as its own mailbox in the folder tree, alongside your own accounts.
+
+You add one through an account you already have: open **Account Manager**, choose **Add shared mailbox**, pick the Microsoft 365 work or school account that has access to it, and type the shared mailbox's address. There is no separate password and no separate sign-in — QuickMail reads and sends the shared mailbox using the permission your organization already granted your own account.
+
+- **Reading** works like any other mailbox — select it in the folder tree and open its folders.
+- **Sending as the shared mailbox** is a matter of choosing its address in the **From** list when you compose.
+- **New-mail notifications are off by default** for a shared mailbox, since it's often a busy team address. Turn on **Notify me of new mail in this shared mailbox** for a particular one in Account Manager if you want them (the main new-mail notification setting still has to be on).
+
+Two things worth knowing: a shared mailbox **updates every few minutes, not the instant mail arrives** (your own mailboxes still update live), and shared mailboxes are a **Microsoft 365 work or school** feature — personal Outlook.com accounts don't have them. Removing the account a shared mailbox reads through also removes the shared mailbox; QuickMail tells you first. ([#31](https://github.com/kellylford/QuickMail/issues/31))
+
+## New: an administrator can approve QuickMail for a whole organization
+
+Work or school organizations often require an administrator to approve a new app before anyone can sign in. QuickMail now has an in-app way to do it: **Help → Grant Admin Consent for Your Organization**. An administrator signs in there once, approves for the whole organization, and afterwards everyone signs in with no prompts — no hand-built URLs or portal digging.
+
+The approval also works from an ordinary sign-in now: everything QuickMail needs is requested together, so an administrator adding their own account (or approving at the "needs admin approval" screen) grants it all in one pass. And if you sign in as an administrator to approve and QuickMail notices it isn't the account you were adding, it no longer dead-ends — it tells you the approval is saved and offers to sign you back in as yourself. ([#607](https://github.com/kellylford/QuickMail/issues/607))
+
+## New: a key that goes straight to the next unread message
+
+A user wrote in asking for one, mentioning that Space did this in the mail program they came from.
+Until now the only way to find unread mail in a long folder was to arrow through everything you had
+already read.
+
+**Alt+Down** goes to the nearest unread message below where you are. **Alt+Up** goes to the nearest
+one above. Both are also in the Command Palette (**Ctrl+Shift+P**) as **Next Unread Message** and
+**Previous Unread Message**, and either can be given a key of your own in **File → Settings →
+Keyboard Shortcuts**.
+
+They work in every view. In **Messages** they move down or up the list, skipping what you have read.
+In **Conversations**, **From**, and **To** they run through every message the tree holds, in group
+order, so they cross from one conversation or sender into the next rather than stopping at the end of
+the one you are in.
+
+Three details worth knowing:
+
+- **A closed group is searched, and opened.** An unread message inside a conversation you have not
+  opened is still found, and the conversation opens so that message can take focus. It stays open
+  afterwards, the same as one you opened yourself.
+- **Neither wraps around.** Reaching the end says "No unread messages below" — QuickMail does not
+  quietly start again from the top, and nothing moving is never left unexplained.
+- **They stay out of the way of everything else.** The keys act while you are in the message list or
+  a group tree — the reading pane can be open beside it — so Alt+Down still opens a drop-down list
+  when that is what you are on. They do nothing while focus is inside the reading pane itself, and an
+  open message window has its own keys: Alt+Left and Alt+Right already move between messages there.
+  Started from the palette where there is no list to move through, they say why instead of going
+  quiet.
+
+([#617](https://github.com/kellylford/QuickMail/issues/617))
+
 ## New: expanding and collapsing folders
 
 Until now the only way to open or close a folder was Right and Left arrow on the folder itself, one
@@ -71,6 +121,118 @@ was selected. All three now leave the selection alone.
 Nothing about the keyboard changed: no shortcut, no announcement, and no reading order is different
 from 0.8.41. ([#601](https://github.com/kellylford/QuickMail/pull/601))
 
+## Fixed: typing a date or a time in the appointment editor did nothing at first
+
+Pressing **N** for a new appointment and typing a date into the **Starts** field left the field
+showing the date it had opened on. The same happened in the time field. As the report put it:
+*"The date field didn't change. The same thing happened in the time field. You have to move the
+field with an arrow key or select it all before it takes any input."*
+
+These fields open holding a full, spelled-out value — "Thursday, July 16, 2026" — with the cursor
+parked at the end of it and nothing selected. Typing `8/3` therefore made
+"Thursday, July 16, 20268/3", which means nothing as a date, so QuickMail quietly put the old value
+back. Nothing was said about it either: the value it restored was the one already there, so as far
+as the field was concerned nothing had changed.
+
+The value is now selected when you arrive at the field, so the first thing you type replaces it —
+the same as what already happened when a refused save sent you back to a field to correct it.
+Typing `8/3`, `tomorrow`, or `+7` works from the first keystroke. The arrow keys are unchanged: Up
+and Down still step the value by a day or a quarter hour and leave it unselected with the cursor at
+the end, so what you hear afterwards is the new value and not a selection.
+
+Leaving a field part-way through typing and coming back to it — opening the Command Palette over
+the editor, or switching to another window and back — keeps what you had typed, and keeps the
+cursor where you left it.
+
+This applies everywhere these fields are used — the **Starts** and **Ends** dates and times, the
+repeat interval and **until** date, and **Go to Date** (**Ctrl+G**) in the calendar.
+([#570](https://github.com/kellylford/QuickMail/issues/570))
+
+## New: choose which calendar an appointment goes on
+
+Until now an appointment saved to a Microsoft or Google account always landed on that account's
+default calendar. There was no way to file one on **Team**, or on **Family**, short of moving it
+afterwards in Outlook or Gmail. iCloud accounts have offered a choice for a while; the other two
+now do too.
+
+The **Calendar** picker in the appointment editor lists your **Local Calendar** first, then every
+calendar you can write to on each connected account, named account-first: **Work: Team**,
+**Apple: Family**. Microsoft and Google accounts also get an entry for the account itself —
+**Work (default calendar)** — for when you do not mind which calendar it lands on and would rather
+it follow whatever you have set on the provider's own site. iCloud has no such entry, because an
+iCloud appointment always names the calendar it goes on.
+
+The picker still starts on your default calendar if you have set one, whether you set that to a
+whole account or to a single calendar under it.
+
+Two things worth knowing:
+
+- **Calendars you only subscribe to are left out.** A holidays feed, or someone else's calendar
+  shared with you to read, cannot have appointments added to it, so offering it could only lead to a
+  save that was refused. They keep their place in the folder tree, which is where reading them
+  happens.
+- **A calendar you have not put anything in yet is offered like any other.** QuickMail now keeps
+  each account's real list of calendars rather than working out which calendars exist from the
+  appointments already in them — so an empty calendar is somewhere you can file the first one.
+  Those calendars also appear in the folder tree now, where before an empty one was missing
+  entirely.
+
+([#569](https://github.com/kellylford/QuickMail/issues/569))
+
+## Fixed: a new appointment was missing from the calendar it was filed on
+
+If you had one of your calendars selected in the folder tree — not **Calendar** at the top, but a
+particular calendar underneath it — an appointment you created went in, and then was not in the
+list. Pressing **F5** brought it into view. Reported twice, once as *"I added a new event in my
+default Gmail calendar. I looked for it and it didn't show up. I pressed F5 to refresh and then it
+showed up."*
+
+The appointment was saved correctly the whole time; it just was not labelled with the calendar it
+had gone onto, so the list you were looking at filtered it out. The next sync relabelled it and it
+appeared. QuickMail now labels a new appointment with its calendar as soon as it saves it, so it is
+in the list straight away — and the **Calendar** column reads correctly instead of coming up blank.
+
+The same fault had a second form on Microsoft 365 accounts: *editing* an appointment stripped the
+label off one that already had it, so an appointment you had just edited dropped out of the list
+until the next sync. Edits keep the label now, as they already did on Google accounts.
+
+This is one half of a complaint that came in twice. Both halves looked identical from the outside —
+an appointment missing until F5 — but they had different causes. This one is about an appointment
+you created in QuickMail; the other, **"the calendar did not ask the server when you opened it"**
+below, is about one you added somewhere else.
+([#569](https://github.com/kellylford/QuickMail/issues/569),
+[#519](https://github.com/kellylford/QuickMail/issues/519))
+
+## Fixed: the calendar did not ask the server when you opened it
+
+The other half of the complaint described under **"a new appointment was missing from the calendar
+it was filed on"** above: the same symptom, a different cause. An appointment
+added somewhere other than QuickMail — in Gmail or Outlook on the web, or on a phone — was not in
+the agenda when you opened the calendar. It turned up on its own eventually, because
+QuickMail checks connected calendars every fifteen minutes, but until then **F5** was the only way
+to see it. The report was precise about it: *"I added an appointment to my Gmail calendar and it
+didn't show in the agenda view... Press F5 to refresh the list. Now it will show up."*
+
+Opening the calendar now asks your accounts as well. The list still appears immediately from what
+QuickMail already had — you are never left waiting on the network to see your own calendar — and
+anything new folds in when the answer arrives.
+
+Three details worth knowing:
+
+- **It speaks only if something changed.** Opening the calendar already tells you which view you
+  are in and how many events it holds, so repeating that number a moment later would be chatter —
+  and in the ordinary case, where your accounts had nothing new, you hear nothing at all. When the
+  check does bring an appointment down, the count you were just given is out of date, so QuickMail
+  says the new one. The fifteen-minute background check announces itself as it always did.
+- **You keep your place.** When a check lands while you are reading, the appointment you were on
+  stays selected — and in Month view, so does the day you had moved to. Until now a check arriving
+  mid-read could drop you back to the top of the list, or back onto today in the month grid,
+  because the events had been rebuilt underneath you.
+- **Opening it again does not ask again.** Going out to your mail and straight back reuses what was
+  just fetched; there is a half-minute gap before another check.
+
+([#519](https://github.com/kellylford/QuickMail/issues/519))
+
 ## Fixed: Microsoft 365 unread counts went stale until you refreshed
 
 On a Microsoft 365 account, the unread count beside a folder only changed when the whole folder list
@@ -83,6 +245,22 @@ was the only thing that put it right.
 
 The count now updates as the mail does, on Microsoft 365 accounts as it already did on IMAP ones.
 ([#491](https://github.com/kellylford/QuickMail/issues/491))
+
+## Fixed: the Applications key did not open a context menu on an attachment
+
+The **Applications** key — the one some keyboards still carry between the right Alt and Ctrl keys —
+did nothing on the attachment list. A menu was announced and then gone again before anything could be
+done with it, which left **Shift+F10** as the only way in.
+
+The two keys reach a program differently: Windows turns Shift+F10 into a request for a context menu
+as the key goes down, and the Applications key into one as the key comes back up. The attachment list
+was opening its own menu on the way down, so with the Applications key a second request arrived a
+moment later and closed what had just opened.
+
+The attachment list now leaves that key to Windows, the way every other list in QuickMail already
+did. Both keys open the same menu — **Save…**, **Save All…**, **Open** — in the reading pane and in
+an open message window alike.
+([#631](https://github.com/kellylford/QuickMail/issues/631))
 
 ## Changed: Sign in is now the last thing you tab to
 
@@ -104,13 +282,26 @@ back on to recover.
 The contact and calendar permissions are now folded into the mail sign-in, so one screen lists all
 three together. This applies when the account is set to connect over **Microsoft 365 (Graph)** —
 which you choose under **Advanced settings → Connection method**; a personal account left on the
-standard IMAP connection is unaffected. Work and school accounts are deliberately left as they were:
-on a tenant that restricts consent, asking for everything at once would end the whole sign-in rather
-than just the extra part, and the account would never be added at all.
+standard IMAP connection is unaffected. A personal account folds in only what you asked for — mail,
+plus contacts or calendar if you checked those. Work and school accounts fold everything into their
+sign-in as well, but for a different purpose: so an administrator can approve the whole set for the
+organization in one pass (see *An administrator can approve QuickMail for a whole organization*,
+above). Someone without the authority to approve it all is simply signed in with mail only, rather
+than being turned away.
 
 A related bug went with it: an account with only **Sync calendar** checked used to fall through to a
 plain mail sign-in and a separate calendar prompt. Either box now triggers the fold.
 ([#544](https://github.com/kellylford/QuickMail/issues/544))
+
+## Personal accounts can connect over Microsoft 365 (Graph)
+
+A personal Outlook.com, Hotmail, or Live.com account can connect over **Microsoft 365 (Graph)** instead of IMAP — choose it under **Advanced settings → Connection method** when you add the account. Graph is the more capable connection, and a future version of QuickMail will make it the default for Microsoft accounts; for now personal accounts stay on the standard IMAP connection unless you choose Graph yourself.
+
+## Changed: a new email address for reaching us
+
+The email address for questions, bug reports, and anything else you would rather send by mail is now
+**[support@theideaplace.net](mailto:support@theideaplace.net)**, replacing the address used in earlier
+releases. The in-app **Help → Report a Bug** paths are unchanged.
 
 ---
 
@@ -120,7 +311,7 @@ Found a problem or have a suggestion? There are three ways to reach us — pick 
 
 1. **Report a Bug → Send** (Help menu, inside QuickMail). Files the report for you anonymously — it includes no email address or other identifying information, so there is no way to follow up with you. **Best when you don't want any follow-up.**
 2. **Report a Bug → Copy report and open GitHub** (Help menu). Opens a pre-filled issue that you submit under your own GitHub account, so your GitHub contact information is attached. **Best when you have a GitHub account and want automatic filing plus direct contact.**
-3. **Email** [quickmailissues@theideaplace.net](mailto:quickmailissues@theideaplace.net). **Best when you don't mind sending email and want a personal follow-up.**
+3. **Email** [support@theideaplace.net](mailto:support@theideaplace.net). **Best when you don't mind sending email and want a personal follow-up.**
 
 Full details, including exactly what a report contains (and what it never contains), are in the [Reporting Issues section of the User Guide](https://kellylford.github.io/QuickMail/reporting-issues.html).
 

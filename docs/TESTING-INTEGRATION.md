@@ -2,7 +2,7 @@
 
 `QuickMail.IntegrationTests` exercises real protocol code — `ImapMailService`, `SmtpService`,
 and (in later phases) the CalDAV/CardDAV clients — against local servers, per the
-[live-content testing plan](planning/live-content-testing-plan.md) (issue #304).
+[live-content testing plan](planning/Completed/live-content-testing-plan.md) (issue #304).
 
 These tests are **separate from `QuickMail.Tests`** (the stub-based unit suite) and only run
 meaningfully when the local servers are up. Without them, the tests skip with an explanatory
@@ -80,7 +80,9 @@ send-to-self round-trip that deletes what it sent — against a **real** mail ac
 skip everywhere the `LIVE_*` environment variables are absent, so they are a no-op locally and
 in the per-PR integration job.
 
-Setup (repository secrets): `LIVE_IMAP_HOST`, `LIVE_USER`, `LIVE_PASSWORD` required;
+Setup (secrets of the **`live-smoke` environment**, which admits only runs of `main` — not
+repository secrets, which any collaborator's branch could read): `LIVE_IMAP_HOST`,
+`LIVE_USER`, `LIVE_PASSWORD` required;
 `LIVE_IMAP_PORT` (993), `LIVE_IMAP_SSL` (1), `LIVE_SMTP_HOST` (=IMAP host), `LIVE_SMTP_PORT`
 (587), `LIVE_SMTP_SSL` (0 = STARTTLS) optional. Use a **dedicated mailbox on an owned domain**
 — the suite writes to and deletes from the real INBOX. On failure the workflow comments on (or

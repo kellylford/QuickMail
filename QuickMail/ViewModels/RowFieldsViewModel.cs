@@ -20,6 +20,13 @@ public sealed record RowKindOption(RowKind Kind, string Name)
     public override string ToString() => Name;
 }
 
+/// <summary>One choice in the field separator list (#802).</summary>
+public sealed record SeparatorOption(RowFieldSeparator Value, string Name)
+{
+    /// <summary>A screen reader reads a Selector item's name from ToString(), as for RowKindOption.</summary>
+    public override string ToString() => Name;
+}
+
 /// <summary>
 /// One field in the chooser. A thin observable wrapper over <see cref="RowFieldSetting"/> that
 /// carries the catalog's display text and reports every change back to the owning view model,
@@ -35,9 +42,77 @@ public sealed partial class RowFieldRow : ObservableObject
         DisplayName = def.DisplayName;
         IsState     = def.IsState;
         HasFalseWord = def.FalseWord is not null;
+        IsText      = def.Format == RowFieldFormat.Text;
+        DefaultWord = RowFieldWords.DefaultWord(def);
+        DefaultFalseWord = def.FalseWord ?? string.Empty;
         _enabled    = setting.Enabled;
         _speakMode  = setting.SpeakMode;
+        _wordOverride      = setting.Word;
+        _falseWordOverride = setting.FalseWord;
         _onChanged  = onChanged;
+    }
+
+    // ── spoken words (#807) ───────────────────────────────────────────────────
+
+    private string? _wordOverride;
+    private string? _falseWordOverride;
+
+    /// <summary>True for a text field, whose word is its label (spoken only with labels on).</summary>
+    public bool IsText { get; }
+
+    /// <summary>The shipped word: what <see cref="Word"/> shows until the user changes it.</summary>
+    public string DefaultWord { get; }
+
+    /// <summary>The shipped false word, for a state field that has one.</summary>
+    public string DefaultFalseWord { get; }
+
+    /// <summary>
+    /// The word this field says, as the Spoken as box shows it: the user's if they chose one,
+    /// otherwise the shipped one. Typing the shipped word stores nothing, so a later change to the
+    /// shipped wording still reaches the user.
+    /// </summary>
+    public string Word
+    {
+        get => _wordOverride ?? DefaultWord;
+        set
+        {
+            var next = RowFieldWords.Override(value, DefaultWord);
+            if (next == _wordOverride) return;
+            _wordOverride = next;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(HasCustomWord));
+            _onChanged();
+        }
+    }
+
+    /// <summary>The word said when a state is false under Always speak.</summary>
+    public string FalseWord
+    {
+        get => _falseWordOverride ?? DefaultFalseWord;
+        set
+        {
+            var next = RowFieldWords.Override(value, DefaultFalseWord);
+            if (next == _falseWordOverride) return;
+            _falseWordOverride = next;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(HasCustomWord));
+            _onChanged();
+        }
+    }
+
+    /// <summary>True when either word differs from the shipped one, so Default word has work to do.</summary>
+    public bool HasCustomWord => _wordOverride is not null || _falseWordOverride is not null;
+
+    /// <summary>Puts the shipped words back.</summary>
+    public void RestoreDefaultWords()
+    {
+        if (!HasCustomWord) return;
+        _wordOverride = null;
+        _falseWordOverride = null;
+        OnPropertyChanged(nameof(Word));
+        OnPropertyChanged(nameof(FalseWord));
+        OnPropertyChanged(nameof(HasCustomWord));
+        _onChanged();
     }
 
     public string Id { get; }
@@ -61,7 +136,11 @@ public sealed partial class RowFieldRow : ObservableObject
     partial void OnEnabledChanged(bool value) => _onChanged();
     partial void OnSpeakModeChanged(SpeakMode value) => _onChanged();
 
-    public RowFieldSetting ToSetting() => new() { Id = Id, Enabled = Enabled, SpeakMode = SpeakMode };
+    public RowFieldSetting ToSetting() => new()
+    {
+        Id = Id, Enabled = Enabled, SpeakMode = SpeakMode,
+        Word = _wordOverride, FalseWord = _falseWordOverride,
+    };
 
     /// <summary>Accessible name for the list row. Checked state is reported by the checkbox itself.</summary>
     public override string ToString() => DisplayName;
@@ -103,8 +182,15 @@ public sealed partial class RowFieldsViewModel : ObservableObject
 
         _layouts = _rowLayoutService.Load();
 
-        try { _showFieldLabels = _configService.Load().MessageListShowFieldLabels; }
+        var separator = RowFieldSeparator.Period;
+        try
+        {
+            var cfg = _configService.Load();
+            _showFieldLabels = cfg.MessageListShowFieldLabels;
+            separator        = cfg.MessageListFieldSeparator;
+        }
         catch { _showFieldLabels = false; }
+        _selectedSeparator = Separators.FirstOrDefault(s => s.Value == separator) ?? Separators[0];
 
         _selectedRowKind = RowKinds[0];
         LoadFieldsForSelectedKind();
@@ -138,6 +224,7 @@ public sealed partial class RowFieldsViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(CanMoveUp))]
     [NotifyPropertyChangedFor(nameof(CanMoveDown))]
     [NotifyCanExecuteChangedFor(nameof(MoveUpCommand))]
+    [NotifyPropertyChangedFor(nameof(SelectedShowsFalseWord))]
     [NotifyCanExecuteChangedFor(nameof(MoveDownCommand))]
     private RowFieldRow? _selectedField;
 
@@ -154,6 +241,35 @@ public sealed partial class RowFieldsViewModel : ObservableObject
 
     public bool HasSelection    => SelectedField is not null;
     public bool SelectedIsState => SelectedField?.IsState == true;
+
+    /// <summary>
+    /// Whether the When off box belongs on screen (#807): only a state field with a false word, and
+    /// only under Always speak, since Speak only when true never says it.
+    /// </summary>
+    public bool SelectedShowsFalseWord =>
+        SelectedField is { IsState: true, HasFalseWord: true, SpeakMode: SpeakMode.Always };
+
+    /// <summary>
+    /// Puts the selected field's shipped words back (#807). Always available, and doing nothing
+    /// when there is nothing to restore: a command that disabled its button on the press would
+    /// throw keyboard focus off that button onto the unnamed pane around it.
+    /// </summary>
+    [RelayCommand]
+    private void RestoreDefaultWord() => SelectedField?.RestoreDefaultWords();
+
+    /// <summary>
+    /// Speaks, as a hint, that a text field's word is its label and only heard with labels on.
+    /// The view calls this when Spoken as gets focus; said only while labels are off, when the
+    /// box would otherwise appear to do nothing (#807).
+    /// </summary>
+    public void ExplainLabelWordIfSilent()
+    {
+        if (SelectedField is { IsText: true } && !ShowFieldLabels)
+            Announce(LabelWordHint, AnnouncementCategory.Hint);
+    }
+
+    internal const string LabelWordHint =
+        "For this field, the word is its label, said only while Speak field labels is on.";
 
     /// <summary>
     /// Whether the selected field is turned on. Gates the speak-mode radios: <c>RowSpeechBuilder</c>
@@ -208,6 +324,35 @@ public sealed partial class RowFieldsViewModel : ObservableObject
         SaveLayouts();
     }
 
+    // ── separator (#802) ──────────────────────────────────────────────────────
+
+    /// <summary>What can go between fields. Period first: it is the default and what rows always said.</summary>
+    public IReadOnlyList<SeparatorOption> Separators { get; } =
+    [
+        new(RowFieldSeparator.Period, "Period"),
+        new(RowFieldSeparator.Comma,  "Comma"),
+        new(RowFieldSeparator.Space,  "Space"),
+    ];
+
+    [ObservableProperty]
+    private SeparatorOption _selectedSeparator;
+
+    partial void OnSelectedSeparatorChanged(SeparatorOption value)
+    {
+        if (value is null) return;
+        try
+        {
+            var cfg = _configService.Load();
+            cfg.MessageListFieldSeparator = value.Value;
+            _configService.Save(cfg);
+        }
+        catch { /* config unwritable — the in-session preview still reflects the choice */ }
+
+        UpdatePreview();
+        // As for labels: saving the layout is what tells the main window to re-speak open rows.
+        SaveLayouts();
+    }
+
     // ── preview ───────────────────────────────────────────────────────────────
 
     /// <summary>The sample row exactly as it would be spoken with the current settings.</summary>
@@ -259,15 +404,36 @@ public sealed partial class RowFieldsViewModel : ObservableObject
 
     private const string StatusName = "Read status (combined)";
 
+    // The group-row fields that count unread messages (#800).
+    private static readonly string[] UnreadCounts = ["unreadcount", "unreadoftotal"];
+
     private void UpdateSelectedFieldNote()
     {
         if (SelectedField is not { } field) { SelectedFieldNote = string.Empty; return; }
 
         bool StatusOn()  => Fields.Any(f => f.Id == "status" && f.Enabled);
         bool AnyPartOn() => Fields.Any(f => StatusParts.Contains(f.Id) && f.Enabled);
+        bool IsOn(string id) => Fields.Any(f => f.Id == id && f.Enabled);
+        bool AnyCountOn()    => UnreadCounts.Any(IsOn);
 
         SelectedFieldNote = field.Id switch
         {
+            // Has unread and the two counts (#800) all say a group has unread mail, so any two of
+            // them on together say it twice — the same doubling the status notes explain.
+            "hasunread" when field.Enabled && AnyCountOn() =>
+                "Unread count or Unread of total is also on and already says there is unread mail. "
+                + "Turn this off to hear only the count.",
+
+            "unreadcount" or "unreadoftotal" when field.Enabled && IsOn("hasunread") =>
+                "Has unread is also on, so a row with unread mail says so twice. "
+                + "Turn Has unread off to use this on its own.",
+
+            "unreadcount" when field.Enabled && IsOn("unreadoftotal") =>
+                "Unread of total is also on and says this count too, so it is said twice.",
+
+            "unreadoftotal" when field.Enabled && IsOn("unreadcount") =>
+                "Unread count is also on and says this count too, so it is said twice.",
+
             // Both halves on. Only worth saying when this field is itself spoken — an off field
             // cannot double anything, and its own note (below) is the more useful one.
             "status" when field.Enabled && AnyPartOn() =>
@@ -362,6 +528,8 @@ public sealed partial class RowFieldsViewModel : ObservableObject
         // Ticking the selected field's check box is what makes the speak-mode radios available,
         // so the gate has to re-evaluate here and not only when the selection moves.
         OnPropertyChanged(nameof(SelectedIsOn));
+        // Choosing Always speak brings the When off box in.
+        OnPropertyChanged(nameof(SelectedShowsFalseWord));
         SaveLayouts();
         UpdatePreview();
     }
@@ -378,14 +546,23 @@ public sealed partial class RowFieldsViewModel : ObservableObject
     {
         if (_suppressSave) return;
         _layouts.Set(SelectedRowKind.Kind, Fields.Select(f => f.ToSetting()).ToList());
-        _rowLayoutService.Save(_layouts);
+        // A save can fail on a file something else holds open (antivirus, a sync client). From a
+        // word box that would surface inside a binding, from a button as an unhandled exception;
+        // log it instead. The next change saves the whole layout again, so nothing is stranded.
+        try { _rowLayoutService.Save(_layouts); }
+        catch (Exception ex) when (ex is System.IO.IOException or UnauthorizedAccessException)
+        {
+            LogService.Log($"RowFields: saving rowlayout.json failed — {ex.Message}");
+        }
     }
 
     private void UpdatePreview()
     {
         var kind   = SelectedRowKind.Kind;
         var layout = Fields.Select(f => f.ToSetting()).ToList();
-        var text   = RowSpeechBuilder.Build(kind, ValuesForPreview(kind), layout, ShowFieldLabels);
+        var text   = RowSpeechBuilder.Build(
+            kind, ValuesForPreview(kind), layout, ShowFieldLabels,
+            SelectedSeparator?.Value ?? RowFieldSeparator.Period);
 
         Preview = string.IsNullOrEmpty(text)
             ? "No fields turned on — this row would be silent."
@@ -443,10 +620,12 @@ public sealed partial class RowFieldsViewModel : ObservableObject
         RowKind.Conversation =>
         [
             "Budget review", 3, "Chris Lee", "Follow up", true, "Lunch tomorrow?", "2:14P",
+            2, new UnreadTally(2, 3),
         ],
         RowKind.SenderGroup =>
         [
             "Chris Lee", 3, "Follow up", true, "Lunch tomorrow?", "2:14P", "Budget review",
+            2, new UnreadTally(2, 3),
         ],
         _ => [],
     };

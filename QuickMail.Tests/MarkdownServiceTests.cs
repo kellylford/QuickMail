@@ -114,7 +114,26 @@ public class MarkdownServiceTests
         // lands in it rather than directly on the quoted text.
         var html = _svc.PlainTextToHtml("\n\nOn Monday, alice wrote:\n> hello");
         Assert.StartsWith("<p><br /></p>", html);
-        Assert.Contains("<p>On Monday, alice wrote:<br />&gt; hello</p>", html);
+        Assert.Contains("<p>On Monday, alice wrote:</p>", html);
+    }
+
+    [Fact]
+    public void PlainTextToHtml_QuotedLines_BecomeABlockquote()
+    {
+        // #729: a reply switched to HTML used to send literal ">" characters.
+        var html = _svc.PlainTextToHtml("\n\nOn Monday, alice wrote:\n> hello\n> there\n>\n> > older");
+        Assert.Equal(
+            "<p><br /></p>\n<p>On Monday, alice wrote:</p>\n" +
+            "<blockquote>\n<p>hello<br />there</p>\n<blockquote>\n<p>older</p>\n</blockquote>\n</blockquote>\n",
+            html);
+        Assert.DoesNotContain("&gt;", html);
+    }
+
+    [Fact]
+    public void PlainTextToHtml_TextAfterAQuote_ClosesIt()
+    {
+        var html = _svc.PlainTextToHtml("> quoted\n-- \nsig");
+        Assert.Equal("<blockquote>\n<p>quoted</p>\n</blockquote>\n<p>-- <br />sig</p>\n", html);
     }
 
     [Fact]

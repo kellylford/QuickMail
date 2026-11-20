@@ -1,6 +1,7 @@
 <Window x:Class="QuickMail.Views.ServerRuleEditorWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:QuickMail.Views"
         Title="{Binding Title}"
         AutomationProperties.Name="{Binding Title}"
         Width="520" Height="620"
@@ -14,6 +15,9 @@
         FontSize="{DynamicResource Theme.FontSizeBase}">
 
     <Window.Resources>
+        <local:InverseBoolConverter x:Key="InverseBoolConverter"/>
+        <BooleanToVisibilityConverter x:Key="BoolToVisibility"/>
+
         <Style TargetType="TextBox" x:Key="EditorTextBox" BasedOn="{StaticResource {x:Type TextBox}}">
             <Setter Property="Margin" Value="0,2,0,8"/>
             <Setter Property="Padding" Value="4,3"/>
@@ -24,6 +28,18 @@
         <Style TargetType="CheckBox" x:Key="EditorCheckBox" BasedOn="{StaticResource {x:Type CheckBox}}">
             <Setter Property="Margin" Value="0,4"/>
         </Style>
+        <!-- A TextBlock has no control template and so no disabled look of its own: IsEnabled="False" on
+             one renders identically to an enabled one, leaving a full-contrast label beside the greyed
+             control it belongs to. These three label the server-only ComboBoxes and the Forward-to box
+             (#682), so they have to grey with them. -->
+        <Style TargetType="TextBlock" x:Key="FieldLabel">
+            <Style.Triggers>
+                <Trigger Property="IsEnabled" Value="False">
+                    <Setter Property="Foreground" Value="{DynamicResource Theme.TextDisabled}"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
         <Style TargetType="TextBlock" x:Key="SectionHeader">
             <Setter Property="FontWeight" Value="SemiBold"/>
             <Setter Property="Margin" Value="0,12,0,4"/>
@@ -48,17 +64,84 @@
                 <CheckBox Content="Enabled" IsChecked="{Binding IsEnabled}"
                           Style="{StaticResource EditorCheckBox}" AutomationProperties.Name="Rule enabled"/>
 
+                <!-- Why some options are turned off (#682). A disabled control leaves the Tab order, so
+                     without this the server-only options do not read as unavailable — they simply are not
+                     there. Placed before the form rather than beside them because the six they cover are
+                     spread across three sections, and it NAMES them, since nobody who cannot see which
+                     controls are greyed can work out what is missing.
+
+                     A focus stop, not decoration: an unfocusable TextBlock is reachable only in a screen
+                     reader's own review mode, which is no answer to six controls vanishing from Tab. The
+                     rules window makes its status line reachable by F6 instead, because it has panes to
+                     cycle; this window deliberately has none (see the code-behind), so Tab is the only
+                     route there is — don't "restore consistency" by copying its IsTabStop="False". The
+                     stop exists only while there is something to say, the same conditional-IsTabStop
+                     pattern the condition boxes below use. -->
+                <TextBlock Text="{Binding ServerOnlyOptionsDisabledReason}" TextWrapping="Wrap"
+                           Margin="0,4,0,0" Focusable="True"
+                           KeyboardNavigation.IsTabStop="{Binding HasServerOnlyOptionsDisabledReason}"
+                           AutomationProperties.Name="{Binding ServerOnlyOptionsDisabledReason}">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock">
+                            <Style.Triggers>
+                                <!-- Nothing to say: take no room either, rather than an empty line's margin. -->
+                                <DataTrigger Binding="{Binding HasServerOnlyOptionsDisabledReason}" Value="False">
+                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
+
+                <!-- An existing server rule that marks messages read (#810): Save refuses it until Mark as read
+                     is cleared, so say why before the user gets there. A focus stop only while it has something
+                     to say, the same pattern as the notice above. -->
+                <TextBlock Text="{Binding ServerMarkAsReadNotice}" TextWrapping="Wrap"
+                           Margin="0,4,0,0" Focusable="True"
+                           KeyboardNavigation.IsTabStop="{Binding HasServerMarkAsReadNotice}"
+                           AutomationProperties.Name="{Binding ServerMarkAsReadNotice}">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock">
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding HasServerMarkAsReadNotice}" Value="False">
+                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
+
                 <!-- Common conditions -->
                 <TextBlock Text="Apply when a message matches" Style="{StaticResource SectionHeader}"/>
                 <Separator/>
 
-                <TextBlock Text="From addresses (comma-separated)"/>
-                <TextBox Text="{Binding FromAddresses, UpdateSourceTrigger=PropertyChanged}"
-                         Style="{StaticResource EditorTextBox}" AutomationProperties.Name="From addresses"/>
+                <!-- Each free-text condition is switched on by its own checkbox (#665): without one,
+                     a rule made from a message used the From AND the Subject it was prefilled with,
+                     and there was no way to say you only wanted one of them. Clearing the switch
+                     leaves the text in the (read-only, skipped) box, so turning it back on is one
+                     keystroke. The checkbox Content IS the field's label, so it carries the accessible
+                     name — no AutomationProperties.Name restating it in different words.
 
-                <TextBlock Text="Subject contains"/>
+                     Sender contains is the common one and From addresses is in Advanced, not the other
+                     way round (#682): Create Rule from Message prefills the sender, its address where
+                     QuickMail has one (#803) and otherwise its display name, which may well hold a comma
+                     — an Exchange address book writes "Last, First" — and the address list reads a comma
+                     as a separator. The prefilled field is the one that has to be first. -->
+                <CheckBox Content="Sender contains" IsChecked="{Binding UseSenderContains}"
+                          Style="{StaticResource EditorCheckBox}"/>
+                <TextBox Text="{Binding SenderContains, UpdateSourceTrigger=PropertyChanged}"
+                         Style="{StaticResource EditorTextBox}"
+                         IsReadOnly="{Binding UseSenderContains, Converter={StaticResource InverseBoolConverter}, FallbackValue=True}"
+                         IsTabStop="{Binding UseSenderContains}"
+                         AutomationProperties.Name="Sender contains"/>
+
+                <CheckBox Content="Subject contains" IsChecked="{Binding UseSubjectContains}"
+                          Style="{StaticResource EditorCheckBox}"/>
                 <TextBox Text="{Binding SubjectContains, UpdateSourceTrigger=PropertyChanged}"
-                         Style="{StaticResource EditorTextBox}" AutomationProperties.Name="Subject contains"/>
+                         Style="{StaticResource EditorTextBox}"
+                         IsReadOnly="{Binding UseSubjectContains, Converter={StaticResource InverseBoolConverter}, FallbackValue=True}"
+                         IsTabStop="{Binding UseSubjectContains}"
+                         AutomationProperties.Name="Subject contains"/>
 
                 <!-- Common actions -->
                 <TextBlock Text="Then do this" Style="{StaticResource SectionHeader}"/>
@@ -68,15 +151,51 @@
                           Style="{StaticResource EditorCheckBox}" AutomationProperties.Name="Move to folder"/>
                 <Button Content="{Binding MoveToFolderName, TargetNullValue=Choose folder…, FallbackValue=Choose folder…}"
                         Command="{Binding PickFolderCommand}" HorizontalAlignment="Left"
-                        Padding="8,3" Margin="0,0,0,8" AutomationProperties.Name="Choose move-to folder"/>
+                        Padding="8,3" Margin="0,0,0,8" AutomationProperties.Name="{Binding MoveToFolderButtonName}"/>
 
-                <CheckBox Content="Mark as read" IsChecked="{Binding MarkAsRead}"
-                          Style="{StaticResource EditorCheckBox}" AutomationProperties.Name="Mark as read"/>
+                <!-- Client-only since #810, like Mark as unread below and for the same reason it has no
+                     AutomationProperties.Name: the qualifier is part of the spoken name, because the save-time
+                     notice that the rule went client-side is a Result announcement a user may have turned off.
+                     Turned off while editing a server-side rule, unless that rule already marks read, so the
+                     user can clear it (VM.CanMarkAsRead). -->
+                <CheckBox Content="Mark as read (client-side only)" IsChecked="{Binding MarkAsRead}"
+                          IsEnabled="{Binding CanMarkAsRead}"
+                          Style="{StaticResource EditorCheckBox}"/>
 
+                <!-- Named "Delete" on purpose, dropping the parenthetical from speech: "(move to Deleted
+                     Items)" explains what Delete means and is left to the screen. Compare Mark as unread
+                     below, which has NO Name so its parenthetical IS spoken — that one names a consequence
+                     (the rule becomes client-side) that nothing else reliably delivers. The two differ
+                     deliberately (#550); don't "fix" either to match the other. -->
                 <CheckBox Content="Delete (move to Deleted Items)" IsChecked="{Binding Delete}"
                           Style="{StaticResource EditorCheckBox}" AutomationProperties.Name="Delete"/>
 
+                <!-- Client-only, with no AutomationProperties.Name for the same reason as Mark as read above. -->
+                <CheckBox Content="Play a sound (client-side only)" IsChecked="{Binding PlaySound}"
+                          IsEnabled="{Binding CanPlaySound}"
+                          Style="{StaticResource EditorCheckBox}"/>
+                <Label Content="Sound:" Target="{Binding ElementName=RuleSoundCombo}" Padding="0,0,0,2" Margin="20,0,0,0"
+                       IsEnabled="{Binding IsPlaySoundSelected}"/>
+                <ComboBox x:Name="RuleSoundCombo" AutomationProperties.Name="Sound"
+                          Style="{StaticResource EditorComboBox}"
+                          ItemsSource="{Binding RuleSoundChoices}"
+                          SelectedItem="{Binding SelectedRuleSound, Mode=TwoWay}"
+                          DisplayMemberPath="Label"
+                          IsEnabled="{Binding IsPlaySoundSelected}"
+                          HorizontalAlignment="Left" MinWidth="200" Margin="20,0,0,6"/>
+                <StackPanel Orientation="Horizontal" Margin="20,0,0,8">
+                    <Button Content="Preview Sound" Padding="8,3" Margin="0,0,8,0"
+                            Command="{Binding PreviewRuleSoundCommand}"
+                            IsEnabled="{Binding IsPlaySoundSelected}"/>
+                    <Button x:Name="ChooseRuleSoundButton" Content="Choose Sound File…" Padding="8,3"
+                            Click="ChooseRuleSoundButton_Click"
+                            IsEnabled="{Binding IsPlaySoundSelected}"/>
+                </StackPanel>
+                <TextBlock Text="{Binding RuleSoundMessage}" TextWrapping="Wrap" Margin="20,0,0,8"
+                           Visibility="{Binding HasRuleSoundMessage, Converter={StaticResource BoolToVisibility}}"/>
+
                 <CheckBox Content="Stop processing more rules" IsChecked="{Binding StopProcessingRules}"
+                          IsEnabled="{Binding CanUseServerOnlyOptions}"
                           Style="{StaticResource EditorCheckBox}" AutomationProperties.Name="Stop processing more rules"/>
 
                 <!-- Advanced: less-common conditions/actions. Collapsed for a new rule; auto-expanded
@@ -87,60 +206,88 @@
                     <StackPanel Margin="0,6,0,0">
                         <TextBlock Text="More conditions" Style="{StaticResource SectionHeader}" Margin="0,0,0,4"/>
 
-                        <TextBlock Text="Sender contains (substring match on sender)"/>
-                        <TextBox Text="{Binding SenderContains, UpdateSourceTrigger=PropertyChanged}"
-                                 Style="{StaticResource EditorTextBox}" AutomationProperties.Name="Sender contains"/>
+                        <CheckBox Content="From addresses (comma-separated)" IsChecked="{Binding UseFromAddresses}"
+                                  Style="{StaticResource EditorCheckBox}"/>
+                        <TextBox Text="{Binding FromAddresses, UpdateSourceTrigger=PropertyChanged}"
+                                 Style="{StaticResource EditorTextBox}"
+                                 IsReadOnly="{Binding UseFromAddresses, Converter={StaticResource InverseBoolConverter}, FallbackValue=True}"
+                                 IsTabStop="{Binding UseFromAddresses}"
+                                 AutomationProperties.Name="From addresses"/>
 
-                        <TextBlock Text="Sent to addresses (comma-separated)"/>
+                        <CheckBox Content="Sent to addresses (comma-separated)" IsChecked="{Binding UseSentToAddresses}"
+                                  Style="{StaticResource EditorCheckBox}"/>
                         <TextBox Text="{Binding SentToAddresses, UpdateSourceTrigger=PropertyChanged}"
-                                 Style="{StaticResource EditorTextBox}" AutomationProperties.Name="Sent to addresses"/>
+                                 Style="{StaticResource EditorTextBox}"
+                                 IsReadOnly="{Binding UseSentToAddresses, Converter={StaticResource InverseBoolConverter}, FallbackValue=True}"
+                                 IsTabStop="{Binding UseSentToAddresses}"
+                                 AutomationProperties.Name="Sent to addresses"/>
 
-                        <TextBlock Text="Subject or body contains"/>
+                        <CheckBox Content="Subject or body contains" IsChecked="{Binding UseBodyOrSubjectContains}"
+                                  Style="{StaticResource EditorCheckBox}"/>
                         <TextBox Text="{Binding BodyOrSubjectContains, UpdateSourceTrigger=PropertyChanged}"
-                                 Style="{StaticResource EditorTextBox}" AutomationProperties.Name="Subject or body contains"/>
+                                 Style="{StaticResource EditorTextBox}"
+                                 IsReadOnly="{Binding UseBodyOrSubjectContains, Converter={StaticResource InverseBoolConverter}, FallbackValue=True}"
+                                 IsTabStop="{Binding UseBodyOrSubjectContains}"
+                                 AutomationProperties.Name="Subject or body contains"/>
 
-                        <TextBlock Text="Body contains"/>
+                        <CheckBox Content="Body contains" IsChecked="{Binding UseBodyContains}"
+                                  Style="{StaticResource EditorCheckBox}"/>
                         <TextBox Text="{Binding BodyContains, UpdateSourceTrigger=PropertyChanged}"
-                                 Style="{StaticResource EditorTextBox}" AutomationProperties.Name="Body contains"/>
+                                 Style="{StaticResource EditorTextBox}"
+                                 IsReadOnly="{Binding UseBodyContains, Converter={StaticResource InverseBoolConverter}, FallbackValue=True}"
+                                 IsTabStop="{Binding UseBodyContains}"
+                                 AutomationProperties.Name="Body contains"/>
 
                         <CheckBox Content="Sent to me" IsChecked="{Binding SentToMe}"
+                                  IsEnabled="{Binding CanUseServerOnlyOptions}"
                                   Style="{StaticResource EditorCheckBox}" AutomationProperties.Name="Sent to me"/>
                         <CheckBox Content="Sent only to me" IsChecked="{Binding SentOnlyToMe}"
+                                  IsEnabled="{Binding CanUseServerOnlyOptions}"
                                   Style="{StaticResource EditorCheckBox}" AutomationProperties.Name="Sent only to me"/>
                         <CheckBox Content="Has attachments" IsChecked="{Binding HasAttachments}"
                                   Style="{StaticResource EditorCheckBox}" AutomationProperties.Name="Has attachments"/>
 
-                        <TextBlock Text="Importance is"/>
+                        <TextBlock Text="Importance is" Style="{StaticResource FieldLabel}" IsEnabled="{Binding CanUseServerOnlyOptions}"/>
                         <ComboBox ItemsSource="{Binding ImportanceOptions}"
                                   SelectedItem="{Binding SelectedImportance}"
-                                  Style="{StaticResource EditorComboBox}" AutomationProperties.Name="Importance condition"/>
+                                  IsEnabled="{Binding CanUseServerOnlyOptions}"
+                                  Style="{StaticResource EditorComboBox}" AutomationProperties.Name="Importance is"/>
 
                         <TextBlock Text="More actions" Style="{StaticResource SectionHeader}"/>
 
                         <!-- Client-only action: Microsoft 365 server rules can't mark unread, so using
-                             this makes the rule run in QuickMail (the classifier says so on save). -->
-                        <CheckBox Content="Mark as unread (runs in QuickMail)" IsChecked="{Binding MarkAsUnread}"
-                                  Style="{StaticResource EditorCheckBox}" AutomationProperties.Name="Mark as unread"/>
+                             this forces the rule to be client-side. No AutomationProperties.Name, so the
+                             Content — qualifier included — is the accessible name: the save-time notice
+                             is a Result announcement a user may have turned off, which would leave this
+                             qualifier the only place a screen-reader user learns it. See Delete above. -->
+                        <!-- Turned off while editing a server-side rule, which can't mark mail unread (#684). -->
+                        <CheckBox Content="Mark as unread (client-side only)" IsChecked="{Binding MarkAsUnread}"
+                                  IsEnabled="{Binding CanMarkAsUnread}"
+                                  Style="{StaticResource EditorCheckBox}"/>
 
                         <CheckBox Content="Copy to folder" IsChecked="{Binding CopyToFolder}"
                                   Style="{StaticResource EditorCheckBox}" AutomationProperties.Name="Copy to folder"/>
                         <Button Content="{Binding CopyToFolderName, TargetNullValue=Choose folder…, FallbackValue=Choose folder…}"
                                 Command="{Binding PickCopyFolderCommand}" HorizontalAlignment="Left"
-                                Padding="8,3" Margin="0,0,0,8" AutomationProperties.Name="Choose copy-to folder"/>
+                                Padding="8,3" Margin="0,0,0,8" AutomationProperties.Name="{Binding CopyToFolderButtonName}"/>
 
-                        <TextBlock Text="Set importance to"/>
+                        <TextBlock Text="Set importance to" Style="{StaticResource FieldLabel}" IsEnabled="{Binding CanUseServerOnlyOptions}"/>
                         <ComboBox ItemsSource="{Binding ImportanceOptions}"
                                   SelectedItem="{Binding SelectedMarkImportance}"
-                                  Style="{StaticResource EditorComboBox}" AutomationProperties.Name="Set importance action"/>
+                                  IsEnabled="{Binding CanUseServerOnlyOptions}"
+                                  Style="{StaticResource EditorComboBox}" AutomationProperties.Name="Set importance to"/>
 
-                        <TextBlock Text="Forward to (comma-separated)"/>
+                        <TextBlock Text="Forward to (comma-separated)" Style="{StaticResource FieldLabel}" IsEnabled="{Binding CanUseServerOnlyOptions}"/>
                         <TextBox Text="{Binding ForwardTo, UpdateSourceTrigger=PropertyChanged}"
+                                 IsEnabled="{Binding CanUseServerOnlyOptions}"
                                  Style="{StaticResource EditorTextBox}" AutomationProperties.Name="Forward to"/>
                     </StackPanel>
                 </Expander>
 
-                <TextBlock Text="{Binding FolderError}" Foreground="{DynamicResource Theme.Error}"
+                <TextBlock Text="{Binding AddressError}" Foreground="{DynamicResource Theme.Error}"
                            TextWrapping="Wrap" Margin="0,8,0,0" KeyboardNavigation.IsTabStop="False"/>
+                <TextBlock Text="{Binding FolderError}" Foreground="{DynamicResource Theme.Error}"
+                           TextWrapping="Wrap" KeyboardNavigation.IsTabStop="False"/>
                 <TextBlock Text="{Binding ActionsError}" Foreground="{DynamicResource Theme.Error}"
                            TextWrapping="Wrap" KeyboardNavigation.IsTabStop="False"/>
             </StackPanel>

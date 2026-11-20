@@ -37,8 +37,16 @@ public sealed class CommandDefinition
         DefaultModifiers = defaultModifiers;
         Description    = description;
         IsAvailable    = isAvailable;
+        GestureText    = DefaultGestureText;
     }
 
-    /// <summary>Human-readable shortcut string, e.g. "Ctrl+N" or "Delete".</summary>
-    public string GestureText => GestureHelper.Format(DefaultKey, DefaultModifiers);
+    /// <summary>The default shortcut as text, e.g. "Ctrl+N" or "Delete"; empty when there is none.</summary>
+    public string DefaultGestureText => GestureHelper.Format(DefaultKey, DefaultModifiers);
+
+    /// <summary>
+    /// The shortcut this command answers to now: the user's binding from Settings if there is one,
+    /// otherwise <see cref="DefaultGestureText"/>. The registry the command is registered with keeps
+    /// it current. Menus, tooltips, screen readers and the command palette show this one (#849).
+    /// </summary>
+    public string GestureText { get; internal set; }
 }

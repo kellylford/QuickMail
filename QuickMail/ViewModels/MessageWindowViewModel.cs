@@ -35,9 +35,39 @@ public sealed partial class MessageWindowViewModel : ObservableObject
     public Action? DeleteAction      { get; set; }
     public Action? MarkReadAction    { get; set; }
     public Action? GrabAddressesAction { get; set; }
+
+    /// <summary>
+    /// Create Rule from Message and Manage Rules. A message you have just read is where a rule starts,
+    /// and a message window had neither; both are routed to the main window, which owns the Rules
+    /// Manager and keeps it to one copy.
+    /// </summary>
+    public Action? CreateRuleAction  { get; set; }
+    public Action? ManageRulesAction { get; set; }
+
+    /// <summary>
+    /// Opens a new message addressed to the given address — the link menu's "Compose to This
+    /// Address" on a mailto: link (issue #671). Wired to MainViewModel so the compose window is
+    /// created the same way it is everywhere else.
+    /// </summary>
+    public Action<string>? ComposeToAction { get; set; }
     public Func<AttachmentModel?, Task>? OpenAttachmentAction   { get; set; }
     public Func<AttachmentModel?, Task>? SaveAttachmentAction   { get; set; }
     public Func<Task>? SaveAllAttachmentsAction { get; set; }
+
+    /// <summary>
+    /// False for a message that is in no mailbox: an opened .eml file or attached email (#939). Delete,
+    /// Mark as Read, Create Rule and Move to Main Window are hidden, and their keys do nothing.
+    /// </summary>
+    public bool IsInMailbox { get; init; } = true;
+
+    /// <summary>Copy one attachment, or all of them, to the Windows clipboard as files (#929).</summary>
+    public Func<AttachmentModel?, Task>? CopyAttachmentAction { get; set; }
+    public Func<Task>? CopyAllAttachmentsAction { get; set; }
+
+    /// <summary>Save, Save As and Print of this window's message (#728), routed to MainViewModel.</summary>
+    public Func<Task>? SaveAction   { get; set; }
+    public Func<Task>? SaveAsAction { get; set; }
+    public Func<Task>? PrintAction  { get; set; }
 
     public string WindowTitle
     {
@@ -90,6 +120,12 @@ public sealed partial class MessageWindowViewModel : ObservableObject
     private void GrabAddresses() => GrabAddressesAction?.Invoke();
 
     [RelayCommand]
+    private void CreateRuleFromMessage() => CreateRuleAction?.Invoke();
+
+    [RelayCommand]
+    private void ManageRules() => ManageRulesAction?.Invoke();
+
+    [RelayCommand]
     private Task OpenAttachment(AttachmentModel? attachment) =>
         OpenAttachmentAction?.Invoke(attachment) ?? Task.CompletedTask;
 
@@ -100,6 +136,23 @@ public sealed partial class MessageWindowViewModel : ObservableObject
     [RelayCommand]
     private Task SaveAllAttachments() =>
         SaveAllAttachmentsAction?.Invoke() ?? Task.CompletedTask;
+
+    [RelayCommand]
+    private Task CopyAttachment(AttachmentModel? attachment) =>
+        CopyAttachmentAction?.Invoke(attachment) ?? Task.CompletedTask;
+
+    [RelayCommand]
+    private Task CopyAllAttachments() =>
+        CopyAllAttachmentsAction?.Invoke() ?? Task.CompletedTask;
+
+    [RelayCommand]
+    private Task SaveMessage() => SaveAction?.Invoke() ?? Task.CompletedTask;
+
+    [RelayCommand]
+    private Task SaveMessageAs() => SaveAsAction?.Invoke() ?? Task.CompletedTask;
+
+    [RelayCommand]
+    private Task PrintMessage() => PrintAction?.Invoke() ?? Task.CompletedTask;
 
     public bool CanNavigatePrevious =>
         SelectedMessage != null && MessageList.Count > 0

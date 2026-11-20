@@ -3,12 +3,18 @@
   <PropertyGroup>
     <!-- Must match (or exceed) the main project's Windows-10 TFM: a project can only reference
          another whose platform version is <= its own. -->
-    <TargetFramework>net8.0-windows10.0.17763.0</TargetFramework>
+    <TargetFramework>net10.0-windows10.0.17763.0</TargetFramework>
     <UseWPF>true</UseWPF>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
+    <!-- xunit v4 makes every test project a Microsoft Testing Platform (v2) app by default, and
+         under the .NET 10 SDK that refuses the VSTest-mode `dotnet test` CI and build.bat use
+         ("Testing with VSTest target is no longer supported"). Opting out keeps VSTest through
+         xunit.runner.visualstudio, so the trx logger and test filters behave as before. Moving to the
+         new MTP `dotnet test` is its own change: global.json, every workflow switch, CLAUDE.md. -->
+    <IsTestingPlatformApplication>false</IsTestingPlatformApplication>
     <!-- STA is required for WPF object instantiation -->
     <ApartmentState>STA</ApartmentState>
     <!-- Match the main project's RID and self-contained mode so the ProjectReference output
@@ -25,12 +31,13 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="coverlet.collector" Version="10.0.1" />
-    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.8.1" />
-    <PackageReference Include="xunit.v3" Version="3.2.2" />
-    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5" />
+    <PackageReference Include="coverlet.collector" Version="10.1.1" />
+    <PackageReference Include="Microsoft.Diagnostics.Runtime" Version="4.2.751201" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.12.0" />
+    <PackageReference Include="xunit.v3" Version="4.0.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="4.0.1" />
     <!-- STA-thread fact attribute for WPF tests -->
-    <PackageReference Include="Xunit.StaFact" Version="3.0.13" />
+    <PackageReference Include="Xunit.StaFact" Version="4.0.24" />
   </ItemGroup>
 
   <ItemGroup>
@@ -40,6 +47,16 @@
 
   <ItemGroup>
     <Using Include="Xunit" />
+  </ItemGroup>
+
+  <!-- app-kit's shared sound scheme test files (SharedSoundTestData/README.md), read by SharedSoundTestDataTests. -->
+  <ItemGroup>
+    <None Include="SharedSoundTestData\**" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <!-- A 0.4-second sine tone as MP3 (made with ffmpeg), for converting MP3s on Export scheme. -->
+  <ItemGroup>
+    <None Include="TestAudio\**" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

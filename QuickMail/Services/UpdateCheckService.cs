@@ -98,7 +98,7 @@ public class UpdateCheckService : IUpdateCheckService, IDisposable
             // a later launch instead of two appliers racing).
             _restartRequested = true;
             // Preserve /debug, --profileDir, --updateFeed across the update-triggered relaunch.
-            mgr.ApplyUpdatesAndRestart(update, Environment.GetCommandLineArgs()[1..]);
+            mgr.ApplyUpdatesAndRestart(update, SingleInstanceService.WithoutEmailFile(Environment.GetCommandLineArgs()[1..]));
             return true; // not reached — ApplyUpdatesAndRestart exits the process
         }
         catch (OperationCanceledException)
@@ -139,7 +139,7 @@ public class UpdateCheckService : IUpdateCheckService, IDisposable
     {
         try
         {
-            // Velopack 1.2.0's CheckForUpdatesAsync takes no CancellationToken, so honor the
+            // Velopack's CheckForUpdatesAsync takes no CancellationToken, so honor the
             // caller's bound (and Dispose-time cancellation) by abandoning the wait — the
             // underlying request is orphaned but the contract that the check is time-bounded
             // holds, matching the GitHub API path below.

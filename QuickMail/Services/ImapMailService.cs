@@ -13,6 +13,7 @@ using MailKit.Net.Imap;
 using MailKit.Search;
 using MailKit.Security;
 using MimeKit;
+using QuickMail.Helpers;
 using QuickMail.Models;
 
 namespace QuickMail.Services;
@@ -160,16 +161,33 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
                 Kind         = SpecialFolderKind.Inbox
             });
         }
+        // A dropped connection fails the folder listing just below too, which reports it; a cancellation is not
+        // a failure at all. Logging either here as an error only added to the startup and reconnect noise (#278).
+        catch (Exception ex) when (ConnectionFailure.IsConnectionFailure(ex, ct)
+                                   || (ex is OperationCanceledException && ct.IsCancellationRequested))
+        {
+            LogService.Debug($"GetFolders/Inbox skipped: {LogService.FormatException(ex)}");
+        }
         catch (Exception ex) { LogService.Log("GetFolders/Inbox", ex); }
 
         var folders = await client.GetFoldersAsync(client.PersonalNamespaces[0], cancellationToken: ct);
         LogService.Log($"GetFoldersAsync returned {folders.Count} folders");
+
+        // #613: Exchange and Outlook.com expose the mailbox's calendar, contacts and task folders as
+        // ordinary selectable IMAP folders, which then fail to open as mail (Graph's mail folder list
+        // leaves them out). Some housekeeping folders are hidden too; see ExchangeNonMailFolders.
+        var isMicrosoft = _accounts.TryGetValue(accountId, out var folderAccount) && IsMicrosoftImapAccount(folderAccount);
 
         foreach (var folder in folders)
         {
             if ((folder.Attributes & FolderAttributes.NonExistent) != 0) continue;
             if ((folder.Attributes & FolderAttributes.NoSelect)    != 0) continue;
             if (folder.FullName == client.Inbox!.FullName)              continue;
+            if (isMicrosoft && IsExchangeNonMailFolder(folder.FullName, folder.DirectorySeparator))
+            {
+                LogService.Debug($"  Skipping Exchange non-mail folder: {folder.FullName}");
+                continue;
+            }
 
             try
             {
@@ -235,7 +253,8 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
                 MessageSummaryItems.UniqueId
                 | MessageSummaryItems.Envelope
                 | MessageSummaryItems.Flags
-                | MessageSummaryItems.PreviewText,   // free if server supports PREVIEW
+                | MessageSummaryItems.PreviewText    // free if server supports PREVIEW
+                | MessageSummaryItems.BodyStructure, // whether it has attachments (#931)
                 _mailingListHeaders,
                 ct);
 
@@ -267,7 +286,8 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
             var items = MessageSummaryItems.UniqueId
                       | MessageSummaryItems.Envelope
                       | MessageSummaryItems.Flags
-                      | MessageSummaryItems.PreviewText;
+                      | MessageSummaryItems.PreviewText
+                      | MessageSummaryItems.BodyStructure;   // whether it has attachments (#931)
 
             var summaries = await folder.FetchAsync(uids, items, _mailingListHeaders, ct);
             var result    = summaries
@@ -279,6 +299,110 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
             return result;
         }
         finally { await folder.CloseAsync(false, ct); }
+    }
+
+    /// <summary>
+    /// Server search (#717, phase 3). Gmail searches its whole mailbox in one request with its own syntax
+    /// (X-GM-RAW, against All Mail); any other server is asked one folder at a time with SEARCH. Each folder
+    /// contributes at most <paramref name="maxResults"/> of its newest matches, and the whole is cut to that.
+    /// A folder that has gone or refuses the search is skipped; losing the connection is not.
+    /// </summary>
+    public async Task<List<MailMessageSummary>> SearchServerAsync(
+        Guid accountId, MessageSearchQuery query, IReadOnlyList<string> folderNames, int maxResults, CancellationToken ct = default)
+    {
+        if (maxResults <= 0) return [];
+        using var lease = await RentClientAsync(accountId, ImapLeasePriority.Foreground, ct);
+        var client = lease.Client;
+        var items = MessageSummaryItems.UniqueId
+                  | MessageSummaryItems.Envelope
+                  | MessageSummaryItems.Flags
+                  | MessageSummaryItems.PreviewText
+                  | MessageSummaryItems.BodyStructure;   // whether it has attachments (#931)
+
+        // Gmail searches the whole mailbox in one request — but All Mail is one folder as far as the result
+        // is concerned, so a search that names a folder has to go folder by folder like any other server.
+        if (query.Folders.Count == 0
+            && client.Capabilities.Contains(ImapCapability.GMailExt1)
+            && Helpers.ServerSearchQuery.ToGmailRaw(query) is { } raw)
+        {
+            IMailFolder? allMail = null;
+            try { allMail = client.GetFolder(SpecialFolder.All); }
+            catch (NotSupportedException) { /* no special-use folders: fall back to per-folder SEARCH */ }
+            if (allMail != null)
+            {
+                var gmail = new List<MailMessageSummary>();
+                await allMail.OpenAsync(FolderAccess.ReadOnly, ct);
+                try
+                {
+                    var uids = await allMail.SearchAsync(SearchQuery.GMailRawSearch(raw), ct);
+                    if (uids.Count > 0)
+                    {
+                        var newest = uids.OrderByDescending(u => u.Id).Take(maxResults).ToList();
+                        var summaries = await allMail.FetchAsync(newest, items, _mailingListHeaders, ct);
+                        gmail.AddRange(summaries.Select(s => SummaryToModel(s, accountId, allMail.FullName)));
+                    }
+                }
+                finally { await allMail.CloseAsync(false, ct); }
+                LogService.Log($"SearchServer (Gmail): {gmail.Count} found");
+                return [.. gmail.OrderByDescending(m => m.Date).Take(maxResults)];
+            }
+        }
+
+        var criteria = Helpers.ServerSearchQuery.ToImap(query);
+        if (criteria == null) return [];
+
+        // Two passes over the matches: first every folder's hits with their dates alone, which is a cheap
+        // fetch, then the envelopes and previews of only the newest maxResults of the whole account. Asking
+        // for the expensive fields per folder would fetch a hundred folders' worth to keep two hundred.
+        var hits = new List<(IMailFolder Folder, UniqueId Uid, DateTimeOffset Date)>();
+        foreach (var name in folderNames)
+        {
+            ct.ThrowIfCancellationRequested();
+            try
+            {
+                var folder = await client.GetFolderAsync(name, ct);
+                await folder.OpenAsync(FolderAccess.ReadOnly, ct);
+                try
+                {
+                    var uids = await folder.SearchAsync(criteria, ct);
+                    if (uids.Count == 0) continue;
+                    var newest = uids.OrderByDescending(u => u.Id).Take(maxResults).ToList();
+                    var dates = await folder.FetchAsync(newest, MessageSummaryItems.UniqueId | MessageSummaryItems.InternalDate, ct);
+                    foreach (var d in dates)
+                        hits.Add((folder, d.UniqueId, d.InternalDate ?? DateTimeOffset.MinValue));
+                }
+                finally { await folder.CloseAsync(false, ct); }
+            }
+            catch (OperationCanceledException) { throw; }
+            catch (Exception ex) when (ex is FolderNotFoundException or ImapCommandException or FolderNotOpenException)
+            {
+                LogService.Log($"SearchServer: skipped folder {name}", ex);
+            }
+        }
+
+        var results = new List<MailMessageSummary>();
+        foreach (var group in hits.OrderByDescending(h => h.Date).Take(maxResults).GroupBy(h => h.Folder))
+        {
+            ct.ThrowIfCancellationRequested();
+            var folder = group.Key;
+            try
+            {
+                await folder.OpenAsync(FolderAccess.ReadOnly, ct);
+                try
+                {
+                    var summaries = await folder.FetchAsync([.. group.Select(h => h.Uid)], items, _mailingListHeaders, ct);
+                    results.AddRange(summaries.Select(s => SummaryToModel(s, accountId, folder.FullName)));
+                }
+                finally { await folder.CloseAsync(false, ct); }
+            }
+            catch (OperationCanceledException) { throw; }
+            catch (Exception ex) when (ex is FolderNotFoundException or ImapCommandException or FolderNotOpenException)
+            {
+                LogService.Log($"SearchServer: could not read matches in {folder.FullName}", ex);
+            }
+        }
+        LogService.Log($"SearchServer: {results.Count} of {hits.Count} matches read, from {folderNames.Count} folders");
+        return [.. results.OrderByDescending(m => m.Date)];
     }
 
     public async Task<List<MailMessageSummary>> GetMessagesSinceAsync(
@@ -293,7 +417,8 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
             var items = MessageSummaryItems.UniqueId
                       | MessageSummaryItems.Envelope
                       | MessageSummaryItems.Flags
-                      | MessageSummaryItems.PreviewText;   // free if server supports PREVIEW
+                      | MessageSummaryItems.PreviewText    // free if server supports PREVIEW
+                      | MessageSummaryItems.BodyStructure; // whether it has attachments (#931)
 
             IList<IMessageSummary> summaries;
             if (sinceMessageId == "0")
@@ -409,10 +534,10 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
                 MessageId     = messageId,
                 AccountId     = accountId,
                 FolderName    = folderName,
-                From          = FormatAddressList(s.Envelope?.From),
-                To            = FormatAddressList(s.Envelope?.To),
-                Cc            = FormatAddressList(s.Envelope?.Cc),
-                ReplyTo       = FormatAddressList(s.Envelope?.ReplyTo),
+                From          = AddressListFormat.Full(s.Envelope?.From),
+                To            = AddressListFormat.Full(s.Envelope?.To),
+                Cc            = AddressListFormat.Full(s.Envelope?.Cc),
+                ReplyTo       = AddressListFormat.Full(s.Envelope?.ReplyTo),
                 Subject       = s.Envelope?.Subject ?? "(no subject)",
                 Date          = s.Envelope?.Date ?? DateTimeOffset.MinValue,
                 IsRead        = markRead || (s.Flags & MessageFlags.Seen) != 0,
@@ -420,6 +545,7 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
                 PlainTextBody = plainText,
                 HtmlBody      = htmlText,
                 Attachments   = attachments,
+                InlineImages  = ExtractInlineImages(s.Body),
                 DraftComposeMode = ParseComposeMode(s.Headers?["X-QuickMail-Compose-Mode"]),
             };
 
@@ -551,52 +677,169 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
 
         var msg = MimeMessageBuilder.Build(draft, account);
 
-        if (!string.IsNullOrEmpty(replaceMessageId))
-        {
-            await draftsFolder.OpenAsync(FolderAccess.ReadWrite, ct);
-            try
-            {
-                await draftsFolder.AddFlagsAsync(ToUid(replaceMessageId), MessageFlags.Deleted, true, ct);
-                await draftsFolder.ExpungeAsync(ct);
-            }
-            finally { await draftsFolder.CloseAsync(false, ct); }
-        }
-
+        // Append the new copy FIRST and only then remove the old one (#780). The other order left
+        // the server with no draft at all when the append failed after the expunge — a dropped
+        // connection mid-save lost every edit since the last good one. Now a failure between the
+        // two leaves at worst a duplicate draft, the same guarantee GraphMailService gives.
         await draftsFolder.OpenAsync(FolderAccess.ReadWrite, ct);
+        UniqueId? newUid;
         try
         {
-            var newUid = await draftsFolder.AppendAsync(msg, MessageFlags.Draft, ct);
-            LogService.Log($"AppendDraft: saved draft to {draftsFolder.FullName} UID={newUid?.Id}");
-            // Empty (not "0") signals "server didn't echo a UID" so the next save appends a new
-            // draft instead of issuing a delete against the invalid UID 0.
-            return newUid?.Id is uint id ? id.ToString(CultureInfo.InvariantCulture) : string.Empty;
+            newUid = await draftsFolder.AppendAsync(msg, MessageFlags.Draft, ct);
         }
-        finally { await draftsFolder.CloseAsync(false, ct); }
+        catch
+        {
+            try { await CloseDraftsBoundedAsync(draftsFolder); } catch { }
+            throw;
+        }
+        LogService.Log($"AppendDraft: saved draft to {draftsFolder.FullName} UID={newUid?.Id}");
+
+        // From here the new draft is on the server, so nothing may make this call fail: a throw
+        // would lose the new UID, tell the user the save failed when it did not, and leave the
+        // copy behind as a permanent duplicate. Cancellation included — the timeout firing during
+        // cleanup does not undo the append.
+        if (!string.IsNullOrEmpty(replaceMessageId))
+        {
+            try
+            {
+                var oldUid = ToUid(replaceMessageId);
+                // A recreated Drafts folder can hand out the old number again; never delete the
+                // draft just saved.
+                if (newUid?.Id != oldUid.Id)
+                {
+                    await draftsFolder.AddFlagsAsync(oldUid, MessageFlags.Deleted, true, ct);
+                    // UID EXPUNGE where offered, so only the superseded draft goes — not anything
+                    // else in Drafts that some other client marked deleted.
+                    if (client.Capabilities.Contains(ImapCapability.UidPlus))
+                        await draftsFolder.ExpungeAsync(new[] { oldUid }, ct);
+                    else
+                        await draftsFolder.ExpungeAsync(ct);
+                }
+            }
+            catch (Exception ex)
+            {
+                LogService.Log($"AppendDraft: removing superseded draft UID={replaceMessageId} failed", ex);
+            }
+        }
+
+        try { await CloseDraftsBoundedAsync(draftsFolder); }
+        catch (Exception ex) { LogService.Log("AppendDraft: closing Drafts after the save failed", ex); }
+
+        // Empty (not "0") signals "server didn't echo a UID" so the next save appends a new
+        // draft instead of issuing a delete against the invalid UID 0.
+        return newUid?.Id is uint id ? id.ToString(CultureInfo.InvariantCulture) : string.Empty;
     }
 
+    /// <summary>
+    /// Closes Drafts after a draft save without the caller's token — the timeout firing must not
+    /// undo a save that already happened — but not without any limit either. CLOSE on a connection
+    /// that died after the append was the one wait in a draft save that QuickMail did not bound
+    /// itself: it was left to MailKit's socket timeout, holding the lease (and, before #781, the
+    /// compose window's auto-save) for as long as that took.
+    /// </summary>
+    private static async Task CloseDraftsBoundedAsync(IMailFolder draftsFolder)
+    {
+        using var closeCts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        await draftsFolder.CloseAsync(false, closeCts.Token);
+    }
+
+    /// <summary>
+    /// How long to wait before each look in Sent for a copy the server filed itself (#811). Gmail,
+    /// iCloud and Outlook.com file what they relay, not always by the time the send returns, so a
+    /// first look that finds nothing is repeated before QuickMail adds its own. Settable for tests.
+    /// </summary>
+    internal TimeSpan[] SentCopyChecks { get; set; } =
+        [TimeSpan.Zero, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(3)];
+
+    /// <summary>Test hook: raised after a look in Sent that found no copy, with the look's index.</summary>
+    internal event Action<int>? SentCopyLookMissed;
+
+    /// <summary>
+    /// Files <paramref name="sent"/> in the account's Sent folder, unless the server has already
+    /// filed its own copy (#811). That copy is recognised by <see cref="ComposeModel.OutgoingMessageId"/>,
+    /// which the send stamped, so a compose that never went through <see cref="SmtpService"/> is
+    /// filed without looking.
+    /// </summary>
     public async Task AppendToSentAsync(
         Guid accountId, ComposeModel sent, CancellationToken ct = default)
     {
-        using var lease = await RentClientAsync(accountId, ImapLeasePriority.Foreground, ct);
-        var client  = lease.Client;
         var account = _accounts[accountId];
-
-        var sentFolder = await FindSpecialFolderAsync(client, ct, SpecialFolder.Sent);
-        if (sentFolder == null)
-        {
-            LogService.Log($"AppendToSent: no Sent folder found for account {accountId}");
-            return;
-        }
-
+        // Built once, and the id looked for is the one actually written: MimeKit may normalise
+        // what it was given.
         var msg = MimeMessageBuilder.Build(sent, account);
+        var messageId = string.IsNullOrEmpty(sent.OutgoingMessageId) ? null : msg.MessageId;
 
-        await sentFolder.OpenAsync(FolderAccess.ReadWrite, ct);
-        try
+        TimeSpan[] checks = messageId == null || SentCopyChecks.Length == 0 ? [TimeSpan.Zero] : SentCopyChecks;
+        for (int i = 0; i < checks.Length; i++)
         {
+            if (checks[i] > TimeSpan.Zero)
+                await Task.Delay(checks[i], ct);
+
+            // A lease per look, so other work on this account is not held up while we wait.
+            using var lease = await RentClientAsync(accountId, ImapLeasePriority.Foreground, ct);
+            var client = lease.Client;
+
+            var sentFolder = await FindSpecialFolderAsync(client, ct, SpecialFolder.Sent);
+            if (sentFolder == null)
+            {
+                LogService.Log($"AppendToSent: no Sent folder found for account {accountId}");
+                return;
+            }
+
+            if (messageId != null && await SentHoldsMessageAsync(sentFolder, messageId, ct))
+            {
+                LogService.Log($"AppendToSent: {sentFolder.FullName} already has the server's copy; not adding another");
+                return;
+            }
+            if (i < checks.Length - 1)
+            {
+                SentCopyLookMissed?.Invoke(i);
+                continue;
+            }
+
+            // APPEND does not need the folder selected.
             var uid = await sentFolder.AppendAsync(msg, MessageFlags.Seen, ct);
             LogService.Log($"AppendToSent: appended to {sentFolder.FullName} UID={uid?.Id}");
         }
-        finally { await sentFolder.CloseAsync(false, ct); }
+    }
+
+    /// <summary>
+    /// Whether <paramref name="sentFolder"/> already holds the message with this Message-ID. The
+    /// search only narrows the field: some servers ignore a HEADER condition and return everything,
+    /// so each hit's own Message-ID is compared. A search the server refuses counts as "no": a
+    /// second copy beats losing the only one.
+    /// </summary>
+    private static async Task<bool> SentHoldsMessageAsync(
+        IMailFolder sentFolder, string messageId, CancellationToken ct)
+    {
+        await sentFolder.OpenAsync(FolderAccess.ReadOnly, ct);
+        try
+        {
+            var found = await sentFolder.SearchAsync(SearchQuery.HeaderContains("Message-ID", messageId), ct);
+            if (found.Count == 0) return false;
+
+            // Newest last; a filed copy is among the most recent, which bounds the fetch.
+            var recent = found.Skip(Math.Max(0, found.Count - 50)).ToList();
+            var summaries = await sentFolder.FetchAsync(recent, MessageSummaryItems.Envelope, ct);
+            return SentCopyMatches(summaries.Select(s => s.Envelope?.MessageId), messageId);
+        }
+        catch (Exception ex) when (ex is ImapCommandException or NotSupportedException)
+        {
+            LogService.Log("AppendToSent: searching Sent for the server's copy failed; appending anyway", ex);
+            return false;
+        }
+        finally
+        {
+            try { await sentFolder.CloseAsync(false, CancellationToken.None); }
+            catch (Exception ex) { LogService.Log("AppendToSent: closing Sent after the look failed", ex); }
+        }
+    }
+
+    /// <summary>Whether any of <paramref name="foundIds"/> is <paramref name="messageId"/>, brackets and case aside.</summary>
+    internal static bool SentCopyMatches(IEnumerable<string?> foundIds, string messageId)
+    {
+        var wanted = MessageDeduplicator.Normalize(messageId);
+        return wanted.Length > 0 && foundIds.Any(id => MessageDeduplicator.Normalize(id) == wanted);
     }
 
     // ── Copy / Move messages ─────────────────────────────────────────────────────
@@ -612,6 +855,25 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
         finally { await folder.CloseAsync(false, ct); }
     }
 
+    public bool CanAppendMessages(Guid accountId) => true;
+
+    /// <summary>
+    /// APPEND, the standard IMAP way to put a message into a folder (#929). Keeps the read and flagged
+    /// state, and the arrival time as the folder's internal date, so the message sorts where it did.
+    /// APPEND does not need the folder selected.
+    /// </summary>
+    public async Task AppendMessageAsync(Guid accountId, string folderName, Stream original, bool isRead, bool isFlagged,
+                                         DateTimeOffset received, CancellationToken ct = default)
+    {
+        var message = await MimeMessage.LoadAsync(original, ct);
+        var flags = (isRead ? MessageFlags.Seen : MessageFlags.None) | (isFlagged ? MessageFlags.Flagged : MessageFlags.None);
+
+        using var lease = await RentClientAsync(accountId, ImapLeasePriority.Foreground, ct);
+        var dest = await lease.Client.GetFolderAsync(folderName, ct);
+        var request = new AppendRequest(message, flags);
+        if (received != default) request.InternalDate = received;
+        await dest.AppendAsync(request, ct);
+    }
     public async Task MoveMessagesAsync(Guid accountId, string folderName, IList<string> messageIds, string destinationFolder, CancellationToken ct = default)
     {
         using var lease = await RentClientAsync(accountId, ImapLeasePriority.Foreground, ct);
@@ -632,7 +894,44 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
         IMailFolder parent = string.IsNullOrEmpty(parentFolderName)
             ? client.GetFolder(client.PersonalNamespaces[0])
             : await client.GetFolderAsync(parentFolderName, ct);
-        await parent.CreateAsync(name, true, ct);
+        var created = await parent.CreateAsync(name, true, ct);
+        await SubscribeAsync(created, ct);
+    }
+
+    // ── Subscriptions (#943) ─────────────────────────────────────────────────────
+    //
+    // Outlook, Thunderbird, phones and webmail show only the folders an account is SUBSCRIBEd to.
+    // QuickMail lists every folder itself, so a folder it made without subscribing looked fine here
+    // and was missing everywhere else. Each step is best effort: a server that does not do
+    // subscriptions still creates, renames and deletes, and a subscription that fails is logged rather
+    // than undoing the change the user asked for.
+
+    private static async Task SubscribeAsync(IMailFolder? folder, CancellationToken ct)
+    {
+        if (folder == null) return;
+        try { await folder.SubscribeAsync(ct); }
+        catch (Exception ex) when (ex is ImapCommandException or NotSupportedException)
+        {
+            LogService.Log($"IMAP: could not subscribe to {folder.FullName}: {ex.Message}");
+        }
+    }
+
+    private static async Task UnsubscribeAsync(IMailFolder folder, CancellationToken ct)
+    {
+        try { await folder.UnsubscribeAsync(ct); }
+        catch (Exception ex) when (ex is ImapCommandException or NotSupportedException)
+        {
+            LogService.Log($"IMAP: could not unsubscribe from {folder.FullName}: {ex.Message}");
+        }
+    }
+
+    /// <summary>A folder and every folder beneath it, parents first.</summary>
+    private static async Task<List<IMailFolder>> WithDescendantsAsync(IMailFolder folder, CancellationToken ct)
+    {
+        var all = new List<IMailFolder> { folder };
+        foreach (var sub in await folder.GetSubfoldersAsync(false, ct))
+            all.AddRange(await WithDescendantsAsync(sub, ct));
+        return all;
     }
 
     public async Task DeleteFolderAsync(Guid accountId, string folderName, CancellationToken ct = default)
@@ -655,6 +954,7 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
         }
         finally { await folder.CloseAsync(false, ct); }
 
+        await UnsubscribeAsync(folder, ct);
         await folder.DeleteAsync(ct);
     }
 
@@ -663,10 +963,73 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
         using var lease = await RentClientAsync(accountId, ImapLeasePriority.Foreground, ct);
         var client = lease.Client;
         var folder = await client.GetFolderAsync(folderName, ct);
+        // No app caller since folder moves went to MoveFolderAsync (#954); kept for the interface and
+        // its tests. A null parent goes through the same top-level check, so it can never land a
+        // folder under INBOX on a prefix-namespace server.
         IMailFolder parent = string.IsNullOrEmpty(newParentFolderName)
-            ? client.GetFolder(client.PersonalNamespaces[0])
+            ? TopLevelFolder(client)
             : await client.GetFolderAsync(newParentFolderName, ct);
-        await folder.RenameAsync(parent, newName, ct);
+        await RenameUnderAsync(folder, parent, newName, ct);
+    }
+
+    public async Task MoveFolderAsync(Guid accountId, string folderName, string? newParentFolderName, CancellationToken ct = default)
+    {
+        using var lease = await RentClientAsync(accountId, ImapLeasePriority.Foreground, ct);
+        var client = lease.Client;
+        var folder = await client.GetFolderAsync(folderName, ct);
+        var parent = string.IsNullOrEmpty(newParentFolderName)
+            ? TopLevelFolder(client)
+            : await client.GetFolderAsync(newParentFolderName, ct);
+        // The server's own leaf name, not the display name: the display name can be a friendlier
+        // label than the mailbox is called.
+        await RenameUnderAsync(folder, parent, folder.Name, ct);
+    }
+
+    /// <summary>
+    /// The folder a move or copy to "the top level of the account" goes into (#954): the root of the
+    /// personal namespace, which is where Inbox's siblings live on almost every server. Some servers
+    /// (Courier and older Cyrus) put every folder inside INBOX — a namespace of "INBOX." — and there
+    /// a folder cannot go beside INBOX at all. Moving it into that namespace would land it under
+    /// INBOX in the folder tree, which is not what the user chose, so it is refused in words they can
+    /// act on instead.
+    /// </summary>
+    private static IMailFolder TopLevelFolder(ImapClient client)
+    {
+        if (client.PersonalNamespaces.Count == 0)
+            throw new NotSupportedException(
+                "This mail server did not say where its top-level folders are, so a folder cannot be moved or copied to the top level.");
+
+        var ns = client.PersonalNamespaces[0];
+        var prefix = ns.Path.TrimEnd(ns.DirectorySeparator);
+        // No "choose X instead": the prefix is not always a folder the picker can open (a "Mail/"
+        // namespace is only a path segment), and a direct child of INBOX is already in it.
+        if (prefix.Length > 0)
+            throw new NotSupportedException(
+                $"This mail server keeps every folder inside {prefix}, so a folder cannot be moved or copied to the top level.");
+
+        return client.GetFolder(ns);
+    }
+
+    /// <summary>Renames <paramref name="folder"/> to <paramref name="newName"/> under <paramref name="parent"/>, carrying its subscriptions across.</summary>
+    private static async Task RenameUnderAsync(IMailFolder folder, IMailFolder parent, string newName, CancellationToken ct)
+    {
+        // A subscription is to a name, so it does not follow a rename: the new names are subscribed
+        // and the old ones dropped, for every folder beneath it too (#943).
+        // The old names are dropped before the rename, while they still exist to be named; a rename the
+        // server refuses puts them back, so a failed rename changes nothing.
+        var before = await WithDescendantsAsync(folder, ct);
+        foreach (var old in before) await UnsubscribeAsync(old, ct);
+        try
+        {
+            await folder.RenameAsync(parent, newName, ct);
+        }
+        catch
+        {
+            foreach (var old in before) await SubscribeAsync(old, CancellationToken.None);
+            throw;
+        }
+        foreach (var renamed in await WithDescendantsAsync(folder, ct))
+            await SubscribeAsync(renamed, ct);
     }
 
     public async Task CopyFolderAsync(Guid accountId, string folderName, string? destinationParentName, CancellationToken ct = default)
@@ -679,12 +1042,14 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
     {
         var srcFolder = await client.GetFolderAsync(folderName, ct);
 
+        // Only the top call can be given no parent; the recursion below always names one.
         IMailFolder destParent = string.IsNullOrEmpty(destinationParentName)
-            ? client.GetFolder(client.PersonalNamespaces[0])
+            ? TopLevelFolder(client)
             : await client.GetFolderAsync(destinationParentName, ct);
 
         var newFolder = await destParent.CreateAsync(srcFolder.Name, true, ct)
             ?? throw new InvalidOperationException($"Failed to create destination folder '{srcFolder.Name}'.");
+        await SubscribeAsync(newFolder, ct);
 
         await srcFolder.OpenAsync(FolderAccess.ReadOnly, ct);
         try
@@ -707,12 +1072,13 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
     {
         using var lease = await RentClientAsync(accountId, ImapLeasePriority.Foreground, ct);
         var client = lease.Client;
-        var trash  = await FindSpecialFolderAsync(client, ct, SpecialFolder.Trash, SpecialFolder.Junk);
+        // Trash only. This expunges what it finds, so it must never fall back on another folder.
+        var trash  = await FindSpecialFolderAsync(client, ct, SpecialFolder.Trash);
 
         if (trash == null)
         {
             LogService.Log($"EmptyTrash: no Trash folder found for account {accountId}");
-            return 0;
+            throw new TrashFolderNotFoundException();
         }
 
         await trash.OpenAsync(FolderAccess.ReadWrite, ct);
@@ -745,14 +1111,14 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
         finally { await folder.CloseAsync(false, ct); }
     }
 
-    // NOTE: not on any live path today. The sweep only routes a folder here when its numeric high-water
-    // mark is "0", which for IMAP means an empty cache — and that case short-circuits to the initial
-    // fetch before this listing is reached (IMAP UIDs are numeric, so a populated folder always has a
-    // real high-water mark and takes the incremental branch). It exists to satisfy the interface. Two
-    // things to know if anything ever does route here: (1) FetchAsync(0, -1) pulls every message in the
-    // folder — not cheap on a large folder, and nothing currently guards it; (2) INTERNALDATE is
-    // date-granular the same way IMAP SEARCH SINCE is, so unlike Graph the gate's full-precision
-    // ReceivedUtc comparison and GetMessagesSinceDateAsync's SEARCH SINCE would not agree at the edge.
+    // The sweep never routes an IMAP folder here: it only lists when a folder's numeric high-water mark is
+    // "0", which for IMAP means an empty cache, and that case short-circuits to the initial fetch (IMAP UIDs
+    // are numeric, so a populated folder always takes the incremental branch). Client rules call it once per
+    // Inbox, to draw that Inbox's first arrival line (#712 — SyncService.DrawFirstLineAsync), which reads
+    // only the UIDs. Two things to know: (1) FetchAsync(0, -1) pulls every message in the folder — not cheap
+    // on a large folder, which is why rules ask only once; (2) INTERNALDATE is date-granular the same way
+    // IMAP SEARCH SINCE is, so unlike Graph the gate's full-precision ReceivedUtc comparison and
+    // GetMessagesSinceDateAsync's SEARCH SINCE would not agree at the edge.
     public async Task<IReadOnlyList<(string Id, DateTimeOffset ReceivedUtc, bool IsRead)>> GetFolderMessageIdDatesAsync(
         Guid accountId, string folderName, CancellationToken ct = default)
     {
@@ -829,6 +1195,82 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
                 catch (Exception ex) { LogService.Log($"FetchPreview/{s.UniqueId}", ex); }
             }
             return (IReadOnlyDictionary<string, string>)result;
+        }
+        finally { await folder.CloseAsync(false, ct); }
+    }
+
+    // ── One-time sender-address backfill (#803) ──────────────────────────────────
+
+    public async Task<IReadOnlyDictionary<string, FetchedSender>> FetchSenderEmailsAsync(
+        Guid accountId, string folderName, IList<string> messageIds, CancellationToken ct = default)
+    {
+        var result = new Dictionary<string, FetchedSender>();
+        if (messageIds.Count == 0) return result;
+
+        // Background lease, read-only open, and the From and Message-ID headers alone (BODY.PEEK, so no \Seen): a
+        // couple of hundred bytes a message, where an ENVELOPE runs to a kilobyte. On a large cache that is the
+        // difference between a few megabytes and a hundred.
+        using var lease = await RentClientAsync(accountId, ImapLeasePriority.Background, ct);
+        var folder = await lease.Client.GetFolderAsync(folderName, ct);
+        await folder.OpenAsync(FolderAccess.ReadOnly, ct);
+        try
+        {
+            var request = new FetchRequest(MessageSummaryItems.UniqueId)
+            {
+                Headers = new HeaderSet([HeaderId.From, HeaderId.MessageId]),
+            };
+            var summaries = await folder.FetchAsync(messageIds.Select(ToUid).ToList(), request, ct);
+            foreach (var s in summaries)
+            {
+                // Parsed from the raw bytes, not the decoded text: an encoded "Ford, Kelly" decodes to an unquoted
+                // comma, which would read as two addresses.
+                var from = s.Headers?.FirstOrDefault(h => h.Id == HeaderId.From);
+                if (from is null || !InternetAddressList.TryParse(from.RawValue, out var list)) continue;
+                var emails = AddressListFormat.Emails(list);
+                if (emails.Length == 0) continue;
+                // Without angle brackets, as the ENVELOPE's Message-ID the sync cached was.
+                var messageIdHeader = s.Headers?.FirstOrDefault(h => h.Id == HeaderId.MessageId)?.Value;
+                var messageId = string.IsNullOrWhiteSpace(messageIdHeader)
+                    ? string.Empty
+                    : MimeKit.Utils.MimeUtils.ParseMessageId(messageIdHeader) ?? messageIdHeader.Trim();
+                result[s.UniqueId.Id.ToString(CultureInfo.InvariantCulture)] = new FetchedSender(emails, messageId);
+            }
+            return result;
+        }
+        finally { await folder.CloseAsync(false, ct); }
+    }
+
+    // ── One-time attachment-flag pass (#931) ─────────────────────────────────────
+
+    public async Task<IReadOnlyDictionary<string, FetchedAttachmentFlag>> FetchAttachmentFlagsAsync(
+        Guid accountId, string folderName, IList<string> messageIds, CancellationToken ct = default)
+    {
+        var result = new Dictionary<string, FetchedAttachmentFlag>();
+        if (messageIds.Count == 0) return result;
+
+        // Background lease, read-only open, the BODYSTRUCTURE and the Message-ID header alone (BODY.PEEK): no
+        // envelope, no bodies, nothing marked read.
+        using var lease = await RentClientAsync(accountId, ImapLeasePriority.Background, ct);
+        var folder = await lease.Client.GetFolderAsync(folderName, ct);
+        await folder.OpenAsync(FolderAccess.ReadOnly, ct);
+        try
+        {
+            var request = new FetchRequest(MessageSummaryItems.UniqueId | MessageSummaryItems.BodyStructure)
+            {
+                Headers = new HeaderSet([HeaderId.MessageId]),
+            };
+            var summaries = await folder.FetchAsync(messageIds.Select(ToUid).ToList(), request, ct);
+            foreach (var s in summaries)
+            {
+                if (s.Body == null) continue;   // nothing to decide by: left unchecked
+                // Without angle brackets, as the ENVELOPE's Message-ID the sync cached was.
+                var header = s.Headers?.FirstOrDefault(h => h.Id == HeaderId.MessageId)?.Value;
+                var messageId = string.IsNullOrWhiteSpace(header)
+                    ? string.Empty
+                    : MimeKit.Utils.MimeUtils.ParseMessageId(header) ?? header.Trim();
+                result[s.UniqueId.Id.ToString(CultureInfo.InvariantCulture)] = new FetchedAttachmentFlag(HasAttachments(s.Body), messageId);
+            }
+            return result;
         }
         finally { await folder.CloseAsync(false, ct); }
     }
@@ -926,7 +1368,7 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
                 _passwords.TryGetValue(accountId, out var password);
                 client = await CreateAuthenticatedClientAsync(account, password, ct);
 
-                if (!client.Capabilities.HasFlag(ImapCapabilities.Idle))
+                if (!client.Capabilities.Contains(ImapCapability.Idle))
                 {
                     LogService.Log($"IDLE watcher [{account.Username}]: server does not support IDLE — watcher disabled.");
                     // A permanent exit. Worth journaling loudly: from here on this account has no
@@ -1079,11 +1521,58 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
 
             var decoded = await folder.GetBodyPartAsync(mailKitUid, bodyPart, ct);
             using var stream = new MemoryStream();
+            // MimeKit 5 hands back a part with no content when the server's part headers are malformed,
+            // where 4.x threw. Say what happened rather than fail with a null reference.
             if (decoded is MimePart mp)
-                mp.Content!.DecodeTo(stream, CancellationToken.None);
+            {
+                if (mp.Content is null)
+                    throw new InvalidOperationException("The mail server sent this attachment in a form that could not be read.");
+                mp.Content.DecodeTo(stream, CancellationToken.None);
+            }
             else if (decoded is MessagePart msgPart)
                 await msgPart.Message!.WriteToAsync(stream, ct);
             return stream.ToArray();
+        }
+        finally { await folder.CloseAsync(false, ct); }
+    }
+
+    /// <summary>
+    /// The whole message as the server stores it (#728). The folder is opened read-only (EXAMINE) and
+    /// MailKit fetches with BODY.PEEK[], so saving a message never marks it read. Fetched through the
+    /// streaming callback: MailKit still buffers the literal once before handing it over, but that one
+    /// copy goes straight to <paramref name="destination"/> — where GetStreamAsync plus a MemoryStream
+    /// and ToArray held three.
+    /// </summary>
+    public async Task CopyOriginalMessageToAsync(
+        Guid accountId, string folderName, string messageId, Stream destination, CancellationToken ct = default)
+    {
+        using var lease = await RentClientAsync(accountId, ImapLeasePriority.Foreground, ct);
+        var client = lease.Client;
+        var folder = await client.GetFolderAsync(folderName, ct);
+        await folder.OpenAsync(FolderAccess.ReadOnly, ct);
+        try
+        {
+            var found = false;
+            if (folder is ImapFolder imap)
+            {
+                await imap.GetStreamsAsync(new[] { ToUid(messageId) }, async (_, _, _, source, token) =>
+                {
+                    found = true;
+                    await source.CopyToAsync(destination, token);
+                }, ct);
+            }
+            else
+            {
+                using var source = await folder.GetStreamAsync(ToUid(messageId), ct);
+                await source.CopyToAsync(destination, ct);
+                found = true;
+            }
+            if (!found) throw new MessageNotFoundException($"Message UID {messageId} not found.");
+        }
+        catch (MessageNotFoundException)
+        {
+            throw new MessageOriginalUnavailableException(
+                "The message is no longer on the server. It may have been moved or deleted from another device.");
         }
         finally { await folder.CloseAsync(false, ct); }
     }
@@ -1102,12 +1591,12 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
         if (!_pools.TryGetValue(accountId, out var pool))
         {
             if (!_accounts.TryGetValue(accountId, out var account))
-                throw new InvalidOperationException($"Account {accountId} is not connected.");
+                throw new AccountNotConnectedException(accountId);
 
             _passwords.TryGetValue(accountId, out var password);
             await ConnectAsync(account, password, ct);
             if (!_pools.TryGetValue(accountId, out pool))
-                throw new InvalidOperationException($"Account {accountId} is not connected.");
+                throw new AccountNotConnectedException(accountId);
         }
 
         return await pool.RentAsync(priority, ct);
@@ -1258,7 +1747,7 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
             await client.NoOpAsync(ct);
 
             var detail = $"INBOX count={inbox.Count} unread={inbox.Unread} " +
-                         $"idleSupported={client.Capabilities.HasFlag(ImapCapabilities.Idle)}";
+                         $"idleSupported={client.Capabilities.Contains(ImapCapability.Idle)}";
             return new ProbeResult(ProbeOutcome.Reachable, sw.ElapsedMilliseconds, detail);
         }
         catch (OperationCanceledException)
@@ -1705,8 +2194,9 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
             // RFC 5322 Message-ID — stable across every folder/label a message appears in, so
             // aggregate views can collapse Gmail's per-folder duplicate copies (issue #220).
             InternetMessageId = s.Envelope?.MessageId ?? string.Empty,
-            From        = FormatAddressListDisplay(s.Envelope?.From),
-            To          = FormatAddressList(s.Envelope?.To),
+            From        = AddressListFormat.Display(s.Envelope?.From),
+            FromEmail   = AddressListFormat.Emails(s.Envelope?.From),
+            To          = AddressListFormat.Full(s.Envelope?.To),
             Subject     = s.Envelope?.Subject ?? "(no subject)",
             Date        = s.Envelope?.Date ?? DateTimeOffset.MinValue,
             IsRead         = (s.Flags & MessageFlags.Seen)     != 0,
@@ -1717,7 +2207,16 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
             IsServerFlagged = (s.Flags & MessageFlags.Flagged) != 0,
             Preview         = s.PreviewText ?? string.Empty,   // populated when server supports IMAP PREVIEW
             IsMailingList   = !string.IsNullOrEmpty(s.Headers?["List-Id"]),
+            HasAttachments  = HasAttachments(s.Body),
+            AttachmentsKnown = s.Body != null,
         };
+
+    /// <summary>
+    /// Whether a message has an attachment, by the same rule its attachment list uses
+    /// (<see cref="CollectAttachments"/>), so the list's flag agrees with what opening it shows and
+    /// with what Save All Attachments saves (#931). False when no BODYSTRUCTURE was fetched.
+    /// </summary>
+    internal static bool HasAttachments(BodyPart? body) => ExtractAttachments(body).Count > 0;
 
     private static async Task<IMailFolder?> FindSpecialFolderAsync(
         ImapClient client, CancellationToken ct, params SpecialFolder[] candidates)
@@ -1752,11 +2251,46 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
 
             foreach (var name in names)
             {
+                // Only "no such folder" means try the next name. A cancellation or a dropped
+                // connection swallowed here came out as "this account has no such folder" — a draft
+                // save that timed out was reported as a missing Drafts folder (#781).
                 try { return await root.GetSubfolderAsync(name, ct); }
-                catch { }
+                catch (Exception ex) when (ex is not OperationCanceledException && !IsConnectionDrop(ex)) { }
             }
         }
         return null;
+    }
+
+    /// <summary>
+    /// Every picture part with a Content-ID — what an HTML body shows as <c>cid:</c> — as metadata
+    /// for a later download by part specifier (#729). Wherever it sits: usually inside
+    /// multipart/related, which <see cref="CollectAttachments"/> deliberately skips.
+    /// </summary>
+    internal static List<AttachmentModel> ExtractInlineImages(BodyPart? body)
+    {
+        var result = new List<AttachmentModel>();
+        void Walk(BodyPart? part)
+        {
+            switch (part)
+            {
+                case BodyPartMultipart multi:
+                    foreach (var child in multi.BodyParts) Walk(child);
+                    break;
+                case BodyPartBasic basic when !string.IsNullOrEmpty(basic.ContentId)
+                        && basic.ContentType.MediaType.Equals("image", StringComparison.OrdinalIgnoreCase):
+                    result.Add(new AttachmentModel
+                    {
+                        FileName      = basic.ContentDisposition?.FileName ?? basic.ContentType.Name ?? "image",
+                        ContentType   = basic.ContentType.MimeType,
+                        FileSize      = (long)basic.Octets,
+                        PartSpecifier = basic.PartSpecifier,
+                        ContentId     = basic.ContentId.Trim('<', '>'),
+                    });
+                    break;
+            }
+        }
+        Walk(body);
+        return result;
     }
 
     private static List<AttachmentModel> ExtractAttachments(BodyPart? body)
@@ -1843,6 +2377,49 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
             .Where(l => l.Length > 0)
             .Take(maxLines));
 
+    // #613: top-level folders Exchange creates that are not the user's mail. Calendar, Contacts and
+    // Tasks report their items over IMAP but cannot be opened as mail; Suggested Contacts and
+    // Journal hold non-mail items too. Outbox, Sync Issues and Conversation History are mailbox
+    // housekeeping rather than mail (QuickMail has its own Outbox). Notes and RSS Feeds open like
+    // mail and are deliberately left visible. RFC 6154 has no special-use flag for any of these, so
+    // the name is all there is. Only the top-level segment is matched, where Exchange puts these
+    // folders: a user's "Inbox/Notes" is theirs and stays. A user could still make a top-level mail
+    // folder with one of these names in a mailbox that lacks the default one, and it would be hidden
+    // too. The names are English; a mailbox in another language keeps showing its translated ones.
+    private static readonly HashSet<string> ExchangeNonMailFolders = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "Calendar", "Contacts", "Suggested Contacts", "Tasks", "Journal", "Conversation History",
+        "Sync Issues", "Outbox",
+    };
+
+    // Hosts that serve Exchange Online and Outlook.com over IMAP.
+    private static readonly string[] MicrosoftImapHosts =
+        ["outlook.office365.com", "outlook.office.com", "imap-mail.outlook.com", "imap.outlook.com"];
+
+    /// <summary>
+    /// Whether this IMAP account is an Exchange Online or Outlook.com mailbox — the only servers whose
+    /// folder list is filtered by <see cref="IsExchangeNonMailFolder"/>, so a folder called "Calendar"
+    /// on any other server is left alone.
+    /// </summary>
+    internal static bool IsMicrosoftImapAccount(AccountModel account)
+    {
+        if (account.AuthType == AuthType.OAuth2Microsoft) return true;
+        var host = account.ImapHost?.Trim().TrimEnd('.');
+        return !string.IsNullOrEmpty(host)
+            && MicrosoftImapHosts.Any(h => string.Equals(host, h, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// True for a folder under one of Exchange's non-mail top-level folders, or that folder itself
+    /// (<c>Calendar</c>, <c>Calendar/Birthdays</c>, <c>Sync Issues/Conflicts</c>).
+    /// </summary>
+    internal static bool IsExchangeNonMailFolder(string fullName, char separator)
+    {
+        if (string.IsNullOrEmpty(fullName)) return false;
+        var top = separator == '\0' ? fullName : fullName.Split(separator)[0];
+        return ExchangeNonMailFolders.Contains(top);
+    }
+
     private static bool IsExcludedFromAllMail(FolderAttributes attrs, string fullName)
     {
         var kind = GetSpecialFolderKind(attrs, fullName);
@@ -1886,24 +2463,6 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
         "html"     => ComposeMode.Html,
         _          => ComposeMode.PlainText,
     };
-
-    // Shared with Pop3MailService for the same reason ParseComposeMode is: the message list renders
-    // both backends' rows side by side, so a second copy of these would be free to drift.
-
-    /// <summary>Full addresses ("Kelly Ford &lt;kelly@example.com&gt;"), for the detail view.</summary>
-    internal static string FormatAddressList(InternetAddressList? list) =>
-        list == null || list.Count == 0
-            ? string.Empty
-            : string.Join(", ", list.Select(a => a.ToString()));
-
-    /// <summary>Display names where there is one, for the message list's From column.</summary>
-    internal static string FormatAddressListDisplay(InternetAddressList? list) =>
-        list == null || list.Count == 0
-            ? string.Empty
-            : string.Join(", ", list.Select(a =>
-                a is MailboxAddress mb && !string.IsNullOrWhiteSpace(mb.Name)
-                    ? mb.Name
-                    : a.ToString()));
 
     /// <summary>
     /// Raw text of the first text/calendar body part of a downloaded message, or null when it carries
@@ -1950,30 +2509,22 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
 
     public async Task<int> CountTrashMessagesAsync(Guid accountId, CancellationToken ct = default)
     {
-        if (!_pools.ContainsKey(accountId)) return 0;
+        // Throws rather than answering 0 when it can't look: the caller takes 0 as proof the trash is
+        // empty, and a dead connection is the usual reason it's asking.
+        using var lease = await RentClientAsync(accountId, ImapLeasePriority.Background, ct);
+        var client = lease.Client;
+        var trashFolder = await FindSpecialFolderAsync(client, ct, SpecialFolder.Trash)
+            ?? throw new TrashFolderNotFoundException();
+
+        await trashFolder.OpenAsync(FolderAccess.ReadOnly, ct);
         try
         {
-            using var lease = await RentClientAsync(accountId, ImapLeasePriority.Background, ct);
-            var client = lease.Client;
-            var trashFolder = await FindSpecialFolderAsync(client, ct, SpecialFolder.Trash, SpecialFolder.Junk);
-            if (trashFolder == null) return 0;
-
-            await trashFolder.OpenAsync(FolderAccess.ReadOnly, ct);
-            try
-            {
-                var uids = await trashFolder.SearchAsync(SearchQuery.All, ct);
-                return uids.Count;
-            }
-            finally
-            {
-                await trashFolder.CloseAsync(false, ct);
-            }
+            var uids = await trashFolder.SearchAsync(SearchQuery.All, ct);
+            return uids.Count;
         }
-        catch (OperationCanceledException) { throw; }
-        catch (Exception ex)
+        finally
         {
-            LogService.Log($"CountTrashMessages failed for {accountId}: {ex.GetType().Name}");
-            return 0;
+            await trashFolder.CloseAsync(false, ct);
         }
     }
 

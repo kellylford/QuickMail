@@ -218,10 +218,6 @@
         <Setter Property="BorderBrush" Value="Transparent"/>
         <Setter Property="Margin" Value="1,0"/>
     </Style>
-    <Style x:Key="{x:Static ToolBar.CheckBoxStyleKey}" TargetType="CheckBox" BasedOn="{StaticResource {x:Type CheckBox}}"/>
-    <Style x:Key="{x:Static ToolBar.RadioButtonStyleKey}" TargetType="RadioButton" BasedOn="{StaticResource {x:Type RadioButton}}"/>
-    <Style x:Key="{x:Static ToolBar.TextBoxStyleKey}" TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}"/>
-    <Style x:Key="{x:Static ToolBar.ComboBoxStyleKey}" TargetType="ComboBox" BasedOn="{StaticResource {x:Type ComboBox}}"/>
     <Style x:Key="{x:Static ToolBar.SeparatorStyleKey}" TargetType="Separator">
         <Setter Property="Template">
             <Setter.Value>
@@ -522,6 +518,17 @@
         </Setter>
     </Style>
 
+    <!-- ToolBar keys for controls whose implicit styles are defined above this
+         point, and not near the Button keys. BasedOn is a StaticResource, which
+         only sees what is defined above it: declared before the implicit style, a
+         key silently bases itself on an earlier, unthemed one. The compose
+         toolbar's Paragraph style box rendered with light default chrome in the
+         dark theme that way (#729). -->
+    <Style x:Key="{x:Static ToolBar.CheckBoxStyleKey}" TargetType="CheckBox" BasedOn="{StaticResource {x:Type CheckBox}}"/>
+    <Style x:Key="{x:Static ToolBar.RadioButtonStyleKey}" TargetType="RadioButton" BasedOn="{StaticResource {x:Type RadioButton}}"/>
+    <Style x:Key="{x:Static ToolBar.TextBoxStyleKey}" TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}"/>
+    <Style x:Key="{x:Static ToolBar.ComboBoxStyleKey}" TargetType="ComboBox" BasedOn="{StaticResource {x:Type ComboBox}}"/>
+
     <!-- Bare separators outside menus/toolbars/status bars (those contexts use
          their own keyed styles above/below): a themed horizontal hairline. -->
     <Style TargetType="Separator">
@@ -610,14 +617,29 @@
 
     <!-- ── Menus ──────────────────────────────────────────────────────────── -->
 
+    <!-- FontFamily and FontSize are set explicitly on Menu, ContextMenu, StatusBar and
+         ToolTip because WPF's own default style for each one sets them from the system
+         menu/status font, and a default style beats the value a window passes down by
+         inheritance. Without these the menu bar and status bar stayed at the system size
+         and font while every other surface followed the theme (#691) - most visible at
+         150% text, where they are the only text that does not grow. Measured, not
+         assumed: in a window set to 20pt Comic Sans, Menu and StatusBar report
+         BaseValueSource.DefaultStyle at 12pt Segoe UI, while ToolBar and ListBox report
+         Inherited at 20pt. Their children (MenuItem, StatusBarItem) then inherit the
+         wrong value from them, so setting the parent is enough. ContextMenu and ToolTip
+         are popup roots, which inherit nothing from their owner, so they need it too. -->
     <Style TargetType="Menu">
         <Setter Property="Background" Value="{DynamicResource Theme.ChromeBackground}"/>
         <Setter Property="Foreground" Value="{DynamicResource Theme.TextPrimary}"/>
+        <Setter Property="FontFamily" Value="{DynamicResource Theme.FontFamily}"/>
+        <Setter Property="FontSize" Value="{DynamicResource Theme.FontSizeBase}"/>
     </Style>
 
     <Style TargetType="ContextMenu">
         <Setter Property="Background" Value="{DynamicResource Theme.SurfaceBackground}"/>
         <Setter Property="Foreground" Value="{DynamicResource Theme.TextPrimary}"/>
+        <Setter Property="FontFamily" Value="{DynamicResource Theme.FontFamily}"/>
+        <Setter Property="FontSize" Value="{DynamicResource Theme.FontSizeBase}"/>
         <Setter Property="BorderBrush" Value="{DynamicResource Theme.Border}"/>
         <Setter Property="BorderThickness" Value="1"/>
         <Setter Property="Template">
@@ -1177,16 +1199,22 @@
 
     <!-- ── Chrome pieces ──────────────────────────────────────────────────── -->
 
+    <!-- FontFamily/FontSize: see the note above the Menu style (#691). -->
     <Style TargetType="StatusBar">
         <Setter Property="Background" Value="{DynamicResource Theme.ChromeBackground}"/>
         <Setter Property="Foreground" Value="{DynamicResource Theme.TextPrimary}"/>
+        <Setter Property="FontFamily" Value="{DynamicResource Theme.FontFamily}"/>
+        <Setter Property="FontSize" Value="{DynamicResource Theme.FontSizeBase}"/>
         <Setter Property="BorderBrush" Value="{DynamicResource Theme.Accent}"/>
         <Setter Property="BorderThickness" Value="0,1,0,0"/>
     </Style>
 
+    <!-- FontFamily/FontSize: see the note above the Menu style (#691). -->
     <Style TargetType="ToolTip">
         <Setter Property="Background" Value="{DynamicResource Theme.SurfaceBackground}"/>
         <Setter Property="Foreground" Value="{DynamicResource Theme.TextPrimary}"/>
+        <Setter Property="FontFamily" Value="{DynamicResource Theme.FontFamily}"/>
+        <Setter Property="FontSize" Value="{DynamicResource Theme.FontSizeBase}"/>
         <Setter Property="BorderBrush" Value="{DynamicResource Theme.Border}"/>
         <Setter Property="BorderThickness" Value="1"/>
         <Setter Property="Padding" Value="8,4"/>

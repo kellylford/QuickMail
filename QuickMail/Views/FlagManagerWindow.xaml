@@ -74,7 +74,7 @@
                      Margin="8,4,0,4"
                      AutomationProperties.Name="Flags">
                 <ListBox.ItemContainerStyle>
-                    <Style TargetType="ListBoxItem">
+                    <Style TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
                         <Setter Property="AutomationProperties.Name" Value="{Binding Name}"/>
                         <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
                     </Style>

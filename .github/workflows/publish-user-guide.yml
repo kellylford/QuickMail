@@ -1,29 +1,90 @@
 name: Publish User Guide
 
+# Deployed with GitHub's own Pages actions into the `github-pages` environment, whose
+# deployment-branch policy admits only main and v* tags. It used to push the gh-pages branch
+# with peaceiris/actions-gh-pages and Pages served that branch, which meant anyone with write
+# access could publish the website: by dispatching this workflow from their own branch, or
+# simply by pushing to gh-pages. Now the site is whatever the last admitted run of this
+# workflow uploaded, and the gh-pages branch is no longer served (Pages' source must be set
+# to "GitHub Actions" for that).
+#
+# Each deploy replaces the whole site, exactly as peaceiris did (it never kept files), so
+# every page must be written into build/docs below; a page added any other way is gone on
+# the next publish.
+
 on:
   workflow_dispatch:
-  release:
-    types: [published]
+  # Called by the release job in quickmail.yml once a v* tag's release is out. This,
+  # and not a `release` trigger, is what publishes the guide for a release: our
+  # releases are created by softprops/action-gh-release using GITHUB_TOKEN, and GitHub
+  # does not start workflow runs from events raised by a GITHUB_TOKEN, so the
+  # `release: published` event never arrives. It stayed unnoticed because every publish
+  # had been run by hand right after a release -- until 0.8.44 shipped and the site sat
+  # at 0.8.43.
+  #
+  # There is deliberately no `release: published` trigger any more. It only ever fired for a
+  # release made by hand, and anyone with write access can make one on an old tag -- which
+  # would republish that tag's docs and roll the site back with no approval. After a release
+  # made by hand, run this workflow on main instead.
+  workflow_call:
+
+# Nothing by default; the job asks for exactly what the Pages deploy needs.
+permissions: {}
 
 jobs:
   publish-guide:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read    # checkout (with tags, for the version and release history)
+      pages: write      # deploy-pages publishes the uploaded site
+      id-token: write   # deploy-pages proves the run's identity to Pages via OIDC
+    # Only two runs may publish: a run on main (a dispatch), and a release -- quickmail.yml's
+    # push of a new v* tag, which only Kelly can create (tag ruleset) and whose build he
+    # approves first. In a called workflow `github.event_name` is the caller's event, so a
+    # release run reads as `push`. A dispatch on an old tag, which the github-pages
+    # environment's v* rule would otherwise admit, is skipped here so nobody can roll the
+    # site back. The environment (main and v* tags only) refuses every other branch.
+    if: github.ref == 'refs/heads/main' || (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v'))
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    # One deploy at a time, and never cancel one halfway: a manual run and a release's run
+    # can overlap, and the later one should simply follow the earlier.
+    concurrency:
+      group: pages
+      cancel-in-progress: false
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
+        with:
+          # The release history reads each version's date from its tag, so the
+          # whole history is needed, not the single commit a default checkout takes.
+          fetch-depth: 0
 
       - name: Install Pandoc
         run: |
           sudo apt-get update
           sudo apt-get install -y pandoc
 
-      - name: Read version from csproj
+      # The version on the page is the released version, read from the tags: the tag on
+      # this commit for a release run, and otherwise the newest tag there is. It used to
+      # come from <Version> in QuickMail.csproj, which is the version being *worked on* --
+      # correct on a tag, where the two agree, but a run by hand mid-cycle then published
+      # a guide announcing a version nobody could download yet.
+      - name: Determine the released version
         id: version
         run: |
-          VERSION=$(grep -oP '(?<=<Version>)[^<]+' QuickMail/QuickMail.csproj)
+          VERSION=$(git tag --points-at HEAD --list 'v*' | sed 's/^v//' | sort -V | tail -1)
+          if [ -z "$VERSION" ]; then
+            VERSION=$(git tag --list 'v*' | sed 's/^v//' | sort -V | tail -1)
+          fi
+          if [ -z "$VERSION" ]; then
+            echo "No v* tags in the checkout; cannot tell which version this documents." >&2
+            exit 1
+          fi
           echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "Detected version: $VERSION"
+          echo "Publishing the guide as version: $VERSION"
 
       - name: Create build directory
         run: mkdir -p build/docs
@@ -69,8 +130,8 @@ jobs:
       - name: Generate standalone articles
         run: |
           # Standalone pages that are not part of the user guide. Generated here so
-          # they survive deployment: peaceiris/actions-gh-pages replaces the whole
-          # branch each run, so a file added to gh-pages by hand would be wiped.
+          # they survive deployment: each deploy replaces the whole site, so a page
+          # that is not written into build/docs is gone.
           pandoc docs/github-release-download-numbers.md \
             --from markdown \
             --to html5 \
@@ -79,6 +140,29 @@ jobs:
             --metadata title="How to Get GitHub Release Download Numbers" \
             --metadata lang=en \
             --output build/docs/github-release-download-numbers.html
+
+      - name: Copy standalone pages
+        run: |
+          # The privacy policy is hand-written HTML, not generated from Markdown, so it is
+          # copied rather than converted. It must be copied here for the same reason the
+          # articles above are generated here: each deploy replaces the whole site, so
+          # anything not in build/docs is deleted on deploy.
+          # That is why https://kellylford.github.io/QuickMail/privacy.html 404'd (issue #556)
+          # while the file existed in the repository the whole time. The URL is cited by
+          # Google OAuth verification and by the winget manifest's PrivacyUrl, so it must
+          # keep resolving: fail the run loudly rather than deploy a Pages site without it.
+          test -f docs/privacy.html
+          cp docs/privacy.html build/docs/privacy.html
+
+      # One page per released version from docs/release-notes-vX.Y.Z.md, plus
+      # releases.html listing them all. Driven by the v* tags, so the open cycle's
+      # skeleton stays out and a released version with no notes file fails the run.
+      - name: Generate release history pages
+        run: |
+          python3 scripts/build-release-history.py \
+            --out build/docs \
+            --css /tmp/guide-style.html
+          test -f build/docs/releases.html
 
       - name: Generate sectioned HTML with navigation
         run: |
@@ -170,6 +254,8 @@ jobs:
             </ul>
             <hr>
             <p><a href="full.html">View as single page</a></p>
+            <p><a href="releases.html">Release History</a> — what changed in every version</p>
+            <p><a href="privacy.html">Privacy Policy</a></p>
             <h2>Articles</h2>
             <ul>
               <li><a href="github-release-download-numbers.html">How to Get GitHub Release Download Numbers</a> — pulling release download counts out of GitHub, and how to read them without fooling yourself</li>
@@ -182,8 +268,14 @@ jobs:
           print(f"Generated {len(section_files)} sections")
           EOF
 
-      - name: Deploy to GitHub Pages
-        uses: peaceiris/actions-gh-pages@v4
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v6
+
+      - name: Upload the site
+        uses: actions/upload-pages-artifact@v5
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./build/docs
+          path: ./build/docs
+
+      - name: Deploy to GitHub Pages
+        id: deploy
+        uses: actions/deploy-pages@v5

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Specialized;
 using System.Diagnostics;
 using System.Windows;
 using System.Windows.Controls;
@@ -22,7 +23,11 @@ public partial class AccountManagerDialog : Window
         DataContext = vm;
         vm.PropertyChanged += (_, e) =>
         {
-            if (e.PropertyName == nameof(vm.StatusText) && !string.IsNullOrEmpty(vm.StatusText))
+            // Not while Add Account is open over this window (#834): it commits the account itself
+            // and says so, and this window's "Account added." — or a sync result arriving while the
+            // user types the next account — would be a second voice from a window that is behind.
+            // Follow-up failures are collected by the VM and reported when the adding ends.
+            if (e.PropertyName == nameof(vm.StatusText) && !string.IsNullOrEmpty(vm.StatusText) && !_addingAccounts)
                 // The VM classifies its own status text — a refused save is a Result, not progress,
                 // and must not be silent for a user who has progress announcements off (#396).
                 AccessibilityHelper.Announce(this, vm.StatusText,
@@ -36,10 +41,13 @@ public partial class AccountManagerDialog : Window
         // password itself — otherwise the box keeps showing dots for a password that is gone.
         vm.PasswordCleared += OnPasswordCleared;
         vm.EmailAddressRejected += OnEmailAddressRejected;
-        // #31: removing a parent takes its shared mailboxes with it — confirm, naming them, first.
-        vm.ConfirmCascadeRemoval = message =>
-            MessageBox.Show(this, message, "Remove shared mailboxes",
-                MessageBoxButton.YesNo, MessageBoxImage.Warning) == MessageBoxResult.Yes;
+        vm.Accounts.CollectionChanged += OnAccountsChanged;
+        // Every account removal is confirmed (#834); a parent's prompt names the shared mailboxes it
+        // takes with it (#31). No is the default: the prompt can be reached by a stray Alt+D or "d",
+        // and a Yes/No box ignores Escape, so a default of Yes would let the next Enter delete.
+        vm.ConfirmAccountRemoval = message =>
+            MessageBox.Show(this, message, "Remove Account",
+                MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No) == MessageBoxResult.Yes;
         // #529 step 4: the convert re-downloads the mailbox and can leave older mail off this PC — confirm
         // first. A plain Yes/No MessageBox (no editable field) is safe here, the same as the cascade
         // confirmation above; an unset callback fails closed in the VM, so nothing converts unconfirmed.
@@ -59,7 +67,16 @@ public partial class AccountManagerDialog : Window
             return;
         }
 
-        addVm.SharedMailboxAdded += _vm.CommitNewSharedMailbox;   // commit + persist; the window closes itself
+        // Commit + persist, then drive the shared-mailbox consent (#31). async void is the sanctioned
+        // View pattern for a fire-and-forget UI reaction; CommitNewSharedMailboxAsync handles its own
+        // consent failures (leaving the mailbox added but disconnected), so this only guards the add.
+        async void OnSharedMailboxAdded(AccountModel shared)
+        {
+            try { await _vm.CommitNewSharedMailboxAsync(shared); }
+            catch (Exception ex) { LogService.Log($"AccountManagerDialog: committing shared mailbox failed — {ex.Message}"); }
+        }
+
+        addVm.SharedMailboxAdded += OnSharedMailboxAdded;   // the add window closes itself on the same event
         // Modeless (Show), not ShowDialog: this window has an editable field and can sit over the main
         // window's live WebView2. Note the manager itself is modal (ShowDialog), so the editable field is
         // already inside a nested modal loop — the same position the manager's own text boxes occupy and
@@ -70,7 +87,7 @@ public partial class AccountManagerDialog : Window
         AddSharedButton.IsEnabled = false;
         window.Closed += (_, _) =>
         {
-            addVm.SharedMailboxAdded -= _vm.CommitNewSharedMailbox;   // pair the += so no ghost callback survives
+            addVm.SharedMailboxAdded -= OnSharedMailboxAdded;   // pair the += so no ghost callback survives
             AddSharedButton.IsEnabled = true;
             // Focus restoration (New-Window-Checklist): a modeless window does not reliably return focus
             // to its launcher, so put it back on the button that opened this dialog.
@@ -108,17 +125,23 @@ public partial class AccountManagerDialog : Window
         _vm.SignInIdentityMismatch -= WarnIdentityMismatch;
         _vm.PasswordCleared -= OnPasswordCleared;
         _vm.EmailAddressRejected -= OnEmailAddressRejected;
+        _vm.Accounts.CollectionChanged -= OnAccountsChanged;
         base.OnClosed(e);
     }
 
     private void WarnIdentityMismatch(string entered, string actual)
     {
-        MessageBox.Show(this,
-            $"You entered {entered}, but sign-in completed as {actual}.\n\n" +
-            "This usually happens when an administrator signs in to approve access for your " +
-            $"organization. The account was not changed. Please sign in again as {entered}.",
+        // #606: same behavior as Add Account — offer to sign in again as `entered` (Yes re-runs the sign-in,
+        // which now succeeds if an admin just granted consent; No returns to the screen) rather than a
+        // dead-end OK. Re-invoked via the dispatcher so the current sign-in call unwinds first.
+        var answer = MessageBox.Show(this,
+            Helpers.AccountSignInMessages.IdentityMismatchPrompt(entered, actual, _vm.IsOAuth2),
             "Different account signed in",
-            MessageBoxButton.OK, MessageBoxImage.Warning);
+            MessageBoxButton.YesNo, MessageBoxImage.Question);
+
+        if (answer != MessageBoxResult.Yes) return;
+        var retry = _vm.IsOAuth2 ? _vm.SignInMicrosoftCommand : _vm.SignInGoogleCommand;
+        Dispatcher.BeginInvoke(() => retry.Execute(null), System.Windows.Threading.DispatcherPriority.Background);
     }
 
     /// <summary>
@@ -178,12 +201,16 @@ public partial class AccountManagerDialog : Window
             return;
         }
 
-        // Land keyboard focus on the FIRST account item (not the list container, which a screen
-        // reader announces as "0 items"). Focusing the item container gives it keyboard focus
-        // WITHOUT selecting it — selection happens only on arrow/Space/click — so the user hears
-        // the first account and can then choose one. Realize the container first.
+        // Land keyboard focus on an account item (not the list container, which a screen reader
+        // announces as "0 items"), and SELECT it too (#834). Focus used to land on the first row
+        // without selecting it, so the user heard an account and pressed Delete or Set Default and
+        // nothing happened: those act on the selection, and there was none. The row is the one
+        // the caller pre-selected (Account Settings… from the main window), else the first.
+        var target = _vm.SelectedAccount ?? _vm.Accounts[0];
+        _vm.SelectedAccount = target;
+        AccountListBox.ScrollIntoView(target);
         AccountListBox.UpdateLayout();
-        if (AccountListBox.ItemContainerGenerator.ContainerFromIndex(0) is ListBoxItem first)
+        if (AccountListBox.ItemContainerGenerator.ContainerFromItem(target) is ListBoxItem first)
         {
             first.Focus();
             Keyboard.Focus(first);
@@ -192,6 +219,27 @@ public partial class AccountManagerDialog : Window
         {
             AccountListBox.Focus();
         }
+    }
+
+    /// <summary>
+    /// A deleted row takes keyboard focus with it, which leaves focus on the list itself — read as
+    /// just "Account list" — while the next account has been selected in its place (#834). When focus
+    /// was in the list, put it on the selected row. Delete pressed from its button keeps focus there.
+    /// </summary>
+    private void OnAccountsChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        if (e.Action != NotifyCollectionChangedAction.Remove) return;
+        Dispatcher.BeginInvoke(new Action(() =>
+        {
+            if (!AccountListBox.IsKeyboardFocusWithin || _vm.SelectedAccount is not { } selected) return;
+            AccountListBox.ScrollIntoView(selected);
+            AccountListBox.UpdateLayout();
+            if (AccountListBox.ItemContainerGenerator.ContainerFromItem(selected) is ListBoxItem row)
+            {
+                row.Focus();
+                Keyboard.Focus(row);
+            }
+        }), System.Windows.Threading.DispatcherPriority.Input);
     }
 
     private void PasswordBox_PasswordChanged(object sender, RoutedEventArgs e)
@@ -217,10 +265,43 @@ public partial class AccountManagerDialog : Window
 
     private void NewButton_Click(object sender, RoutedEventArgs e)
     {
-        var addVm = _vm.CreateAddAccountViewModel();
-        var dialog = new AddAccountDialog(addVm) { Owner = this };
-        if (dialog.ShowDialog() == true)
-            _vm.CommitNewAccount(addVm.ToAccountModel(), addVm.Password);
+        // #834: Add Account saves the account itself and then offers Add another account or Done,
+        // rather than dropping the user back here with the new account selected and its settings
+        // next in the Tab order. Add another opens a fresh form; Done closes this window too, and
+        // the main window puts focus on the account just added.
+        _addingAccounts = true;
+        try { RunAddAccountDialogs(); }
+        finally { _addingAccounts = false; }
+    }
+
+    /// <summary>True while Add Account dialogs are open over this window; mutes its status announcements.</summary>
+    private bool _addingAccounts;
+
+    private void RunAddAccountDialogs()
+    {
+        if (AddAccountDialog.RunUntilDone(this, _vm) == AddAccountOutcome.Done)
+        {
+            // The window that opened this one reports any contact/calendar failure, once the
+            // follow-ups finish (MainWindow.ReportNewAccountFollowUpsAsync).
+            _vm.ShowAddedAccountAfterClose = true;
+            DialogResult = true;
+            Close();
+            return;
+        }
+
+        // Back in this window (Cancel on a fresh form): say anything that failed while the
+        // Add Account dialog had the floor and this window was muted.
+        var failures = _vm.TakeNewAccountFailures();
+        if (failures.Count > 0) _vm.SetStatusOutcome(string.Join(" ", failures));
+    }
+
+    // #507: the import itself opens after this dialog has closed (MainWindow.OpenAccountManager),
+    // never inside its modal loop over the reading pane.
+    private void ImportSettingsButton_Click(object sender, RoutedEventArgs e)
+    {
+        _vm.ChooseImportSettings();
+        DialogResult = true;
+        Close();
     }
 
     private void CloseButton_Click(object sender, RoutedEventArgs e)
@@ -247,5 +328,14 @@ public partial class AccountManagerDialog : Window
     {
         if (sender is CheckBox { IsChecked: { } isChecked })
             await _vm.SetCalendarSyncAsync(isChecked);
+    }
+
+    // The shared-mailbox "Notify me of new mail" checkbox (#31 PR 5) applies immediately and persists,
+    // same pattern as the sync toggles. Click fires only on real user interaction, so the programmatic
+    // assignment in OnSelectedAccountChanged does not re-trigger it.
+    private void SharedNotifyCheckBox_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is CheckBox { IsChecked: { } isChecked })
+            _vm.SetNotifyOnNewMail(isChecked);
     }
 }

@@ -8,6 +8,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using QuickMail.Helpers;
 using QuickMail.Models;
 using QuickMail.Services;
 using QuickMail.ViewModels;
@@ -233,7 +234,7 @@ public class ContactMailSearchTests
     [InlineData("ann@x.com",                              "bob@example.com", false)]
     [InlineData("",                                       "bob@example.com", false)]
     public void HeaderNamesAddress_MatchesWholeAddressesOnly(string header, string address, bool expected)
-        => Assert.Equal(expected, MainViewModel.HeaderNamesAddress(header, address));
+        => Assert.Equal(expected, AddressMatch.Names(header, address));
 
     [Fact]
     public async Task ShowContactMail_DoesNotMatchALongerAddress()
@@ -251,6 +252,40 @@ public class ContactMailSearchTests
 
         Assert.Single(vm.Messages);
         Assert.Equal("3", vm.Messages[0].MessageId);
+    }
+
+    [Fact]
+    public async Task ShowContactMail_From_FindsImapRowsByTheirAddress()
+    {
+        // #803: an IMAP or POP3 row holds the display name alone in From and the address in FromEmail. Every
+        // other test here uses Graph-shaped "Name <address>" senders, which is how this went unnoticed.
+        var imapRow = Msg("1", "Bob Baker", "kelly@example.com");
+        imapRow.FromEmail = "bob@example.com";
+        var otherImapRow = Msg("2", "Ann", "kelly@example.com");
+        otherImapRow.FromEmail = "ann@x.com";
+        var graphRow = Msg("3", "Bob Baker <bob@example.com>", "kelly@example.com");
+        var vm = MakeVm([imapRow, otherImapRow, graphRow]);
+        await vm.InitialLoadAsync();
+
+        await vm.ShowContactMailAsync("bob@example.com", MainViewModel.ContactMailDirection.From, "Bob Baker");
+
+        Assert.Equal(new[] { "1", "3" }, vm.Messages.Select(m => m.MessageId).OrderBy(id => id).ToArray());
+    }
+
+    [Fact]
+    public async Task ShowContactMail_From_IgnoresAnAddressInTheDisplayName()
+    {
+        // Review of #806: the display name is the sender's to write, so "bob@example.com" <x@evil.example> is not Bob.
+        var forged = Msg("1", "bob@example.com", "kelly@example.com");
+        forged.FromEmail = "x@evil.example";
+        var real = Msg("2", "Bob Baker", "kelly@example.com");
+        real.FromEmail = "bob@example.com";
+        var vm = MakeVm([forged, real]);
+        await vm.InitialLoadAsync();
+
+        await vm.ShowContactMailAsync("bob@example.com", MainViewModel.ContactMailDirection.From, "Bob Baker");
+
+        Assert.Equal("2", Assert.Single(vm.Messages).MessageId);
     }
 
     // ── Address book side ────────────────────────────────────────────────────

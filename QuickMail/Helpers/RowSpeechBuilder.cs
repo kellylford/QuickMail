@@ -14,8 +14,6 @@ namespace QuickMail.Helpers;
 /// </summary>
 public static class RowSpeechBuilder
 {
-    private const string Separator = ". ";
-
     /// <summary>
     /// Composes the spoken string for one row.
     /// </summary>
@@ -29,12 +27,18 @@ public static class RowSpeechBuilder
     /// default, so a row never goes silent because the layout failed to load.
     /// </param>
     /// <param name="showLabels">Whether to prefix text-valued fields with their spoken label.</param>
+    /// <param name="separator">
+    /// What goes between fields (#802). Only <see cref="RowFieldSeparator.Period"/> also ends the
+    /// row with a period, which is what every row said before the choice existed.
+    /// </param>
     public static string Build(
         RowKind kind,
         IReadOnlyList<object?> values,
         IReadOnlyList<RowFieldSetting>? layout,
-        bool showLabels = false)
+        bool showLabels = false,
+        RowFieldSeparator separator = RowFieldSeparator.Period)
     {
+        var between   = RowFieldSeparators.Between(separator);
         var catalog   = RowFieldCatalog.For(kind);
         var effective = layout is { Count: > 0 } ? layout : RowFieldCatalog.DefaultLayout(kind);
 
@@ -53,14 +57,25 @@ public static class RowSpeechBuilder
             var part = Render(def, setting, raw, showLabels);
             if (string.IsNullOrWhiteSpace(part)) continue;
 
-            if (sb.Length > 0) sb.Append(Separator);
+            if (sb.Length > 0) sb.Append(Join(separator, between, sb[^1]));
             sb.Append(part);
         }
 
         if (sb.Length == 0) return string.Empty;
-        sb.Append('.');
+        if (RowFieldSeparators.EndsWithPeriod(separator)) sb.Append('.');
         return sb.ToString();
     }
+
+    /// <summary>
+    /// The text between two fields. A comma after a field that already ends in its own punctuation
+    /// ("…required today.", "Lunch tomorrow?") would read ".," — punctuation on punctuation, from a
+    /// choice made to have less of it — so there the comma gives way to a plain space. The period
+    /// choice is left exactly as rows have always read, doubled period included (#802).
+    /// </summary>
+    private static string Join(RowFieldSeparator separator, string between, char previous) =>
+        separator == RowFieldSeparator.Comma && previous is '.' or '?' or '!' or ':' or ';'
+            ? " "
+            : between;
 
     /// <summary>
     /// WPF hands unset or failed bindings through as <see cref="System.Windows.DependencyProperty.UnsetValue"/>
@@ -69,31 +84,65 @@ public static class RowSpeechBuilder
     private static object? Normalize(object? value) =>
         value == System.Windows.DependencyProperty.UnsetValue ? null : value;
 
+    /// <summary>"12 messages", or just "12" when the chosen word is empty (#807).</summary>
+    private static string WithUnit(int n, string unit) =>
+        WithUnit(n.ToString(CultureInfo.CurrentCulture), unit);
+
+    private static string WithUnit(string number, string unit)
+    {
+        var word = unit.Trim();
+        return word.Length == 0 ? number : $"{number} {word}";
+    }
+
     private static string Render(RowFieldDef def, RowFieldSetting setting, object? raw, bool showLabels)
     {
         switch (def.Format)
         {
+            // Every word below is the user's when they have chosen one (#807): setting.Word or
+            // setting.FalseWord, null meaning the shipped word and empty meaning nothing extra.
             case RowFieldFormat.State:
             {
                 var on = raw is bool b && b;
                 // State words already say what they are ("unread", "attachments"), so they are
                 // never labelled — "Unread: unread" is noise, not information.
-                if (on) return def.TrueWord ?? string.Empty;
-                return setting.SpeakMode == SpeakMode.Always ? def.FalseWord ?? string.Empty : string.Empty;
+                if (on) return (setting.Word ?? def.TrueWord ?? string.Empty).Trim();
+                return setting.SpeakMode == SpeakMode.Always
+                    ? (setting.FalseWord ?? def.FalseWord ?? string.Empty).Trim()
+                    : string.Empty;
             }
 
             case RowFieldFormat.Count:
             {
                 if (raw is not int n) return string.Empty;
-                // Self-describing, so unlabelled like the state fields.
-                return string.Create(CultureInfo.CurrentCulture, $"{n} {(n == 1 ? "message" : "messages")}");
+                // Self-describing, so unlabelled like the state fields. A chosen word serves for
+                // one and for many alike; only the shipped wording knows its singular.
+                return WithUnit(n, setting.Word ?? (n == 1 ? "message" : "messages"));
+            }
+
+            // Both unread forms say nothing when nothing is unread, the way Has unread does: a row
+            // that is all read stays as short as it was (#800). Self-describing, so unlabelled.
+            case RowFieldFormat.UnreadCount:
+            {
+                if (raw is not int n || n <= 0) return string.Empty;
+                return WithUnit(n, setting.Word ?? "unread");
+            }
+
+            case RowFieldFormat.UnreadOfTotal:
+            {
+                if (raw is not UnreadTally { Unread: > 0 } t) return string.Empty;
+                return WithUnit(
+                    string.Create(CultureInfo.CurrentCulture, $"{t.Unread} of {t.Total}"),
+                    setting.Word ?? "unread");
             }
 
             default:
             {
                 var value = (raw as string ?? string.Empty).Trim();
                 if (value.Length == 0) return string.Empty;
-                return showLabels ? $"{def.SpokenLabel}: {value}" : value;
+                // A label chosen as empty means this field goes unlabelled even with labels on.
+                // A chosen label typed with its own colon would otherwise read "From:: value".
+                var label = (setting.Word ?? def.SpokenLabel).Trim().TrimEnd(':').TrimEnd();
+                return showLabels && label.Length > 0 ? $"{label}: {value}" : value;
             }
         }
     }

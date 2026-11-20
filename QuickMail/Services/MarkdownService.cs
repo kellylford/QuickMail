@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using System.Net;
 using System.Text;
 using Markdig;
@@ -39,13 +41,58 @@ public sealed class MarkdownService : IMarkdownService
     public string HtmlToPlainText(string html) =>
         HtmlStripper.ToPlainText(html);
 
+    /// <summary>
+    /// Plain text as HTML paragraphs. Lines that begin with "&gt;" — the way plain
+    /// text has always marked quoted mail, and how a reply quotes the original —
+    /// become a real <c>&lt;blockquote&gt;</c>, nested by the number of markers.
+    /// Otherwise a reply switched to HTML sends literal "&gt;" characters.
+    /// </summary>
     public string PlainTextToHtml(string plainText)
     {
         if (string.IsNullOrEmpty(plainText)) return string.Empty;
 
+        var lines = plainText.Replace("\r\n", "\n").Split('\n');
+        var parsed = lines.Select(line =>
+        {
+            var prefix = MarkdownEditing.QuotePrefixLength(line, out int depth);
+            return (Depth: depth, Text: line[prefix..]);
+        }).ToList();
+        if (parsed.All(l => l.Depth == 0))
+            return ParagraphsHtml(plainText.Replace("\r\n", "\n"));
+
         var sb = new StringBuilder(plainText.Length + 64);
-        var paragraphs = plainText.Replace("\r\n", "\n").Split("\n\n", StringSplitOptions.None);
-        foreach (var paragraph in paragraphs)
+        int open = 0;
+        int i = 0;
+        while (i < parsed.Count)
+        {
+            // A run of lines at one quote depth is rendered as paragraphs at that depth.
+            int depth = parsed[i].Depth;
+            var run = new List<string>();
+            while (i < parsed.Count && parsed[i].Depth == depth)
+                run.Add(parsed[i++].Text);
+
+            // Blank lines that only separate the run from a quote are not content.
+            // Leading blank lines at the very start are kept: a reply opens with them
+            // so the caret has somewhere to type above the quote.
+            while (run.Count > 0 && run[^1].Length == 0)
+                run.RemoveAt(run.Count - 1);
+            if (depth > 0 || sb.Length > 0)
+                while (run.Count > 0 && run[0].Length == 0)
+                    run.RemoveAt(0);
+            if (run.Count == 0) continue;
+
+            for (; open < depth; open++) sb.Append("<blockquote>\n");
+            for (; open > depth; open--) sb.Append("</blockquote>\n");
+            sb.Append(ParagraphsHtml(string.Join("\n", run)));
+        }
+        for (; open > 0; open--) sb.Append("</blockquote>\n");
+        return sb.ToString();
+    }
+
+    private static string ParagraphsHtml(string text)
+    {
+        var sb = new StringBuilder(text.Length + 32);
+        foreach (var paragraph in text.Split("\n\n", StringSplitOptions.None))
         {
             if (paragraph.Length == 0) { sb.Append("<p><br /></p>\n"); continue; }
             sb.Append("<p>");

@@ -39,11 +39,79 @@ public class ComposeModel
     /// <summary>RFC 2822 Message-ID of the message being replied to.</summary>
     public string? InReplyToMessageId { get; set; }
 
+    /// <summary>
+    /// RFC 5322 Message-ID this message goes out with. <see cref="Services.SmtpService"/> assigns it
+    /// on the first send attempt when it is empty, and the copy filed in Sent reuses it, so the two
+    /// are recognisably one message: a server that files its own copy of what it relayed then leaves
+    /// QuickMail nothing to add (#811). Never set for drafts, which keep a fresh id per save.
+    /// </summary>
+    public string? OutgoingMessageId { get; set; }
+
+    /// <summary>
+    /// When the last send attempt went out, set by <see cref="Services.SmtpService"/>, so the copy
+    /// filed in Sent a few seconds later carries the same Date. Not stored in the Outbox: a retry
+    /// is a new send with its own time.
+    /// </summary>
+    public DateTimeOffset? OutgoingDate { get; set; }
+
     /// <summary>Server message id of the existing draft (null when composing new).</summary>
     public string? DraftMessageId { get; set; }
 
     /// <summary>Folder name of the existing draft (null when composing new).</summary>
     public string? DraftFolderName { get; set; }
 
+    /// <summary>
+    /// Id of the local Outbox row this compose was opened from, or that it last saved into (null when
+    /// nothing is queued). A save or send replaces that row instead of queuing another (issue #637).
+    /// </summary>
+    public string? OutboxId { get; set; }
+
     public List<AttachmentModel> Attachments { get; set; } = [];
+
+    /// <summary>
+    /// Pictures inside the HTML body, each with its bytes and a <see cref="AttachmentModel.ContentId"/>
+    /// that the HTML references as <c>cid:</c>. Sent as <c>multipart/related</c> parts, not as
+    /// attachments, and never listed with them (#729).
+    /// </summary>
+    public List<AttachmentModel> InlineImages { get; set; } = [];
+
+    /// <summary>
+    /// For a reply or forward: the message it came from. When the quoted HTML refers to pictures
+    /// (<c>cid:</c>), the compose window fetches them from that message after it opens, so they
+    /// are not lost from the quote. Not stored in the Outbox.
+    /// </summary>
+    public Guid? SourceAccountId { get; set; }
+    public string? SourceFolderName { get; set; }
+    public string? SourceMessageId { get; set; }
+
+    /// <summary>A shallow copy with no attachments — what the Outbox stores as JSON, keeping the bytes in their own rows.</summary>
+    public ComposeModel WithoutAttachments() => new()
+    {
+        Kind = Kind,
+        AccountId = AccountId,
+        To = To,
+        Cc = Cc,
+        Bcc = Bcc,
+        Subject = Subject,
+        Body = Body,
+        Mode = Mode,
+        HtmlBody = HtmlBody,
+        InReplyToMessageId = InReplyToMessageId,
+        OutgoingMessageId = OutgoingMessageId,
+        DraftMessageId = DraftMessageId,
+        DraftFolderName = DraftFolderName,
+        OutboxId = OutboxId,
+        Attachments = [],
+    };
+}
+
+/// <summary>How the last Save Draft in a compose window ended (#637).</summary>
+public enum DraftSaveOutcome
+{
+    None,
+    SavedToServer,
+    /// <summary>The server could not be reached; the draft is in the local Outbox awaiting upload.</summary>
+    SavedLocally,
+    /// <summary>Neither the server nor the local store took it. The window must not close and lose it.</summary>
+    Failed,
 }

@@ -213,6 +213,19 @@ public class BugReportServiceTests
         Assert.DoesNotContain("quickmail.log", text, StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>How a message opens depends on the WebView2 runtime, so a report says which one (#959).</summary>
+    [Fact]
+    public void BuildReportText_NamesTheWebView2Runtime()
+    {
+        var service = MakeService(_ => new HttpResponseMessage(HttpStatusCode.OK), out _);
+
+        var text = service.BuildReportText(SampleReport());
+
+        var line = Assert.Single(text.Split('\n'), l => l.StartsWith("- WebView2 runtime: ", StringComparison.Ordinal));
+        Assert.False(string.IsNullOrWhiteSpace(line["- WebView2 runtime: ".Length..]));
+        Assert.True(text.IndexOf("- .NET runtime:", StringComparison.Ordinal) < text.IndexOf("- WebView2 runtime:", StringComparison.Ordinal));
+    }
+
     [Fact]
     public void BuildReportText_IncludesThemeViewAndSort_WhenContextProvided()
     {
@@ -224,6 +237,7 @@ public class BugReportServiceTests
             View  = "Unread (Conversations)",
             Sort  = "Newest First",
             MessageOpenMode = "Window",
+            Accounts = "2 (IMAP, Microsoft 365)",
         };
 
         var text = service.BuildReportText(report);
@@ -232,6 +246,30 @@ public class BugReportServiceTests
         Assert.Contains("View: Unread (Conversations)", text);
         Assert.Contains("Sort: Newest First", text);
         Assert.Contains("Message open mode: Window", text);
+        Assert.Contains("Accounts: 2 (IMAP, Microsoft 365)", text);
+    }
+
+    /// <summary>
+    /// An older context object — or one captured before any account is loaded — leaves Accounts
+    /// empty, and an empty value must omit the line rather than render "Accounts: ". Same contract
+    /// the message-open-mode line has had since #350.
+    /// </summary>
+    [Fact]
+    public void BuildReportText_OmitsAccounts_WhenContextValueEmpty()
+    {
+        var service = MakeService(_ => new HttpResponseMessage(HttpStatusCode.OK), out _);
+        var report = SampleReport();
+        report.Context = new BugReportContext
+        {
+            Theme = "Parchment",
+            View  = "All (Messages)",
+            Sort  = "Newest First",
+            // Accounts stays empty
+        };
+
+        var text = service.BuildReportText(report);
+
+        Assert.DoesNotContain("Accounts:", text);
     }
 
     [Fact]

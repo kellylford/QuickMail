@@ -412,12 +412,13 @@ public class Pop3SharedMailboxTests
     [Fact]
     public void APop3AccountIsNotOfferedAsAParent()
     {
-        var imap = new AccountModel { Id = Guid.NewGuid(), AccountName = "IMAP", BackendKind = BackendKind.ImapSmtp };
-        var pop3 = new AccountModel { Id = Guid.NewGuid(), AccountName = "POP3", BackendKind = BackendKind.Pop3Smtp };
+        // A work/school Microsoft account is the eligible parent (#31); POP3 has no second mailbox.
+        var work = new AccountModel { Id = Guid.NewGuid(), AccountName = "Work", Username = "work@work.com", BackendKind = BackendKind.MicrosoftGraph, AuthType = AuthType.OAuth2Microsoft };
+        var pop3 = new AccountModel { Id = Guid.NewGuid(), AccountName = "POP3", Username = "me@pop.com", BackendKind = BackendKind.Pop3Smtp, AuthType = AuthType.Password };
 
-        var vm = new AddSharedMailboxViewModel([imap, pop3]);
+        var vm = new AddSharedMailboxViewModel([work, pop3]);
 
-        Assert.Contains(vm.ParentOptions, a => a.Id == imap.Id);
+        Assert.Contains(vm.ParentOptions, a => a.Id == work.Id);
         Assert.DoesNotContain(vm.ParentOptions, a => a.Id == pop3.Id);
     }
 }

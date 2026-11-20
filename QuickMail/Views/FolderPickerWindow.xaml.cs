@@ -59,8 +59,28 @@ public partial class FolderPickerWindow : Window
     // picker can open on the folder the user came out of rather than on nothing.
     private FolderTreeNode? _openingNode;
 
+    // Tree view only: the account root is itself a destination — "the top level of this account"
+    // (#954). Only the folder move/copy picker sets it: a folder can live at the top level, beside
+    // Inbox, but a message cannot live in an account, so every other picker keeps Open off the root.
+    private readonly bool _accountRootIsDestination;
+
+    /// <summary>Read by the tree's item style to give the account root its "Top level of the
+    /// account" help text where it is a destination. Fixed at construction, so it never notifies.</summary>
+    public bool AccountRootIsDestination => _accountRootIsDestination;
+
+    // Tree view only: the excluded folder sat directly under its account root, so choosing the root
+    // would put it back where it already is.
+    private bool _sourceIsTopLevel;
+
     public MailFolderModel? SelectedFolder { get; private set; }
     public AccountModel? SelectedAccount { get; private set; }
+
+    /// <summary>
+    /// True when the user chose an account root — the top level of <see cref="SelectedAccount"/> —
+    /// rather than a folder. <see cref="SelectedFolder"/> is null then. Only a picker built with
+    /// <c>accountRootIsDestination</c> (<see cref="ForFolderMoveCopy"/>) can return it.
+    /// </summary>
+    public bool SelectedAccountRoot { get; private set; }
 
     /// <summary>
     /// Whether the tree holds a folder the user could actually pick. False means showing the picker
@@ -70,7 +90,22 @@ public partial class FolderPickerWindow : Window
     /// </summary>
     private bool HasSelectableFolders =>
         !_useTreeView ||
-        (FolderTreeView.ItemsSource is IEnumerable<FolderTreeNode> roots && AnySelectable(roots));
+        (FolderTreeView.ItemsSource is IEnumerable<FolderTreeNode> roots &&
+         (AnySelectable(roots) || OffersAccountRoot(roots)));
+
+    // An account root counts as somewhere to go only where it is a destination, and not for a folder
+    // already at the top level: there it would be the same empty dialog with one pointless choice.
+    private bool OffersAccountRoot(IEnumerable<FolderTreeNode> roots) =>
+        _accountRootIsDestination && !_sourceIsTopLevel && roots.Any(n => n.IsHeader);
+
+    /// <summary>
+    /// Whether Open can act on <paramref name="node"/>: a real folder, or — in the folder move/copy
+    /// picker only — an account root, meaning the top level of that account (#954). Headers
+    /// elsewhere, and the IMAP path segments that are not mailboxes, carry nothing to open.
+    /// </summary>
+    private bool IsOpenable(FolderTreeNode? node) =>
+        node is { IsHeader: false, Folder: not null } ||
+        (_accountRootIsDestination && node is { IsHeader: true, AccountId: not null });
 
     // Deliberately not TreeViewFocusHelper.GetVisibleTreeNodes: that walks only expanded nodes, and
     // whether a folder exists to pick must not depend on what happens to be expanded.
@@ -89,12 +124,14 @@ public partial class FolderPickerWindow : Window
         IReadOnlyDictionary<Guid, MailFolderModel>? accountMailFolders = null,
         bool useTreeView = false,
         Func<Guid, string?, string, Task<IReadOnlyList<MailFolderModel>?>>? folderCreator = null,
-        MailFolderModel? excludeFolder = null)
+        MailFolderModel? excludeFolder = null,
+        bool accountRootIsDestination = false)
     {
         _initialFolder = initialFolder;
         _useTreeView = useTreeView;
         _folderCreator = folderCreator;
         _excludeFolder = excludeFolder;
+        _accountRootIsDestination = accountRootIsDestination;
 
         InitializeComponent();
         Title = title;
@@ -194,14 +231,13 @@ public partial class FolderPickerWindow : Window
             .Where(a => cachedFolders.ContainsKey(a.Id))
             .ToDictionary(a => a.Id, a => cachedFolders[a.Id].ToList());
 
-        // Open follows the selection: a header or an IMAP path segment carries no folder, so there
-        // is nothing to open. Reporting that through the control itself reaches the user whatever
-        // their announcement settings are, unlike the "Choose a folder." announcement in Commit,
-        // which AnnounceResults can switch off.
+        // Open follows the selection: a header (outside the folder move/copy picker) or an IMAP path
+        // segment carries no folder, so there is nothing to open. Reporting that through the control
+        // itself reaches the user whatever their announcement settings are, unlike the "Choose a
+        // folder." announcement in Commit, which AnnounceResults can switch off.
         OpenButton.IsEnabled = false;
         FolderTreeView.SelectedItemChanged += (_, _) =>
-            OpenButton.IsEnabled = FolderTreeView.SelectedItem is FolderTreeNode
-                                   { IsHeader: false, Folder: not null };
+            OpenButton.IsEnabled = IsOpenable(FolderTreeView.SelectedItem as FolderTreeNode);
 
         RebuildTreeView();
 
@@ -214,7 +250,8 @@ public partial class FolderPickerWindow : Window
     /// Puts the selection — and keyboard focus — on the folder the user came from, so the picker
     /// opens somewhere meaningful instead of on an empty tree. When that folder is not in the tree
     /// (moving a folder excludes it, and an aggregate view is not a folder at all) the nearest
-    /// standing-in node is used: the parent it was moved out of, else the first real folder. Landing
+    /// standing-in node is used: the parent it was moved out of, else the first real folder, else —
+    /// in the folder move/copy picker, when it is the only destination — the account root. Landing
     /// on nothing is never the answer — a tree with no selection announces the tree and no item, and
     /// leaves the user to guess that Down is what starts things.
     /// </summary>
@@ -235,8 +272,16 @@ public partial class FolderPickerWindow : Window
         // its node as long as another child survives the exclusion, and landing on a row with Open
         // disabled is the same failure as landing on nothing, one step in. Prefer the nearest real
         // folder beneath it, so the user still starts near where they were.
+        //
+        // Never the account root while there is a real folder to open on, even in the folder move
+        // picker where the root is a destination (#954): Enter on the opening row should not move a
+        // folder somewhere as sweeping as the top level. The root is the last resort only when it is
+        // the one destination left — the folder being moved was the account's only real folder, under
+        // a path segment — because opening on nothing is worse.
         if (target is not { IsHeader: false, Folder: not null })
-            target = (target != null ? FirstSelectable(target.Children) : null) ?? FirstSelectable(roots);
+            target = (target != null ? FirstSelectable(target.Children) : null)
+                     ?? FirstSelectable(roots)
+                     ?? (OffersAccountRoot(roots) ? roots.First(n => n.IsHeader) : null);
 
         if (target == null || !TreeViewFocusHelper.SelectTreeViewNode(FolderTreeView, target))
             FolderTreeView.Focus();
@@ -251,6 +296,25 @@ public partial class FolderPickerWindow : Window
         }
         return null;
     }
+
+    /// <summary>
+    /// Whether each account appears as a header node above its folders. Always with several
+    /// accounts, so the user can tell them apart. With one account, only when the picker offers New
+    /// Folder (issue #950): the header is the only way to say "create this at the top level", beside
+    /// Inbox and Sent, as selecting the account does in the main folder tree. Without it a
+    /// single-account picker could only create a folder inside whichever folder was selected, since
+    /// <see cref="SelectOpeningNode"/> always selects a real folder and so the "nothing selected"
+    /// fallback in <see cref="TryResolveTreeCreateTarget"/> is never reached. Open stays disabled on
+    /// the header, and the picker does not open on it, so the extra level costs a picker that cannot
+    /// create folders nothing: those keep the flat single-account tree they had.
+    ///
+    /// <para>Also in the folder move/copy picker (issue #954), where the header is a destination in
+    /// its own right — the top level of the account — and Open is enabled on it. There the picker
+    /// opens on the header only as a last resort, when it is the one destination left (see
+    /// <see cref="SelectOpeningNode"/>).</para>
+    /// </summary>
+    private bool ShowsAccountHeaders =>
+        _treeAccounts is { Count: > 1 } || _folderCreator != null || _accountRootIsDestination;
 
     private void RebuildTreeView()
     {
@@ -268,7 +332,7 @@ public partial class FolderPickerWindow : Window
             if (!_treeFolders.TryGetValue(account.Id, out var folders) || folders.Count == 0)
                 continue;
 
-            var nodes = FolderTreeBuilder.Build(folders, _treeAccounts.Count > 1 ? account : null);
+            var nodes = FolderTreeBuilder.Build(folders, ShowsAccountHeaders ? account : null);
             ExpandAll(nodes);
             roots.AddRange(nodes);
         }
@@ -277,9 +341,11 @@ public partial class FolderPickerWindow : Window
         {
             // Where the excluded folder sat, captured before it is removed: for a move or copy that
             // is the folder the user came from, and the closest thing to it that survives into the
-            // destination tree. Null for a top-level folder — its parent is the account root, which
-            // this picker does not offer — and SelectOpeningNode falls back from there.
+            // destination tree. For a top-level folder that is its account root, which
+            // SelectOpeningNode steps past to a real folder beneath it — the picker never opens on a
+            // header.
             _openingNode = FindParentOfFolder(roots, _excludeFolder);
+            _sourceIsTopLevel = _openingNode is { IsHeader: true };
 
             RemoveFolderSubtree(roots, _excludeFolder);
             PruneEmptySyntheticNodes(roots);
@@ -387,7 +453,13 @@ public partial class FolderPickerWindow : Window
     /// <para><paramref name="source"/> and its subfolders are left out of the tree — a folder cannot
     /// be moved or copied inside itself.</para>
     ///
-    /// <para>Returns <see langword="null"/> when scoping and exclusion leave no folder to pick —
+    /// <para>The account is shown as the tree's root, and that root is a destination: Open on it
+    /// means "the top level of this account", beside Inbox (issue #954). The caller reads
+    /// <see cref="SelectedAccountRoot"/> and moves the folder with a null parent. The picker still
+    /// never opens on the root while a real folder is there to open on, and a folder that is
+    /// already at the top level is reported as such by the caller rather than moved.</para>
+    ///
+    /// <para>Returns <see langword="null"/> when scoping and exclusion leave nowhere to go —
     /// moving the only folder an account has, say. The caller must say why instead of putting up an
     /// empty dialog. Returning null rather than an unusable window is deliberate: a WPF
     /// <see cref="Window"/> joins <c>Application.Current.Windows</c> at construction and only leaves
@@ -410,7 +482,8 @@ public partial class FolderPickerWindow : Window
                          .ToDictionary(kv => kv.Key, kv => kv.Value),
             title: title,
             useTreeView: true,
-            excludeFolder: source);
+            excludeFolder: source,
+            accountRootIsDestination: true);
 
         if (picker.HasSelectableFolders)
             return picker;
@@ -438,15 +511,26 @@ public partial class FolderPickerWindow : Window
     /// picker opens on the folder the rule already files into. A rule that has no target yet passes
     /// null, and <see cref="SelectOpeningNode"/> stands in the first real folder: this picker, like
     /// every other, must not open with nothing selected.</para>
+    ///
+    /// <para><paramref name="folderCreator"/> turns on the "New Folder…" button (issue #645). Writing
+    /// a rule is where a user decides a folder should exist — "file this newsletter under News" — so
+    /// having to abandon the rule, create the folder in the main window, and start again is the
+    /// wrong order of work. Same creator contract as the move/copy-message picker: create it,
+    /// refresh the owning account, hand back that account's folders so the tree can rebuild in
+    /// place. Null (the default) leaves the button hidden, and so does the unscoped fallback at the
+    /// call to the constructor below.</para>
     /// </summary>
     public static FolderPickerWindow ForRuleTarget(
         IEnumerable<AccountModel> accounts,
         IReadOnlyDictionary<Guid, List<MailFolderModel>> cachedFolders,
         Guid? accountId,
         string? currentFolderKey,
-        string title)
+        string title,
+        Func<Guid, string?, string, Task<IReadOnlyList<MailFolderModel>?>>? folderCreator = null)
     {
-        var scopedAccounts = accountId is Guid id ? accounts.Where(a => a.Id == id).ToList() : [];
+        // Materialized once: read twice below, for the scoping and again for the fallback.
+        var allAccounts    = accounts.ToList();
+        var scopedAccounts = accountId is Guid id ? allAccounts.Where(a => a.Id == id).ToList() : [];
         var scopedFolders  = accountId is Guid fid && cachedFolders.TryGetValue(fid, out var owned) && owned.Count > 0
             ? new Dictionary<Guid, List<MailFolderModel>> { [fid] = owned }
             : null;
@@ -455,6 +539,7 @@ public partial class FolderPickerWindow : Window
         // empty tree the user cannot get a folder out of.
         var useScoped = scopedAccounts.Count > 0 && scopedFolders != null;
 
+        var pickerAccounts = useScoped ? scopedAccounts : allAccounts;
         var folders = useScoped ? scopedFolders! : cachedFolders;
         var initial = string.IsNullOrEmpty(currentFolderKey)
             ? null
@@ -462,11 +547,17 @@ public partial class FolderPickerWindow : Window
                      .FirstOrDefault(f => string.Equals(f.FullName, currentFolderKey, StringComparison.Ordinal));
 
         return new FolderPickerWindow(
-            useScoped ? scopedAccounts : accounts,
+            pickerAccounts,
             folders,
             title: title,
             initialFolder: initial,
-            useTreeView: true);
+            useTreeView: true,
+            // No creator, no New Folder button — and only on the tree scoped to the rule's own
+            // account. The button creates under whichever node is selected, so on the unscoped
+            // fallback above it would make the folder in one mailbox while the rule files into
+            // another: worse than the wrong-folder pick that fallback already allows, because the
+            // user watches the folder appear and reasonably concludes the target is real.
+            folderCreator: useScoped ? folderCreator : null);
     }
 
     /// <summary>
@@ -531,26 +622,7 @@ public partial class FolderPickerWindow : Window
     /// </summary>
     internal static string BuildFolderPath(
         MailFolderModel folder, IReadOnlyDictionary<string, MailFolderModel> byId)
-    {
-        if (folder.ParentId == null)
-            return string.IsNullOrWhiteSpace(folder.FullName) ? folder.DisplayName : folder.FullName;
-
-        var segments = new List<string> { folder.DisplayName };
-        var current = folder;
-        int guard = 0;
-        while (current.ParentId != null && byId.TryGetValue(current.ParentId, out var parent) && guard < 64)
-        {
-            segments.Add(parent.DisplayName);
-            current = parent;
-            guard++;
-        }
-        // The guard only trips on a ParentId cycle (which Graph shouldn't produce). Surface it in
-        // /debug so a subtly-truncated path is discoverable rather than silent.
-        if (guard >= 64)
-            LogService.Debug($"FolderPickerWindow: path for '{folder.DisplayName}' hit the 64-deep guard — possible ParentId cycle.");
-        segments.Reverse();
-        return string.Join('/', segments);
-    }
+        => Helpers.FolderPaths.Build(folder, byId);
 
     private bool FilterItem(object item)
     {
@@ -651,12 +723,128 @@ public partial class FolderPickerWindow : Window
             e.Handled = true;
     }
 
+    /// <summary>
+    /// Reads the modifier state for a key event. Shipped behaviour asks the event's own keyboard
+    /// device — which is <c>Keyboard.PrimaryDevice</c>, so it reports whatever is <em>physically
+    /// held right now</em>. That is correct in the app and untestable: a synthesized
+    /// <see cref="KeyEventArgs"/> carries no modifier state of its own, so a test that raises one
+    /// is at the mercy of whatever the machine's keyboard happens to be doing. Tests assign this
+    /// instead; nothing in the app does. Same device, same reason, as
+    /// <see cref="Helpers.TabStripNavigation.ModifiersOf"/>.
+    /// </summary>
+    internal static Func<KeyEventArgs, ModifierKeys> ModifiersOf { get; set; } =
+        e => e.KeyboardDevice.Modifiers;
+
+    /// <summary>
+    /// Tab and Shift+Tab across the boundary between the folder tree and the buttons.
+    ///
+    /// <para>WPF cannot enter a <see cref="TreeView"/> by reverse traversal: <c>TreeViewItem</c>
+    /// leaves <c>IsTabStop</c> false, so Shift+Tab out of the New Folder button found no tab stop
+    /// inside the tree, skipped the tree altogether and wrapped round to Cancel. The folders the
+    /// user had just tabbed away from were the one thing Shift+Tab could not get back to. Forward
+    /// traversal works by a different route — Tab into a <c>TabNavigation="Once"</c> container goes
+    /// to the container's focused descendant, not to a tab stop — which is why only one direction
+    /// was broken.</para>
+    ///
+    /// <para>Making the items tab stops was measured first and is worse: reverse entry then lands
+    /// on the first folder rather than the selected one, and Shift+Tab from there does not leave
+    /// the tree at all. So the whole boundary is wired here instead, in one place with one set of
+    /// rules, rather than half of it here and half in the framework.</para>
+    ///
+    /// <para>Tree presentation only. The flat list traverses correctly in both directions —
+    /// <c>ListBoxItem</c> is a tab stop — and is left to WPF.</para>
+    /// </summary>
+    private bool HandleTreeTab(KeyEventArgs e)
+    {
+        if (!_useTreeView || FolderTreeView.Visibility != Visibility.Visible) return false;
+
+        // Anything else held is not ours: Ctrl+Tab and friends belong to whatever owns them.
+        var modifiers = ModifiersOf(e);
+        if (modifiers is not (ModifierKeys.None or ModifierKeys.Shift)) return false;
+        var shift = modifiers == ModifierKeys.Shift;
+
+        // In tree mode the search box and the flat list are collapsed, so the ring is exactly:
+        // tree → New Folder (when shown) → Open (when enabled) → Cancel → tree.
+        var first = FirstFocusableButton;
+
+        if (IsInFolderTree(e.OriginalSource))
+        {
+            e.Handled = true;
+            (shift ? CancelButton : first).Focus();
+            return true;
+        }
+
+        var neighbour = shift ? first : CancelButton;
+        if (!ReferenceEquals(e.OriginalSource, neighbour)) return false;
+
+        e.Handled = true;
+        FocusTreeSelection();
+        return true;
+    }
+
+    /// <summary>
+    /// The first button Tab can actually land on, which is not always the first one declared.
+    /// New Folder is only shown where a folder can be created, and Open greys out whenever the
+    /// selection carries no folder — an account header, or an IMAP path segment that is not itself
+    /// a mailbox. Focusing a disabled button does nothing and reports nothing, so handing Tab to
+    /// one while marking the key handled strands the user in the tree with no way forward. Cancel
+    /// is always shown and always enabled, so this never comes back empty.
+    /// </summary>
+    private Button FirstFocusableButton
+    {
+        get
+        {
+            if (NewFolderButton is { Visibility: Visibility.Visible, IsEnabled: true }) return NewFolderButton;
+            if (OpenButton is { Visibility: Visibility.Visible, IsEnabled: true }) return OpenButton;
+            return CancelButton;
+        }
+    }
+
+    /// <summary>Whether a key event came from inside the folder tree, nested items included.</summary>
+    private bool IsInFolderTree(object? source)
+    {
+        // Walking the containers rather than the visual tree: a nested TreeViewItem's
+        // ItemsControlFromItemContainer is its parent item, not the TreeView.
+        var item = source as TreeViewItem;
+        while (item != null)
+        {
+            var owner = ItemsControl.ItemsControlFromItemContainer(item);
+            if (ReferenceEquals(owner, FolderTreeView)) return true;
+            item = owner as TreeViewItem;
+        }
+
+        // Fallback for a real keypress whose source is something other than the item container.
+        return FolderTreeView.IsKeyboardFocusWithin;
+    }
+
+    /// <summary>
+    /// Puts focus back on the selected folder, so Shift+Tab returns the user to where they were in
+    /// the tree rather than to its first row. Falls back to the opening selection when nothing is
+    /// selected — the picker must never leave the user in a tree with no current item.
+    /// </summary>
+    private void FocusTreeSelection()
+    {
+        if (FolderTreeView.SelectedItem is FolderTreeNode selected &&
+            TreeViewFocusHelper.SelectTreeViewNode(FolderTreeView, selected))
+            return;
+
+        // Focus the tree without touching the selection. A guard, not a path with a known way in:
+        // SelectTreeViewNode walks only expanded subtrees, but collapsing an ancestor is not a way
+        // to reach it — WPF moves the selection up to the collapsed ancestor itself, whose
+        // container is still there. It is written this way because the alternative, re-selecting
+        // the folder the picker opened on, would silently change the destination and file the mail
+        // somewhere the user never chose. An empty tree is the one case that lands here.
+        FolderTreeView.Focus();
+    }
+
     // Alt+N (New Folder), Alt+O (Open), Alt+C (Cancel) are wired explicitly rather than as
     // button mnemonics, because a bare mnemonic letter fires without Alt when focus isn't in a
     // text field and steals type-ahead (see the XAML notes on the buttons). Handled window-wide
     // so they work whatever picker control has focus.
     private void FolderPicker_PreviewKeyDown(object sender, KeyEventArgs e)
     {
+        if (e.Key == Key.Tab && HandleTreeTab(e)) return;
+
         // With Alt held, the character arrives as a System key; the real key is in SystemKey.
         // Exactly Alt, not "Alt among others": AltGr reports as Ctrl+Alt, and on layouts where
         // AltGr+O/C/N produce letters those keystrokes must reach type-ahead, not the buttons.
@@ -681,7 +869,14 @@ public partial class FolderPickerWindow : Window
         }
     }
 
-    private void FolderTreeView_MouseDoubleClick(object sender, MouseButtonEventArgs e) => Commit();
+    private void FolderTreeView_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        // A double-click on the account root also expands or collapses it. Where the root is a
+        // destination (#954) committing would move the folder to the top level on what was meant as
+        // a collapse, so the root takes Open or Enter, never a double-click.
+        if (_accountRootIsDestination && FolderTreeView.SelectedItem is FolderTreeNode { IsHeader: true }) return;
+        Commit();
+    }
 
     private void OpenButton_Click(object sender, RoutedEventArgs e) => Commit();
 
@@ -689,18 +884,63 @@ public partial class FolderPickerWindow : Window
     // is the currently selected folder, or the account root when a header / nothing is selected.
     // After creation the tree is rebuilt from the refreshed folder list and the new folder selected
     // so the user can immediately Open it as the move/copy destination.
-    private async void NewFolderButton_Click(object sender, RoutedEventArgs e)
+    private async void NewFolderButton_Click(object sender, RoutedEventArgs e) =>
+        await CreateFolderAtSelectionAsync(PromptForFolderName);
+
+    /// <summary>Asks for the new folder's name; null when the user cancels.</summary>
+    private string? PromptForFolderName(string parentLabel)
+    {
+        var dlg = new NewFolderDialog { Owner = this, ParentFolderName = parentLabel };
+        return dlg.ShowDialog() == true ? dlg.FolderName : null;
+    }
+
+    /// <summary>
+    /// The body of New Folder, with the name prompt passed in so tests can drive the whole path —
+    /// where the folder goes, what the creator is handed, and what is selected afterwards — without
+    /// a modal <see cref="NewFolderDialog"/> they cannot answer. <paramref name="promptForName"/> is
+    /// given the label of the parent the folder will be created in.
+    /// </summary>
+    internal async Task CreateFolderAtSelectionAsync(Func<string, string?> promptForName)
     {
         if (_folderCreator == null || !_useTreeView || _treeFolders == null) return;
         if (!TryResolveTreeCreateTarget(out var accountId, out var parentFullName, out var parentLabel))
+        {
+            // Nothing selected that says which account and which parent — a path-only node, which
+            // is not a folder to create inside, say. An enabled button that does nothing at all is a dead end, and
+            // silence is how it reads to a screen reader, so name the missing input. "Where" rather
+            // than "which folder": an account header is a legal parent too.
+            AccessibilityHelper.Announce(
+                this, "Choose where to create the folder.",
+                category: AnnouncementCategory.Result);
             return;
+        }
 
-        var dlg = new NewFolderDialog { Owner = this, ParentFolderName = parentLabel };
-        if (dlg.ShowDialog() != true) return;
+        if (promptForName(parentLabel) is not { } name) return;
 
-        var name = dlg.FolderName;
-        var updated = await _folderCreator(accountId, parentFullName, name);
-        if (updated == null) return; // failure is surfaced by the caller (main-window status text)
+        IReadOnlyList<MailFolderModel>? updated;
+        string? reason = null;
+        try
+        {
+            updated = await _folderCreator(accountId, parentFullName, name);
+        }
+        catch (Exception ex)
+        {
+            // The creator's exception carries the reason — a duplicate name, a slash in it — which
+            // is the user's to correct, and the only other place it is written is the main window's
+            // status text, behind this modal picker (#794).
+            updated = null;
+            reason  = ex.Message;
+        }
+        if (updated == null)
+        {
+            // Nothing else changes on failure, so without this the user is left believing the
+            // folder was made.
+            AccessibilityHelper.Announce(
+                this,
+                reason is null ? $"Could not create the folder '{name}'." : $"Could not create the folder '{name}'. {reason}",
+                category: AnnouncementCategory.Result);
+            return;
+        }
 
         _treeFolders[accountId] = updated.ToList();
         RebuildTreeView();
@@ -730,10 +970,13 @@ public partial class FolderPickerWindow : Window
             return true;
         }
 
-        // A header (account) node is selected → create at that account's root.
-        if (node is { IsHeader: true } && _treeAccounts != null)
+        // A header (account) node is selected → create at that account's root. Matched on the id the
+        // tree builder stamps on the header (FolderTreeBuilder, #31) rather than on its text:
+        // AccountLabel is AccountName ?? Username, nothing makes it unique, and two accounts both
+        // called "Work" would silently put the folder in the first one's mailbox.
+        if (node is { IsHeader: true, AccountId: Guid headerAccountId } && _treeAccounts != null)
         {
-            var acct = _treeAccounts.FirstOrDefault(a => a.AccountLabel == node.Label);
+            var acct = _treeAccounts.FirstOrDefault(a => a.Id == headerAccountId);
             if (acct != null)
             {
                 accountId = acct.Id;
@@ -742,10 +985,15 @@ public partial class FolderPickerWindow : Window
             }
         }
 
-        // Nothing (usable) selected → fall back to the sole account's root. The move/copy-message
-        // picker is scoped to the accounts owning the messages, so this is unambiguous when there
-        // is only one. With several accounts and no folder selected we can't guess a destination.
-        if (_treeFolders != null && _treeFolders.Count == 1 && _treeAccounts != null)
+        // Nothing selected → fall back to the sole account's root. Unambiguous with one account;
+        // with several we can't guess a destination. Rarely reached: a picker that offers New Folder
+        // shows the account header (ShowsAccountHeaders, #950) and opens on a real folder.
+        //
+        // Deliberately not for an IMAP path segment (a node with no folder that is not a header):
+        // the user chose "Lists", and quietly creating the folder at the top level instead is the
+        // wrong place. Now that the header is there to choose for the top level, the segment gets
+        // the "Choose where" announcement below, as it always did in a multi-account tree.
+        if (node == null && _treeFolders != null && _treeFolders.Count == 1 && _treeAccounts != null)
         {
             var acct = _treeAccounts.FirstOrDefault(a => _treeFolders.ContainsKey(a.Id));
             if (acct != null)
@@ -764,7 +1012,7 @@ public partial class FolderPickerWindow : Window
         if (FolderTreeView.ItemsSource is not IEnumerable<FolderTreeNode> roots) return;
 
         // Siblings of the new folder: the parent's children, the account header's children, or the
-        // top level (single-account tree).
+        // top level (a tree with no account headers).
         IEnumerable<FolderTreeNode> siblings;
         if (parentFullName != null)
         {
@@ -773,8 +1021,10 @@ public partial class FolderPickerWindow : Window
         }
         else
         {
-            var header = roots.FirstOrDefault(n => n.IsHeader &&
-                n.Children.Any(c => c.Folder?.AccountId == accountId));
+            // Matched on the id the tree builder stamps on the header (#31), as in
+            // TryResolveTreeCreateTarget, not on its children: an IMAP account whose top level is
+            // all path segments has no child carrying a folder to match.
+            var header = roots.FirstOrDefault(n => n is { IsHeader: true, AccountId: Guid id } && id == accountId);
             siblings = header?.Children ?? roots;
         }
 
@@ -865,17 +1115,8 @@ public partial class FolderPickerWindow : Window
     {
         if (_useTreeView)
         {
-            if (FolderTreeView.SelectedItem is not FolderTreeNode node || node.Folder == null || node.IsHeader)
-            {
-                // Account headers, and the path-only nodes an IMAP hierarchy produces for a parent
-                // that is not itself a mailbox, carry no folder — there is nothing to open. Say so
-                // rather than swallowing Enter and leaving the dialog looking stuck.
-                AccessibilityHelper.Announce(this, "Choose a folder.", category: AnnouncementCategory.Result);
-                return;
-            }
-
-            SelectedFolder = node.Folder;
-            DialogResult = true;
+            if (TakeTreeSelection())
+                DialogResult = true;
             return;
         }
 
@@ -885,6 +1126,39 @@ public partial class FolderPickerWindow : Window
         SelectedFolder = item.Folder;
         SelectedAccount = item.Account;
         DialogResult = true;
+    }
+
+    /// <summary>
+    /// Records the tree's selection as the result — a folder, or in the folder move/copy picker an
+    /// account root — and returns true; or says there is nothing to open and returns false. Split
+    /// from <see cref="Commit"/> so tests can check what a choice produces: setting
+    /// <c>DialogResult</c> throws on a window that was not shown as a dialog.
+    /// </summary>
+    internal bool TakeTreeSelection()
+    {
+        var node = FolderTreeView.SelectedItem as FolderTreeNode;
+        if (!IsOpenable(node))
+        {
+            // Account headers (outside the folder move/copy picker), and the path-only nodes an IMAP
+            // hierarchy produces for a parent that is not itself a mailbox, carry no folder — there
+            // is nothing to open. Say so rather than swallowing Enter and leaving the dialog looking
+            // stuck.
+            AccessibilityHelper.Announce(this, "Choose a folder.", category: AnnouncementCategory.Result);
+            return false;
+        }
+
+        if (node!.IsHeader)
+        {
+            // The folder move/copy picker's account root: the top level of that account (#954).
+            SelectedAccountRoot = true;
+            SelectedFolder = null;
+            SelectedAccount = _treeAccounts?.FirstOrDefault(a => a.Id == node.AccountId);
+            return true;
+        }
+
+        SelectedAccountRoot = false;
+        SelectedFolder = node.Folder;
+        return true;
     }
 
     // Internal (not private) so TypeAheadWiringTests can assert the flat list's

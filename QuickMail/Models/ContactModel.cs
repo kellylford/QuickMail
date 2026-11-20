@@ -100,4 +100,14 @@ public class ContactModel
     public string TypeAheadText => string.IsNullOrWhiteSpace(DisplayName)
         ? EmailAddress
         : DisplayName;
+
+    /// <summary>
+    /// Display text, and the last-resort accessible name for a contact row (issue #644).
+    /// A data-bound Selector item's UIA Name falls back to <c>ToString()</c> when the row
+    /// container carries no <c>AutomationProperties.Name</c> — without this override a
+    /// screen reader reads "QuickMail.Models.ContactModel". Lists that compose a richer
+    /// name (the address book stamps <see cref="AccessibleName"/>) still win; this is the
+    /// floor, not the ceiling.
+    /// </summary>
+    public override string ToString() => Display;
 }

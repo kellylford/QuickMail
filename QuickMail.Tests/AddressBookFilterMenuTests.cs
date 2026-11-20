@@ -96,8 +96,16 @@ public class AddressBookFilterMenuTests
             var menu = button!.ContextMenu;
             Assert.NotNull(menu);
 
-            Click(button);
+            // Deliberately not the default filter: with "All accounts" in effect, "the filter in
+            // effect" and "the first item" are the same MenuItem, so the assertion below would
+            // hold even for a menu that always opened on the first item.
+            vm.SelectAccountFilter(vm.AccountFilterOptions.Single(o => o.Name == "Work"));
             DoEvents();
+
+            Assert.True(window.IsActive,
+                "The address book window is not active, so the menu would keep focus on itself "
+                + "whatever AccountFilterMenu_Opened does. See the comment at the focus assertion.");
+            OpenMenu(button, menu!);
 
             Assert.True(menu!.IsOpen);
             Assert.Equal(
@@ -105,11 +113,81 @@ public class AddressBookFilterMenuTests
                 menu.Items.OfType<AccountFilterOption>().Select(o => o.Name).ToArray());
 
             // Focus lands on the filter in effect, not on the first item.
+            //
+            // Asserted through the menu's own focus scope rather than Keyboard.FocusedElement.
+            // What AddressBookWindow.AccountFilterMenu_Opened does is call item.Focus(); whether
+            // Win32 keyboard focus then follows into the popup's own HWND depends on the test
+            // process holding the foreground, which it does not. Measured mid-test, and again in an
+            // isolated probe: Window.IsActive was true — that is WPF's own notion, separate from
+            // foreground state — while the process was not foreground, and so Keyboard.FocusedElement stayed
+            // on the window's search box even though the right MenuItem held focus in the menu's
+            // scope. The Keyboard form of this assertion therefore passed or failed on how the run
+            // happened to be launched, which is what made it the suite's one flaky test.
+            //
+            // Opening the menu differently does not change that: setting menu.IsOpen = true with no
+            // button involved measures identically, and OpenAccountFilterMenu is that one line, so a
+            // real mouse click, Enter on the button, and this synthesized ClickEvent all converge on
+            // it. There is no code path a real click takes that the test misses.
+            //
+            // A ContextMenu is a focus scope by default, and one element per scope holds focus, so
+            // this is the same claim as the Keyboard form — every other item excluded — without the
+            // dependency on foreground state. It does still depend on the window being active in
+            // WPF's sense: in an inactive window WPF makes the ContextMenu its own focused element
+            // before Opened runs, item.Focus() then returns false, and the scope stays on the menu.
+            // That is exactly the failure the v0.8.51 release run recorded, so BuildWindow
+            // activates the window and the precondition is asserted up front, where a failure
+            // names the real cause instead of a focus mismatch. What this cannot speak for is
+            // whether the popup takes keyboard focus in a real, foreground session; that would
+            // need a foreground-gated test under QUICKMAIL_RUN_INPUT_TESTS.
             var active = ItemFor(menu, vm.SelectedAccountFilter);
             Assert.NotNull(active);
-            Assert.Same(active, Keyboard.FocusedElement);
+            Assert.Same(active, FocusManager.GetFocusedElement(menu));
 
             menu.IsOpen = false;
+            DoEvents();
+        }
+        finally { window!.Close(); cleanup(dir); }
+    }
+
+    /// <summary>
+    /// Issue #693, with real keyboard focus: Enter on the Filter button, sent through Windows, moves
+    /// focus exactly once, straight to the filter in effect. Before the fix the menu took focus
+    /// itself first. Needs the foreground, so it is an input test.
+    /// </summary>
+    [StaFact(Skip = InputTests.SkipReason,
+             SkipUnless = nameof(InputTests.Enabled), SkipType = typeof(InputTests))]
+    public void EnterOnTheButton_MovesFocusOnce_StraightToTheActiveFilter()
+    {
+        EnsureApplication();
+        var (vm, window, dir) = BuildWindow(out var cleanup);
+        try
+        {
+            var button = window!.FindName("AccountFilterButton") as Button;
+            Assert.NotNull(button);
+            var menu = button!.ContextMenu;
+            Assert.NotNull(menu);
+
+            vm.SelectAccountFilter(vm.AccountFilterOptions.Single(o => o.Name == "Work"));
+            DoEvents();
+            OsInput.ParkPointer();   // off the menu, which opens below the button (#864)
+            Keyboard.Focus(button);
+            DoEvents();
+            Assert.Same(button, Keyboard.FocusedElement);   // setup: the window really has focus
+
+            var gained = ContextMenuInitialFocusTests.RecordFocus(() =>
+            {
+                OsInput.PressKey(OsInput.VK_RETURN);
+                Assert.True(PumpUntil(() => menu!.IsOpen && Keyboard.FocusedElement is MenuItem),
+                    "Enter on the Filter button did not open the menu with an item focused.");
+                DoEvents();
+            });
+
+            var active = ItemFor(menu!, vm.SelectedAccountFilter);
+            Assert.NotNull(active);
+            Assert.Same(active, Keyboard.FocusedElement);
+            Assert.Equal(new object?[] { active }, gained);
+
+            menu!.IsOpen = false;
             DoEvents();
         }
         finally { window!.Close(); cleanup(dir); }
@@ -124,8 +202,7 @@ public class AddressBookFilterMenuTests
         {
             var button = (Button)window!.FindName("AccountFilterButton");
             var menu   = button.ContextMenu!;
-            Click(button);
-            DoEvents();
+            OpenMenu(button, menu!);
 
             var all  = ItemFor(menu, vm.AccountFilterOptions.Single(o => o.Name == "All accounts"))!;
             var work = ItemFor(menu, vm.AccountFilterOptions.Single(o => o.Name == "Work"))!;
@@ -151,8 +228,7 @@ public class AddressBookFilterMenuTests
         {
             var button = (Button)window!.FindName("AccountFilterButton");
             var menu   = button.ContextMenu!;
-            Click(button);
-            DoEvents();
+            OpenMenu(button, menu!);
 
             var work = ItemFor(menu, vm.AccountFilterOptions.Single(o => o.Name == "Work"))!;
             var all  = ItemFor(menu, vm.AccountFilterOptions.Single(o => o.Name == "All accounts"))!;
@@ -188,8 +264,7 @@ public class AddressBookFilterMenuTests
         {
             var button = (Button)window!.FindName("AccountFilterButton");
             var menu   = button.ContextMenu!;
-            Click(button);
-            DoEvents();
+            OpenMenu(button, menu!);
 
             var item = ItemFor(menu, vm.AccountFilterOptions.Single(o => o.Name == "work_mail"))!;
 
@@ -211,6 +286,38 @@ public class AddressBookFilterMenuTests
 
     private static void Click(Button button) =>
         button.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+
+    /// <summary>
+    /// Activates the button and pumps until the menu is open with its items generated. A single
+    /// DoEvents left ItemFor returning null on the v0.8.51 release run's slow CI runner, whether
+    /// because the popup had not opened yet or its items were not generated.
+    /// </summary>
+    private static void OpenMenu(Button button, ContextMenu menu)
+    {
+        Click(button);
+        Assert.True(
+            PumpUntil(() => menu.IsOpen
+                && menu.ItemContainerGenerator.Status
+                   == System.Windows.Controls.Primitives.GeneratorStatus.ContainersGenerated),
+            "The filter menu did not open with its items generated within 5 seconds.");
+    }
+
+    /// <summary>Pumps the dispatcher until <paramref name="condition"/> holds, or five seconds pass.
+    /// Returns whether the condition held, so a timeout fails with a reason rather than as a
+    /// NullReferenceException further on.</summary>
+    private static bool PumpUntil(Func<bool> condition)
+    {
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        DoEvents();
+        while (!condition())
+        {
+            if (clock.Elapsed >= TimeSpan.FromSeconds(5))
+                return false;
+            System.Threading.Thread.Sleep(10);
+            DoEvents();
+        }
+        return true;
+    }
 
     /// <summary>
     /// Runs the same code path pressing Enter on a menu item does. Raising ClickEvent is
@@ -250,7 +357,12 @@ public class AddressBookFilterMenuTests
         var window = new AddressBookWindow(vm);
         vm.LoadAsync().GetAwaiter().GetResult();
         window.Show();
+        // Show() normally activates, but a window left over from an earlier test, or another
+        // process, can hold activation; the filter menu's focus depends on it.
+        window.Activate();
         window.UpdateLayout();
+        // Only the focus test depends on activation, and it asserts IsActive itself with a reason.
+        _ = PumpUntil(() => window.IsActive);
         cleanup = DeleteDir;
         return (vm, window, dir);
     }

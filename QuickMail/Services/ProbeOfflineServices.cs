@@ -47,6 +47,7 @@ public sealed class ProbeOfflineMailService : IMailService
     public Task CreateFolderAsync(Guid accountId, string? parentFolderName, string name, CancellationToken ct = default) => Task.CompletedTask;
     public Task DeleteFolderAsync(Guid accountId, string folderName, CancellationToken ct = default) => Task.CompletedTask;
     public Task RenameFolderAsync(Guid accountId, string folderName, string newName, string? newParentFolderName, CancellationToken ct = default) => Task.CompletedTask;
+    public Task MoveFolderAsync(Guid accountId, string folderName, string? newParentFolderName, CancellationToken ct = default) => Task.CompletedTask;
     public Task CopyFolderAsync(Guid accountId, string folderName, string? destinationParentName, CancellationToken ct = default) => Task.CompletedTask;
     public void Dispose() { }
 }
@@ -58,6 +59,7 @@ public sealed class ProbeOfflineSendMailService : ISendMailService
 
     public Task SendAsync(ComposeModel compose, AccountModel account, string? password, CancellationToken ct = default) => Task.FromException(Refused());
     public Task SendIcsReplyAsync(string icsReplyContent, AccountModel account, string? password, string organizerEmail, CancellationToken ct = default) => Task.FromException(Refused());
+    public Task SendPreparedAsync(MimeKit.MimeMessage message, AccountModel account, string? password, CancellationToken ct = default) => Task.FromException(Refused());
     public Task VerifyAsync(AccountModel account, string? password, CancellationToken ct = default) => Task.FromException(Refused());
 }
 
@@ -74,5 +76,6 @@ public sealed class ProbeOfflineOAuthService : IOAuthService
     public Task<OAuthResult> SignInInteractiveWithContactsAsync(AccountModel account, CancellationToken ct = default) => Task.FromException<OAuthResult>(Refused());
     public Task RequestContactsConsentAsync(AccountModel account, CancellationToken ct = default) => Task.FromException(Refused());
     public Task RequestCalendarConsentAsync(AccountModel account, CancellationToken ct = default) => Task.FromException(Refused());
+    public Task RequestSharedMailboxConsentAsync(AccountModel parent, CancellationToken ct = default) => Task.FromException(Refused());
     public Task SignOutAsync(AccountModel account) => Task.FromException(Refused());
 }

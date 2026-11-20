@@ -33,13 +33,14 @@ public class RowSpeechBuilderTests
     private static object?[] ConversationValues(
         string subject = "Budget review", int count = 3, string sender = "Chris Lee",
         string? flag = null, bool hasUnread = false,
-        string preview = "Lunch tomorrow?", string date = "2:14P")
-        => [subject, count, sender, flag, hasUnread, preview, date];
+        string preview = "Lunch tomorrow?", string date = "2:14P", int unread = 0)
+        => [subject, count, sender, flag, hasUnread, preview, date, unread, new UnreadTally(unread, count)];
 
     private static object?[] SenderGroupValues(
         string sender = "Chris Lee", int count = 3, string? flag = null, bool hasUnread = false,
-        string preview = "Lunch tomorrow?", string date = "2:14P", string newestSubject = "Budget review")
-        => [sender, count, flag, hasUnread, preview, date, newestSubject];
+        string preview = "Lunch tomorrow?", string date = "2:14P", string newestSubject = "Budget review",
+        int unread = 0)
+        => [sender, count, flag, hasUnread, preview, date, newestSubject, unread, new UnreadTally(unread, count)];
 
     private static List<RowFieldSetting> Layout(RowKind kind) => RowFieldCatalog.DefaultLayout(kind);
 

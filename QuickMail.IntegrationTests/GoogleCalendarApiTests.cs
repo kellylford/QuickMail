@@ -42,7 +42,7 @@ public sealed class GoogleCalendarApiTests : IDisposable
 
         var created = await _client.CreateEventAsync(
             "user@gmail.test", Body("Standup"), calendarId: "team-cal",
-            TestContext.Current.CancellationToken);
+            ct: TestContext.Current.CancellationToken);
 
         Assert.Equal("created-1", created.Id);
         var request = Assert.Single(_server.LogEntries).RequestMessage!;
@@ -62,7 +62,7 @@ public sealed class GoogleCalendarApiTests : IDisposable
 
         var updated = await _client.UpdateEventAsync(
             "user@gmail.test", "evt-42", Body("Renamed"), calendarId: "team-cal",
-            TestContext.Current.CancellationToken);
+            ct: TestContext.Current.CancellationToken);
 
         Assert.Equal("evt-42", updated.Id);
         var request = Assert.Single(_server.LogEntries).RequestMessage!;
@@ -78,7 +78,7 @@ public sealed class GoogleCalendarApiTests : IDisposable
 
         await _client.DeleteEventAsync(
             "user@gmail.test", "evt-42", calendarId: "team-cal",
-            TestContext.Current.CancellationToken);
+            ct: TestContext.Current.CancellationToken);
 
         var request = Assert.Single(_server.LogEntries).RequestMessage!;
         Assert.Equal("/calendars/team-cal/events/evt-42", request.Path);
@@ -121,7 +121,7 @@ public sealed class GoogleCalendarApiTests : IDisposable
         // error (status + server body), never vanish into a silent no-op.
         var ex = await Assert.ThrowsAsync<HttpRequestException>(() => _client.CreateEventAsync(
             "user@gmail.test", Body("Party"), calendarId: "birthdays",
-            TestContext.Current.CancellationToken));
+            ct: TestContext.Current.CancellationToken));
 
         Assert.Contains("403", ex.Message);
         Assert.Contains("birthdays calendar", ex.Message);

@@ -1,4 +1,5 @@
 using System;
+using System.ComponentModel;
 using System.Collections.Generic;
 
 namespace QuickMail.Models;
@@ -19,7 +20,24 @@ public sealed class RowFieldSetting
     /// <summary>State fields only; ignored for text and count fields.</summary>
     public SpeakMode SpeakMode { get; set; } = SpeakMode.WhenTrue;
 
-    public RowFieldSetting Clone() => new() { Id = Id, Enabled = Enabled, SpeakMode = SpeakMode };
+    /// <summary>
+    /// The word this field says in place of the shipped one (#807): a state's true word, a count's
+    /// unit, a text field's label. Null means the shipped word; empty means say nothing extra.
+    /// Left out of rowlayout.json while null, so an untouched file looks as it always has.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore(
+        Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public string? Word { get; set; }
+
+    /// <summary>A state field's word when false, under <see cref="SpeakMode.Always"/> (#807).</summary>
+    [System.Text.Json.Serialization.JsonIgnore(
+        Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public string? FalseWord { get; set; }
+
+    public RowFieldSetting Clone() => new()
+    {
+        Id = Id, Enabled = Enabled, SpeakMode = SpeakMode, Word = Word, FalseWord = FalseWord,
+    };
 }
 
 /// <summary>
@@ -27,10 +45,43 @@ public sealed class RowFieldSetting
 /// carries a single extra binding. Replaced wholesale (never mutated) when the user changes the
 /// layout, so raising PropertyChanged on the owning property re-speaks every realized row.
 /// </summary>
-public sealed record RowSpeechSettings(RowLayouts Layouts, bool ShowLabels)
+public sealed record RowSpeechSettings(
+    RowLayouts Layouts, bool ShowLabels, RowFieldSeparator Separator = RowFieldSeparator.Period)
 {
     /// <summary>Shipped defaults, used before the service loads and by tests.</summary>
     public static RowSpeechSettings Default { get; } = new(RowFieldCatalog.DefaultLayouts(), false);
+}
+
+/// <summary>
+/// Where every list row on this thread gets its <see cref="RowSpeechSettings"/>, so a row's name binding
+/// has a source that needs no visual tree (#928). A row with no realized container is named through
+/// a stand-in that is never in the window, so a binding that looks up through the tree cannot
+/// resolve there: the name stayed empty until the dispatcher turned, and a screen reader asking
+/// in that gap heard the fallback, then the default layout instead of the user's.
+/// <para>One per thread rather than one per process because rows bind on their UI thread, and the
+/// tests run their windows on separate threads in parallel, where one test's layout must not reach
+/// another's rows. The app has one UI thread and so one of these.</para>
+/// </summary>
+public sealed class RowSpeechSource : INotifyPropertyChanged
+{
+    [ThreadStatic] private static RowSpeechSource? _current;
+
+    /// <summary>This thread's source. Read it on the UI thread.</summary>
+    public static RowSpeechSource Current => _current ??= new RowSpeechSource();
+
+    private RowSpeechSettings _settings = RowSpeechSettings.Default;
+
+    public RowSpeechSettings Settings
+    {
+        get => _settings;
+        set
+        {
+            _settings = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Settings)));
+        }
+    }
+
+    public event PropertyChangedEventHandler? PropertyChanged;
 }
 
 /// <summary>
@@ -91,8 +142,13 @@ public sealed class RowLayouts
         foreach (var setting in loaded ?? [])
         {
             if (string.IsNullOrEmpty(setting.Id)) continue;
-            if (RowFieldCatalog.Find(kind, setting.Id) is null) continue;   // unknown id
-            if (!seen.Add(setting.Id)) continue;                            // duplicate
+            if (RowFieldCatalog.Find(kind, setting.Id) is not { } def) continue;   // unknown id
+            if (!seen.Add(setting.Id)) continue;                                   // duplicate
+            // Words enter here from a file anyone can edit or import (#807): no line breaks or
+            // direction overrides in a row's name, nothing longer than a word, nothing stored
+            // that only repeats the shipped word.
+            setting.Word      = RowFieldWords.Normalize(setting.Word, RowFieldWords.DefaultWord(def));
+            setting.FalseWord = RowFieldWords.Normalize(setting.FalseWord, def.FalseWord ?? string.Empty);
             result.Add(setting);
         }
 

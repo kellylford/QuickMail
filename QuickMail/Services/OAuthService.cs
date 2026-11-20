@@ -69,6 +69,22 @@ public class OAuthService : IOAuthService
         "https://graph.microsoft.com/User.Read",                  // /me profile read (GraphMailService)
     ];
 
+    // Shared mailboxes (#31): a shared mailbox reads and sends through its PARENT work/school account's
+    // token, but against the shared address's messages (/users/{SharedAddress}/…), which needs the
+    // delegated *.Shared* permissions — Mail.ReadWrite.Shared covers read/mark-read/move, and
+    // Mail.Send.Shared covers send-as (PR 4). This is the shared account's DEFAULT scope set (like the
+    // work/school set above includes Mail.Send for a normal account), so a single token carries both;
+    // both are granted together at add time via RequestSharedMailboxConsentAsync, so no extra prompt.
+    // WORK/SCHOOL ONLY: personal Microsoft accounts have no Exchange shared mailboxes, and the Add-shared
+    // dialog already excludes personal parents. Hand-maintained AND must be declared on the app
+    // registration or the call 403s at runtime — see docs/ENTRA-APP-REGISTRATION.md and #31. No /me is
+    // ever called on the shared path, so User.Read is deliberately absent.
+    public static readonly string[] GraphMailScopesShared =
+    [
+        "https://graph.microsoft.com/Mail.ReadWrite.Shared",
+        "https://graph.microsoft.com/Mail.Send.Shared",
+    ];
+
     // Personal Microsoft accounts (Outlook.com/Hotmail/Live): `.default` under-delivers for MSA,
     // because personal accounts have no admin-consent model — `.default` returns only the permissions
     // the user already consented to, which came back read-only (delete/move → 403 ErrorAccessDenied,
@@ -108,6 +124,32 @@ public class OAuthService : IOAuthService
         "https://graph.microsoft.com/Calendars.ReadWrite",
     ];
 
+    // #607: the full set of graph.microsoft.com delegated scopes QuickMail uses, for a one-shot org
+    // admin-consent. Union of every Graph capability — mail + rules + profile (GraphMailScopesWorkSchool),
+    // contacts, calendar, and shared-mailbox — deduped, so a Global Admin consents to everything QuickMail
+    // needs in ONE screen with no per-capability cascade. Order is stable (mail first) for a deterministic
+    // URL and tests.
+    //
+    // Graph-ONLY on purpose, and the admin-consent request MUST list these scopes explicitly (the v2.0
+    // endpoint) rather than consenting the app's whole declared set (the v1 /adminconsent endpoint).
+    // OBSERVED: any flow that requests the FULL DECLARED SET at once — the v1 /adminconsent, and the old
+    // `.default` (#511) — returns AADSTS65006 involving the Office 365 Exchange Online resource
+    // ("resource 00000002-0000-0ff1-ce00-000000000000 had no entitlements matching…"), while every flow that
+    // requests EXPLICIT scopes by name works: Graph sign-in, IMAP sign-in (the two EXO scopes consent fine,
+    // incl. admin consent), and this v2.0 Graph-only adminconsent. The root cause of the full-set failure is
+    // UNRESOLVED — it is NOT a confirmed app-registration defect (the EXO perms are valid; they consent by
+    // name). Listing only these Graph scopes sidesteps it and is the correct scope for #607 regardless (the
+    // IMAP path is legacy). Verified live. User.ReadBasic.All is intentionally absent: it is a forward-
+    // declared directory scope with no call site (see GraphMailScopesWorkSchool), so there is nothing to
+    // consent for it yet.
+    public static readonly string[] AllGraphAdminConsentScopes =
+        GraphMailScopesWorkSchool
+            .Concat(GraphContactScopes)
+            .Concat(GraphCalendarScopes)
+            .Concat(GraphMailScopesShared)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
     // Authoritative "is this a personal Microsoft account" signal: every consumer account lives in the
     // well-known MSA "consumers" tenant. Detected from the MSAL account at sign-in and persisted on
     // AccountModel (#233), so it's correct even for personal accounts on custom/vanity domains.
@@ -144,6 +186,12 @@ public class OAuthService : IOAuthService
 
     internal static string[] DefaultScopesFor(AccountModel account)
     {
+        // A Graph-parent shared mailbox (#31) borrows its parent's token but requests the .Shared scope
+        // against /users/{SharedAddress}. It is always work/school (the Add-shared dialog excludes
+        // personal parents). An IMAP-parent shared account falls through to ImapSmtpScopes (PR 3, XOAUTH2
+        // user=), the same as any IMAP account.
+        if (account.IsShared && account.BackendKind == BackendKind.MicrosoftGraph)
+            return GraphMailScopesShared;
         if (account.BackendKind != BackendKind.MicrosoftGraph)
             return ImapSmtpScopes;
         // Both personal and work/school use explicit Graph scopes — personal for write access (#217),
@@ -190,7 +238,7 @@ public class OAuthService : IOAuthService
             // platform. Set explicitly rather than via the framework-dependent WithDefaultRedirectUri.
             // See docs/ENTRA-APP-REGISTRATION.md.
             .WithRedirectUri("http://localhost")
-            // Enables the embedded WebView2 browser on net8.0-windows (Microsoft.Identity.Client.Desktop).
+            // Enables the embedded WebView2 browser on Windows TFMs (Microsoft.Identity.Client.Desktop).
             .WithWindowsEmbeddedBrowserSupport()
             .Build();
     }
@@ -229,22 +277,48 @@ public class OAuthService : IOAuthService
         LogService.Log("OAuthService: token cache registered.");
     }
 
+    /// <summary>
+    /// Looks up a live <see cref="AccountModel"/> by id. Set once at startup to
+    /// <c>mainVm.Accounts</c> (the authoritative, disk-rebuilt list) so a shared mailbox added at
+    /// runtime resolves its parent without a restart. Used only by <see cref="ResolveTokenIdentity"/>;
+    /// left null in tests that don't exercise the shared path.
+    /// </summary>
+    public Func<Guid, AccountModel?>? ResolveAccount { get; set; }
+
+    /// <summary>
+    /// The Microsoft identity whose cached sign-in backs this account's token. For a normal account
+    /// that is the account itself; for a credential-less shared mailbox (#31) it is the PARENT account,
+    /// whose token is borrowed to read <c>/users/{SharedAddress}</c> with the <c>.Shared</c> scope. A
+    /// shared account has no MSAL entry of its own, so every MSAL identity lookup must go through here.
+    /// Throws <see cref="InteractiveSignInRequiredException"/> — surfaced as "disconnected" by
+    /// <c>ConnectOneAccountAsync</c>, never a silent empty state — when the parent can't be resolved.
+    /// </summary>
+    internal AccountModel ResolveTokenIdentity(AccountModel account)
+    {
+        if (!account.IsShared) return account;
+        if (account.ParentAccountId is { } pid && ResolveAccount?.Invoke(pid) is { } parent)
+            return parent;
+        throw new InteractiveSignInRequiredException(
+            $"Shared mailbox '{account.SharedAddress}' has no signed-in parent account.");
+    }
+
     public Task<string> GetAccessTokenAsync(AccountModel account, CancellationToken ct = default)
         => GetAccessTokenAsync(account, DefaultScopesFor(account), ct);
 
     public async Task<string> GetAccessTokenAsync(AccountModel account, string[] scopes, CancellationToken ct = default)
     {
         await EnsureTokenCacheAsync();
+        var identity = ResolveTokenIdentity(account);   // #31: a shared mailbox borrows its parent's token
         var msalAccounts = await _msal.GetAccountsAsync();
         var msalAccount  = msalAccounts.FirstOrDefault(a =>
-            string.Equals(a.Username, account.Username, StringComparison.OrdinalIgnoreCase));
+            string.Equals(a.Username, identity.Username, StringComparison.OrdinalIgnoreCase));
 
         if (msalAccount is not null)
         {
             try
             {
                 var silent = await _msal.AcquireTokenSilent(scopes, msalAccount).ExecuteAsync(ct);
-                LogService.Log($"OAuthService: silent token acquired for {account.Username}");
+                LogService.Log($"OAuthService: silent token acquired for {identity.Username}");
                 return silent.AccessToken;
             }
             catch (MsalUiRequiredException)
@@ -253,19 +327,41 @@ public class OAuthService : IOAuthService
             }
         }
 
-        var result = await SignInInteractiveAsync(account, scopes, ct);
+        // A shared mailbox (#31) never drives its own interactive sign-in: it has no MSAL entry, and a
+        // background read (the #456 sweep) must not spawn a sign-in window. When the parent's token isn't
+        // silently available the shared mailbox is simply disconnected, surfaced by the caller.
+        if (account.IsShared)
+            throw new InteractiveSignInRequiredException(
+                $"Shared mailbox '{account.SharedAddress}' is disconnected — sign in to its parent account.");
+
+        // #607: this interactive fallback fires when a cached token is gone (revoked/expired) and something
+        // needs one — most visibly a re-auth after a manual refresh, but GetAccessTokenAsync is the shared
+        // token chokepoint, so this covers EVERY interactive Microsoft acquisition here, including the
+        // capability consent drivers (RequestContacts/Calendar/SharedMailboxConsentAsync). Fold the same
+        // extra scopes the add-account/editor sign-in does (ExtraConsentScopesForMicrosoftSignIn: the full
+        // set for a work/school Graph account) so any interactive Microsoft sign-in shows an admin the
+        // complete permission list to grant org-wide — otherwise this was the one interactive path still
+        // asking for only the caller's scopes. Folding onto a capability-specific request (e.g. a contacts
+        // consent) over-requests, but that is consent-only and harmless (the token is still issued for the
+        // caller's `scopes`), consistent with #607's one-pass "unused grants are harmless" design. Empty
+        // extras (personal-no-opt-in, IMAP) make this behave exactly as before; the mail-only retry inside
+        // SignInInteractiveAsync keeps a non-admin who can't consent the extras from dead-ending (they still
+        // get a token for the requested `scopes`).
+        var result = await SignInInteractiveAsync(account, scopes, firstConnect: false,
+            ExtraConsentScopesForMicrosoftSignIn(account), ct);
         return result.AccessToken;
     }
 
     public async Task<string> GetAccessTokenSilentAsync(AccountModel account, string[] scopes, CancellationToken ct = default)
     {
         await EnsureTokenCacheAsync();
+        var identity = ResolveTokenIdentity(account);   // #31: shared mailbox → parent's cached sign-in
         var msalAccounts = await _msal.GetAccountsAsync();
         var msalAccount  = msalAccounts.FirstOrDefault(a =>
-            string.Equals(a.Username, account.Username, StringComparison.OrdinalIgnoreCase));
+            string.Equals(a.Username, identity.Username, StringComparison.OrdinalIgnoreCase));
 
         if (msalAccount is null)
-            throw new InteractiveSignInRequiredException($"No cached sign-in for {account.Username}.");
+            throw new InteractiveSignInRequiredException($"No cached sign-in for {identity.Username}.");
 
         try
         {
@@ -283,13 +379,14 @@ public class OAuthService : IOAuthService
     public async Task EnsureSilentTokenAsync(AccountModel account, CancellationToken ct = default)
     {
         await EnsureTokenCacheAsync();
+        var identity = ResolveTokenIdentity(account);   // #31: shared mailbox → parent's cached sign-in
         var msalAccounts = await _msal.GetAccountsAsync();
         var msalAccount  = msalAccounts.FirstOrDefault(a =>
-            string.Equals(a.Username, account.Username, StringComparison.OrdinalIgnoreCase));
+            string.Equals(a.Username, identity.Username, StringComparison.OrdinalIgnoreCase));
 
         // No cached account at all → the only way to a token is interactive.
         if (msalAccount is null)
-            throw new InteractiveSignInRequiredException($"No cached sign-in for {account.Username}.");
+            throw new InteractiveSignInRequiredException($"No cached sign-in for {identity.Username}.");
 
         try
         {
@@ -374,42 +471,52 @@ public class OAuthService : IOAuthService
     }
 
     public Task<OAuthResult> SignInInteractiveWithContactsAsync(AccountModel account, CancellationToken ct = default)
-        // Microsoft: sign in for mail AND — for a PERSONAL account only — fold the requested contact/
-        // calendar consent into the same interactive prompt via WithExtraScopesToConsent, so a personal
-        // account (no admin-consent model) is prompted once instead of once per capability. The extra
-        // grants land in the token cache, so the post-add RequestContactsConsentAsync /
-        // RequestCalendarConsentAsync calls then acquire silently.
+        // Microsoft: sign in for mail AND fold extra Graph consent into the same interactive prompt via
+        // WithExtraScopesToConsent, so the whole set is approved in one screen instead of once per
+        // capability. The extra grants land in the token cache, so the post-add RequestContactsConsentAsync /
+        // RequestCalendarConsentAsync calls (and shared-mailbox reads) then acquire silently. What gets
+        // folded is decided by ExtraConsentScopesForMicrosoftSignIn: for a WORK/SCHOOL Graph account the FULL
+        // set (contacts + calendar + shared), so an admin can grant everything org-wide in one sign-in
+        // (#607); for a PERSONAL account only the opted-into scopes; for IMAP nothing.
         //
-        // We DELIBERATELY do NOT fold for work/school. On a tenant that disables user consent and hasn't
-        // admin-consented contacts/calendar, surfacing those scopes at the mail sign-in would dead-end the
-        // WHOLE interactive acquisition — no token, so the account is never added. The unfolded path
-        // degrades gracefully instead: mail signs in, the account is added, and only the post-add
-        // RequestContactsConsentAsync dead-ends (caught in AccountManagerViewModel, which just disables
-        // contact sync). This is the same admin-consent dead-end hazard the mail scope list avoids for
-        // User.ReadBasic.All. Folding only ever helped personal accounts anyway — work/school usually has
-        // admin pre-consent, so its post-add consent is already silent.
-        //
-        // (Pre-#511 nothing could be folded because work/school signed in with `.default`, which can't be
-        // combined with explicit scopes; both paths use explicit Graph scopes now, so personal folds
-        // cleanly. The account carries the two opt-in bits from the editor VM.)
+        // The work/school fold is safe on a consent-restricted tenant because SignInInteractiveAsync retries
+        // MAIL-ONLY if the folded acquisition fails: a non-admin who can't consent the extras still gets a
+        // working mail account, and the extras fall back to their own post-add consent. (Earlier this method
+        // folded for personal only, to avoid dead-ending work/school on such tenants; the mail-only retry —
+        // #544 — now provides that graceful fallback, so folding the full set for work/school is what unlocks
+        // one-pass admin consent without dead-ending anyone.) When there are no extras it attaches no
+        // WithExtraScopesToConsent, i.e. behaves as a plain sign-in — safe to call unconditionally.
         => SignInInteractiveAsync(account, DefaultScopesFor(account), firstConnect: true,
             ExtraConsentScopesForMicrosoftSignIn(account), ct);
 
     // The extra Graph scopes to fold into THIS account's mail sign-in consent, or empty when none should
-    // be folded. Two gates, both required:
-    //   • Graph backend — the primary mail scopes must be graph.microsoft.com, so the folded contact/
-    //     calendar scopes ride the SAME resource. A personal Microsoft account DEFAULTS to the IMAP backend
-    //     (outlook.office.com mail scopes); folding graph.microsoft.com scopes onto that sign-in is a
-    //     cross-resource authorize the MSA + outlook.office.com path handles badly (#239) — and it is the
-    //     DEFAULT consumer onboarding path, not an edge case. Only a Graph sign-in folds.
-    //   • Personal — work/school returns empty so its opted-in consent stays on the graceful post-add path
-    //     and never dead-ends a consent-restricted tenant's sign-in (see SignInInteractiveWithContactsAsync).
+    // be folded. Gated first on the Graph backend: the primary mail scopes must be graph.microsoft.com so
+    // the folded scopes ride the SAME resource. A personal Microsoft account DEFAULTS to the IMAP backend
+    // (outlook.office.com); folding graph.microsoft.com scopes onto that sign-in is a cross-resource
+    // authorize the MSA + outlook.office.com path handles badly (#239), so IMAP returns empty. Among Graph
+    // accounts, work/school folds the full set and personal folds only its opt-ins — see the body.
     // Personal is resolved via ResolveIsPersonalMicrosoftAccount (persisted flag, else the domain guess),
     // the same resolution DefaultScopesFor uses.
     internal static string[] ExtraConsentScopesForMicrosoftSignIn(AccountModel account)
-        => account.BackendKind == BackendKind.MicrosoftGraph && ResolveIsPersonalMicrosoftAccount(account)
-            ? MicrosoftExtraConsentScopes(account.SyncContacts, account.SyncCalendar)
-            : Array.Empty<string>();
+    {
+        if (account.BackendKind != BackendKind.MicrosoftGraph) return Array.Empty<string>();
+
+        // #607 part 1: a WORK/SCHOOL Graph sign-in folds in EVERYTHING QuickMail uses beyond the primary
+        // mail scopes (contacts + calendar + shared), regardless of the sync opt-ins — so if the person
+        // signing in is (or has) an admin, the consent screen shows the full set with the "consent for your
+        // organization" option, and they grant it ALL org-wide in this one sign-in. Then no later user hits
+        // a per-capability consent wall, and nobody has to find the Help-menu admin-consent action. Primary
+        // (GraphMailScopesWorkSchool) + these extras == AllGraphAdminConsentScopes, so the fold and the
+        // standalone admin-consent request cover the same set. A non-admin who can't consent them falls back
+        // to a mail-only account via the retry in SignInInteractiveAsync; usage stays gated by the sync
+        // opt-ins and the shared-mailbox feature flag, so an unused grant is harmless.
+        if (!ResolveIsPersonalMicrosoftAccount(account))
+            return AllGraphAdminConsentScopes.Except(GraphMailScopesWorkSchool, StringComparer.OrdinalIgnoreCase).ToArray();
+
+        // PERSONAL Microsoft: no admin/org model, so folding everything would only over-ask an individual
+        // with no upside. Fold only what they opted into (least-privilege), as before (#544).
+        return MicrosoftExtraConsentScopes(account.SyncContacts, account.SyncCalendar);
+    }
 
     // The extra Graph scopes to pre-consent alongside the mail sign-in for the two opt-in bits. Empty
     // when neither is requested (the caller then attaches no WithExtraScopesToConsent). Pure and
@@ -433,6 +540,21 @@ public class OAuthService : IOAuthService
         await GetAccessTokenAsync(account, GraphContactScopes, ct);
     }
 
+    public async Task RequestSharedMailboxConsentAsync(AccountModel parent, CancellationToken ct = default)
+    {
+        // #31: the one-time consent that lets a shared mailbox be read and sent-as through this PARENT
+        // account's token. Consents the same scope set the shared account then uses per-token
+        // (GraphMailScopesShared = read + send), so one prompt covers everything. Acquiring a token for
+        // those scopes drives it — silent if the grant already exists (e.g. the tenant admin-consented),
+        // otherwise the real Microsoft consent window, where the user consents, an admin grants for the
+        // org, or it is declined/pending. The token is discarded; the grant now lives in the MSAL cache,
+        // so the shared account's later silent acquisition succeeds. Runs on the PARENT (not IsShared),
+        // so the interactive fallback is allowed — a shared account is silent-only and would throw
+        // instead. A decline/pending consent throws MsalException up to the caller, which leaves the
+        // shared mailbox added-but-disconnected.
+        await GetAccessTokenAsync(parent, GraphMailScopesShared, ct);
+    }
+
     public async Task RequestCalendarConsentAsync(AccountModel account, CancellationToken ct = default)
     {
         // Same pattern as RequestContactsConsentAsync: acquiring a token for the calendar scopes
@@ -441,6 +563,84 @@ public class OAuthService : IOAuthService
         // is discarded here — GraphCalendarSyncService acquires its own when it syncs. Google needs
         // no equivalent: its calendar scope is already requested at mail sign-in.
         await GetAccessTokenAsync(account, GraphCalendarScopes, ct);
+    }
+
+    // ── Organization admin consent (#607) ───────────────────────────────────────
+    // A Global Admin can grant every Graph scope QuickMail may need, org-wide, in ONE screen —
+    // before any user signs in. This is the /adminconsent ENDPOINT (an org grant), NOT a user sign-in:
+    // a plain /authorize sign-in only ever grants the signing-in user, requests a subset, and on an
+    // admin-gated tenant dead-ends (see #607). Unlike a user sign-in it also CREATES the service
+    // principal as part of the grant, so it works even when no user has ever launched QuickMail on the
+    // tenant. These are pure helpers (no MSAL, no UI) so the URL and the redirect handling are unit-
+    // tested; the View drives the WebView2 that navigates the URL and reports the redirect back.
+
+    /// <summary>
+    /// The <c>/organizations/v2.0/adminconsent</c> URL that grants <see cref="AllGraphAdminConsentScopes"/>
+    /// org-wide. Uses the v2.0 endpoint with an EXPLICIT scope list, NOT the v1 <c>/adminconsent</c> (which
+    /// consents the app's whole declared set): a full-declared-set request returns AADSTS65006 involving the
+    /// Exchange Online resource (cause unresolved — see the <see cref="AllGraphAdminConsentScopes"/> note),
+    /// whereas listing only these Graph scopes grants cleanly (verified live). Uses <c>/organizations</c>
+    /// (not <c>/common</c> or a fixed tenant) so Azure AD
+    /// resolves the tenant from the admin's sign-in — no tenant id to type and no account needed first — and,
+    /// being an admin-consent request, it CREATES the service principal, so it works on a tenant no user has
+    /// touched. <paramref name="state"/> is echoed back on the redirect and checked by
+    /// <see cref="ParseAdminConsentRedirect"/> (CSRF guard).
+    /// </summary>
+    public static string BuildAdminConsentUrl(string state) =>
+        "https://login.microsoftonline.com/organizations/v2.0/adminconsent" +
+        $"?client_id={ClientId}" +
+        $"&scope={Uri.EscapeDataString(string.Join(" ", AllGraphAdminConsentScopes))}" +
+        $"&redirect_uri={Uri.EscapeDataString("http://localhost")}" +
+        $"&state={Uri.EscapeDataString(state)}";
+
+    /// <summary>
+    /// Interprets the <c>http://localhost</c> redirect the admin-consent flow lands on. Success is
+    /// <c>admin_consent=True</c> with the matching <paramref name="expectedState"/>; an <c>error</c> param is
+    /// a decline/failure; a mismatched or missing state is treated as an error (never as success). Returns
+    /// null when <paramref name="redirect"/> is not yet the localhost redirect (the caller keeps waiting).
+    /// </summary>
+    public static AdminConsentResult? ParseAdminConsentRedirect(Uri redirect, string expectedState)
+    {
+        if (!string.Equals(redirect.Host, "localhost", StringComparison.OrdinalIgnoreCase))
+            return null; // still on the AAD pages — not the redirect yet
+
+        var q = ParseQuery(redirect.Query);
+
+        // Surface a real Azure AD error first, with its own description — an error is never a grant, so
+        // reporting it doesn't depend on the state check (and AAD does not always echo state on an error).
+        if (q.TryGetValue("error", out var error))
+        {
+            var desc = q.TryGetValue("error_description", out var d) && !string.IsNullOrWhiteSpace(d) ? d : error;
+            return new AdminConsentResult(AdminConsentStatus.Error, desc);
+        }
+
+        // CSRF guard on the SUCCESS path: a redirect whose state doesn't match the one we sent is never
+        // trusted as a grant.
+        if (!q.TryGetValue("state", out var state) || !string.Equals(state, expectedState, StringComparison.Ordinal))
+            return new AdminConsentResult(AdminConsentStatus.Error, "State mismatch on the admin-consent redirect.");
+
+        // admin_consent=True is the grant signal. Anything else on the localhost redirect (e.g. the admin
+        // backed out to it without granting) is a decline rather than a spurious success.
+        return q.TryGetValue("admin_consent", out var granted) &&
+               string.Equals(granted, "True", StringComparison.OrdinalIgnoreCase)
+            ? new AdminConsentResult(AdminConsentStatus.Granted, null)
+            : new AdminConsentResult(AdminConsentStatus.Declined, null);
+    }
+
+    // Minimal query-string parser (last value wins) — avoids a System.Web dependency for the few params
+    // the redirect carries. Lookup is case-insensitive. Query strings are form-encoded, so '+' means a
+    // space (Uri.UnescapeDataString handles %XX but not '+'); decode it as such before percent-unescaping.
+    private static Dictionary<string, string> ParseQuery(string query)
+    {
+        static string Decode(string s) => Uri.UnescapeDataString(s.Replace('+', ' '));
+        var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var pair in query.TrimStart('?').Split('&', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var eq = pair.IndexOf('=');
+            if (eq < 0) { result[Decode(pair)] = ""; continue; }
+            result[Decode(pair[..eq])] = Decode(pair[(eq + 1)..]);
+        }
+        return result;
     }
 
     public async Task SignOutAsync(AccountModel account)

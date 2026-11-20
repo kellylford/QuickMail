@@ -87,6 +87,58 @@ public interface ISyncService
     void SeedRebuildBaseline(IEnumerable<Guid> accountIds);
 
     /// <summary>
+    /// Runs client rules on arriving Inbox mail that has been cached but not yet run through them — mail stored by a path
+    /// that does not run rules itself, such as opening a folder (#712) — and raises what they did, as a sync does.
+    /// For any other folder it only records the folder's cached mail as needing no rules. Cheap when nothing waits.
+    /// </summary>
+    Task ApplyPendingRulesAsync(AccountModel account, MailFolderModel folder, CancellationToken ct);
+
+    /// <summary>
+    /// Fired on the UI thread as the offline-bodies pass (#637) downloads message bodies:
+    /// (done, total), where total is what this pass set out to fetch. Intermediate only; done is
+    /// always below total here.
+    /// </summary>
+    event Action<int, int>? OfflineBodyProgressChanged;
+
+    /// <summary>
+    /// Fired once, on the UI thread, when an offline-bodies pass ends: (downloaded, planned).
+    /// downloaded is what was actually cached; it is below planned when a server went away.
+    /// </summary>
+    event Action<int, int>? OfflineBodyPassCompleted;
+
+    /// <summary>
+    /// Fired on the UI thread after each batch of the one-time sender-address backfill (#803) fetches from the
+    /// server: (done, total), where total is how many IMAP rows the pass set out to fill. Intermediate only.
+    /// </summary>
+    event Action<int, int>? SenderEmailBackfillProgressChanged;
+
+    /// <summary>
+    /// Fired once, on the UI thread, when a sender-address backfill pass that had work to do ends, however it ends —
+    /// finished, stopped by a server, or cancelled — so whatever showed its progress can be cleared (review of
+    /// #806): (filled, planned). filled is below planned when a server went away, no longer has some of the
+    /// messages, or the pass was cancelled. Not fired when there was nothing to fetch.
+    /// </summary>
+    event Action<int, int>? SenderEmailBackfillEnded;
+
+    /// <summary>
+    /// Fired on the UI thread when the one-time attachment-flag pass (#931) finds that cached messages have
+    /// attachments: (account, folder, ids), so rows already on screen can say so. Default: never raised.
+    /// </summary>
+    event Action<Guid, string, IReadOnlyCollection<string>>? AttachmentFlagsFound { add { } remove { } }
+
+    /// <summary>
+    /// The offline-bodies pass on its own (#637): downloads the bodies of recent Inbox messages
+    /// inside <see cref="ConfigModel.EffectiveOfflineBodyDays"/> that have no cached body yet, for
+    /// the given (connected) accounts. A no-op when the setting is off, and when a pass is already
+    /// running. Sync runs it after the startup sync; the view model runs it after each periodic
+    /// sweep and when Settings widens the window.
+    /// </summary>
+    Task BackfillOfflineBodiesAsync(
+        IEnumerable<AccountModel> accounts,
+        IReadOnlyDictionary<Guid, List<MailFolderModel>> cachedFolders,
+        CancellationToken ct);
+
+    /// <summary>
     /// Returns the UTC time of the last completed sync for the given account,
     /// or null if the account has never been synced in this session.
     /// </summary>

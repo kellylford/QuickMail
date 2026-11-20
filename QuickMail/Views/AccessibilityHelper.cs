@@ -98,12 +98,27 @@ internal static class AccessibilityHelper
         }
     }
 
+    /// <summary>
+    /// Whether an announcement in <paramref name="category"/> would currently be spoken.
+    ///
+    /// For a surface that has to deliver its own text and still honour the user's preference:
+    /// a host-window notification is dropped while focus is inside a WebView2 (issue #329), so
+    /// the reading pane writes outcomes into a live region in the document instead. That text is
+    /// always written — it is content, like status-bar text — but whether the region is LIVE, and
+    /// so spoken without being sought, follows the same setting <see cref="Announce"/> obeys.
+    /// </summary>
+    public static bool WouldAnnounce(AnnouncementCategory category) =>
+        _masterEnabled && IsCategoryEnabled(category);
+
     private static bool IsCategoryEnabled(AnnouncementCategory c) => c switch
     {
         AnnouncementCategory.Hint          => _hintsEnabled,
         AnnouncementCategory.Status        => _statusEnabled,
         AnnouncementCategory.Result        => _resultsEnabled,
         AnnouncementCategory.MessageAction => _messageActionsEnabled,
+        // Never spoken, and deliberately not user-configurable: a Silent status carries nothing
+        // the user does not already have from the UI itself. See the enum for the reasoning.
+        AnnouncementCategory.Silent        => false,
         _                                  => true
     };
 

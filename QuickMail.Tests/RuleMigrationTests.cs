@@ -55,6 +55,29 @@ public class RuleMigrationTests : IDisposable
     // ── The migration ────────────────────────────────────────────────────────────
 
     [Fact]
+    public void Unscoped_MultiActionRule_KeepsEveryActionInEachCopy() // #682
+    {
+        var a = Imap("A");
+        var b = Imap("B");
+        SeedRules(new MailRule
+        {
+            Name = "Keep and file", AccountId = null, SubjectContains = "x",
+            Action = RuleAction.MoveToFolder,
+            Actions = [RuleAction.MarkAsRead, RuleAction.CopyToFolder, RuleAction.MoveToFolder],
+            TargetFolder = "Archive", CopyTargetFolder = "Kept",
+        });
+
+        var rules = ServiceWith(a, b).LoadRules();
+
+        Assert.Equal(2, rules.Count);
+        Assert.All(rules, r =>
+        {
+            Assert.Equal([RuleAction.MarkAsRead, RuleAction.CopyToFolder, RuleAction.MoveToFolder], r.Actions);
+            Assert.Equal("Kept", r.CopyTargetFolder);
+        });
+    }
+
+    [Fact]
     public void Unscoped_DuplicatedIntoEachNonGraphAccount_WithFreshIds()
     {
         var a = Imap("A");
@@ -109,6 +132,19 @@ public class RuleMigrationTests : IDisposable
         var rule = Assert.Single(rules);
         Assert.Equal("Existing", rule.Name);
         Assert.Equal(a.Id, rule.AccountId);
+    }
+
+    [Fact]
+    public void Unscoped_IsNeverCopiedOntoASharedMailbox()   // #678
+    {
+        var a = Imap("A");
+        var team = Imap("Team");
+        team.IsShared = true;
+        SeedRules(Unscoped("Newsletters"));
+
+        var rules = ServiceWith(a, team).LoadRules();
+
+        Assert.Equal(a.Id, Assert.Single(rules).AccountId);
     }
 
     [Fact]

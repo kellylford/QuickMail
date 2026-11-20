@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.IO;
@@ -23,6 +24,11 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
     private readonly IMailService _imap;
     private readonly ITemplateService _templateService;
     private readonly IMarkdownService _markdown;
+    private readonly IOutboxService? _outbox;
+    private readonly IConnectivityService? _connectivity;
+    // Whether an account is connected right now (#614). The accounts in SenderAccounts come from disk,
+    // where IsConnected is always false, so the live answer has to come from the main window.
+    private readonly Func<Guid, bool>? _isAccountConnected;
 
     [ObservableProperty] private string _to = string.Empty;
     [ObservableProperty] private string _cc = string.Empty;
@@ -143,10 +149,36 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
     private string? _inReplyToMessageId;
     private string? _draftMessageId;
     private string? _draftFolderName;
+    /// <summary>The local Outbox row this compose owns (#637): the one it was opened from, or the one
+    /// its last offline save went into. Every later save or send replaces that row.</summary>
+    private string? _outboxId;
     private bool _isDirty;
+
+    /// <summary>Bumped on every edit, so a save clears dirty only if nothing was typed while it ran.</summary>
+    private int _editVersion;
+
+    private void MarkEdited() { _isDirty = true; _editVersion++; }
     private bool _isSent;
+
+    /// <summary>
+    /// How the last Save Draft ended. The window reads this to decide whether a close may go ahead —
+    /// it used to string-match "failed" in the status text, which missed "No Drafts folder found"
+    /// and discarded the message (#637).
+    /// </summary>
+    public DraftSaveOutcome LastSaveOutcome { get; private set; } = DraftSaveOutcome.None;
+
+    /// <summary>
+    /// Raised the first time auto-save has to keep the draft on this computer instead of the
+    /// server, so the window can say so (Status category) — at most once per compose window
+    /// (#901). Later local saves show only in <see cref="AutoSaveText"/>.
+    /// </summary>
+    public event Action<string>? AutoSaveNotice;
+    private bool _localAutoSaveNoticed;
     private ComposeMode _seededMode = ComposeMode.PlainText;
     private string? _seededHtmlBody;
+    // The plain body the seeded HTML stands for. Once the user has edited the plain body, the
+    // seeded HTML is stale and switching to HTML converts what they wrote instead.
+    private string? _seededHtmlForBody;
 
     public bool IsDirty => _isDirty;
     public bool IsSent  => _isSent;
@@ -163,6 +195,100 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
     /// </summary>
     public Func<string, string, bool>? ConfirmationRequested { get; set; }
 
+    /// <summary>Set by the View for the send confirmation; false includes No, Cancel, and Escape.</summary>
+    public Func<string, string, bool>? SendConfirmationRequested { get; set; }
+
+    /// <summary>Fallback for hosts without a live preference provider.</summary>
+    public bool ConfirmBeforeSend { get; set; }
+
+    /// <summary>Reads the current composing preference, including changes made while composing.</summary>
+    public Func<bool>? ConfirmBeforeSendProvider { get; set; }
+
+    /// <summary>
+    /// Where the people a sent message went to are remembered, for address suggestions (#1037). Set by
+    /// the View; null records nothing.
+    /// </summary>
+    public IRecipientHistory? RecipientHistory { get; set; }
+
+    /// <summary>Reads Settings → Remember people I send to at send time. Null or false records nothing.</summary>
+    public Func<bool>? RememberRecipientsProvider { get; set; }
+
+    /// <summary>
+    /// The finished record of who a message went to, when there is one to wait for. Tests await it; the
+    /// send path does not, since remembering is never worth delaying the window's close for.
+    /// </summary>
+    internal Task? PendingRecipientRecord { get; private set; }
+
+    /// <summary>
+    /// Remembers every To, Cc and Bcc address of a message that has been sent or queued, when the user
+    /// has asked for that. Best effort: a failure is logged and never reaches the send.
+    /// </summary>
+    private void RememberRecipients(ComposeModel compose)
+    {
+        if (RecipientHistory is not { } history || RememberRecipientsProvider?.Invoke() != true) return;
+        // The accounts as they are now, and as they were when this window opened, and the one sending.
+        // AccountService returns an empty list rather than throwing when accounts.json cannot be read,
+        // so the read alone could quietly let the user's own address through; the other two cannot fail.
+        var accounts = new List<AccountModel>();
+        try { accounts.AddRange(_accountService.LoadAccounts()); }
+        catch (Exception ex) { LogService.Log("Send: could not read the accounts to leave the user's own addresses out", ex); }
+        accounts.AddRange(SenderAccounts);
+        if (SenderAccount is { } sender) accounts.Add(sender);
+        var people = WithoutOwnAddresses(RecipientsOf(compose), accounts);
+        if (people.Count == 0) return;
+        PendingRecipientRecord = Task.Run(async () =>
+        {
+            try { await history.RecordAsync(people); }
+            catch (Exception ex) { LogService.Log("Send: could not remember the recipients", ex); }
+        });
+    }
+
+    /// <summary>
+    /// Leaves out the user's own addresses — every account's address, and a shared mailbox's own address
+    /// (#1037). Nobody needs themselves suggested, and a message copied to oneself, or a reply-all that
+    /// includes one's own address, would otherwise put the user in their own list.
+    /// </summary>
+    internal static List<(string DisplayName, string EmailAddress)> WithoutOwnAddresses(
+        IEnumerable<(string DisplayName, string EmailAddress)> people, IEnumerable<AccountModel> accounts)
+    {
+        var own = OwnAddresses(accounts);
+        return people.Where(p => !own.Contains(p.EmailAddress.Trim())).ToList();
+    }
+
+    /// <summary>
+    /// The user's own addresses: each account's address, a shared mailbox's address, and a sign-in name
+    /// that is itself an address (an iCloud account on a custom domain signs in with its Apple ID).
+    /// </summary>
+    internal static HashSet<string> OwnAddresses(IEnumerable<AccountModel> accounts)
+    {
+        var own = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var a in accounts)
+        {
+            if (!string.IsNullOrWhiteSpace(a.Username)) own.Add(a.Username.Trim());
+            if (!string.IsNullOrWhiteSpace(a.SharedAddress)) own.Add(a.SharedAddress.Trim());
+            if (EmailAddressValidator.IsValid(a.LoginUsername)) own.Add(a.LoginUsername!.Trim());
+        }
+        return own;
+    }
+
+    /// <summary>Every address in To, Cc and Bcc with its name, read the way the message headers are built.</summary>
+    internal static List<(string DisplayName, string EmailAddress)> RecipientsOf(ComposeModel compose)
+    {
+        var list = new MimeKit.InternetAddressList();
+        AddressInput.AddTo(list, compose.To);
+        AddressInput.AddTo(list, compose.Cc);
+        AddressInput.AddTo(list, compose.Bcc);
+        return list.Mailboxes
+            .Where(m => !string.IsNullOrWhiteSpace(m.Address))
+            .GroupBy(m => m.Address, StringComparer.OrdinalIgnoreCase)
+            .Select(g => (g.Select(m => m.Name ?? string.Empty).FirstOrDefault(n => n.Length > 0) ?? string.Empty, g.Key))
+            .ToList();
+    }
+
+    // A modal confirmation runs a nested message loop before AsyncRelayCommand marks itself
+    // running. Guard that interval as well as the asynchronous send and post-send cleanup.
+    private bool _sendInProgress;
+
     /// <summary>
     /// The IAccountService this compose window was built with. Exposed so the address book
     /// opened from here (Ctrl+Shift+B) can name accounts in its account filter — without it
@@ -170,33 +296,51 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
     /// </summary>
     public IAccountService AccountService => _accountService;
 
-    public ComposeViewModel(ISendMailService smtp, IAccountService accountService, ICredentialService credentials, IMailService imap, ITemplateService templateService, IMarkdownService? markdown = null)
+    private readonly ISoundService? _sounds;
+
+    public ComposeViewModel(ISendMailService smtp, IAccountService accountService, ICredentialService credentials, IMailService imap, ITemplateService templateService, IMarkdownService? markdown = null,
+        IOutboxService? outbox = null, IConnectivityService? connectivity = null, Func<Guid, bool>? isAccountConnected = null,
+        ISoundService? sounds = null)
     {
+        _sounds = sounds;
+        _isAccountConnected = isAccountConnected;
         _smtp = smtp;
         _accountService = accountService;
         _credentials = credentials;
         _imap = imap;
         _templateService = templateService;
         _markdown = markdown ?? new MarkdownService();
+        _outbox = outbox;
+        _connectivity = connectivity;
         _attachments.CollectionChanged += (_, _) =>
         {
-            _isDirty = true;
+            MarkEdited();
             OnPropertyChanged(nameof(AttachmentSummaryText));
+            WarnIfMessageIsLarge();
         };
     }
 
     // Dirty-marking partial methods — fired by the [ObservableProperty] source generator
-    partial void OnToChanged(string value)      => _isDirty = true;
-    partial void OnCcChanged(string value)      => _isDirty = true;
-    partial void OnBccChanged(string value)     => _isDirty = true;
-    partial void OnSubjectChanged(string value) => _isDirty = true;
-    partial void OnBodyChanged(string value)    => _isDirty = true;
+    partial void OnToChanged(string value)      => MarkEdited();
+    partial void OnCcChanged(string value)      => MarkEdited();
+    partial void OnBccChanged(string value)     => MarkEdited();
+    partial void OnSubjectChanged(string value) => MarkEdited();
+    partial void OnBodyChanged(string value)    => MarkEdited();
 
     public void Seed(ComposeModel model)
     {
         _inReplyToMessageId = model.InReplyToMessageId;
         _draftMessageId     = model.DraftMessageId;
         _draftFolderName    = model.DraftFolderName;
+        _outboxId           = model.OutboxId;
+        _inlineImages.Clear();
+        foreach (var image in model.InlineImages.Where(i => i.IsLoaded && !string.IsNullOrEmpty(i.ContentId)))
+            _inlineImages[image.ContentId!] = image;
+        _sourceMessage = model.SourceMessageId is { } sourceId && model.SourceAccountId is { } sourceAccount
+            ? (sourceAccount, model.SourceFolderName ?? string.Empty, sourceId)
+            : null;
+        // Reopened from the Outbox: the row is ours until this window closes (#637).
+        if (_outboxId != null) _outbox?.Hold(_outboxId);
         ComposeKind         = model.Kind;
         OnPropertyChanged(nameof(WindowTitle));
 
@@ -211,8 +355,12 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
             Attachments.Add(att);
 
         // Remember the original mode so the View can restore it after wiring up event handlers.
+        // A reply carries the original as quoted HTML too; it is used if the reply opens in
+        // HTML mode (the default mode decides), so the quote keeps the original's structure.
         _seededMode    = model.Mode;
-        _seededHtmlBody = model.Mode == ComposeMode.Html ? model.HtmlBody : null;
+        _seededHtmlBody = model.Mode == ComposeMode.Html || model.Kind is ComposeKind.Reply or ComposeKind.ReplyAll
+            ? model.HtmlBody
+            : null;
 
         // Loading existing data (reply, forward, or re-opened draft) is not itself a dirty edit
         _isDirty = false;
@@ -223,9 +371,9 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
                         ?? SenderAccounts.FirstOrDefault(a => a.IsDefault)
                         ?? SenderAccounts.FirstOrDefault();
 
-        // Auto-append signature if this is a new compose (not a draft re-open) and the
+        // Auto-append signature if this is a new compose (not a draft or Outbox re-open) and the
         // account has a signature configured. Drafts already have the signature in the body.
-        if (model.DraftMessageId == null && SenderAccount != null && !string.IsNullOrWhiteSpace(SenderAccount.Signature))
+        if (model.DraftMessageId == null && model.OutboxId == null && SenderAccount != null && !string.IsNullOrWhiteSpace(SenderAccount.Signature))
         {
             var sig = SenderAccount.Signature;
             // Add separator if body already has content (reply/forward)
@@ -234,22 +382,42 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
             if (!string.IsNullOrWhiteSpace(Body))
                 Body += "\n-- \n";
             Body += sig;
+            if (_seededHtmlBody != null)
+                _seededHtmlBody += SignatureHtml(sig);
             _isDirty = false; // signature insertion is not a user edit
         }
+
+        _seededHtmlForBody = Body;
+        // Which of the original's pictures a reply or forward quotes — captured now, because the
+        // seeded HTML is consumed when the editor loads it.
+        _sourcePictureIds = _sourceMessage is null
+            ? []
+            : Helpers.InlineImages.ReferencedContentIds(_seededHtmlBody);
     }
+
+    /// <summary>The plain-text signature as HTML, with the same "-- " separator line.</summary>
+    private static string SignatureHtml(string signature) =>
+        "<p>-- <br />"
+        + WebUtility.HtmlEncode(signature.Replace("\r\n", "\n").TrimEnd('\n')).Replace("\n", "<br />")
+        + "</p>";
 
     [RelayCommand]
     private async Task SaveDraftAsync()
     {
+        // Every exit sets an outcome: the window's close prompt reads it, and a stale success from
+        // an earlier save would otherwise let a refused save close the window and lose the message.
+        LastSaveOutcome = DraftSaveOutcome.None;
         var account = SenderAccount;
         if (account == null)
         {
+            LastSaveOutcome = DraftSaveOutcome.Failed;
             SetStatusOutcome("Please select a sender account.");
             return;
         }
 
-        if (Attachments.Sum(a => a.FileSize) > 25_000_000)
+        if (CurrentMessageBytes() > 25_000_000)
         {
+            LastSaveOutcome = DraftSaveOutcome.Failed;
             SetStatusOutcome("Total attachment size exceeds 25 MB. Please remove some attachments.");
             return;
         }
@@ -258,16 +426,31 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
         SetProgress("Saving draft…");
         try
         {
-            await SaveDraftCoreAsync(account);
+            await SaveDraftCoreAsync(account, "manual");
+            await ForgetLocalCopyAsync();
+            LastSaveOutcome = DraftSaveOutcome.SavedToServer;
             SetStatusOutcome("Draft saved.");
-        }
-        catch (DraftFolderMissingException)
-        {
-            SetStatusOutcome("No Drafts folder found on this account.");
         }
         catch (Exception ex)
         {
-            SetStatusOutcome($"Save draft failed: {ex.Message}");
+            // Server first, this computer second (#637) — but only when the server could not be
+            // reached. A server that answered and refused (over quota, a rejected append) is an error
+            // the user has to see, not something to queue and fail again every auto-save. The one
+            // deliberate exception is "no Drafts folder": the text the user typed is worth more than
+            // folder purity, so it is kept locally, fails on upload with that reason, and stays
+            // reopenable instead of being discarded when the window closes.
+            if (ShouldKeepLocally(ex) && await TryKeepDraftLocallyAsync(account))
+            {
+                LastSaveOutcome = DraftSaveOutcome.SavedLocally;
+                SetStatusOutcome("Draft saved on this computer. It will upload when you're online.");
+            }
+            else
+            {
+                LastSaveOutcome = DraftSaveOutcome.Failed;
+                SetStatusOutcome(ex is DraftFolderMissingException
+                    ? "No Drafts folder found on this account."
+                    : $"Save draft failed: {ex.Message}");
+            }
         }
         finally
         {
@@ -275,19 +458,294 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
         }
     }
 
-    /// <summary>Uploads the current compose state as a draft, replacing any previous draft.</summary>
-    private async Task SaveDraftCoreAsync(AccountModel account, CancellationToken externalCt = default)
-    {
-        using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-        using var combined = CancellationTokenSource.CreateLinkedTokenSource(timeoutCts.Token, externalCt);
+    /// <summary>
+    /// Writes the compose into the local Outbox as a draft, replacing the row it already owns.
+    /// False when there is no Outbox (<c>--online</c> mode) or the store itself failed — the caller
+    /// then reports the original server failure. Own try/catch: a local-store failure must never
+    /// hide the server failure it was standing in for.
+    /// </summary>
+    private static bool ShouldKeepLocally(Exception ex)
+        => ex is DraftFolderMissingException || ConnectionFailure.IsConnectionFailure(ex, CancellationToken.None);
 
-        _draftFolderName ??= await _imap.FindDraftsFolderNameAsync(account.Id, combined.Token);
+    private async Task<bool> TryKeepDraftLocallyAsync(AccountModel account)
+    {
+        if (_outbox?.IsAvailable != true) return false;
+        try
+        {
+            var version = _editVersion;
+            var compose = BuildComposeModel(account.Id);
+            _outboxId = await _outbox.EnqueueDraftAsync(compose, account.Id, _outboxId);
+            // Ours while this window is open: a drain must not upload or send it from under the edit.
+            _outbox.Hold(_outboxId);
+            if (_editVersion == version) _isDirty = false;
+            // An abandoned server save that finished during the enqueue has been adopted as the
+            // draft on the server (#781). This row replaces the id it was built with, not that one,
+            // so it would upload a second copy beside it; staying unsaved has the next save replace
+            // the late copy and drop the row.
+            if (!string.Equals(compose.DraftMessageId, _draftMessageId, StringComparison.Ordinal))
+                _isDirty = true;
+            LogService.Log("SaveDraft: kept the draft on this computer");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            LogService.Log("SaveDraft: keeping the draft locally failed", ex);
+            return false;
+        }
+    }
+
+    /// <summary>The server now holds this message, so the local Outbox row is redundant. Best effort.</summary>
+    private async Task ForgetLocalCopyAsync()
+    {
+        if (_outboxId == null || _outbox == null) return;
+        var id = _outboxId;
+        _outboxId = null;
+        _outbox.Release(id);
+        try { await _outbox.RemoveAsync(id); }
+        catch (Exception ex) { LogService.Log("Compose: removing the local Outbox copy failed", ex); }
+    }
+
+    /// <summary>
+    /// Queues the message in the local Outbox to be sent when the server is reachable (#637).
+    /// Supersedes any draft row this compose owns. False when there is no Outbox or it failed.
+    /// </summary>
+    private async Task<bool> QueueSendAsync(ComposeModel compose, AccountModel account, string? queuedMessage = null)
+    {
+        if (_outbox?.IsAvailable != true) return false;
+        try
+        {
+            _outboxId = await _outbox.EnqueueSendAsync(compose, account.Id, _outboxId);
+        }
+        catch (Exception ex)
+        {
+            LogService.Log("Send: queueing the message in the Outbox failed", ex);
+            return false;
+        }
+        _isSent = true;
+        _isDirty = false;
+        RememberRecipients(compose);
+        SetStatusOutcome(queuedMessage ?? "Message queued. It will be sent when you're online.");
+        _sounds?.Play(SoundEvent.MessageQueued);
+        CloseRequested?.Invoke();
+        return true;
+    }
+
+    /// <summary>What the user is told when a message from a disconnected shared mailbox is queued (#614).</summary>
+    internal static string SharedMailboxQueuedMessage(AccountModel account)
+        => $"Message queued. It will be sent when {account.AccountLabel} is connected again.";
+
+    /// <summary>How long a draft save's cancellation token runs before it fires. Settable for tests.</summary>
+    internal TimeSpan DraftSaveTimeout { get; set; } = TimeSpan.FromSeconds(30);
+
+    /// <summary>
+    /// How much longer than <see cref="DraftSaveTimeout"/> a save is waited for before it is
+    /// abandoned outright (#781). The token is the polite way to stop a save; this is the
+    /// guarantee, for when something under the save does not listen to it. Settable for tests.
+    /// </summary>
+    internal TimeSpan DraftSaveAbandonGrace { get; set; } = TimeSpan.FromSeconds(5);
+
+    /// <summary>Numbers each draft save, so the log can follow one and a late one knows it is late.</summary>
+    private int _draftSaveSerial;
+
+    /// <summary>
+    /// The watcher of the most recently abandoned save, which settles what its late result means.
+    /// Exposed so tests can wait for it; nothing in the app needs to.
+    /// </summary>
+    internal Task AbandonedDraftSave { get; private set; } = Task.CompletedTask;
+
+    /// <summary>What one upload produced: the server's id for the draft, and the edit it captured.</summary>
+    private readonly record struct DraftUpload(string MessageId, int EditVersion);
+
+    /// <summary>
+    /// Uploads the current compose state as a draft, replacing any previous draft. Returns or throws
+    /// within <see cref="DraftSaveTimeout"/> plus <see cref="DraftSaveAbandonGrace"/> whatever the
+    /// server does: a save that never came back once held <see cref="IsBusy"/> for good and stopped
+    /// every later auto-save without a word in the log (#781). A save given up on throws
+    /// <see cref="TimeoutException"/>, which is a connection failure, so callers keep the draft on
+    /// this computer exactly as they do when the server cannot be reached (#637).
+    /// </summary>
+    /// <param name="account">The sending account.</param>
+    /// <param name="trigger">"manual" or "auto", for the log.</param>
+    /// <param name="externalCt">Cancelled when the window closes.</param>
+    private async Task SaveDraftCoreAsync(AccountModel account, string trigger, CancellationToken externalCt = default)
+    {
+        var serial = ++_draftSaveSerial;
+        var tag = $"SaveDraft ({trigger} #{serial})";
+        var sw = Stopwatch.StartNew();
+        // Logged without /debug, and with nothing about the message in it: the line that tells a
+        // save that never started from one that started and never finished.
+        LogService.Log($"{tag}: started");
+
+        var timeoutCts = new CancellationTokenSource(DraftSaveTimeout);
+        var linked = CancellationTokenSource.CreateLinkedTokenSource(timeoutCts.Token, externalCt);
+        var abandoned = false;
+        try
+        {
+            var upload = UploadDraftAsync(account, linked.Token);
+
+            // Wait for the upload or the hard deadline (or the window closing), whichever comes
+            // first. Deciding from one look at the upload afterwards, rather than from which
+            // exception a WaitAsync threw, leaves no window in which an upload that finished right at
+            // the deadline is counted as a failure and its server id dropped.
+            using (var deadlineCts = CancellationTokenSource.CreateLinkedTokenSource(externalCt))
+            {
+                var deadline = Task.Delay(DraftSaveTimeout + DraftSaveAbandonGrace, deadlineCts.Token);
+                await Task.WhenAny(upload, deadline);
+                deadlineCts.Cancel();
+            }
+
+            if (!upload.IsCompleted)
+            {
+                // The upload is still running and nothing will wait for it any more. Cancel it in
+                // case it ever looks, and leave the token sources to the watcher: disposing them
+                // under a running operation turns a clean cancellation into ObjectDisposedException.
+                abandoned = true;
+                try { timeoutCts.Cancel(); }
+                catch (AggregateException) { /* a registered callback threw; the save is abandoned either way */ }
+                AbandonedDraftSave = WatchAbandonedSaveAsync(upload, account.Id, serial, tag, sw, timeoutCts, linked);
+                if (externalCt.IsCancellationRequested)
+                {
+                    LogService.Log($"{tag}: abandoned after {sw.ElapsedMilliseconds} ms because the window is closing");
+                    throw new OperationCanceledException(externalCt);
+                }
+                LogService.Log($"{tag}: no answer {sw.ElapsedMilliseconds} ms after it started, though its "
+                    + $"{DraftSaveTimeout.TotalSeconds:0}-second timeout had fired; abandoned so later saves can run");
+                throw new TimeoutException(
+                    $"Saving the draft did not finish within {(DraftSaveTimeout + DraftSaveAbandonGrace).TotalSeconds:0} seconds.");
+            }
+
+            DraftUpload result;
+            try
+            {
+                result = await upload;
+            }
+            catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested && !externalCt.IsCancellationRequested)
+            {
+                LogService.Log($"{tag}: timed out after {sw.ElapsedMilliseconds} ms");
+                throw;
+            }
+            catch (Exception ex)
+            {
+                LogService.Log($"{tag}: failed after {sw.ElapsedMilliseconds} ms ({ex.GetType().Name})");
+                throw;
+            }
+
+            LogService.Log($"{tag}: saved to the server in {sw.ElapsedMilliseconds} ms");
+            _draftMessageId = result.MessageId;
+            // Anything typed while the save ran is not in it: stay dirty so the next tick saves it.
+            if (_editVersion == result.EditVersion) _isDirty = false;
+        }
+        finally
+        {
+            if (!abandoned)
+            {
+                linked.Dispose();
+                timeoutCts.Dispose();
+            }
+        }
+    }
+
+    /// <summary>
+    /// Finds the Drafts folder if it is not known yet and appends the draft. Changes no state but
+    /// the folder name, so a save abandoned mid-flight cannot overwrite what a newer save recorded.
+    /// </summary>
+    private async Task<DraftUpload> UploadDraftAsync(AccountModel account, CancellationToken ct)
+    {
+        _draftFolderName ??= await _imap.FindDraftsFolderNameAsync(account.Id, ct);
         if (_draftFolderName == null)
             throw new DraftFolderMissingException();
 
+        // An abandoned save whose folder lookup came back late must not go on to append.
+        ct.ThrowIfCancellationRequested();
+        var version = _editVersion;
         var compose = BuildComposeModel(account.Id);
-        _draftMessageId = await _imap.AppendDraftAsync(account.Id, compose, _draftMessageId, combined.Token);
-        _isDirty = false;
+        var messageId = await _imap.AppendDraftAsync(account.Id, compose, _draftMessageId, ct);
+        return new DraftUpload(messageId, version);
+    }
+
+    /// <summary>
+    /// Waits out a save that was abandoned (#781) and decides what its late result means:
+    /// <list type="bullet">
+    /// <item>The message has been sent since: the late copy is a draft of a sent message, so it is
+    /// moved to Trash, best effort.</item>
+    /// <item>A newer save has started: that save's state wins, and the late copy is only logged. It
+    /// may be left on the server as a duplicate.</item>
+    /// <item>Otherwise the late copy is the draft on the server, and becomes the one the next save
+    /// replaces. If the draft was kept on this computer meanwhile, that Outbox row would upload a
+    /// second copy later (it replaces the older id), so it is dropped when the server copy is
+    /// current, and the compose is marked unsaved when it is not, so the next save replaces the late
+    /// copy and drops the row.</item>
+    /// </list>
+    /// </summary>
+    private async Task WatchAbandonedSaveAsync(Task<DraftUpload> upload, Guid accountId, int serial, string tag,
+        Stopwatch sw, CancellationTokenSource timeoutCts, CancellationTokenSource linked)
+    {
+        try
+        {
+            DraftUpload late;
+            try
+            {
+                late = await upload;
+            }
+            catch (Exception ex)
+            {
+                LogService.Log($"{tag}: abandoned save ended {sw.ElapsedMilliseconds} ms after it started ({ex.GetType().Name})");
+                return;
+            }
+
+            var finished = $"{tag}: finished {sw.ElapsedMilliseconds} ms after it started, after it was abandoned";
+            if (_isSent)
+            {
+                LogService.Log($"{finished}; the message has been sent since, so draft {late.MessageId} is being removed");
+                await RemoveLateDraftAsync(accountId, late.MessageId, tag);
+            }
+            else if (serial != _draftSaveSerial)
+            {
+                LogService.Log($"{finished}; a newer save had started, so draft {late.MessageId} may be left on the server as a duplicate");
+            }
+            else
+            {
+                _draftMessageId = late.MessageId;
+                if (_outboxId == null)
+                {
+                    LogService.Log($"{finished}; no newer save had started, so the next save replaces this copy");
+                }
+                else if (late.EditVersion == _editVersion)
+                {
+                    LogService.Log($"{finished}; it is current, so the copy kept on this computer is no longer needed");
+                    await ForgetLocalCopyAsync();
+                }
+                else
+                {
+                    _isDirty = true;
+                    LogService.Log($"{finished}; edits made since are only on this computer, so the next save replaces this copy");
+                }
+            }
+        }
+        finally
+        {
+            linked.Dispose();
+            timeoutCts.Dispose();
+        }
+    }
+
+    /// <summary>Moves a draft that landed after the message was sent to Trash. Best effort.</summary>
+    private async Task RemoveLateDraftAsync(Guid accountId, string messageId, string tag)
+    {
+        if (string.IsNullOrEmpty(messageId) || _draftFolderName == null)
+        {
+            LogService.Log($"{tag}: the late draft has no id the server reported, so it cannot be removed");
+            return;
+        }
+        try
+        {
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+            await _imap.MoveToTrashAsync(accountId, _draftFolderName, messageId, cts.Token);
+        }
+        catch (Exception ex)
+        {
+            LogService.Log($"{tag}: removing the late draft of a sent message failed", ex);
+        }
     }
 
     private sealed class DraftFolderMissingException : Exception
@@ -308,6 +766,10 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
     {
         _autoSaveCts.Cancel();
         _autoSaveCts.Dispose();
+        _sourceImagesCts.Cancel();
+        _sourceImagesCts.Dispose();
+        // The window is gone; whatever row it held can be drained now (#637).
+        if (_outboxId != null) _outbox?.Release(_outboxId);
         GC.SuppressFinalize(this);
     }
 
@@ -331,22 +793,69 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
     /// </summary>
     public async Task AutoSaveAsync()
     {
-        if (!_isDirty || _isSent || IsBusy) return;
-        if (ComposeKind == ComposeKind.EditTemplate) return;
-        var account = SenderAccount;
-        if (account == null) return;
-        if (!HasAutoSavableContent()) return;
+        // The timer discards this Task, so anything thrown outside the try below vanished without
+        // a trace — and the skips were silent too. Auto-save once went 13 minutes without saving or
+        // logging a word before a crash took the edits with it (#781); say why a tick did nothing.
+        string? skip;
+        try
+        {
+            skip = AutoSaveSkipReason();
+        }
+        catch (Exception ex)
+        {
+            // Treated as a failed save: logged and announced once, not every tick.
+            if (_lastAutoSaveSkip != ex.Message)
+            {
+                _lastAutoSaveSkip = ex.Message;
+                LogService.Log("AutoSaveAsync: checking whether to save failed", ex);
+            }
+            AutoSaveText = "Auto-save failed";
+            if (!_autoSaveFailureAnnounced)
+            {
+                _autoSaveFailureAnnounced = true;
+                AutoSaveFailed?.Invoke("Auto-save failed. Your draft is not saved to the server.");
+            }
+            return;
+        }
+        // Only a skip that leaves edits unsaved is worth a line, and only once per change of
+        // reason — an idle window or a run of identical skips adds one line, not one per tick.
+        var unsavedSkip = _isDirty ? skip : null;
+        if (unsavedSkip != _lastAutoSaveSkip)
+        {
+            _lastAutoSaveSkip = unsavedSkip;
+            if (unsavedSkip != null)
+                LogService.Log($"AutoSaveAsync: not saving unsaved changes ({unsavedSkip})");
+        }
+        if (skip != null) return;
 
+        var account = SenderAccount!;
         IsBusy = true;
         try
         {
-            await SaveDraftCoreAsync(account, _autoSaveCts.Token);
+            await SaveDraftCoreAsync(account, "auto", _autoSaveCts.Token);
+            await ForgetLocalCopyAsync();
             AutoSaveText = $"Auto-saved {DateTime.Now:t}";
             _autoSaveFailureAnnounced = false;
+            // _localAutoSaveNoticed is deliberately not reset (#901): on a connection that comes
+            // and goes it was said again after every server save, in the middle of editing.
+        }
+        catch (OperationCanceledException) when (_autoSaveCts.IsCancellationRequested)
+        {
+            // The window is closing; its own close-time save decides what happens to the draft.
         }
         catch (Exception ex)
         {
             LogService.Log("AutoSaveAsync: draft auto-save failed", ex);
+            if (ShouldKeepLocally(ex) && await TryKeepDraftLocallyAsync(account))
+            {
+                AutoSaveText = $"Kept on this computer {DateTime.Now:t}";
+                if (!_localAutoSaveNoticed)
+                {
+                    _localAutoSaveNoticed = true;
+                    AutoSaveNotice?.Invoke("Auto-save is keeping your draft on this computer until you're online.");
+                }
+                return;
+            }
             AutoSaveText = "Auto-save failed";
             if (!_autoSaveFailureAnnounced)
             {
@@ -358,6 +867,21 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
         {
             IsBusy = false;
         }
+    }
+
+    /// <summary>The last skip reason logged, so a run of identical skips is logged once.</summary>
+    private string? _lastAutoSaveSkip;
+
+    /// <summary>Why this tick will not save, or null when it will.</summary>
+    private string? AutoSaveSkipReason()
+    {
+        if (_isSent) return "already sent";
+        if (ComposeKind == ComposeKind.EditTemplate) return "editing a template";
+        if (!_isDirty) return "no changes since the last save";
+        if (IsBusy) return "another save or send is still running";
+        if (SenderAccount == null) return "no sender account";
+        if (!HasAutoSavableContent()) return "nothing worth keeping yet";
+        return null;
     }
 
     /// <summary>Something worth keeping: any recipient, subject, body text, or attachment.</summary>
@@ -375,6 +899,25 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private async Task SendAsync()
     {
+        if (_sendInProgress || _isSent) return;
+        if (IsBusy)
+        {
+            SetStatusOutcome("Still saving the draft. Try sending again in a moment.");
+            return;
+        }
+        _sendInProgress = true;
+        try
+        {
+            await SendCoreAsync();
+        }
+        finally
+        {
+            _sendInProgress = false;
+        }
+    }
+
+    private async Task SendCoreAsync()
+    {
         if (string.IsNullOrWhiteSpace(To))
         {
             SetStatusOutcome("Please enter at least one recipient.");
@@ -388,7 +931,7 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
             return;
         }
 
-        if (Attachments.Sum(a => a.FileSize) > 25_000_000)
+        if (CurrentMessageBytes() > 25_000_000)
         {
             SetStatusOutcome("Total attachment size exceeds 25 MB. Please remove some attachments.");
             return;
@@ -412,25 +955,76 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
             return;
         }
 
+        // Deliberately busy before the modal prompt so auto-save cannot start in its nested loop.
         IsBusy = true;
-        SetProgress("Sending…");
         try
         {
+            if ((ConfirmBeforeSendProvider?.Invoke() ?? ConfirmBeforeSend) && SendConfirmationRequested?.Invoke(
+                    "Send this message now? If the account is offline, it will be queued to send when connected.",
+                    "Confirm Send") != true)
+                return;
+
+            SetProgress("Sending…");
             var compose = BuildComposeModel(account.Id);
 
+            // A shared mailbox sends through its parent's sign-in (#31), so while it is disconnected
+            // the send can only fail. Queue it instead; it goes out when the mailbox reconnects (#614).
+            // Checked before "known offline": a disconnected shared mailbox can also be marked offline
+            // (a failed folder load counts as unreachable), and "when you're online" would then send
+            // someone who is online looking for a network problem instead of a sign-in.
+            if (account.IsShared && _isAccountConnected?.Invoke(account.Id) == false
+                && await QueueSendAsync(compose, account, SharedMailboxQueuedMessage(account)))
+                return;
+
+            // Known offline: no point holding the window for a 30-second timeout (#637).
+            if (_connectivity?.IsAccountOnline(account.Id) == false && _outbox?.IsAvailable == true
+                && await QueueSendAsync(compose, account))
+                return;
+
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-            await _smtp.SendAsync(compose, account, password, cts.Token);
-            SetStatusOutcome("Message sent.");
+            try
+            {
+                await _smtp.SendAsync(compose, account, password, cts.Token);
+            }
+            catch (OperationCanceledException) when (_connectivity is { IsOnline: true })
+            {
+                // Thirty seconds with the app online is a slow upload, not an outage: a large
+                // attachment on a thin uplink. Queuing it would say "when you're online" to someone
+                // who is, and could send twice if the server had already taken the data.
+                SetStatusOutcome("Send timed out after 30 seconds. Try again.");
+                _sounds?.Play(SoundEvent.SendFailed);
+                return;
+            }
+            catch (Exception ex) when (ConnectionFailure.IsConnectionFailure(ex, CancellationToken.None))
+            {
+                // The server never answered. A rejection (bad address, refused login) is not
+                // caught here and still fails in the window, where the user can fix it.
+                if (await QueueSendAsync(compose, account))
+                    return;
+                throw;
+            }
+            catch (InteractiveSignInRequiredException) when (account.IsShared)
+            {
+                // The parent's sign-in lapsed between the check above and the send (#614).
+                if (await QueueSendAsync(compose, account, SharedMailboxQueuedMessage(account)))
+                    return;
+                throw;
+            }
             _isSent = true;
+            RememberRecipients(compose);
+            SetStatusOutcome("Message sent.");
+            _sounds?.Play(SoundEvent.MessageSent);
+            await ForgetLocalCopyAsync();
 
             // Append to Sent folder (best-effort — fire and forget so it doesn't block the UI).
-            // Providers that auto-save sent mail (e.g. Gmail) may produce a duplicate; that is
-            // harmless and the background sync will eventually deduplicate via UID tracking.
+            // Providers that file their own copy of sent mail (Gmail, iCloud, Outlook.com) are
+            // looked for by the Message-ID the send stamped on compose, for a few seconds, and get
+            // no second copy if theirs turns up (#811). The timeout leaves room for those looks.
             _ = Task.Run(async () =>
             {
                 try
                 {
-                    using var sentCts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+                    using var sentCts = new CancellationTokenSource(TimeSpan.FromSeconds(45));
                     await _imap.AppendToSentAsync(account.Id, compose, sentCts.Token);
                 }
                 catch (Exception ex)
@@ -458,6 +1052,7 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
         catch (Exception ex)
         {
             SetStatusOutcome($"Send failed: {ex.Message}");
+            _sounds?.Play(SoundEvent.SendFailed);
         }
         finally
         {
@@ -491,8 +1086,8 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
     public event Action<string>? LoadHtmlIntoEditorRequested;
 
     /// <summary>
-    /// Raised to insert plain text (e.g. a template) at the rich editor's caret
-    /// while in HTML mode.
+    /// Raised to insert plain text (e.g. a template) at the editor's caret, in
+    /// whichever editor the current mode uses.
     /// </summary>
     public event Action<string>? InsertTextIntoEditorRequested;
 
@@ -510,9 +1105,13 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
         // switch is never silently impossible.
         if (newMode == ComposeMode.PlainText && HasFormattingWorthConfirming())
         {
-            var confirmed = ConfirmationRequested?.Invoke(
-                "Formatting will be lost when switching to Plain Text. Continue?",
-                "Switch to Plain Text") ?? true;
+            // Plain text cannot hold a picture; say how many will go (#729).
+            var pictures = ReferencedInlineImages().Count;
+            var message = pictures == 0
+                ? "Formatting will be lost when switching to Plain Text. Continue?"
+                : $"Formatting will be lost when switching to Plain Text, and {pictures} " +
+                  $"{(pictures == 1 ? "picture" : "pictures")} will be removed from the message. Continue?";
+            var confirmed = ConfirmationRequested?.Invoke(message, "Switch to Plain Text") ?? true;
             if (!confirmed) return false;
         }
 
@@ -522,9 +1121,15 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
                 break; // plain text is valid Markdown source — pass through as-is
 
             case (ComposeMode.PlainText, ComposeMode.Html):
-                var htmlToLoad = _seededHtmlBody ?? _markdown.PlainTextToHtml(Body);
-                _seededHtmlBody = null; // consume: only used for the initial draft restore
+                bool useSeeded = _seededHtmlBody != null && Body == _seededHtmlForBody;
+                var htmlToLoad = useSeeded ? _seededHtmlBody! : _markdown.PlainTextToHtml(Body);
+                _seededHtmlBody = null; // consume: only used for the initial draft, forward or reply
                 LoadHtmlIntoEditorRequested?.Invoke(htmlToLoad);
+                // The seeded HTML of a reply or forward shows the original's pictures. They are
+                // fetched when that HTML reaches the editor — at open, or later when a reply that
+                // opened in Plain Text or Markdown is switched to HTML (#729).
+                if (useSeeded)
+                    _ = FetchSourcePicturesAsync();
                 break;
 
             case (ComposeMode.Markdown, ComposeMode.Html):
@@ -557,9 +1162,21 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
     private bool HasFormattingWorthConfirming() => CurrentMode switch
     {
         ComposeMode.Markdown => !string.IsNullOrWhiteSpace(Body) && Body != _markdown.ToPlainText(Body),
-        ComposeMode.Html     => !(RichBodyProvider?.Invoke() ?? RichBodySnapshot.Empty).IsEmpty,
+        ComposeMode.Html     => HtmlHasFormattingWorthConfirming(RichBodyProvider?.Invoke() ?? RichBodySnapshot.Empty),
         _                    => false,
     };
+
+    // The Markdown of text with no formatting is that text, so when the two agree nothing is lost
+    // going to plain text — a Plain → HTML → Plain round trip doesn't ask (#887). A picture is
+    // always lost, and so is underline, which has no Markdown form; either always asks.
+    private bool HtmlHasFormattingWorthConfirming(RichBodySnapshot snap)
+    {
+        if (snap.IsEmpty) return false;
+        if (PicturesReferencedBy(snap.Html).Count > 0) return true;
+        if (snap.Html.Contains("<u>", StringComparison.OrdinalIgnoreCase)) return true;
+        static string Norm(string s) => s.Replace("\r\n", "\n").Trim();
+        return Norm(snap.Markdown) != Norm(snap.PlainText);
+    }
 
     /// <summary>Renders the current Markdown body as a full HTML document for the preview pane.</summary>
     public string RenderPreviewHtml() => _markdown.WrapDocument(_markdown.ToHtml(Body), Subject);
@@ -573,7 +1190,7 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
     };
 
     /// <summary>Called by the View when the rich editor content changes (RichTextBox has no Body binding).</summary>
-    public void MarkBodyDirty() => _isDirty = true;
+    public void MarkBodyDirty() => MarkEdited();
 
     /// <summary>
     /// Opens the template picker. The View subscribes to this event to show the dialog.
@@ -605,9 +1222,11 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
                 .Replace("{date}", now.ToString("d"), StringComparison.OrdinalIgnoreCase)
                 .Replace("{time}", now.ToString("t"), StringComparison.OrdinalIgnoreCase);
 
-        if (CurrentMode == ComposeMode.Html)
-            InsertTextIntoEditorRequested?.Invoke(body);
-        else
+        // The editor inserts at the caret, as one undo step, on lines of its own (#888, #889).
+        // Unwired (tests), plain text falls back to appending.
+        if (InsertTextIntoEditorRequested != null)
+            InsertTextIntoEditorRequested(body);
+        else if (CurrentMode != ComposeMode.Html)
             Body += body;
         SetStatusOutcome($"Template '{template.Title}' inserted.");
     }
@@ -732,7 +1351,8 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
         switch (CurrentMode)
         {
             case ComposeMode.Markdown when !string.IsNullOrWhiteSpace(Body):
-                htmlBody = _markdown.WrapDocument(_markdown.ToHtml(Body), Subject);
+                htmlBody = _markdown.WrapDocument(
+                    Helpers.InlineImages.RestoreUndescribed(_markdown.ToHtml(Body)), Subject);
                 break;
 
             case ComposeMode.Html:
@@ -749,6 +1369,9 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
 
         return new ComposeModel
         {
+            // Kind and the Outbox row travel with the model so a queued reply reopens as a reply.
+            Kind                = ComposeKind,
+            OutboxId            = _outboxId,
             AccountId           = accountId,
             To                  = To,
             Cc                  = Cc,
@@ -761,7 +1384,123 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
             DraftMessageId      = _draftMessageId,
             DraftFolderName     = _draftFolderName,
             Attachments         = Attachments.ToList(),
+            // Only the pictures the body still shows: one deleted from the body is not sent.
+            InlineImages        = PicturesReferencedBy(htmlBody),
         };
+    }
+
+    // ── Pictures in the body (#729) ──────────────────────────────────────────
+    //
+    // The bytes of every picture put into the body, keyed by Content-ID. Both rich editors refer
+    // to a picture as cid:<Content-ID> (an <img> in HTML mode, ![alt](cid:…) in Markdown), so a
+    // mode switch keeps them. Deleting a picture from the body leaves its bytes here — Undo can
+    // bring it back — and BuildComposeModel sends only the ones still referenced.
+
+    private readonly Dictionary<string, AttachmentModel> _inlineImages = new(StringComparer.OrdinalIgnoreCase);
+    private (Guid AccountId, string FolderName, string MessageId)? _sourceMessage;
+    private HashSet<string> _sourcePictureIds = [];
+    private bool _sourceFetchStarted;
+    private readonly CancellationTokenSource _sourceImagesCts = new();
+    private bool _largeMessageWarned;
+
+    /// <summary>
+    /// Raised when pictures arrive after the window opened — a reply's or forward's quoted
+    /// pictures, fetched from the original message — so the editor can draw them in place of
+    /// their placeholders.
+    /// </summary>
+    public event Action? InlineImagesArrived;
+
+    /// <summary>
+    /// Set by the View: the Content-IDs of the pictures the editor actually shows. A reply's or
+    /// forward's fetch is limited to these, so a picture hidden in the original's markup — in a
+    /// comment, a style block or an attribute value — is never downloaded.
+    /// </summary>
+    public Func<IReadOnlySet<string>>? EditorPictureIdsProvider { get; set; }
+
+    /// <summary>Stores a picture for the body and returns its Content-ID.</summary>
+    public string AddInlineImage(byte[] bytes, string contentType, string fileName)
+    {
+        var contentId = Helpers.InlineImages.NewContentId();
+        _inlineImages[contentId] = new AttachmentModel
+        {
+            FileName = string.IsNullOrWhiteSpace(fileName) ? "image" : fileName,
+            ContentType = contentType,
+            FileSize = bytes.LongLength,
+            Content = bytes,
+            ContentId = contentId,
+        };
+        MarkEdited();
+        WarnIfMessageIsLarge();
+        return contentId;
+    }
+
+    /// <summary>The bytes of a body picture by its <c>src</c> (<c>cid:…</c>) or bare Content-ID; null when unknown.</summary>
+    public byte[]? GetInlineImageBytes(string srcOrContentId)
+    {
+        var id = srcOrContentId.StartsWith("cid:", StringComparison.OrdinalIgnoreCase) ? srcOrContentId[4..] : srcOrContentId;
+        return _inlineImages.TryGetValue(id, out var image) ? image.Content : null;
+    }
+
+    /// <summary>The stored pictures that the HTML's &lt;img&gt; tags show.</summary>
+    private List<AttachmentModel> PicturesReferencedBy(string? html) =>
+        PicturesWithIds(Helpers.InlineImages.ReferencedContentIds(html));
+
+    private List<AttachmentModel> PicturesWithIds(HashSet<string> ids) =>
+        _inlineImages.Values.Where(i => ids.Contains(i.ContentId!)).ToList();
+
+    /// <summary>The pictures the body shows now, in whichever mode it is in.</summary>
+    private List<AttachmentModel> ReferencedInlineImages() => CurrentMode switch
+    {
+        ComposeMode.Html => PicturesReferencedBy((RichBodyProvider?.Invoke() ?? RichBodySnapshot.Empty).Html),
+        ComposeMode.Markdown => PicturesWithIds(Helpers.InlineImages.ReferencedInMarkdown(Body)),
+        _ => [],
+    };
+
+    /// <summary>Attachments plus the pictures in the body — what the 25 MB limit and the 10 MB warning count.</summary>
+    private long CurrentMessageBytes() =>
+        Attachments.Sum(a => a.FileSize) + ReferencedInlineImages().Sum(i => i.FileSize);
+
+    /// <summary>Says once, when the message first grows past 10 MB, that some servers refuse that much.</summary>
+    private void WarnIfMessageIsLarge()
+    {
+        if (_largeMessageWarned) return;
+        var total = Attachments.Sum(a => a.FileSize) + _inlineImages.Values.Sum(i => i.FileSize);
+        if (total <= Helpers.ImageProcessing.LargeMessageBytes) return;
+        _largeMessageWarned = true;
+        SetStatusOutcome("This message is now over 10 MB. Some mail servers refuse messages that large.");
+    }
+
+    /// <summary>
+    /// For a reply or forward whose quoted HTML shows pictures: fetches them from the original
+    /// message and raises <see cref="InlineImagesArrived"/>. Called by the window once it is
+    /// listening. A failure leaves the placeholders; the message is still sendable.
+    /// </summary>
+    public async Task FetchSourcePicturesAsync()
+    {
+        if (_sourceMessage is not { } source || _sourceFetchStarted) return;
+        _sourceFetchStarted = true;
+        var wanted = new HashSet<string>(_sourcePictureIds, StringComparer.OrdinalIgnoreCase);
+        if (EditorPictureIdsProvider?.Invoke() is { } shown)
+            wanted.IntersectWith(shown);
+        wanted.RemoveWhere(_inlineImages.ContainsKey);
+        if (wanted.Count == 0) return;
+
+        List<AttachmentModel> fetched;
+        try
+        {
+            fetched = await Helpers.InlineImages.FetchAsync(
+                _imap, source.AccountId, source.FolderName, source.MessageId, wanted, ct: _sourceImagesCts.Token);
+        }
+        catch (OperationCanceledException) { return; }
+        catch (ObjectDisposedException) { return; }
+
+        // Only ordinary picture formats come across from a message someone else sent: anything
+        // else would be handed to a Windows image decoder in this process for no benefit.
+        fetched = fetched.Where(i => EmbeddedPictureLoader.IsDisplayable(i.ContentType)).ToList();
+        foreach (var image in fetched)
+            _inlineImages.TryAdd(image.ContentId!, image);
+        if (fetched.Count > 0)
+            InlineImagesArrived?.Invoke();
     }
 
     // ── Factory helpers ────────────────────────────────────────────────────────
@@ -792,9 +1531,35 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
             To = string.IsNullOrEmpty(detail.ReplyTo) ? detail.From : detail.ReplyTo,
             Subject = subject,
             Body = attribution + quoted,
-            InReplyToMessageId = detail.InternetMessageId
+            // Used only when the reply opens in HTML mode. A plain-text original needs no
+            // HTML of its own: PlainTextToHtml turns the "> " lines into a real quote.
+            HtmlBody = string.IsNullOrEmpty(detail.HtmlBody) ? null : BuildReplyHtmlBlock(detail),
+            InReplyToMessageId = detail.InternetMessageId,
+            SourceAccountId  = detail.AccountId,
+            SourceFolderName = detail.FolderName,
+            SourceMessageId  = detail.MessageId,
         };
     }
+
+    /// <summary>
+    /// The HTML-mode reply body: an empty paragraph to type in, the attribution as a
+    /// paragraph of its own (spell check stops at it — see SpellCheckSources), and the
+    /// original's own HTML inside a blockquote, so its headings, lists, links and any
+    /// earlier quotes keep their structure instead of becoming "&gt;" characters.
+    /// </summary>
+    private static string BuildReplyHtmlBlock(MailMessageDetail detail)
+    {
+        var body = StripHtmlWrappers(detail.HtmlBody);
+        var date = detail.Date.ToLocalTime().ToString("f");
+        return $"""
+            <p></p>
+            <p>On {WebUtility.HtmlEncode(date)}, {WebUtility.HtmlEncode(detail.From)} wrote:</p>
+            <blockquote>
+            {body}
+            </blockquote>
+            """;
+    }
+
 
     /// <param name="ownAddress">The sender's own email address; excluded from the Cc list to avoid self-addressing.</param>
     public static ComposeModel CreateReplyAll(MailMessageDetail detail, Guid accountId, string ownAddress = "")
@@ -855,6 +1620,10 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
             AccountId = accountId,
             Subject   = subject,
             Body      = header + plainBody,
+            // So the forward can carry the original's pictures, not just their cid: references.
+            SourceAccountId  = detail.AccountId,
+            SourceFolderName = detail.FolderName,
+            SourceMessageId  = detail.MessageId,
         };
 
         if (!string.IsNullOrEmpty(detail.HtmlBody))

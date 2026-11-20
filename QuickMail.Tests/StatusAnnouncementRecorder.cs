@@ -34,6 +34,19 @@ sealed class StatusAnnouncementRecorder
         return recorder;
     }
 
+    /// <summary>
+    /// Attaches to the main view model, mirroring MainWindow's two channels: StatusText changes
+    /// (auto-announced under <see cref="ViewModels.MainViewModel.StatusAnnouncementCategory"/>)
+    /// and direct <c>AnnouncementRequested</c> announcements.
+    /// </summary>
+    public static StatusAnnouncementRecorder Watch(ViewModels.MainViewModel vm)
+    {
+        var recorder = new StatusAnnouncementRecorder();
+        vm.PropertyChanged += (_, e) => recorder.Capture(e, vm.StatusText, vm.StatusAnnouncementCategory);
+        vm.AnnouncementRequested += (_, a) => recorder._announced.Add((a.Text, a.Category));
+        return recorder;
+    }
+
     /// <summary>Attaches to an account editor VM, mirroring both account dialogs' handlers.</summary>
     public static StatusAnnouncementRecorder Watch(ViewModels.AccountEditorViewModel vm)
     {

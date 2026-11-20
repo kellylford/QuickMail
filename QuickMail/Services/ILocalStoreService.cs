@@ -78,14 +78,15 @@ public interface ILocalStoreService
     /// <summary>
     /// Stores the raw RFC 5322 bytes of a POP3 message so its attachments can be extracted later
     /// without a second download — POP3 has no per-part fetch, so the bytes are the only way back to
-    /// the parts. Pass null to clear. Called only by <c>Pop3MailService</c>, and only after
+    /// the parts — and so Save can write the original as a .eml (#728). Pass null to clear. Called only by <c>Pop3MailService</c>, and only after
     /// <see cref="UpsertDetailAsync"/>; IMAP and Graph messages leave this null.
     /// </summary>
     Task StoreMimeBytesAsync(Guid accountId, string folderName, string messageId, byte[]? mimeBytes);
 
     /// <summary>
     /// Returns the bytes previously stored by <see cref="StoreMimeBytesAsync"/>, or null if none
-    /// were stored (IMAP/Graph messages, and POP3 messages with no attachments).
+    /// were stored (IMAP/Graph messages, and POP3 messages collected before 0.8.47 that had no
+    /// attachments — until then only messages with attachments kept their bytes).
     /// </summary>
     Task<byte[]?> LoadMimeBytesAsync(Guid accountId, string folderName, string messageId);
 
@@ -107,6 +108,22 @@ public interface ILocalStoreService
     /// never be offered again, so remembering it buys nothing.
     /// </summary>
     Task RemovePop3CollectedUidlsAsync(Guid accountId, IEnumerable<string> uidls);
+
+    // ── POP3 local folders (#794) ────────────────────────────────────────────────
+    // The folders a user made on a POP3 account. Only the store knows them: the server has no
+    // folders, and the Folder cache is rewritten from a listing that is itself built from these rows.
+
+    /// <summary>Every folder the user has made on this POP3 account.</summary>
+    Task<List<Pop3LocalFolder>> LoadPop3LocalFoldersAsync(Guid accountId);
+
+    /// <summary>Creates the folder, or replaces the row with the same id (rename, move).</summary>
+    Task SavePop3LocalFolderAsync(Guid accountId, Pop3LocalFolder folder);
+
+    /// <summary>
+    /// Forgets these folders and refiles every message in them to <paramref name="refileTo"/>, in
+    /// one transaction, so no message is left filed under a folder that no longer exists.
+    /// </summary>
+    Task DeletePop3LocalFoldersAsync(Guid accountId, IEnumerable<string> folderIds, string refileTo);
 
     /// <summary>
     /// Returns the highest message key stored for this folder, or "0" if none. For the IMAP
@@ -136,8 +153,92 @@ public interface ILocalStoreService
     Task<IReadOnlyList<(string Id, DateTimeOffset Date, bool IsRead)>> LoadFolderMessageStatesAsync(
         Guid accountId, string folderName);
 
-    /// <summary>Which of <paramref name="messageIds"/> already exist in the folder (bounded lookup).</summary>
-    Task<HashSet<string>> GetExistingMessageIdsAsync(Guid accountId, string folderName, IEnumerable<string> messageIds);
+    /// <summary>
+    /// The folder's cached messages that client rules have not yet run on, oldest first (#712). Every message
+    /// <see cref="UpsertSummariesAsync"/> adds starts out waiting, whichever path cached it; mail already cached
+    /// when this was introduced counts as done, so upgrading never runs rules over old mail.
+    /// </summary>
+    Task<List<MailMessageSummary>> LoadRulesPendingSummariesAsync(Guid accountId, string folderName);
+
+    /// <summary>Records that client rules have run on these messages, so no later pass runs them again.</summary>
+    Task MarkRulesAppliedAsync(Guid accountId, string folderName, IEnumerable<string> messageIds);
+
+    /// <summary>
+    /// Records every waiting message in the folder as done without running rules — for a folder rules don't act on,
+    /// an account whose rules don't run, or mail that must not be treated as new (a rebuild baseline).
+    /// </summary>
+    Task MarkFolderRulesAppliedAsync(Guid accountId, string folderName);
+
+    /// <summary>
+    /// Where arriving mail begins, for a folder whose rules have run before (#712): the highest numeric id and the newest
+    /// date client rules have settled there. Both null for a folder rules have never settled. A view that fetches a wider
+    /// window than the sync caches older mail for the first time, and this is what tells that mail apart from mail that
+    /// has just arrived. It never goes down: mail a rule has since moved out, taking its row with it, still counts.
+    /// </summary>
+    Task<(long? MaxNumericId, long? MaxDateTicks)> GetRulesSettledBoundaryAsync(Guid accountId, string folderName);
+
+    /// <summary>
+    /// Draws a folder's first arrival line, unless it already has one — two passes can draw it at once, and the first line
+    /// written stands (#712).
+    /// </summary>
+    Task EnsureRulesWatermarkAsync(Guid accountId, string folderName, long maxNumericId, long maxDateTicks);
+
+    /// <summary>
+    /// Whether any of the account's cached mail, in any folder, is recorded done with rules, leaving out ids that start
+    /// with <paramref name="exceptIdsStartingWith"/>. POP3 asks this, leaving out the mail it wrote itself (Sent, Drafts),
+    /// to tell whether the account has collected mail before — a first collection's backlog from new mail (#712).
+    /// </summary>
+    Task<bool> AccountHasRulesSettledMailAsync(Guid accountId, string exceptIdsStartingWith);
+
+    /// <summary>
+    /// Ids of summaries in the folder dated <paramref name="since"/> or later that have no
+    /// MessageDetail row, newest first, at most <paramref name="limit"/>. Drives the offline-bodies
+    /// pass (#637).
+    /// </summary>
+    Task<List<string>> GetMessageIdsMissingDetailAsync(Guid accountId, string folderName, DateTimeOffset since, int limit);
+
+    // ── One-time sender-address backfill (#803) ──────────────────────────────────
+
+    /// <summary>
+    /// Fills in from_email for every cached row that lacks it and whose address the database already holds: a
+    /// Graph row's "Name &lt;address&gt;" (split, so from_disp keeps the name alone, as #801 has Graph write it
+    /// now), a cached body's full sender, or, on a Graph row only, a display text that is itself a bare address.
+    /// Leaves the rest — IMAP rows with no cached body, whose display text can't be trusted to be an address — for
+    /// <see cref="GetMessageIdsMissingSenderEmailAsync"/>. Returns how many rows it filled. Safe to run again: it
+    /// only touches rows whose from_email is still empty.
+    /// </summary>
+    Task<int> BackfillSenderEmailsLocallyAsync(IReadOnlyCollection<Guid> graphAccountIds);
+
+    /// <summary>Ids of the account's rows with a sender but no from_email, grouped by folder, newest first.</summary>
+    Task<Dictionary<string, List<string>>> GetMessageIdsMissingSenderEmailAsync(Guid accountId);
+
+    /// <summary>
+    /// Sets from_email on rows that still lack it, where the row's Message-ID matches the one fetched with the
+    /// address or the row has none: after a server renumbers a folder, a stored id can name another message (review
+    /// of #806). Never overwrites an address already there. Returns how many rows it filled.
+    /// </summary>
+    Task<int> UpdateSenderEmailsBatchAsync(
+        Guid accountId, string folderName, IEnumerable<(string MessageId, string FromEmail, string InternetMessageId)> updates);
+
+    // ── One-time attachment-flag pass (#931) ─────────────────────────────────────
+
+    /// <summary>
+    /// Ids of the account's rows whose attachment flag has never been checked, grouped by folder, newest first:
+    /// IMAP rows cached before IMAP summaries carried the flag. Every row a summary writes is checked.
+    /// </summary>
+    Task<Dictionary<string, List<string>>> GetMessageIdsWithUncheckedAttachmentsAsync(Guid accountId)
+        => Task.FromResult(new Dictionary<string, List<string>>());
+
+    /// <summary>
+    /// Records <paramref name="checkedIds"/> as checked, and sets the attachment flag on each row in
+    /// <paramref name="withAttachments"/> whose Message-ID is the one given or which has none to compare: after a server
+    /// renumbers a folder, a stored id can name another message (as in the sender-address pass). A flag already set is
+    /// never cleared. Returns the ids it flagged.
+    /// </summary>
+    Task<IReadOnlyList<string>> UpdateAttachmentFlagsBatchAsync(
+        Guid accountId, string folderName, IEnumerable<string> checkedIds,
+        IReadOnlyDictionary<string, string> withAttachments)
+        => Task.FromResult<IReadOnlyList<string>>([]);
 
     /// <summary>
     /// Counts all message summaries stored for the given account.
@@ -204,11 +305,23 @@ public interface ILocalStoreService
     Task<List<CalendarEvent>> LoadCalendarEventsAsync();
 
     /// <summary>
-    /// Returns the distinct server calendars (one row per account + calendar) across all synced rows
-    /// (<c>is_graph = 1</c> with a non-empty <c>calendar_id</c>), for building the per-calendar
-    /// grandchild nodes under each account in the folder tree.
+    /// Returns every account's calendars, as the sync recorded them from the provider's own calendar
+    /// list — so a calendar with no events in it is still here, and each says whether it can be
+    /// written to. Feeds the per-calendar nodes in the folder tree and the editor's Calendar picker.
+    ///
+    /// <para>
+    /// An account the sync has not enumerated yet falls back to the distinct calendars its synced
+    /// rows are tagged with, all assumed writable — which is the whole list this used to return, and
+    /// keeps the folder tree populated on a profile upgraded between releases.
+    /// </para>
     /// </summary>
-    Task<IReadOnlyList<(Guid AccountId, string CalendarId, string CalendarName)>> LoadCalendarSourcesAsync();
+    Task<IReadOnlyList<CalendarSourceInfo>> LoadCalendarSourcesAsync();
+
+    /// <summary>Records one account's calendar list, as the provider reports it (replaces what was there).</summary>
+    Task ReplaceCalendarSourcesAsync(Guid accountId, IReadOnlyList<CalendarSourceInfo> sources);
+
+    /// <summary>Forgets an account's calendar list (calendar sync switched off, or the account removed).</summary>
+    Task DeleteCalendarSourcesAsync(Guid accountId);
 
     /// <summary>Updates only the response status for an event.</summary>
     Task UpdateCalendarResponseStatusAsync(string uid, Guid accountId, CalendarResponseStatus status);
@@ -246,4 +359,65 @@ public interface ILocalStoreService
 
     /// <summary>Persists the Graph delta cursor for an account+folder, replacing any existing value.</summary>
     Task SetDeltaTokenAsync(Guid accountId, string folderId, string deltaToken);
+
+    // ── Outbox (#637) ────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Writes or replaces one queued item: the row, the compose model as JSON (attachments stripped),
+    /// and every loaded attachment as its own blob row, in one transaction. Sets
+    /// <see cref="OutboxItem.HasAttachments"/> and <see cref="OutboxItem.UpdatedUtc"/> on the way.
+    /// </summary>
+    Task UpsertOutboxItemAsync(OutboxItem item, ComposeModel compose);
+
+    /// <summary>Every queued item across all accounts, newest first. Reads no JSON and no blobs.</summary>
+    Task<List<OutboxItem>> LoadOutboxItemsAsync();
+
+    Task<OutboxItem?> LoadOutboxItemAsync(string id);
+
+    /// <summary>The stored compose model with attachment bytes rehydrated and <see cref="ComposeModel.OutboxId"/> set; null when the row is gone.</summary>
+    Task<ComposeModel?> LoadOutboxComposeAsync(string id);
+
+    Task UpdateOutboxStateAsync(string id, OutboxState state, int attempts, string? lastError, DateTimeOffset? nextAttemptUtc);
+
+    /// <summary>Removes the row and its attachment blobs. A missing id is a no-op.</summary>
+    Task DeleteOutboxItemAsync(string id);
+
+    Task<int> CountOutboxItemsAsync();
+
+    // ── Full-text search (#717) ──────────────────────────────────────────────────
+
+    /// <summary>False when the SQLite build lacks FTS5 or the index could not be created; search then
+    /// matches only what the message list holds.</summary>
+    bool IsSearchIndexAvailable { get; }
+
+    /// <summary>Starts indexing pending messages in the background, now and after each write that adds work.</summary>
+    void StartBackgroundSearchIndexing();
+
+    /// <summary>Indexes up to <paramref name="maxRows"/> pending messages, newest first; returns how many.</summary>
+    Task<int> IndexPendingSearchAsync(int maxRows, System.Threading.CancellationToken ct = default);
+
+    /// <summary>
+    /// Cached messages matching an FTS5 expression, limited to the given folders when not null. Indexes one
+    /// batch of pending work first unless told not to. Throws for an expression FTS5 rejects.
+    /// </summary>
+    Task<List<SearchHit>> FindMessagesAsync(
+        string match,
+        IReadOnlyCollection<(Guid AccountId, string FolderName)>? folders,
+        bool indexPendingFirst = true,
+        System.Threading.CancellationToken ct = default);
+
+    /// <summary>
+    /// How many cached messages in the given folders are dated <paramref name="since"/> or later, and how many
+    /// of those have their full text — what the status bar reports about offline reading (#717).
+    /// </summary>
+    Task<(int Total, int Downloaded)> CountOfflineBodiesAsync(
+        IReadOnlyCollection<(Guid AccountId, string FolderName)> folders, DateTimeOffset since,
+        System.Threading.CancellationToken ct = default);
+
+    /// <summary>
+    /// Every cached message in the given accounts matching the query, newest first — a Search Results
+    /// folder. <c>account:</c> conditions are left to the caller, which narrows the account list instead.
+    /// </summary>
+    Task<List<MailMessageSummary>> SearchSummariesAsync(
+        MessageSearchQuery query, IReadOnlyCollection<Guid> accountIds, System.Threading.CancellationToken ct = default);
 }

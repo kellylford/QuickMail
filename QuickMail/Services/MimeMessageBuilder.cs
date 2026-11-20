@@ -1,5 +1,6 @@
 using System;
 using System.Buffers.Text;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -16,7 +17,7 @@ namespace QuickMail.Services;
 /// <see cref="AccountModel"/>, shared by <see cref="SmtpService"/> and
 /// <see cref="ImapMailService"/> (draft saving).
 /// </summary>
-public static class MimeMessageBuilder
+public static partial class MimeMessageBuilder
 {
     /// <summary>The User-Agent string for outgoing mail — one source of truth for every sender.</summary>
     internal static readonly string AppUserAgent = "QuickMail/" + AppVersion.Display;
@@ -36,6 +37,40 @@ public static class MimeMessageBuilder
         Base64.EncodeToUtf8(ms.GetBuffer().AsSpan(0, mimeLength), body, out _, out _);
         return body;
     }
+
+    /// <summary>
+    /// Gives <paramref name="compose"/> the Message-ID it will be sent with, unless it already has
+    /// one, and returns it. The send and the copy filed in Sent each build their own
+    /// <see cref="MimeMessage"/>; without a shared id each got a fresh one, so a server that files
+    /// its own copy of relayed mail ended up holding two messages with nothing to tie them (#811).
+    /// The right-hand side is the sender's domain rather than this computer's name, when that
+    /// domain is plain ASCII: MimeKit turns a punycode domain back into Unicode when the id is
+    /// set, which puts non-ASCII bytes in the header and an id the Sent search cannot match.
+    /// </summary>
+    public static string EnsureOutgoingMessageId(ComposeModel compose, AccountModel account)
+    {
+        if (string.IsNullOrEmpty(compose.OutgoingMessageId))
+            compose.OutgoingMessageId = NewMessageId(account);
+        return compose.OutgoingMessageId;
+    }
+
+    /// <summary>A fresh Message-ID on the sender's domain, or the fallback (see above).</summary>
+    private static string NewMessageId(AccountModel account)
+    {
+        var at = account.Username.LastIndexOf('@');
+        var domain = at >= 0 ? account.Username[(at + 1)..].Trim() : string.Empty;
+        return AsciiDomain().IsMatch(domain)
+                && !domain.Contains("xn--", StringComparison.OrdinalIgnoreCase)
+            ? MimeKit.Utils.MimeUtils.GenerateMessageId(domain)
+            : MimeKit.Utils.MimeUtils.GenerateMessageId(FallbackMessageIdDomain);
+    }
+
+    /// <summary>Right-hand side of an outgoing Message-ID when the sender's own domain will not do.</summary>
+    internal const string FallbackMessageIdDomain = "quickmail.invalid";
+
+    [System.Text.RegularExpressions.GeneratedRegex(
+        @"^[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)+$")]
+    private static partial System.Text.RegularExpressions.Regex AsciiDomain();
 
     /// <summary>
     /// Builds a complete MIME message from compose fields, including attachments.
@@ -60,8 +95,22 @@ public static class MimeMessageBuilder
         AddressParser.AddAddresses(message.Bcc, compose.Bcc);
         message.Subject = compose.Subject;
 
+        if (!string.IsNullOrEmpty(compose.OutgoingMessageId))
+            message.MessageId = compose.OutgoingMessageId;
+        if (compose.OutgoingDate is { } date)
+            message.Date = date;
+
+        // The id being replied to comes from the received message, and MimeKit 5 rejects a malformed
+        // one (two ids, bare whitespace) where 4.x tidied it. A reply without In-Reply-To still
+        // threads by subject; a reply that cannot be built cannot be sent or saved at all.
         if (!string.IsNullOrEmpty(compose.InReplyToMessageId))
-            message.InReplyTo = compose.InReplyToMessageId;
+        {
+            try { message.InReplyTo = compose.InReplyToMessageId; }
+            catch (ArgumentException ex)
+            {
+                LogService.Log("Reply: the original's Message-ID is malformed; sending without In-Reply-To", ex);
+            }
+        }
 
         // text/plain only (existing behavior), or multipart/alternative with a
         // text/html part when the message was composed in Markdown or HTML mode.
@@ -71,11 +120,34 @@ public static class MimeMessageBuilder
             var plainText = string.IsNullOrWhiteSpace(compose.Body)
                 ? HtmlStripper.ToPlainText(compose.HtmlBody)
                 : compose.Body;
+            // Pictures in the body travel with the HTML in multipart/related, marked inline,
+            // so the HTML's cid: references resolve and they are not listed as attachments.
+            // Only pictures the HTML still refers to are sent: one the user deleted from the
+            // body is gone from the message too.
+            MimeEntity htmlEntity = new TextPart("html") { Text = compose.HtmlBody };
+            var shown = InlineImages.ReferencedContentIds(compose.HtmlBody);
+            var inline = compose.InlineImages
+                .Where(i => i.IsLoaded && !string.IsNullOrEmpty(i.ContentId) && shown.Contains(i.ContentId))
+                .GroupBy(i => i.ContentId, StringComparer.OrdinalIgnoreCase)
+                .Select(g => g.First())
+                .ToList();
+            if (inline.Count > 0)
+            {
+                var related = new MultipartRelated { Root = htmlEntity };
+                foreach (var image in inline)
+                {
+                    var part = MimePartFor(image, ContentDisposition.Inline);
+                    part.ContentId = image.ContentId;
+                    related.Add(part);
+                }
+                htmlEntity = related;
+            }
+
             var alternative = new MultipartAlternative
             {
                 // Least-faithful first per RFC 2046 — clients pick the last part they support.
                 new TextPart("plain") { Text = plainText },
-                new TextPart("html")  { Text = compose.HtmlBody },
+                htmlEntity,
             };
             bodyEntity = alternative;
         }
@@ -90,19 +162,7 @@ public static class MimeMessageBuilder
             var multipart = new Multipart("mixed");
             multipart.Add(bodyEntity);
             foreach (var att in loadedAttachments)
-            {
-                var slash = att.ContentType.IndexOf('/');
-                var mediaType    = slash >= 0 ? att.ContentType[..slash] : "application";
-                var mediaSubtype = slash >= 0 ? att.ContentType[(slash + 1)..] : "octet-stream";
-                var mimePart = new MimePart(mediaType, mediaSubtype)
-                {
-                    Content                 = new MimeContent(new MemoryStream(att.Content!)),
-                    ContentDisposition      = new ContentDisposition(ContentDisposition.Attachment),
-                    ContentTransferEncoding = ContentEncoding.Base64,
-                    FileName                = att.FileName,
-                };
-                multipart.Add(mimePart);
-            }
+                multipart.Add(AttachmentEntityFor(att));
             message.Body = multipart;
         }
         else
@@ -111,6 +171,64 @@ public static class MimeMessageBuilder
         }
 
         return message;
+    }
+
+    /// <summary>
+    /// The MIME entity for one attachment. An attached email (message/rfc822: a pasted copied message, #929,
+    /// or a .eml file) is embedded as the message it is, not as base64: RFC 2046 allows a message/rfc822
+    /// part only 7bit, 8bit or binary encoding, and mail programs that meet a base64 one show an opaque
+    /// file instead of an email the recipient can open. Content that does not parse as a message is sent
+    /// as an ordinary file, which every program can at least save.
+    /// </summary>
+    internal static MimeEntity AttachmentEntityFor(AttachmentModel att)
+    {
+        if (string.Equals(att.ContentType, "message/rfc822", StringComparison.OrdinalIgnoreCase) && att.Content is { Length: > 0 })
+        {
+            try
+            {
+                using var stream = new MemoryStream(att.Content, writable: false);
+                var embedded = MimeMessage.Load(stream);
+                // The parser is lenient: bytes that are not an email at all come back as a message with no
+                // headers rather than an exception.
+                if (embedded.Headers.Count == 0) throw new FormatException("No message headers.");
+                return new MessagePart
+                {
+                    Message            = embedded,
+                    ContentDisposition = new ContentDisposition(ContentDisposition.Attachment) { FileName = att.FileName },
+                };
+            }
+            catch (FormatException ex)
+            {
+                LogService.Log($"Attachment {att.FileName} is not a readable email; sending it as a file", ex);
+                var part = MimePartFor(att, ContentDisposition.Attachment);
+                part.ContentType.MediaType    = "application";
+                part.ContentType.MediaSubtype = "octet-stream";
+                return part;
+            }
+        }
+        return MimePartFor(att, ContentDisposition.Attachment);
+    }
+
+    private static MimePart MimePartFor(AttachmentModel att, string disposition)
+    {
+        // The type comes from received mail or Graph and may carry parameters ("application/pdf;
+        // name=x.pdf"), so parse it rather than split it; MimeKit 5 rejects a type or subtype that is not
+        // a valid MIME token where 4.x stored it as given. An unusable type must not fail the whole send
+        // or draft: send the file as a generic one.
+        MimePart part;
+        if (ContentType.TryParse(att.ContentType, out var parsed))
+            part = new MimePart(parsed.MediaType, parsed.MediaSubtype);
+        else
+        {
+            if (att.ContentType.Contains('/'))
+                LogService.Log($"Attachment {att.FileName} has an unusable content type '{att.ContentType}'; sending it as application/octet-stream");
+            part = new MimePart("application", "octet-stream");
+        }
+        part.Content                 = new MimeContent(new MemoryStream(att.Content!));
+        part.ContentDisposition      = new ContentDisposition(disposition);
+        part.ContentTransferEncoding = ContentEncoding.Base64;
+        part.FileName                = att.FileName;
+        return part;
     }
 
     /// <summary>
@@ -140,6 +258,41 @@ public static class MimeMessageBuilder
         calendarPart.SetText(Encoding.UTF8, icsReplyContent);
 
         message.Body = calendarPart;
+        return message;
+    }
+
+    /// <summary>
+    /// Builds a meeting invitation, update or cancellation (iMIP, RFC 6047) from the organizer's
+    /// account to <paramref name="recipients"/> — what QuickMail sends when the calendar server does
+    /// not send invitations itself (issue #866). <c>multipart/alternative</c> with the readable
+    /// summary first and the <c>text/calendar</c> part last, which is the form mail programs show
+    /// as an invitation with Accept / Decline; the calendar part names its
+    /// <paramref name="method"/> (REQUEST or CANCEL) on its Content-Type, as RFC 6047 requires.
+    /// </summary>
+    public static MimeMessage BuildInvitation(AccountModel account, string icsContent, string method,
+        string subject, string plainText, IReadOnlyList<EventAttendee> recipients)
+    {
+        if (string.IsNullOrWhiteSpace(icsContent))
+            throw new ArgumentException("Calendar content is required.", nameof(icsContent));
+        if (recipients.Count == 0)
+            throw new ArgumentException("An invitation needs at least one recipient.", nameof(recipients));
+
+        var message = new MimeMessage();
+        message.From.Add(new MailboxAddress(account.SenderDisplayName, account.Username));
+        foreach (var r in recipients)
+            message.To.Add(new MailboxAddress(string.IsNullOrWhiteSpace(r.Name) ? null : r.Name, r.Email));
+        message.Subject = subject;
+        message.MessageId = NewMessageId(account);
+        message.Headers.Add(HeaderId.UserAgent, AppUserAgent);
+
+        var text = new TextPart("plain");
+        text.SetText(Encoding.UTF8, plainText);
+
+        var calendarPart = new TextPart("calendar") { ContentTransferEncoding = ContentEncoding.Base64 };
+        calendarPart.ContentType.Parameters.Add("method", method.ToUpperInvariant());
+        calendarPart.SetText(Encoding.UTF8, icsContent);
+
+        message.Body = new MultipartAlternative { text, calendarPart };
         return message;
     }
 }

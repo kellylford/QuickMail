@@ -59,25 +59,16 @@ public enum FeatureFlag
     GoogleAuth,
 
     /// <summary>
-    /// Shows server-side (Exchange/Graph) Inbox rules in the Rules Manager for Microsoft 365
-    /// accounts (#333). Default: true — server-rule list/create/edit/delete/reorder and the unified
-    /// per-account rules window are complete. Rules the API can't fully round-trip are surfaced
-    /// read-only (see GraphServerRuleService.ListAsync). Turn the surface off again with
-    /// ServerRules=false under [features] in config.ini, or --no-feature ServerRules at launch.
-    /// </summary>
-    ServerRules,
-
-    /// <summary>
     /// Enables shared mailboxes (#31): the "Add shared…" button in the Account Manager, which is the
     /// sole path that can create a shared <see cref="QuickMail.Models.AccountModel"/> (IsShared). This
     /// gates the whole feature, because everything downstream — the shared tree node, aggregate
     /// exclusion, the connect-skip, cascade removal — is data-driven off a shared account that only the
     /// button can produce; with no shared account, every IsShared branch is a no-op.
     ///
-    /// Default: false while the feature is built across multiple PRs (PR 1 is the linked-account model
-    /// and manual add only — no backend access yet, so a shared node has no folders). Turn it on to
-    /// test with SharedMailboxes=true under [features] in config.ini, or --feature SharedMailboxes at
-    /// launch. Flips to true by default once the feature is complete.
+    /// Default: true as of 0.8.42 — the feature is complete across its PRs (linked-account model,
+    /// reading and send-as, per-account notification opt-in, and parent-account consent). Set
+    /// SharedMailboxes=false under [features] in config.ini, or --no-feature SharedMailboxes at launch,
+    /// to hide it again.
     /// </summary>
     SharedMailboxes,
 

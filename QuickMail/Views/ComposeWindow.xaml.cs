@@ -21,39 +21,7 @@ using QuickMail.ViewModels;
 
 namespace QuickMail.Views;
 
-/// <summary>
-/// A single item in the autocomplete suggestion list. Wraps either a
-/// <see cref="ContactModel"/> (one address) or a <see cref="GroupModel"/>
-/// (expands to all member addresses on accept).
-/// </summary>
-internal sealed class AddressSuggestion
-{
-    public ContactModel? Contact { get; }
-    public GroupModel?   Group   { get; }
-    public bool IsGroup => Group is not null;
-
-    /// <summary>Bold first line shown in the popup row.</summary>
-    public string PrimaryText => IsGroup
-        ? Group!.Name
-        : string.IsNullOrWhiteSpace(Contact!.DisplayName) ? Contact.EmailAddress : Contact.DisplayName;
-
-    /// <summary>Dimmed second line shown below the primary text.</summary>
-    public string SecondaryText => IsGroup
-        ? $"{Group!.ResolvedMemberCount} member{(Group!.ResolvedMemberCount == 1 ? "" : "s")} — group"
-        : Contact!.EmailAddress;
-
-    /// <summary>Full accessible name read by the screen reader for the list item.</summary>
-    public string Display => IsGroup
-        ? $"{Group!.Name}, group, {Group!.ResolvedMemberCount} member{(Group!.ResolvedMemberCount == 1 ? "" : "s")}"
-        : string.IsNullOrWhiteSpace(Contact!.DisplayName)
-            ? Contact.EmailAddress
-            : $"{Contact.DisplayName} {Contact.EmailAddress}";
-
-    public AddressSuggestion(ContactModel c) { Contact = c; }
-    public AddressSuggestion(GroupModel g)   { Group   = g; }
-}
-
-[SuppressMessage("Design", "CA1001", Justification = "_autocompleteCts is cancelled and disposed in OnClosed; WPF never calls Dispose on a Window, so implementing IDisposable would be dead code.")]
+[SuppressMessage("Design", "CA1001", Justification = "_suggestions is disposed in OnClosed; WPF never calls Dispose on a Window, so implementing IDisposable would be dead code.")]
 public partial class ComposeWindow : Window
 {
     private readonly ComposeViewModel   _vm;
@@ -63,8 +31,8 @@ public partial class ComposeWindow : Window
     private readonly ICustomDictionaryService? _customDictionary;
     private readonly IThemeService? _themeService;
     private readonly CommandRegistry    _registry = new();
-    private TokenizedAddressBox? _activeAddressControl;
-    private CancellationTokenSource? _autocompleteCts;
+    // Address book suggestions for To, Cc and Bcc — shared with the appointment editor (#869).
+    private AddressSuggestionController? _suggestions;
     // Suppresses the chip-list announcement on the next focus-arrived event.
     // Set before moving focus into the autocomplete popup so the return trip
     // doesn't re-announce addresses the user is actively editing.
@@ -76,6 +44,7 @@ public partial class ComposeWindow : Window
     // Track the current spelling error so Alt+1/2/3 can replace it with a suggestion.
     private int _currentSpellingWordStart = -1;
     private int _currentSpellingWordEnd = -1;
+    private string? _currentSpellingWord;
     private List<string>? _currentSpellingSuggestions;
 
     // Suppress spelling announcements during programmatic text changes (e.g. Alt+1 replacement).
@@ -109,12 +78,23 @@ public partial class ComposeWindow : Window
     // once, from either the deferred pre-warm or a spell-check entry point.
     private bool _spellCheckEnabled;
 
-    public ComposeWindow(ComposeViewModel vm, IContactService contactService, ITemplateService templateService, IConfigService configService, ICustomDictionaryService? customDictionary = null, IThemeService? themeService = null)
+    // "Check spelling as I type" as it was when this window opened (#883). Read once so the
+    // setting applies to messages opened afterwards, as Settings says: turning it back on must
+    // not switch the speller on in a message the user opened with it off.
+    private readonly bool _checkSpellingAsYouType;
+    private readonly IRecipientHistory? _recipientHistory;
+
+    public ComposeWindow(ComposeViewModel vm, IContactService contactService, ITemplateService templateService, IConfigService configService, ICustomDictionaryService? customDictionary = null, IThemeService? themeService = null, IRecipientHistory? recipientHistory = null)
     {
         _vm = vm;
         _contactService = contactService;
         _templateService = templateService;
         _configService = configService;
+        _recipientHistory = recipientHistory;
+        vm.ConfirmBeforeSendProvider = () => configService.Load().ConfirmBeforeSend;
+        vm.RecipientHistory = recipientHistory;
+        vm.RememberRecipientsProvider = () => configService.Load().RememberRecipients;
+        _checkSpellingAsYouType = configService.Load().CheckSpellingAsYouType;
         _customDictionary = customDictionary;
         _themeService = themeService;
         InitializeComponent();
@@ -136,6 +116,8 @@ public partial class ComposeWindow : Window
 
         // ── Compose command palette ──────────────────────────────────────────────
         RegisterComposeCommands();
+        // After registering, so the menus and toolbar are given their shortcuts at once (#849).
+        CommandShortcut.SetRegistry(this, _registry);
 
         vm.PropertyChanged += (_, e) =>
         {
@@ -157,6 +139,13 @@ public partial class ComposeWindow : Window
             MessageBox.Show(this, message, title, MessageBoxButton.YesNo, MessageBoxImage.Warning)
             == MessageBoxResult.Yes;
 
+        // YesNo alone ignores Escape in a native message box. Cancel makes Escape leave
+        // the compose intact, while No remains the initial choice for accidental key presses.
+        vm.SendConfirmationRequested = (message, title) =>
+            MessageBox.Show(this, message, title, MessageBoxButton.YesNoCancel, MessageBoxImage.Question,
+                MessageBoxResult.No)
+            == MessageBoxResult.Yes;
+
         // Win32 file dialogs are View-layer (CLAUDE.md MVVM rules); the VM requests
         // paths and the View owns the dialog.
         vm.OpenFilePathsRequested = () =>
@@ -175,10 +164,13 @@ public partial class ComposeWindow : Window
             return Task.FromResult<MessageTemplate?>(null);
         };
 
+        _suggestions = new AddressSuggestionController(this, _contactService, AutoCompletePopup, SuggestionList,
+            _recipientHistory, () => SuggestionSources.From(_configService.Load()));
+        // The return trip from the list is not a fresh arrival in the field: don't read its chips again.
+        _suggestions.EnteringSuggestions += () => _suppressNextFocusAnnouncement = true;
         foreach (var box in new[] { ToBox, CcBox, BccBox })
         {
-            box.InputTextChanged             += AddressBox_InputTextChanged;
-            box.PreviewKeyDown               += AddressBox_PreviewKeyDown;
+            _suggestions.Attach(new TokenizedAddressEntry(box));
             box.IsKeyboardFocusWithinChanged += AddressBox_IsKeyboardFocusWithinChanged;
             box.AddToContactsRequested       =  AddChipToContacts;
         }
@@ -186,13 +178,6 @@ public partial class ComposeWindow : Window
         // Commit any typing left in address boxes before the VM's Send check runs.
         SendButton.Click += (_, _) => CommitAllAddressInputs();
 
-        // When the autocomplete popup closes for any reason, restore the suppress flag
-        // so the address box will commit normally on the next LostKeyboardFocus.
-        AutoCompletePopup.Closed += (_, _) =>
-        {
-            if (_activeAddressControl != null)
-                _activeAddressControl.SuppressLostFocusCommit = false;
-        };
 
         // Reply / Reply-All: To is already filled in, so land in the body at the top.
         // New compose / Forward: To is empty, so land in the To field.
@@ -206,6 +191,10 @@ public partial class ComposeWindow : Window
             // Whatever account the window opened on is already the baseline, so leaving
             // the From combo without changing anything stays silent.
             _announcedSenderAccountId = _vm.SenderAccount?.Id;
+            // A reply or forward quoting pictures fetches them when its HTML reaches the editor
+            // (the view model starts that); they replace their placeholders as they arrive (#729).
+            _vm.InlineImagesArrived += OnInlineImagesArrived;
+            Closed += (_, _) => _vm.InlineImagesArrived -= OnInlineImagesArrived;
             ApplyDefaultComposeMode();
             if (string.IsNullOrWhiteSpace(_vm.To))
             {
@@ -226,6 +215,8 @@ public partial class ComposeWindow : Window
         BodyBox.SelectionChanged += BodyBox_SelectionChanged;
         RichBodyBox.SelectionChanged += RichBodyBox_SelectionChanged;
         RichBodyBox.PreviewKeyDown += RichBodyBox_PreviewKeyDown;
+        DataObject.AddPastingHandler(RichBodyBox, RichBodyBox_Pasting);
+        DataObject.AddCopyingHandler(RichBodyBox, RichBodyBox_Copying);
         Closing += OnWindowClosing;
         ConfirmSaveOnClose = () =>
         {
@@ -246,6 +237,14 @@ public partial class ComposeWindow : Window
         // only; a failure is announced once (Status category) by the VM event.
         vm.AutoSaveFailed += message =>
             AccessibilityHelper.Announce(this, message, category: AnnouncementCategory.Status);
+        // The "kept on this computer" notice is background news: held until the user pauses, so
+        // it does not cut into what the screen reader is reading mid-edit (#901).
+        vm.AutoSaveNotice += QueueAutoSaveNotice;
+        Closed += (_, _) =>
+        {
+            _autoSaveNoticeTimer?.Stop();
+            _autoSaveNotice.Clear();
+        };
         var cfg = _configService.Load();
         if (cfg.AutoSaveDrafts)
         {
@@ -260,6 +259,41 @@ public partial class ComposeWindow : Window
     }
 
     private DispatcherTimer? _autoSaveTimer;
+
+    // #901: the auto-save notice waits for this long with no key or caret move in the window.
+    private readonly QuietTimeAnnouncement _autoSaveNotice = new(TimeSpan.FromSeconds(2));
+    private DispatcherTimer? _autoSaveNoticeTimer;
+
+    /// <summary>The clock the auto-save notice's pause is measured by; tests replace it.</summary>
+    internal Func<DateTime> NoticeClock { get; set; } = () => DateTime.UtcNow;
+
+    /// <summary>Holds the auto-save notice until the user pauses, then says it (Status category).</summary>
+    internal void QueueAutoSaveNotice(string message)
+    {
+        _autoSaveNotice.Queue(message, NoticeClock());
+        if (_autoSaveNoticeTimer == null)
+        {
+            _autoSaveNoticeTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
+            _autoSaveNoticeTimer.Tick += (_, _) => FlushAutoSaveNoticeIfQuiet();
+        }
+        _autoSaveNoticeTimer.Start();
+    }
+
+    /// <summary>A key or caret move: a held notice waits for the next pause.</summary>
+    private void NoteEditingActivity()
+    {
+        if (_autoSaveNotice.IsPending) _autoSaveNotice.NoteActivity(NoticeClock());
+    }
+
+    /// <summary>Says the held notice if the user has paused long enough; the timer's tick.</summary>
+    internal void FlushAutoSaveNoticeIfQuiet()
+    {
+        var text = _autoSaveNotice.TakeIfQuiet(NoticeClock());
+        if (text == null) return;
+        _autoSaveNoticeTimer?.Stop();
+        AccessibilityHelper.Announce(this, text, category: AnnouncementCategory.Status);
+    }
+
     private MarkdownPreviewWindow? _previewWindow;
 
     /// <summary>
@@ -270,49 +304,6 @@ public partial class ComposeWindow : Window
     internal Func<Task<bool?>>? ConfirmSaveOnClose { get; set; }
 
     // ── Autocomplete ─────────────────────────────────────────────────────────
-
-    private async void AddressBox_InputTextChanged(object? sender, TextChangedEventArgs e)
-    {
-        _activeAddressControl = (TokenizedAddressBox)sender!;
-        var searchToken = _activeAddressControl.CurrentInputText.Trim();
-        if (searchToken.Length < 1) { AutoCompletePopup.IsOpen = false; return; }
-
-        // Cancel and dispose the superseded CTS (its token was already captured by the
-        // in-flight search, which unwinds via OperationCanceledException).
-        var previous = _autocompleteCts;
-        _autocompleteCts = new CancellationTokenSource();
-        try { previous?.Cancel(); previous?.Dispose(); } catch { /* best effort */ }
-
-        try
-        {
-            var ct = _autocompleteCts.Token;
-            // Run both searches concurrently (both are cache-backed so fast).
-            var contactTask = _contactService.SearchContactsAsync(searchToken, ct);
-            var groupTask   = _contactService.SearchGroupsAsync(searchToken, ct);
-            await Task.WhenAll(contactTask, groupTask);
-
-            // Groups appear first: picking a group is more efficient than picking
-            // many individuals. Empty groups are already excluded by SearchGroupsAsync.
-            var combined = groupTask.Result.Select(g => new AddressSuggestion(g))
-                .Concat(contactTask.Result.Select(c => new AddressSuggestion(c)))
-                .ToList();
-
-            if (combined.Count == 0) { AutoCompletePopup.IsOpen = false; return; }
-
-            SuggestionList.ItemsSource        = combined;
-            AutoCompletePopup.PlacementTarget = _activeAddressControl;
-            AutoCompletePopup.Placement       = PlacementMode.Bottom;
-            AutoCompletePopup.IsOpen          = true;
-
-            AccessibilityHelper.Announce(this,
-                combined.Count == 1 ? "1 suggestion" : $"{combined.Count} suggestions",
-                category: AnnouncementCategory.Result);
-        }
-        catch (OperationCanceledException)
-        {
-            // Superseded by a newer keystroke
-        }
-    }
 
     protected override void OnSourceInitialized(EventArgs e)
     {
@@ -358,31 +349,6 @@ public partial class ComposeWindow : Window
         return IntPtr.Zero;
     }
 
-    private void AddressBox_PreviewKeyDown(object sender, KeyEventArgs e)
-    {
-        if (!AutoCompletePopup.IsOpen) return;
-        if (e.Key == Key.Down)
-        {
-            // Suppress the LostKeyboardFocus commit before moving focus into the popup.
-            // The popup lives in a separate HwndSource so IsKeyboardFocusWithin on the
-            // address box becomes false the moment SuggestionList gets focus, which
-            // would otherwise cause CommitPendingInput to run on the partial input.
-            ((TokenizedAddressBox)sender).SuppressLostFocusCommit = true;
-            // Also suppress the chip-list announcement for the return trip — the user
-            // is actively editing this field and doesn't need it read back to them.
-            _suppressNextFocusAnnouncement = true;
-            SuggestionList.Focus();
-            SuggestionList.SelectedIndex = 0;
-            (SuggestionList.ItemContainerGenerator.ContainerFromIndex(0) as ListBoxItem)?.Focus();
-            e.Handled = true;
-        }
-        else if (e.Key == Key.Escape)
-        {
-            AutoCompletePopup.IsOpen = false;
-            e.Handled = true;
-        }
-    }
-
     private void AddressBox_IsKeyboardFocusWithinChanged(object sender, DependencyPropertyChangedEventArgs e)
     {
         if ((bool)e.NewValue)
@@ -403,15 +369,8 @@ public partial class ComposeWindow : Window
                 }
             }
             _suppressNextFocusAnnouncement = false;
-            return;
         }
-
-        // Focus left — close the autocomplete popup unless it's the popup that took focus.
-        Dispatcher.InvokeAsync(() =>
-        {
-            if (!SuggestionList.IsKeyboardFocusWithin)
-                AutoCompletePopup.IsOpen = false;
-        }, DispatcherPriority.Background);
+        // Focus leaving the field closes the suggestion list: AddressSuggestionController.
     }
 
     /// <summary>
@@ -454,90 +413,6 @@ public partial class ComposeWindow : Window
         _announcedSenderAccountId = account.Id;
         AccessibilityHelper.Announce(this,
             $"{account.AccountLabel} used as From address",
-            category: AnnouncementCategory.Result);
-    }
-
-    internal void SuggestionList_PreviewKeyDown(object sender, KeyEventArgs e)
-    {
-        if (e.Key == Key.Enter || e.Key == Key.Tab)
-        {
-            // Mark handled immediately so the Enter key does not reach the IsDefault
-            // Send button.  AcceptSuggestion is deferred so focus does not transition
-            // from the popup's HwndSource to the main window while the key event is
-            // still routing — that mid-event transition is what triggers the default
-            // button.
-            e.Handled = true;
-            if (SuggestionList.SelectedItem is AddressSuggestion s)
-                Dispatcher.InvokeAsync(() => AcceptSuggestion(s), DispatcherPriority.Input);
-        }
-        else if (e.Key == Key.Escape)
-        {
-            AutoCompletePopup.IsOpen = false;
-            _activeAddressControl?.FocusInput();
-            e.Handled = true;
-        }
-        else if (e.Key == Key.Up && SuggestionList.SelectedIndex <= 0)
-        {
-            AutoCompletePopup.IsOpen = false;
-            _activeAddressControl?.FocusInput();
-            e.Handled = true;
-        }
-    }
-
-    internal void SuggestionList_MouseLeftButtonUp(object sender, System.Windows.Input.MouseButtonEventArgs e)
-    {
-        if (SuggestionList.SelectedItem is AddressSuggestion s) AcceptSuggestion(s);
-    }
-
-    private void AcceptSuggestion(AddressSuggestion suggestion)
-    {
-        if (_activeAddressControl == null) return;
-        if (suggestion.IsGroup)
-            AcceptGroupSuggestion(suggestion.Group!);
-        else
-            AcceptContactSuggestion(suggestion.Contact!);
-        AutoCompletePopup.IsOpen = false;
-    }
-
-    private void AcceptContactSuggestion(ContactModel contact)
-    {
-        _activeAddressControl!.AcceptSuggestion(contact.DisplayName ?? string.Empty, contact.EmailAddress);
-    }
-
-    /// <summary>
-    /// Expands a group suggestion into individual address chips — one per resolved
-    /// member. The input text is cleared on the first chip (via AcceptSuggestion on
-    /// TokenizedAddressBox) and subsequent members are added via AddAddress. Async
-    /// because loading the contact list is cache-backed but needs to be awaited.
-    /// </summary>
-    private async void AcceptGroupSuggestion(GroupModel group)
-    {
-        // Capture the target box before any await so it cannot change out from under us.
-        var targetBox = _activeAddressControl;
-        if (targetBox == null) return;
-
-        var allContacts = await _contactService.LoadAllContactsAsync();
-        var byId = allContacts.ToDictionary(c => c.Id);
-        var members = group.MemberContactIds
-            .Where(id => byId.ContainsKey(id))
-            .Select(id => byId[id])
-            .OrderByDescending(c => c.LastUsedTicks)
-            .ThenBy(c => c.DisplayName, StringComparer.OrdinalIgnoreCase)
-            .ToList();
-
-        if (members.Count == 0) return;
-
-        // First member clears the partial input text; remaining just add chips.
-        targetBox.AcceptSuggestion(members[0].DisplayName ?? string.Empty, members[0].EmailAddress);
-        for (int i = 1; i < members.Count; i++)
-            targetBox.AddAddress(members[i].DisplayName ?? string.Empty, members[i].EmailAddress);
-
-        _ = _contactService.TouchGroupAsync(group.Id);
-
-        AccessibilityHelper.Announce(this,
-            members.Count == 1
-                ? $"Inserted 1 address from group '{group.Name}'"
-                : $"Inserted {members.Count} addresses from group '{group.Name}'",
             category: AnnouncementCategory.Result);
     }
 
@@ -659,10 +534,10 @@ public partial class ComposeWindow : Window
         // dialog silently, but close paths that bypass it must not leave the
         // owned dialog to fire its completion UI against this dead window.
         CloseSpellCheckDialogSilently();
-        // Cancel before Dispose so a still-running autocomplete search unwinds via
-        // OperationCanceledException rather than ObjectDisposedException.
-        try { _autocompleteCts?.Cancel(); _autocompleteCts?.Dispose(); } catch { /* best effort */ }
-        _autocompleteCts = null;
+        _pendingImages.Clear();
+        _imageDialog?.Close();
+        // Cancels a still-running address search, so it unwinds via OperationCanceledException.
+        _suggestions?.Dispose();
         _vm.Dispose();
         base.OnClosed(e);
     }
@@ -696,7 +571,10 @@ public partial class ComposeWindow : Window
 
         // decision == true: save the draft first
         await _vm.SaveDraftCommand.ExecuteAsync(null);
-        if (_vm.StatusText.Contains("failed", StringComparison.OrdinalIgnoreCase))
+        // Only when neither the server nor the local Outbox took the draft does the window stay open
+        // (--online mode, or SQLite itself is broken). Deciding this by string-matching "failed" in
+        // the status text missed "No Drafts folder found" and discarded the message (#637).
+        if (_vm.LastSaveOutcome is not (DraftSaveOutcome.SavedToServer or DraftSaveOutcome.SavedLocally))
             return;
 
         Closing -= OnWindowClosing;
@@ -755,23 +633,12 @@ public partial class ComposeWindow : Window
         e.Handled = true;
     }
 
+    // Files dropped on the message body are handled by Editor_PreviewDrop (#729); a handled
+    // preview event never reaches this one.
     private async void Window_Drop(object sender, DragEventArgs e)
     {
         if (e.Data.GetData(DataFormats.FileDrop) is string[] files)
-        {
-            var validFiles = files.Where(f => f != null).ToList();
-            if (validFiles.Count > 0)
-            {
-                int before = _vm.Attachments.Count;
-                foreach (var f in validFiles)
-                    await _vm.AddAttachmentFromPathAsync(f);
-                int added = _vm.Attachments.Count - before;
-                if (added > 0)
-                    AccessibilityHelper.Announce(this,
-                        added == 1 ? "1 file attached" : $"{added} files attached",
-                        category: AnnouncementCategory.Result);
-            }
-        }
+            await AttachFilesAsync(files.Where(f => f != null).ToList());
     }
 
     // Alt+U → Subject field; Alt+M → From combo; Alt+Y → Body; Ctrl+V with files → add attachments; Escape → cancel.
@@ -779,6 +646,8 @@ public partial class ComposeWindow : Window
     // Ctrl+Enter → Send message (secondary shortcut alongside Alt+S).
     private async void Window_PreviewKeyDown(object sender, KeyEventArgs e)
     {
+        NoteEditingActivity();
+
         // Ctrl+Shift+P: open the command palette
         if (e.Key == Key.P && Keyboard.Modifiers == (ModifierKeys.Control | ModifierKeys.Shift))
         {
@@ -791,7 +660,8 @@ public partial class ComposeWindow : Window
         if (e.Key == Key.Return && Keyboard.Modifiers == ModifierKeys.Control)
         {
             CommitAllAddressInputs();
-            _vm.SendCommand.Execute(null);
+            if (_vm.SendCommand.CanExecute(null))
+                _vm.SendCommand.Execute(null);
             e.Handled = true;
             return;
         }
@@ -800,17 +670,19 @@ public partial class ComposeWindow : Window
         if (e.Key == Key.V && Keyboard.Modifiers == ModifierKeys.Control && Clipboard.ContainsFileDropList())
         {
             var files = Clipboard.GetFileDropList().Cast<string>().Where(f => f != null).ToList();
-            if (files.Count > 0)
-            {
-                int before = _vm.Attachments.Count;
-                foreach (string f in files)
-                    await _vm.AddAttachmentFromPathAsync(f);
-                int added = _vm.Attachments.Count - before;
-                if (added > 0)
-                    AccessibilityHelper.Announce(this,
-                        added == 1 ? "1 file attached" : $"{added} files attached",
-                        category: AnnouncementCategory.Result);
-            }
+            e.Handled = true;
+            // Pasted into the body of a rich message, pictures go in the body (#729); anything
+            // else, and every file pasted anywhere else, is attached as before.
+            if (BodyBox.IsKeyboardFocusWithin || RichBodyBox.IsKeyboardFocusWithin)
+                await TakeFilesIntoBodyAsync(files);
+            else
+                await AttachFilesAsync(files);
+            return;
+        }
+
+        // Ctrl+V with a picture alone on the clipboard, in the body: describe it and put it in.
+        if (e.Key == Key.V && Keyboard.Modifiers == ModifierKeys.Control && TryPastePicture())
+        {
             e.Handled = true;
             return;
         }
@@ -824,6 +696,7 @@ public partial class ComposeWindow : Window
             if (Keyboard.FocusedElement is MenuItem
                 || FromCombo.IsDropDownOpen
                 || ModeSelector.IsDropDownOpen
+                || ParagraphStyleCombo.IsDropDownOpen
                 || AutoCompletePopup.IsOpen
                 || _previewWindow != null)
             {
@@ -897,6 +770,7 @@ public partial class ComposeWindow : Window
     /// </summary>
     private void BodyBox_SelectionChanged(object sender, RoutedEventArgs e)
     {
+        NoteEditingActivity();
         if (_suppressSpellingAnnouncement) return;
         if (_caretMovedByTyping) return;
         if (!_configService.Load().AnnounceSpellingWhileNavigating) return;
@@ -905,24 +779,30 @@ public partial class ComposeWindow : Window
 
     private void RichBodyBox_SelectionChanged(object sender, RoutedEventArgs e)
     {
+        NoteEditingActivity();
+        SyncParagraphStyleCombo();
         if (_suppressFormattingAnnouncement) return;
         if (_vm.CurrentMode != ComposeMode.Html) return;
 
         var config = _configService.Load();
+        AnnounceBlockTypeIfChanged(config);
 
-        if (config.AnnounceFormattingWhileNavigating)
-        {
-            var paragraph = RichBodyBox.Selection.Start.Paragraph;
-            var blockType = BlockTypeLabel(paragraph);
-            if (blockType != _lastAnnouncedBlockType)
-            {
-                _lastAnnouncedBlockType = blockType;
-                AccessibilityHelper.Announce(this, blockType, category: AnnouncementCategory.Result);
-            }
-        }
-
-        if (!_caretMovedByTyping && config.AnnounceSpellingWhileNavigating)
+        if (!_suppressSpellingAnnouncement && !_caretMovedByTyping && config.AnnounceSpellingWhileNavigating)
             AnnounceSpellingAtCurrentPosition();
+    }
+
+    /// <summary>
+    /// Says the kind of block the caret is in ("Heading 2", "Quote") when it differs
+    /// from the last one said — only with the "announce formatting while navigating"
+    /// setting on.
+    /// </summary>
+    private void AnnounceBlockTypeIfChanged(ConfigModel config)
+    {
+        if (!config.AnnounceFormattingWhileNavigating) return;
+        var blockType = BlockTypeLabel(RichBodyBox.Selection.Start.Paragraph);
+        if (blockType == _lastAnnouncedBlockType) return;
+        _lastAnnouncedBlockType = blockType;
+        AccessibilityHelper.Announce(this, blockType, category: AnnouncementCategory.Result);
     }
 
     /// <summary>
@@ -938,9 +818,15 @@ public partial class ComposeWindow : Window
     /// Background priority moves the activation off the construction path to a point
     /// where the dispatcher is already pumping normally, so it no longer blocks the
     /// window from opening.
+    ///
+    /// Skipped when "Check spelling as I type" is off (<see cref="ConfigModel.CheckSpellingAsYouType"/>,
+    /// #883): WPF's background check of a long pasted text with many unknown words blocks
+    /// the window for seconds (dotnet/wpf#6106). The spell checker is then turned on only by
+    /// the commands that ask for it, through <see cref="EnsureSpellCheckEnabled"/>.
     /// </summary>
     private void EnableSpellCheckDeferred()
     {
+        if (!_checkSpellingAsYouType) return;
         Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() =>
         {
             // The window may have closed before this queued op ran; nothing to enable.
@@ -976,6 +862,9 @@ public partial class ComposeWindow : Window
     /// </summary>
     private void RegisterCustomDictionary()
     {
+        // With the speller still off ("Check spelling as I type" off, #883) there is nothing to
+        // refresh; EnsureSpellCheckEnabled registers the dictionary when it turns the speller on.
+        if (!_spellCheckEnabled) return;
         if (_customDictionary == null) return;
         if (!System.IO.File.Exists(_customDictionary.DictionaryPath)) return;
 
@@ -995,11 +884,16 @@ public partial class ComposeWindow : Window
         _richSpellingWordEnd = null;
         _currentSpellingWordStart = -1;
         _currentSpellingWordEnd = -1;
+        _currentSpellingWord = null;
         _currentSpellingSuggestions = null;
     }
 
-    private void AnnounceSpellingAtCurrentPosition()
+    /// <param name="prefix">Said first, in the same announcement (plain text and Markdown only).</param>
+    private void AnnounceSpellingAtCurrentPosition(string? prefix = null)
     {
+        // Caret moves and typing must not turn the speller on when the user has turned
+        // "Check spelling as I type" off (#883): only F7 and Ctrl+F7 / Ctrl+Shift+F7 do.
+        if (!_spellCheckEnabled && !_checkSpellingAsYouType) return;
         EnsureSpellCheckEnabled();
         if (_vm.CurrentMode == ComposeMode.Html)
         {
@@ -1032,6 +926,15 @@ public partial class ComposeWindow : Window
         while (wordEnd < text.Length && !char.IsWhiteSpace(text[wordEnd]))
             wordEnd++;
 
+        // The speller checks the pieces of a web or email address as words; they are not
+        // misspellings (#902), and must not leave suggestions for Alt+1/2/3 to apply either.
+        int errorStart = BodyBox.GetSpellingErrorStart(checkIndex);
+        if (SpellScan.IsInAddress(text, errorStart >= 0 ? errorStart : checkIndex))
+        {
+            ClearSpellingContext();
+            return;
+        }
+
         if (wordStart == _lastAnnouncedSpellingIndex) return;
         _lastAnnouncedSpellingIndex = wordStart;
 
@@ -1040,9 +943,10 @@ public partial class ComposeWindow : Window
 
         _currentSpellingWordStart = wordStart;
         _currentSpellingWordEnd = wordEnd;
+        _currentSpellingWord = word;
         _currentSpellingSuggestions = suggestions;
 
-        AccessibilityHelper.Announce(this, BuildSpellingAnnouncement(word, suggestions),
+        AccessibilityHelper.Announce(this, prefix + BuildSpellingAnnouncement(word, suggestions),
             category: AnnouncementCategory.Result);
     }
 
@@ -1062,6 +966,8 @@ public partial class ComposeWindow : Window
 
         var wordRange = RichBodyBox.GetSpellingErrorRange(pos);
         if (wordRange == null) { ClearSpellingContext(); return; }
+        // Not a misspelling: part of a web or email address (#902).
+        if (SpellScan.IsInAddress(wordRange)) { ClearSpellingContext(); return; }
 
         if (_richSpellingWordStart != null &&
             _richSpellingWordStart.CompareTo(wordRange.Start) == 0)
@@ -1150,20 +1056,7 @@ public partial class ComposeWindow : Window
             };
             if (suggestionIndex >= 0 && suggestionIndex < _currentSpellingSuggestions.Count)
             {
-                var replacement = _currentSpellingSuggestions[suggestionIndex];
-                var text = BodyBox.Text;
-                var before = text[.._currentSpellingWordStart];
-                var after = text[_currentSpellingWordEnd..];
-
-                _suppressSpellingAnnouncement = true;
-                BodyBox.Text = before + replacement + after;
-                BodyBox.CaretIndex = _currentSpellingWordStart + replacement.Length;
-                _suppressSpellingAnnouncement = false;
-
-                BodyBox.Focus();
-                AccessibilityHelper.Announce(this, $"Replaced with {replacement}.",
-                    category: AnnouncementCategory.Result);
-                ClearSpellingContext();
+                ReplaceCurrentPlainMisspelling(_currentSpellingSuggestions[suggestionIndex]);
                 e.Handled = true;
                 // Arm Alt-menu suppression so the Alt key release that follows this
                 // Alt+digit shortcut does not activate the menu bar (focus stealing).
@@ -1201,6 +1094,119 @@ public partial class ComposeWindow : Window
         // Spelling keys (F7 dialog, Ctrl+F7 / Ctrl+Shift+F7 inline) dispatch
         // through the command registry in Window_PreviewKeyDown — no hardcoded
         // branch here, so user rebinds always win.
+    }
+
+    /// <summary>
+    /// Inserts a block of text (a template) at the caret of the editor in use, on lines of its
+    /// own and as one undo step. It used to be appended to the end of a plain body, glued to the
+    /// last line (#888), and spliced into the middle of an HTML line (#889). The caret ends
+    /// after the inserted text.
+    /// </summary>
+    internal void InsertTextAtCaret(string text)
+    {
+        if (_vm.CurrentMode != ComposeMode.Html)
+        {
+            int caret = BodyBox.SelectionStart;
+            // Decide the line breaks from the text as it will be once the selection is replaced.
+            var remaining = BodyBox.Text.Remove(caret, BodyBox.SelectionLength);
+            var (insert, caretAfter) = TextInsertion.LinesAt(remaining, caret, text);
+            BodyBox.SelectedText = insert;
+            BodyBox.Select(caret + caretAfter, 0);
+            BodyBox.Focus();
+            return;
+        }
+
+        var lines = text.Replace("\r\n", "\n").TrimEnd('\n').Split('\n');
+        RichBodyBox.BeginChange();
+        try
+        {
+            if (!RichBodyBox.Selection.IsEmpty) RichBodyBox.Selection.Text = string.Empty;
+            var caret = RichBodyBox.Selection.Start;
+            var para = caret.Paragraph;
+            if (para == null)
+            {
+                RichBodyBox.Selection.Text = text; // not in a paragraph: nowhere to put blocks
+                return;
+            }
+
+            // The template goes in as new paragraphs of plain text beside the caret's paragraph,
+            // never into it: text added to a paragraph, or split off one, takes on its heading,
+            // code or bold formatting (as Enter does, see HandleRichEnter).
+            var newParas = lines.Select(l => new Paragraph(new Run(l))).ToList();
+            bool atStart = new TextRange(para.ContentStart, caret).Text.Length == 0;
+            bool atEnd = new TextRange(caret, para.ContentEnd).Text.Length == 0;
+            var siblings = para.SiblingBlocks!;
+            if (atStart && atEnd)
+            {
+                foreach (var p in newParas) siblings.InsertBefore(para, p);
+                siblings.Remove(para); // the template fills the empty line, as in plain text
+            }
+            else if (atStart)
+            {
+                foreach (var p in newParas) siblings.InsertBefore(para, p);
+            }
+            else if (atEnd)
+            {
+                Block after = para;
+                foreach (var p in newParas) { siblings.InsertAfter(after, p); after = p; }
+            }
+            else
+            {
+                var rest = caret.InsertParagraphBreak().Paragraph!;
+                foreach (var p in newParas) rest.SiblingBlocks!.InsertBefore(rest, p);
+            }
+            var end = newParas[^1].ContentEnd;
+            RichBodyBox.Selection.Select(end, end);
+        }
+        finally
+        {
+            RichBodyBox.EndChange();
+        }
+        RichBodyBox.Focus();
+    }
+
+    /// <summary>
+    /// Alt+1/2/3 in plain text and Markdown: replaces the misspelling last announced with
+    /// <paramref name="replacement"/>. The stored offsets are only trusted while the word is
+    /// still there — typing since the announcement shifts the text under them, and replacing
+    /// at stale offsets mangled the message (#885). When it has moved, the misspelling at the
+    /// caret is announced afresh instead, after saying nothing was replaced, so the next Alt+1
+    /// acts on what the user just heard.
+    /// The edit goes through the selection so it is one undo step (#886); assigning
+    /// <c>Text</c> wiped the undo history.
+    /// </summary>
+    internal void ReplaceCurrentPlainMisspelling(string replacement)
+    {
+        var text = BodyBox.Text;
+        int start = _currentSpellingWordStart, end = _currentSpellingWordEnd;
+        bool stillThere = start >= 0 && end > start && end <= text.Length
+                          && text.AsSpan(start, end - start).SequenceEqual(_currentSpellingWord);
+        if (!stillThere)
+        {
+            const string nothingReplaced = "Nothing replaced, the text has changed. ";
+            ClearSpellingContext();
+            AnnounceSpellingAtCurrentPosition(nothingReplaced);
+            if (_currentSpellingWordStart < 0)
+                AccessibilityHelper.Announce(this, nothingReplaced + "No misspelling at the cursor.",
+                    category: AnnouncementCategory.Result);
+            return;
+        }
+
+        // Saved and restored, not lowered outright, so an F7 session's suppression survives.
+        var wasSuppressed = _suppressSpellingAnnouncement;
+        _suppressSpellingAnnouncement = true;
+        try
+        {
+            BodyBox.Select(start, end - start);
+            BodyBox.SelectedText = replacement;
+            BodyBox.Select(start + replacement.Length, 0);
+        }
+        finally { _suppressSpellingAnnouncement = wasSuppressed; }
+
+        BodyBox.Focus();
+        AccessibilityHelper.Announce(this, $"Replaced with {replacement}.",
+            category: AnnouncementCategory.Result);
+        ClearSpellingContext();
     }
 
     private void RichBodyBox_PreviewKeyDown(object sender, KeyEventArgs e)
@@ -1246,6 +1252,16 @@ public partial class ComposeWindow : Window
             }
         }
 
+        if (e.Key == Key.Return && Keyboard.Modifiers == ModifierKeys.None && RichBodyBox.Selection.IsEmpty)
+        {
+            if (HandleRichEnter())
+            {
+                e.Handled = true;
+                _vm.MarkBodyDirty();
+            }
+            return;
+        }
+
         if (e.Key != Key.Tab) return;
         if (Keyboard.Modifiers != ModifierKeys.None && Keyboard.Modifiers != ModifierKeys.Shift) return;
 
@@ -1277,6 +1293,63 @@ public partial class ComposeWindow : Window
         var label = BlockTypeLabel(newPara);
         _lastAnnouncedBlockType = label;
         AccessibilityHelper.Announce(this, label, category: AnnouncementCategory.Result);
+    }
+
+    /// <summary>
+    /// Enter in the rich editor where the default paragraph break is wrong. Returns
+    /// true when it handled the key.
+    /// <list type="bullet">
+    /// <item>On an empty line directly inside a quote, Enter ends the quote: the line
+    /// moves out of it (splitting the quote when it is in the middle), as in other
+    /// mail editors. Anywhere else in a quote, Enter continues the quote.</item>
+    /// <item>At the end of a heading, the new line is normal text, as in Word and
+    /// Outlook; splitting a heading elsewhere leaves both halves headings. WPF copies
+    /// the heading's size and weight to the new paragraph whether or not it copies
+    /// our tag, so both halves are set explicitly rather than trusting either.</item>
+    /// </list>
+    /// </summary>
+    internal bool HandleRichEnter()
+    {
+        var para = RichBodyBox.CaretPosition.Paragraph;
+        if (para is null) return false;
+
+        bool isEmpty = new TextRange(para.ContentStart, para.ContentEnd).Text.Length == 0;
+        if (isEmpty && RichTextDocumentConverter.IsQuote(para.Parent as Block))
+        {
+            // RemoveQuote changes nothing when it cannot; then Enter is left to the editor.
+            bool removed = false;
+            RunBlockEdit(() => removed = RichTextBlockEditing.RemoveQuote(para, para));
+            if (!removed) return false;
+            var depth = RichTextDocumentConverter.QuoteDepth(para);
+            AnnounceFormatting(depth == 0 ? "Quote off" : BlockLabels.WithQuote("Normal text", depth));
+            return true;
+        }
+
+        int level = RichTextBlockEditing.HeadingLevel(para);
+        if (level == 0) return false;
+
+        bool atEnd = new TextRange(RichBodyBox.CaretPosition, para.ContentEnd).Text.Length == 0;
+        bool atStart = !atEnd && new TextRange(para.ContentStart, RichBodyBox.CaretPosition).Text.Length == 0;
+
+        _suppressFormattingAnnouncement = true;
+        // One change block, so a single Undo takes back the break and the style fix-up together.
+        RichBodyBox.BeginChange();
+        try
+        {
+            EditingCommands.EnterParagraphBreak.Execute(null, RichBodyBox);
+            var after = RichBodyBox.CaretPosition.Paragraph;
+            var before = after?.PreviousBlock as Paragraph;
+            if (after != null) RichTextBlockEditing.SetHeading(after, atEnd ? 0 : level);
+            if (before != null) RichTextBlockEditing.SetHeading(before, atStart ? 0 : level);
+        }
+        finally
+        {
+            RichBodyBox.EndChange();
+            _suppressFormattingAnnouncement = false;
+        }
+        SyncParagraphStyleCombo();
+        AnnounceBlockTypeIfChanged(_configService.Load());
+        return true;
     }
 
     // ── Command Palette ──────────────────────────────────────────────────────
@@ -1324,7 +1397,10 @@ public partial class ComposeWindow : Window
         _registry.Register(new CommandDefinition(
             id: "compose.checkAddresses", category: "Compose", title: "Check Addresses",
             execute: CheckAddresses,
-            defaultKey: Key.K, defaultModifiers: ModifierKeys.Control));
+            defaultKey: Key.K, defaultModifiers: ModifierKeys.Control,
+            // Ctrl+K is Outlook's key for both: Insert Link in the message body (#729), Check
+            // Addresses everywhere else. FindByGesture picks whichever is available.
+            isAvailable: () => !IsInRichBody()));
 
         // F7 is the full Check Spelling dialog (classic word-processor binding);
         // inline navigation moved to Ctrl+F7 / Ctrl+Shift+F7. User overrides in
@@ -1372,7 +1448,8 @@ public partial class ComposeWindow : Window
 
     private void OpenAddressBook()
     {
-        var vm = new AddressBookViewModel(_contactService, contactSync: null, accountService: _vm.AccountService, configService: _configService);
+        var vm = new AddressBookViewModel(_contactService, contactSync: null, accountService: _vm.AccountService, configService: _configService,
+            recipientHistory: _recipientHistory);
         vm.SetInsertActions(
             toAction:  c => ToBox.AddAddress(c.DisplayName ?? string.Empty, c.EmailAddress),
             ccAction:  c => CcBox.AddAddress(c.DisplayName ?? string.Empty, c.EmailAddress),
@@ -1391,6 +1468,15 @@ public partial class ComposeWindow : Window
 
     private void RepeatSpellingAnnouncement()
     {
+        if (!_spellCheckEnabled && !_checkSpellingAsYouType)
+        {
+            // Nothing has been checked in this message yet (#883), so silence would sound
+            // exactly like "this word is spelled correctly". Say why, and how to check.
+            AccessibilityHelper.Announce(this,
+                "Spell checking is off for this message. Press Ctrl+F7 to check spelling.",
+                category: AnnouncementCategory.Result);
+            return;
+        }
         _lastAnnouncedSpellingIndex = -1;
         AnnounceSpellingAtCurrentPosition();
     }
@@ -1413,14 +1499,15 @@ public partial class ComposeWindow : Window
         (previousFocus ?? BodyBox).Focus();
     }
 
-    private void OpenPreview()
+    private async void OpenPreview()
     {
         if (_previewWindow != null)
         {
             _previewWindow.Close();
             return;
         }
-        var fragment = _vm.GetBodyHtml();
+        var fragment = await WithPreviewPicturesAsync(_vm.GetBodyHtml());
+        if (_previewWindow != null || !IsLoaded) return; // opened twice, or closed, while pictures were prepared
         _previewWindow = new MarkdownPreviewWindow(_vm.Subject, fragment,
             _themeService?.BuildMessageCss(forceOnContent: false)) { Owner = this };
         _previewWindow.Closed += (_, _) => { _previewWindow = null; FocusActiveEditor(); };
@@ -1567,7 +1654,7 @@ public partial class ComposeWindow : Window
         _suppressFormattingAnnouncement = false;
     }
 
-    private void NavigateSpellingError(bool forward)
+    internal void NavigateSpellingError(bool forward)
     {
         EnsureSpellCheckEnabled();
         if (_vm.CurrentMode == ComposeMode.Html)
@@ -1579,17 +1666,31 @@ public partial class ComposeWindow : Window
         var text = BodyBox.Text;
         if (string.IsNullOrEmpty(text)) return;
 
-        int foundIndex = SpellScan.FindErrorIndex(BodyBox, BodyBox.CaretIndex, forward);
+        // TextBox.CaretIndex is the selection's START, so after Ctrl+F7 has selected a misspelling,
+        // searching forward from it found the same word again. Forward starts after the selection;
+        // backward from its start. With no selection both are the caret, which keeps a misspelling
+        // the caret sits inside as the one found.
+        int from = forward ? BodyBox.SelectionStart + BodyBox.SelectionLength : BodyBox.SelectionStart;
+        int foundIndex = SpellScan.FindReportableErrorIndex(BodyBox, from, forward);
 
         if (foundIndex >= 0)
         {
             var (wordStart, wordEnd) = SpellScan.ExpandWord(text, foundIndex);
 
-            BodyBox.SelectionStart = wordStart;
-            BodyBox.SelectionLength = wordEnd - wordStart;
-            BodyBox.Focus();
-
+            // Selecting the word moves the caret into it, which would run the navigation
+            // announcement for the same misspelling just before the one below (#898).
+            // _lastAnnouncedSpellingIndex is set first too, so a SelectionChanged that arrives
+            // after the flag is lowered is still recognised as this word.
             _lastAnnouncedSpellingIndex = wordStart;
+            var wasSuppressed = _suppressSpellingAnnouncement;
+            _suppressSpellingAnnouncement = true;
+            try
+            {
+                BodyBox.SelectionStart = wordStart;
+                BodyBox.SelectionLength = wordEnd - wordStart;
+                BodyBox.Focus();
+            }
+            finally { _suppressSpellingAnnouncement = wasSuppressed; }
 
             var word = text.Substring(wordStart, wordEnd - wordStart);
             var suggestions = BodyBox.GetSpellingError(foundIndex)
@@ -1597,6 +1698,7 @@ public partial class ComposeWindow : Window
 
             _currentSpellingWordStart = wordStart;
             _currentSpellingWordEnd = wordEnd;
+            _currentSpellingWord = word;
             _currentSpellingSuggestions = suggestions;
 
             AccessibilityHelper.Announce(this, BuildSpellingAnnouncement(word, suggestions),
@@ -1614,8 +1716,16 @@ public partial class ComposeWindow : Window
     {
         if (SpellScan.FindErrorRange(RichBodyBox, forward) is ({ } errorPos, { } wordRange))
         {
-            RichBodyBox.Selection.Select(wordRange.Start, wordRange.End);
-            RichBodyBox.Focus();
+            // As in plain text (#898): the selection change must not announce this word too.
+            _richSpellingWordStart = wordRange.Start;
+            var wasSuppressed = _suppressSpellingAnnouncement;
+            _suppressSpellingAnnouncement = true;
+            try
+            {
+                RichBodyBox.Selection.Select(wordRange.Start, wordRange.End);
+                RichBodyBox.Focus();
+            }
+            finally { _suppressSpellingAnnouncement = wasSuppressed; }
 
             var error = RichBodyBox.GetSpellingError(errorPos);
             var suggestions = error?.Suggestions.Take(3).ToList() ?? new List<string>();
@@ -1647,6 +1757,7 @@ public partial class ComposeWindow : Window
     private void WireRichCompose()
     {
         _vm.RichBodyProvider = () => RichTextDocumentConverter.Snapshot(RichBodyBox.Document);
+        _vm.EditorPictureIdsProvider = EditorPictureIds;
 
         // The editor keeps its original FlowDocument for the window's lifetime.
         // Replacing RichTextBox.Document breaks UIA: the automation peer stays
@@ -1667,7 +1778,7 @@ public partial class ComposeWindow : Window
             _lastAnnouncedBlockType = null;
             try
             {
-                RichTextDocumentConverter.LoadInto(RichBodyBox, html);
+                RichTextDocumentConverter.LoadInto(RichBodyBox, html, ResolveEditorImage);
                 RichBodyBox.CaretPosition = RichBodyBox.Document.ContentStart;
             }
             finally
@@ -1677,12 +1788,7 @@ public partial class ComposeWindow : Window
             }
         };
 
-        _vm.InsertTextIntoEditorRequested += text =>
-        {
-            RichBodyBox.Selection.Select(RichBodyBox.CaretPosition, RichBodyBox.CaretPosition);
-            RichBodyBox.Selection.Text = text;
-            RichBodyBox.Selection.Select(RichBodyBox.Selection.End, RichBodyBox.Selection.End);
-        };
+        _vm.InsertTextIntoEditorRequested += InsertTextAtCaret;
 
         // Compose is modeless and can stay open across a theme switch. The rich
         // editor reads theme brushes (blockquote foreground, table borders, code
@@ -1735,7 +1841,7 @@ public partial class ComposeWindow : Window
         _lastAnnouncedBlockType = null;
         try
         {
-            RichTextDocumentConverter.LoadInto(RichBodyBox, html);
+            RichTextDocumentConverter.LoadInto(RichBodyBox, html, ResolveEditorImage);
         }
         finally
         {
@@ -1749,6 +1855,15 @@ public partial class ComposeWindow : Window
 
     private void RichBodyBox_TextChanged(object sender, TextChangedEventArgs e)
     {
+        // Before anything else, and for every change: a screen reader's query against a stale
+        // automation tree ends the process (#782).
+        RichTextAutomationTree.Refresh(RichBodyBox, e);
+        if (e.UndoAction is UndoAction.Undo or UndoAction.Redo)
+        {
+            RepairPictures();
+            RichTextBlockEditing.ReconcileHeadingTags(RichBodyBox.Document);
+            SyncParagraphStyleCombo();
+        }
         if (!_suppressRichTextChanged)
             _vm.MarkBodyDirty();
     }
@@ -1775,6 +1890,7 @@ public partial class ComposeWindow : Window
         BodyBox.FontFamily = mode == ComposeMode.Markdown ? new FontFamily("Consolas") : new FontFamily("Segoe UI");
 
         SyncModeSelector();
+        SyncParagraphStyleCombo();
         if (bodyHadFocus)
             FocusActiveEditor();
 
@@ -1855,6 +1971,14 @@ public partial class ComposeWindow : Window
             SyncModeSelector();   // user declined the confirmation — revert the selector
     }
 
+    /// <summary>
+    /// True when the caret is in the body of a Markdown or HTML message: where Ctrl+K inserts a link
+    /// (elsewhere it is Check Addresses, #729, as in Outlook) and Alt+Enter opens Image Properties.
+    /// </summary>
+    private bool IsInRichBody() =>
+        _vm.CurrentMode != ComposeMode.PlainText
+        && (RichBodyBox.IsKeyboardFocusWithin || BodyBox.IsKeyboardFocusWithin);
+
     private void RegisterRichComposeCommands()
     {
         // Formatting works in both rich modes: HTML applies real formatting,
@@ -1901,21 +2025,27 @@ public partial class ComposeWindow : Window
             isAvailable: InRichMode));
 
         _registry.Register(new CommandDefinition(
-            id: "compose.heading1", category: "Compose", title: "Heading 1",
-            execute: () => ApplyHeading(1),
-            defaultKey: Key.D1, defaultModifiers: ModifierKeys.Control | ModifierKeys.Alt,
+            id: "compose.normalText", category: "Compose", title: "Normal Text",
+            execute: SetNormalText,
+            defaultKey: Key.D0, defaultModifiers: ModifierKeys.Control | ModifierKeys.Alt,
             isAvailable: InRichMode));
 
-        _registry.Register(new CommandDefinition(
-            id: "compose.heading2", category: "Compose", title: "Heading 2",
-            execute: () => ApplyHeading(2),
-            defaultKey: Key.D2, defaultModifiers: ModifierKeys.Control | ModifierKeys.Alt,
-            isAvailable: InRichMode));
+        Key[] headingKeys = [Key.D1, Key.D2, Key.D3, Key.D4, Key.D5, Key.D6];
+        for (int level = 1; level <= 6; level++)
+        {
+            int headingLevel = level;
+            _registry.Register(new CommandDefinition(
+                id: $"compose.heading{level}", category: "Compose", title: $"Heading {level}",
+                execute: () => ApplyHeading(headingLevel),
+                defaultKey: headingKeys[level - 1], defaultModifiers: ModifierKeys.Control | ModifierKeys.Alt,
+                isAvailable: InRichMode));
+        }
 
+        // Ctrl+Shift+9 is Gmail's key for Quote.
         _registry.Register(new CommandDefinition(
-            id: "compose.heading3", category: "Compose", title: "Heading 3",
-            execute: () => ApplyHeading(3),
-            defaultKey: Key.D3, defaultModifiers: ModifierKeys.Control | ModifierKeys.Alt,
+            id: "compose.quote", category: "Compose", title: "Quote",
+            execute: ToggleQuote,
+            defaultKey: Key.D9, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift,
             isAvailable: InRichMode));
 
         _registry.Register(new CommandDefinition(
@@ -1935,6 +2065,27 @@ public partial class ComposeWindow : Window
             execute: InsertLink,
             defaultKey: Key.L, defaultModifiers: ModifierKeys.Control,
             isAvailable: InRichMode));
+
+        // Ctrl+K inserts a link from the message body, as in Outlook (#729); outside the body
+        // the same key is Check Addresses. Ctrl+L above keeps working everywhere.
+        _registry.Register(new CommandDefinition(
+            id: "compose.insertLinkFromBody", category: "Compose", title: "Insert Link from the Message Body",
+            execute: InsertLink,
+            defaultKey: Key.K, defaultModifiers: ModifierKeys.Control,
+            isAvailable: IsInRichBody));
+
+        _registry.Register(new CommandDefinition(
+            id: "compose.insertImage", category: "Compose", title: "Insert Image…",
+            execute: InsertImage,
+            defaultKey: Key.I, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift));
+
+        _registry.Register(new CommandDefinition(
+            id: "compose.imageProperties", category: "Compose", title: "Image Properties…",
+            execute: ShowImageProperties,
+            defaultKey: Key.Return, defaultModifiers: ModifierKeys.Alt,
+            // From the body only: elsewhere the body's caret is out of sight, and a picture there
+            // is not what the user is on.
+            isAvailable: IsInRichBody));
 
         _registry.Register(new CommandDefinition(
             id: "compose.clearFormatting", category: "Compose", title: "Clear Formatting",
@@ -1991,11 +2142,16 @@ public partial class ComposeWindow : Window
 
     private void ApplyMarkdownEdit(MarkdownEdit edit)
     {
+        // Saved and restored, not lowered outright, so an F7 session's suppression survives.
+        var wasSuppressed = _suppressSpellingAnnouncement;
         _suppressSpellingAnnouncement = true;
-        BodyBox.Select(edit.ReplaceStart, edit.ReplaceLength);
-        BodyBox.SelectedText = edit.Replacement;
-        BodyBox.Select(edit.SelectionStart, edit.SelectionLength);
-        _suppressSpellingAnnouncement = false;
+        try
+        {
+            BodyBox.Select(edit.ReplaceStart, edit.ReplaceLength);
+            BodyBox.SelectedText = edit.Replacement;
+            BodyBox.Select(edit.SelectionStart, edit.SelectionLength);
+        }
+        finally { _suppressSpellingAnnouncement = wasSuppressed; }
         if (!BodyBox.IsKeyboardFocusWithin)
             BodyBox.Focus();
     }
@@ -2066,8 +2222,11 @@ public partial class ComposeWindow : Window
         return value is TextDecorationCollection c && c.Any(d => d.Location == location);
     }
 
-    /// <summary>Toggles a heading on all paragraphs touched by the current selection. Applying the same level again returns to normal text.</summary>
-    private void ApplyHeading(int level)
+    /// <summary>
+    /// Toggles a heading on all paragraphs touched by the current selection.
+    /// Applying the same level again returns to normal text.
+    /// </summary>
+    internal void ApplyHeading(int level)
     {
         if (_vm.CurrentMode == ComposeMode.Markdown)
         {
@@ -2081,80 +2240,158 @@ public partial class ComposeWindow : Window
         var paragraphs = GetSelectedParagraphs();
         if (paragraphs.Count == 0) return;
 
-        var tag = "H" + level;
-        bool turnOff = paragraphs.All(p => p.Tag as string == tag);
-
-        foreach (var paragraph in paragraphs)
+        bool turnOff = paragraphs.All(p => RichTextBlockEditing.HeadingLevel(p) == level);
+        RunBlockEdit(() =>
         {
-            if (turnOff)
-            {
-                paragraph.Tag = null;
-                paragraph.ClearValue(TextElement.FontSizeProperty);
-                paragraph.ClearValue(TextElement.FontWeightProperty);
-            }
-            else
-            {
-                paragraph.Tag = tag;
-                paragraph.FontSize = RichTextDocumentConverter.HeadingFontSize(level);
-                paragraph.FontWeight = FontWeights.Bold;
-            }
-        }
-
+            foreach (var paragraph in paragraphs)
+                RichTextBlockEditing.SetHeading(paragraph, turnOff ? 0 : level);
+        });
         AnnounceFormatting(turnOff ? "Normal text" : $"Heading {level}");
-        _vm.MarkBodyDirty();
     }
 
     /// <summary>
-    /// Returns all Paragraphs touched by the current RichBodyBox selection.
-    /// When the caret has no selection this is the single caret paragraph.
-    /// When the selection ends exactly at a paragraph boundary (e.g. Shift+End
-    /// selected to the paragraph break but not into the next paragraph) that
-    /// trailing paragraph is excluded.
+    /// Makes the selected paragraphs plain paragraphs: no heading, no code block,
+    /// and out of any quote. Lists and character formatting are left alone.
     /// </summary>
-    private List<Paragraph> GetSelectedParagraphs()
+    internal void SetNormalText()
     {
-        var sel = RichBodyBox.Selection;
-        var startPara = sel.Start.Paragraph;
-        if (startPara == null) return [];
-
-        var endPara = sel.End.Paragraph;
-
-        // Selection entirely within one paragraph, or no selection.
-        if (endPara == null || startPara == endPara)
-            return [startPara];
-
-        // If the selection ends at or before the content start of the end paragraph,
-        // the user selected up to the paragraph break but didn't intend to include
-        // the next line. WPF places element-boundary positions between paragraphs,
-        // so sel.End can land in that structural gap (< 0) rather than exactly at
-        // ContentStart (== 0); both cases mean the end paragraph was not selected.
-        if (sel.End.CompareTo(endPara.ContentStart) <= 0)
-            return [startPara];
-
-        // Collect all paragraphs from startPara through endPara in document order.
-        var result = new List<Paragraph>();
-        bool inRange = false;
-        foreach (var block in EnumerateDocumentBlocks(RichBodyBox.Document))
+        if (_vm.CurrentMode == ComposeMode.Markdown)
         {
-            if (block == startPara) inRange = true;
-            if (inRange && block is Paragraph p) result.Add(p);
-            if (block == endPara) break;
+            ApplyMarkdownEdit(MarkdownEditing.SetNormalText(
+                BodyBox.Text, BodyBox.SelectionStart, BodyBox.SelectionLength));
+            AnnounceFormatting("Normal text");
+            return;
         }
-        return result.Count > 0 ? result : [startPara];
+
+        EnsureRichEditorFocused();
+        ApplyParagraphStyle(ComposeParagraphStyle.Normal);
+        AnnounceFormatting("Normal text");
     }
 
-    /// <summary>Flattens top-level blocks and one level of List → ListItem → Block nesting.</summary>
-    private static IEnumerable<Block> EnumerateDocumentBlocks(FlowDocument doc)
+    /// <summary>
+    /// Puts the selected paragraphs in a quote, or — when they are all in one
+    /// already — takes them out of one level of it.
+    /// </summary>
+    internal void ToggleQuote()
     {
-        foreach (var block in doc.Blocks)
+        if (_vm.CurrentMode == ComposeMode.Markdown)
         {
-            yield return block;
-            if (block is System.Windows.Documents.List list)
-                foreach (var item in list.ListItems)
-                    foreach (var inner in item.Blocks)
-                        yield return inner;
+            var edit = MarkdownEditing.ToggleQuote(BodyBox.Text, BodyBox.SelectionStart, BodyBox.SelectionLength);
+            ApplyMarkdownEdit(edit);
+            AnnounceFormatting(edit.TurnedOn ? "Quote on" : "Quote off");
+            return;
+        }
+
+        EnsureRichEditorFocused();
+        var paragraphs = GetSelectedParagraphs();
+        if (paragraphs.Count == 0) return;
+        var first = paragraphs[0];
+        var last = paragraphs[^1];
+
+        bool turnOff = RichTextBlockEditing.CommonQuote(first, last) != null;
+        bool changed = false;
+        RunBlockEdit(() => changed = turnOff
+            ? RichTextBlockEditing.RemoveQuote(first, last)
+            : RichTextBlockEditing.AddQuote(first, last));
+        if (!changed)
+        {
+            AnnounceFormatting("Quote cannot be changed here");
+            return;
+        }
+
+        var depth = RichTextDocumentConverter.QuoteDepth(first);
+        AnnounceFormatting(depth == 0 ? "Quote off"
+            : !turnOff && depth == 1 ? "Quote on"
+            : !turnOff ? $"Quote on, level {depth}"
+            : $"Quote, level {depth}");
+    }
+
+    /// <summary>
+    /// Sets one style on the selected paragraphs — the Paragraph style box and
+    /// menu path. Unlike the heading keys this never toggles: choosing Heading 2
+    /// on a Heading 2 leaves it one. Says nothing; the caller decides.
+    /// </summary>
+    private void ApplyParagraphStyle(ComposeParagraphStyle style)
+    {
+        var paragraphs = GetSelectedParagraphs();
+        if (paragraphs.Count == 0) return;
+
+        RunBlockEdit(() =>
+        {
+            switch (style)
+            {
+                case ComposeParagraphStyle.Normal:
+                    foreach (var paragraph in paragraphs)
+                    {
+                        RichTextBlockEditing.SetHeading(paragraph, 0);
+                        RichTextBlockEditing.RemoveAllQuotes(paragraph);
+                    }
+                    break;
+
+                case ComposeParagraphStyle.Quote:
+                    foreach (var paragraph in paragraphs)
+                        RichTextBlockEditing.SetHeading(paragraph, 0);
+                    if (RichTextBlockEditing.CommonQuote(paragraphs[0], paragraphs[^1]) is null)
+                        RichTextBlockEditing.AddQuote(paragraphs[0], paragraphs[^1]);
+                    break;
+
+                default:
+                    foreach (var paragraph in paragraphs)
+                        RichTextBlockEditing.SetHeading(paragraph, (int)style);
+                    break;
+            }
+        });
+    }
+
+    /// <summary>
+    /// Runs a block-level edit as one undo step and keeps the selection on the same
+    /// text. Moving blocks in and out of a quote re-parents them, which would
+    /// otherwise leave the caret wherever WPF put it. The edit announces its own
+    /// result, so the navigation announcement is not repeated for it.
+    /// </summary>
+    private void RunBlockEdit(Action edit)
+    {
+        var (startPara, startOffset) = Anchor(RichBodyBox.Selection.Start);
+        var (endPara, endOffset) = Anchor(RichBodyBox.Selection.End);
+
+        _suppressFormattingAnnouncement = true;
+        RichBodyBox.BeginChange();
+        try
+        {
+            edit();
+        }
+        finally
+        {
+            RichBodyBox.EndChange();
+            if (startPara != null && endPara != null)
+                RichBodyBox.Selection.Select(Restore(startPara, startOffset), Restore(endPara, endOffset));
+            _suppressFormattingAnnouncement = false;
+        }
+
+        _lastAnnouncedBlockType = BlockTypeLabel(RichBodyBox.Selection.Start.Paragraph);
+        SyncParagraphStyleCombo();
+        _vm.MarkBodyDirty();
+
+        static (Paragraph? Paragraph, int Offset) Anchor(TextPointer position)
+        {
+            var paragraph = position.Paragraph;
+            return paragraph is null
+                ? (null, 0)
+                : (paragraph, Math.Max(0, paragraph.ContentStart.GetOffsetToPosition(position)));
+        }
+
+        static TextPointer Restore(Paragraph paragraph, int offset)
+        {
+            var position = paragraph.ContentStart.GetPositionAtOffset(offset);
+            return position is null || position.CompareTo(paragraph.ContentEnd) > 0
+                ? paragraph.ContentEnd
+                : position;
         }
     }
+
+    /// <summary>All paragraphs touched by the current selection — see <see cref="RichTextBlockEditing.ParagraphsInRange"/>.</summary>
+    private List<Paragraph> GetSelectedParagraphs() =>
+        RichTextBlockEditing.ParagraphsInRange(RichBodyBox.Document, RichBodyBox.Selection.Start, RichBodyBox.Selection.End);
 
     private static int ListDepthOf(Paragraph? para)
     {
@@ -2168,31 +2405,129 @@ public partial class ComposeWindow : Window
         return depth;
     }
 
-    private static string BlockTypeLabel(Paragraph? para)
+    internal static string BlockTypeLabel(Paragraph? para)
     {
-        if (para?.Tag is string tag)
-        {
-            return tag switch
-            {
-                "H1" => "Heading 1",
-                "H2" => "Heading 2",
-                "H3" => "Heading 3",
-                "H4" => "Heading 4",
-                "H5" => "Heading 5",
-                "H6" => "Heading 6",
-                "BLOCKQUOTE" => "Quote",
-                _ when RichTextDocumentConverter.IsPreTag(tag) => "Code block",
-                _ => "Normal text",
-            };
-        }
-        if (para?.Parent is ListItem item)
+        string label;
+        if (para is null)
+            label = "Normal text";
+        else if (RichTextBlockEditing.HeadingLevel(para) is > 0 and var level)
+            label = $"Heading {level}";
+        else if (RichTextDocumentConverter.IsPreTag(para.Tag as string))
+            label = "Code block";
+        else if (para.Parent is ListItem item)
         {
             var kind = item.Parent is System.Windows.Documents.List { MarkerStyle: System.Windows.TextMarkerStyle.Decimal }
                 ? "Numbered list item" : "Bullet list item";
             var depth = ListDepthOf(para);
-            return depth > 1 ? $"{kind}, level {depth}" : kind;
+            label = depth > 1 ? $"{kind}, level {depth}" : kind;
         }
-        return "Normal text";
+        else
+            label = "Normal text";
+        return BlockLabels.WithQuote(label, RichTextDocumentConverter.QuoteDepth(para));
+    }
+
+    /// <summary>Shows the caret paragraph's style in the Paragraph style box, without applying anything.</summary>
+    private void SyncParagraphStyleCombo()
+    {
+        if (_vm.CurrentMode != ComposeMode.Html) return;
+        var style = RichTextBlockEditing.StyleOf(RichBodyBox.Selection.Start.Paragraph);
+        var index = style is null ? -1 : (int)style.Value;
+        if (ParagraphStyleCombo.SelectedIndex != index)
+            ParagraphStyleCombo.SelectedIndex = index;
+    }
+
+    private bool _paragraphStyleCancelled;
+
+    // The Paragraph style box does not apply a style as its selection moves. On a
+    // closed combo box every arrow key changes the selection, and the styles do not
+    // undo one another — arrowing past Normal text would take a line out of a
+    // reply's quote, and it would stay out. So arrowing only chooses; the choice is
+    // committed by Enter or by closing the open list on it (mouse or keyboard), and
+    // then the user is back in the text, as with the toolbar buttons. Escape in the
+    // open list, or leaving the box, puts it back to the style at the caret.
+
+    private void ParagraphStyleCombo_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Escape && ParagraphStyleCombo.IsDropDownOpen)
+            _paragraphStyleCancelled = true;
+        else if (e.Key == Key.Return && !ParagraphStyleCombo.IsDropDownOpen && Keyboard.Modifiers == ModifierKeys.None)
+        {
+            CommitParagraphStyleChoice(returnToText: true);
+            e.Handled = true;
+        }
+    }
+
+    private void ParagraphStyleCombo_DropDownClosed(object? sender, EventArgs e)
+    {
+        if (_paragraphStyleCancelled)
+        {
+            _paragraphStyleCancelled = false;
+            SyncParagraphStyleCombo();
+            return;
+        }
+        CommitParagraphStyleChoice(returnToText: false);
+    }
+
+    private void ParagraphStyleCombo_IsKeyboardFocusWithinChanged(object sender, DependencyPropertyChangedEventArgs e)
+    {
+        if (!(bool)e.NewValue && !ParagraphStyleCombo.IsDropDownOpen)
+            SyncParagraphStyleCombo(); // left without committing
+    }
+
+    /// <summary>
+    /// Applies the box's style when any selected paragraph differs from it, and returns to the
+    /// text when it did, or when the user pressed Enter. Closing the list without
+    /// choosing anything new leaves focus in the box.
+    /// </summary>
+    internal void CommitParagraphStyleChoice(bool returnToText)
+    {
+        if (_vm.CurrentMode != ComposeMode.Html || ParagraphStyleCombo.SelectedIndex < 0) return;
+        var chosen = (ComposeParagraphStyle)ParagraphStyleCombo.SelectedIndex;
+        // Nothing is announced: the box already said the style as it was chosen.
+        if (GetSelectedParagraphs().Any(p => RichTextBlockEditing.StyleOf(p) != chosen))
+        {
+            ApplyParagraphStyle(chosen);
+            returnToText = true;
+        }
+        if (returnToText) FocusActiveEditor();
+    }
+
+    /// <summary>Check marks on Format → Paragraph Style show the style at the caret.</summary>
+    private void ParagraphStyleMenu_SubmenuOpened(object sender, RoutedEventArgs e)
+    {
+        if (e.OriginalSource != ParagraphStyleMenu) return;
+        int current = -1;
+        if (_vm.CurrentMode == ComposeMode.Html)
+            current = RichTextBlockEditing.StyleOf(RichBodyBox.Selection.Start.Paragraph) is { } style ? (int)style : -1;
+        else if (_vm.CurrentMode == ComposeMode.Markdown)
+            current = MarkdownStyleAtCaret();
+        foreach (var item in ParagraphStyleMenu.Items.OfType<MenuItem>())
+            item.IsChecked = item.Tag is string tag && int.Parse(tag, System.Globalization.CultureInfo.InvariantCulture) == current;
+    }
+
+    private int MarkdownStyleAtCaret()
+    {
+        var block = MarkdownEditing.DescribeFormattingParts(BodyBox.Text, BodyBox.CaretIndex)[0];
+        if (block.StartsWith("Heading ", StringComparison.Ordinal) && block.Length > 8 && char.IsDigit(block[8]))
+            return block[8] - '0';
+        if (block.StartsWith("Quote", StringComparison.Ordinal)) return (int)ComposeParagraphStyle.Quote;
+        return block == "Normal text" ? 0 : -1;
+    }
+
+    /// <summary>
+    /// The menu dispatches to the same commands as the keys, so it toggles and
+    /// announces exactly as they do.
+    /// </summary>
+    private void MenuParagraphStyle_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not MenuItem { Tag: string tag }) return;
+        var style = (ComposeParagraphStyle)int.Parse(tag, System.Globalization.CultureInfo.InvariantCulture);
+        switch (style)
+        {
+            case ComposeParagraphStyle.Normal: SetNormalText(); break;
+            case ComposeParagraphStyle.Quote: ToggleQuote(); break;
+            default: ApplyHeading((int)style); break;
+        }
     }
 
     private void ToggleList(bool ordered)
@@ -2251,7 +2586,7 @@ public partial class ComposeWindow : Window
         AnnounceFormatting("Link inserted");
     }
 
-    private void ClearFormatting()
+    internal void ClearFormatting()
     {
         if (_vm.CurrentMode == ComposeMode.Markdown)
         {
@@ -2263,28 +2598,40 @@ public partial class ComposeWindow : Window
         }
 
         EnsureRichEditorFocused();
-        RichBodyBox.Selection.ClearAllProperties();
-        // ClearAllProperties resets character/paragraph formatting but not our
-        // heading tags — clear those on the paragraphs the selection touches.
-        foreach (var paragraph in new[] { RichBodyBox.Selection.Start.Paragraph, RichBodyBox.Selection.End.Paragraph })
+        // ClearAllProperties resets character and paragraph formatting but not our
+        // block structure — headings, code blocks and quotes are made normal text on
+        // every paragraph the selection touches, not only its first and last.
+        // ClearAllProperties merges runs, which would throw off RunBlockEdit's saved
+        // selection offsets, so it runs first; the outer change block keeps the whole
+        // command one undo step.
+        var paragraphs = GetSelectedParagraphs();
+        RichBodyBox.BeginChange();
+        try
         {
-            if (paragraph?.Tag is string)
+            RichBodyBox.Selection.ClearAllProperties();
+            RunBlockEdit(() =>
             {
-                paragraph.Tag = null;
-                paragraph.ClearValue(TextElement.FontSizeProperty);
-                paragraph.ClearValue(TextElement.FontWeightProperty);
-            }
+                foreach (var paragraph in paragraphs)
+                {
+                    RichTextBlockEditing.SetHeading(paragraph, 0);
+                    RichTextBlockEditing.RemoveAllQuotes(paragraph);
+                }
+            });
         }
-        _vm.MarkBodyDirty();
+        finally
+        {
+            RichBodyBox.EndChange();
+        }
         AnnounceFormatting("Formatting cleared");
     }
 
     /// <summary>
     /// The formatting at the cursor as one fact per entry — block type first,
-    /// then each inline attribute. Shared by the spoken announcement
-    /// (Ctrl+Shift+Space) and the Show Formatting list (Ctrl+Alt+Space).
+    /// then each inline attribute, then — only when present — inline code and the
+    /// link the caret is in, with its address. Shared by the spoken announcement
+    /// (Ctrl+T) and the Show Formatting list (Ctrl+Shift+T).
     /// </summary>
-    private System.Collections.Generic.List<string> GetFormattingParts()
+    internal System.Collections.Generic.List<string> GetFormattingParts()
     {
         if (_vm.CurrentMode == ComposeMode.Markdown)
             return MarkdownEditing.DescribeFormattingParts(BodyBox.Text, BodyBox.CaretIndex);
@@ -2302,7 +2649,7 @@ public partial class ComposeWindow : Window
         var paragraph = selection.Start.Paragraph;
         var block = BlockTypeLabel(paragraph);
 
-        return
+        List<string> parts =
         [
             block,
             $"Bold {bold}",
@@ -2310,6 +2657,27 @@ public partial class ComposeWindow : Window
             $"Underline {underline}",
             $"Strikethrough {strike}",
         ];
+
+        var font = selection.GetPropertyValue(TextElement.FontFamilyProperty) as FontFamily;
+        if (RichTextDocumentConverter.IsCodeFont(font) && !RichTextDocumentConverter.IsPreTag(paragraph?.Tag as string))
+            parts.Add("Code on");
+
+        if (ImageAtCaret()?.Tag is ComposeImage picture)
+            parts.Add(picture.Alt is { Length: > 0 } alt ? $"Image, {alt}" : picture.AccessibleName);
+
+        if (LinkAt(selection.Start) is { } link)
+        {
+            var address = link.Tag as string ?? link.NavigateUri?.ToString();
+            parts.Add(string.IsNullOrEmpty(address) ? "Link" : $"Link, {address}");
+        }
+        return parts;
+    }
+
+    private static Hyperlink? LinkAt(TextPointer position)
+    {
+        for (DependencyObject? el = position.Parent; el is TextElement te; el = te.Parent)
+            if (te is Hyperlink link) return link;
+        return null;
     }
 
     /// <summary>Announces the formatting at the cursor, e.g. "Heading 2. Bold on, Italic off, …".</summary>
@@ -2337,12 +2705,11 @@ public partial class ComposeWindow : Window
     private void ToolbarItalic_Click(object sender, RoutedEventArgs e)        { ToggleItalic(); FocusActiveEditor(); }
     private void ToolbarUnderline_Click(object sender, RoutedEventArgs e)     { ToggleUnderline(); FocusActiveEditor(); }
     private void ToolbarStrikethrough_Click(object sender, RoutedEventArgs e) { ToggleStrikethrough(); FocusActiveEditor(); }
-    private void ToolbarHeading1_Click(object sender, RoutedEventArgs e)      { ApplyHeading(1); FocusActiveEditor(); }
-    private void ToolbarHeading2_Click(object sender, RoutedEventArgs e)      { ApplyHeading(2); FocusActiveEditor(); }
-    private void ToolbarHeading3_Click(object sender, RoutedEventArgs e)      { ApplyHeading(3); FocusActiveEditor(); }
     private void ToolbarBulletList_Click(object sender, RoutedEventArgs e)    { ToggleList(ordered: false); FocusActiveEditor(); }
     private void ToolbarNumberedList_Click(object sender, RoutedEventArgs e)  { ToggleList(ordered: true); FocusActiveEditor(); }
     private void ToolbarInsertLink_Click(object sender, RoutedEventArgs e)    => InsertLink();
+    private void MenuInsertImage_Click(object sender, RoutedEventArgs e)      => InsertImage();
+    private void MenuImageProperties_Click(object sender, RoutedEventArgs e)  => ShowImageProperties();
     private void ToolbarClearFormatting_Click(object sender, RoutedEventArgs e) { ClearFormatting(); FocusActiveEditor(); }
 
 }

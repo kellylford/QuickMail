@@ -76,5 +76,15 @@ public interface IOAuthService
     /// </summary>
     Task RequestCalendarConsentAsync(AccountModel account, CancellationToken ct = default);
 
+    /// <summary>
+    /// #31: ensures the PARENT account has consented to the shared-mailbox scopes
+    /// (<c>Mail.ReadWrite.Shared</c> + <c>Mail.Send.Shared</c>) so a shared mailbox can be read (and,
+    /// from PR 4, sent as) through its token. Silent when already granted (e.g. admin-consented);
+    /// otherwise opens the interactive Microsoft consent window. Throws if consent is declined or
+    /// pending admin approval — the caller then leaves the shared mailbox added but disconnected. Call
+    /// from a foreground user action only (adding a shared mailbox, or an explicit reconnect).
+    /// </summary>
+    Task RequestSharedMailboxConsentAsync(AccountModel parent, CancellationToken ct = default);
+
     Task SignOutAsync(AccountModel account);
 }

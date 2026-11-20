@@ -19,11 +19,13 @@ namespace QuickMail.Helpers;
 /// table/tr/th/td, strong/em/u/del/code, a, img, br. Unknown elements degrade
 /// to their text content.
 ///
-/// Heading level, pre (with fence language), hr, and blockquote are tracked via
-/// <c>Paragraph.Tag</c> ("H1".."H6", "PRE" / "PRE:lang", "HR", "BLOCKQUOTE");
+/// Heading level, pre (with fence language), and hr are tracked via
+/// <c>Paragraph.Tag</c> ("H1".."H6", "PRE" / "PRE:lang", "HR"). A blockquote is
+/// a <see cref="Section"/> tagged "BLOCKQUOTE" that contains its blocks, so a
+/// quote can hold headings and lists, and quotes nest to any depth;
 /// table header cells and column alignment via <c>TableCell.Tag</c> ("TH"/"TD"
-/// with an optional ":L"/":C"/":R" suffix); images via <c>Run.Tag</c>
-/// ("IMG:src" with the alt text as the run text); and the author's original
+/// with an optional ":L"/":C"/":R" suffix); pictures as a real <c>Image</c> in an
+/// <c>InlineUIContainer</c> whose Tag is a <see cref="ComposeImage"/>; and the author's original
 /// link target via <c>Hyperlink.Tag</c> — all so content round-trips without
 /// guessing from visual formatting.
 /// </summary>
@@ -39,11 +41,142 @@ public static class RichTextDocumentConverter
     public const string TagHr = "HR";
     public const string TagBlockquote = "BLOCKQUOTE";
 
-    /// <summary>Run.Tag prefix marking an image placeholder; the rest is the src.</summary>
-    public const string ImageTagPrefix = "IMG:";
+    /// <summary>True when the block is a quote: a Section tagged <see cref="TagBlockquote"/>.</summary>
+    public static bool IsQuote(Block? block) => block is Section { Tag: TagBlockquote };
 
-    /// <summary>Run text shown for images whose alt text is empty (round-trips back to alt="").</summary>
-    public const string ImageAltPlaceholder = "(image)";
+    /// <summary>
+    /// A new, empty quote container. The rule on the left and the secondary
+    /// text color are how a sighted reader tells a quote apart; nested quotes
+    /// indent further because each Section adds its own margin.
+    /// </summary>
+    public static Section NewQuoteSection() => new()
+    {
+        Tag = TagBlockquote,
+        Margin = new Thickness(6, 0, 0, 0),
+        Padding = new Thickness(8, 0, 0, 0),
+        BorderThickness = new Thickness(2, 0, 0, 0),
+        BorderBrush = ThemeBrush(Theming.ThemeKeys.Border, Brushes.Gray),
+        Foreground = ThemeBrush(Theming.ThemeKeys.TextSecondary, Brushes.DarkSlateGray),
+    };
+
+    /// <summary>How many quotes contain this element (0 when it is not quoted).</summary>
+    public static int QuoteDepth(TextElement? element)
+    {
+        int depth = 0;
+        for (DependencyObject? el = element?.Parent; el is TextElement te; el = te.Parent)
+            if (IsQuote(te as Block)) depth++;
+        return depth;
+    }
+
+    /// <summary>
+    /// Markdown has no way to write a picture without alt text — <c>![](…)</c> is the decorative
+    /// one — so a picture nobody has described is written with this title,
+    /// <c>![](cid:… "no description")</c>, and read back as undescribed. Without it, one trip
+    /// through Markdown mode would quietly turn a forwarded picture into a decorative one.
+    /// </summary>
+    public const string NoDescriptionTitle = "no description";
+
+    /// <summary>Smallest a picture is drawn in the editor, whatever size it declares.</summary>
+    public const double MinEditorImageSize = 16;
+
+    /// <summary>Widest a picture is drawn in the editor; the message keeps its real size.</summary>
+    public const double MaxEditorImageWidth = 480;
+
+    /// <summary>
+    /// Supplies the picture for a <c>src</c> while a document is being built — the compose
+    /// window's store of <c>cid:</c> pictures. Null (or a null answer) draws a placeholder; the
+    /// editor never fetches a picture from the web.
+    /// </summary>
+    [ThreadStatic] private static Func<string, ImageSource?>? _imageResolver;
+
+    private static ImageSource? _placeholder;
+
+    /// <summary>A plain grey frame with a mountain shape, drawn for a picture whose bytes are not here.</summary>
+    public static ImageSource PlaceholderImage => _placeholder ??= MakePlaceholder();
+
+    private static DrawingImage MakePlaceholder()
+    {
+        var group = new DrawingGroup();
+        using (var dc = group.Open())
+        {
+            dc.DrawRectangle(Brushes.Gainsboro, new Pen(Brushes.Gray, 1), new Rect(0, 0, 64, 48));
+            var mountain = new StreamGeometry();
+            using (var g = mountain.Open())
+            {
+                g.BeginFigure(new Point(8, 40), true, true);
+                g.LineTo(new Point(26, 18), true, false);
+                g.LineTo(new Point(38, 30), true, false);
+                g.LineTo(new Point(46, 22), true, false);
+                g.LineTo(new Point(58, 40), true, false);
+            }
+            mountain.Freeze();
+            dc.DrawGeometry(Brushes.Gray, null, mountain);
+            dc.DrawEllipse(Brushes.Gray, null, new Point(48, 12), 4, 4);
+        }
+        var image = new DrawingImage(group);
+        image.Freeze();
+        return image;
+    }
+
+    /// <summary>
+    /// The editor element for a picture: an <c>Image</c> named for screen readers by its
+    /// description, inside an <c>InlineUIContainer</c> tagged with the picture's details. A
+    /// screen reader reads it as a picture with that name, and Shift+Arrow selects it as one
+    /// unit (#729 listening test, option B).
+    /// </summary>
+    /// <param name="insertAt">Where to put it in a live document; null for a detached element.</param>
+    public static InlineUIContainer CreateImageElement(ComposeImage info, ImageSource? source, TextPointer? insertAt = null)
+    {
+        var image = new Image
+        {
+            Stretch = Stretch.Uniform,
+            MaxWidth = MaxEditorImageWidth,
+        };
+        SetImageSource(image, info, source);
+        System.Windows.Automation.AutomationProperties.SetName(image, info.AccessibleName);
+        var container = insertAt is null ? new InlineUIContainer(image) : new InlineUIContainer(image, insertAt);
+        container.Tag = info;
+        container.BaselineAlignment = BaselineAlignment.Bottom;
+        return container;
+    }
+
+    /// <summary>
+    /// Shows <paramref name="source"/> in an editor picture, or the placeholder when it is null —
+    /// also how a picture that arrives after the document was built is filled in.
+    /// </summary>
+    public static void SetImageSource(Image image, ComposeImage info, ImageSource? source)
+    {
+        image.Source = source ?? PlaceholderImage;
+        if (source is null)
+        {
+            image.Width = 64;
+            image.Height = 48;
+            return;
+        }
+        image.ClearValue(FrameworkElement.HeightProperty);
+        if (info.Width is > 0)
+            image.Width = Math.Min(info.Width.Value, MaxEditorImageWidth);
+        else
+            image.ClearValue(FrameworkElement.WidthProperty);
+        // Never too small to see: a picture sized 1 by 1 would otherwise go out with the message
+        // without anyone having noticed it in the editor (#729 security review).
+        image.MinWidth = MinEditorImageSize;
+        image.MinHeight = MinEditorImageSize;
+    }
+
+    /// <summary>The picture details when the inline is an editor picture; otherwise null.</summary>
+    public static ComposeImage? ImageOf(Inline? inline) => (inline as InlineUIContainer)?.Tag as ComposeImage;
+
+    /// <summary>
+    /// Changes an editor picture's description in place, keeping the same element so the caret
+    /// and undo stay put.
+    /// </summary>
+    public static void UpdateImage(InlineUIContainer element, ComposeImage info)
+    {
+        element.Tag = info;
+        if (element.Child is Image image)
+            System.Windows.Automation.AutomationProperties.SetName(image, info.AccessibleName);
+    }
 
     private static readonly FontFamily FallbackCodeFont = new("Consolas");
 
@@ -126,15 +259,18 @@ public static class RichTextDocumentConverter
     /// which can wedge the STA thread mid-load (issue #181). Batched, the
     /// whole load raises exactly one event after the document is complete.
     /// </summary>
-    public static void LoadInto(RichTextBox editor, string html)
+    public static void LoadInto(RichTextBox editor, string html, Func<string, ImageSource?>? resolveImage = null)
     {
         editor.BeginChange();
+        var previous = _imageResolver;
+        _imageResolver = resolveImage;
         try
         {
             LoadInto(editor.Document, html);
         }
         finally
         {
+            _imageResolver = previous;
             editor.EndChange();
         }
     }
@@ -167,6 +303,15 @@ public static class RichTextDocumentConverter
         {
             switch (node.Name)
             {
+                // Much HTML mail wraps everything in divs. A div holding blocks is a
+                // container, so the headings, lists and quotes inside it stay blocks
+                // instead of running together as one paragraph of text.
+                case "div" when node.Children.Any(c => BlockElements.Contains(c.Name)):
+                    foreach (var b in FlushPending()) yield return b;
+                    foreach (var inner in BuildBlocks(node.Children))
+                        yield return inner;
+                    break;
+
                 case "p" or "div":
                     foreach (var b in FlushPending()) yield return b;
                     var para = new Paragraph();
@@ -210,16 +355,13 @@ public static class RichTextDocumentConverter
 
                 case "blockquote":
                     foreach (var b in FlushPending()) yield return b;
+                    // A container, not a flag on each paragraph: nested quotes, and
+                    // headings or lists inside a quote, all keep their structure.
+                    var quote = NewQuoteSection();
                     foreach (var inner in BuildBlocks(node.Children))
-                    {
-                        inner.Tag = TagBlockquote;
-                        if (inner is Paragraph qp)
-                        {
-                            qp.Margin = new Thickness(20, qp.Margin.Top, 0, qp.Margin.Bottom);
-                            qp.Foreground = ThemeBrush(Theming.ThemeKeys.TextSecondary, Brushes.DarkSlateGray);
-                        }
-                        yield return inner;
-                    }
+                        quote.Blocks.Add(inner);
+                    if (quote.Blocks.Count > 0)
+                        yield return quote;
                     break;
 
                 case "pre":
@@ -269,6 +411,19 @@ public static class RichTextDocumentConverter
         }
 
         foreach (var b in FlushPending()) yield return b;
+    }
+
+    private static readonly HashSet<string> BlockElements =
+        ["p", "div", "h1", "h2", "h3", "h4", "h5", "h6", "ul", "ol", "blockquote", "pre", "hr", "table"];
+
+    /// <summary>True for the fonts the converter treats as inline code.</summary>
+    public static bool IsCodeFont(FontFamily? font)
+    {
+        var source = font?.Source;
+        if (string.IsNullOrEmpty(source)) return false;
+        return source.Contains("Consolas", StringComparison.OrdinalIgnoreCase)
+            || source.Contains("Cascadia", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(source, CodeFont.Source, StringComparison.OrdinalIgnoreCase);
     }
 
     private static string? FenceLanguageOf(HtmlNode preNode)
@@ -411,16 +566,18 @@ public static class RichTextDocumentConverter
                     break;
 
                 case "img":
-                    var alt = WebUtility.HtmlDecode(node.Alt ?? string.Empty);
+                    // Null alt (no attribute) is kept apart from empty alt (decorative).
+                    var alt = node.Alt is null ? null : WebUtility.HtmlDecode(node.Alt);
+                    if (string.IsNullOrEmpty(alt)
+                        && string.Equals(WebUtility.HtmlDecode(node.Title ?? string.Empty), NoDescriptionTitle, StringComparison.Ordinal))
+                        alt = null;
                     var src = WebUtility.HtmlDecode(node.Src ?? string.Empty);
                     if (src.Length > 0 && !IsDangerousHref(src))
                     {
-                        // The alt text is the editable run text; the src rides on Tag.
-                        var imgRun = StyleRun(new Run(alt.Length > 0 ? alt : ImageAltPlaceholder), style);
-                        imgRun.Tag = ImageTagPrefix + src;
-                        target.Add(imgRun);
+                        var info = new ComposeImage(src, alt, PixelsOf(node.Width), PixelsOf(node.Height));
+                        target.Add(CreateImageElement(info, _imageResolver?.Invoke(src)));
                     }
-                    else if (alt.Length > 0)
+                    else if (!string.IsNullOrEmpty(alt))
                     {
                         target.Add(StyleRun(new Run($"[{alt}]"), style));
                     }
@@ -432,6 +589,10 @@ public static class RichTextDocumentConverter
             }
         }
     }
+
+    private static int? PixelsOf(string? value) =>
+        int.TryParse(value?.Trim().TrimEnd('x', 'p', 'X', 'P'), System.Globalization.NumberStyles.None,
+                     System.Globalization.CultureInfo.InvariantCulture, out var n) && n > 0 ? n : null;
 
     private static bool IsDangerousHref(string href)
     {
@@ -478,36 +639,10 @@ public static class RichTextDocumentConverter
         return sb.ToString().TrimEnd('\n');
     }
 
-    /// <summary>
-    /// Emits a run of sibling blocks, merging consecutive blockquote paragraphs
-    /// into a single &lt;blockquote&gt; so multi-paragraph quotes keep their
-    /// structure instead of splitting into adjacent one-paragraph quotes.
-    /// </summary>
     private static void EmitBlocksHtml(StringBuilder sb, IEnumerable<Block> blocks)
     {
-        bool inQuote = false;
         foreach (var block in blocks)
-        {
-            bool isQuote = block.Tag as string == TagBlockquote;
-            if (inQuote && !isQuote) { sb.Append("</blockquote>\n"); inQuote = false; }
-            if (isQuote)
-            {
-                if (!inQuote) { sb.Append("<blockquote>\n"); inQuote = true; }
-                if (block is Paragraph qp)
-                {
-                    sb.Append("<p>");
-                    EmitInlinesHtml(sb, qp.Inlines, BaselineOf(qp));
-                    sb.Append("</p>\n");
-                }
-                else
-                {
-                    EmitBlockHtml(sb, block);
-                }
-                continue;
-            }
             EmitBlockHtml(sb, block);
-        }
-        if (inQuote) sb.Append("</blockquote>\n");
     }
 
     private static void EmitBlockHtml(StringBuilder sb, Block block)
@@ -589,6 +724,12 @@ public static class RichTextDocumentConverter
                 sb.Append("</table>\n");
                 break;
 
+            case Section quote when IsQuote(quote):
+                sb.Append("<blockquote>\n");
+                EmitBlocksHtml(sb, quote.Blocks);
+                sb.Append("</blockquote>\n");
+                break;
+
             case Section section:
                 EmitBlocksHtml(sb, section.Blocks);
                 break;
@@ -610,14 +751,16 @@ public static class RichTextDocumentConverter
                     sb.Append("<br />\n");
                     break;
 
-                case Run imgRun when imgRun.Tag is string imgTag
-                                     && imgTag.StartsWith(ImageTagPrefix, StringComparison.Ordinal):
-                    var imgAlt = imgRun.Text == ImageAltPlaceholder ? string.Empty : imgRun.Text;
-                    sb.Append("<img src=\"")
-                      .Append(WebUtility.HtmlEncode(imgTag[ImageTagPrefix.Length..]))
-                      .Append("\" alt=\"")
-                      .Append(WebUtility.HtmlEncode(imgAlt))
-                      .Append("\" />");
+                case InlineUIContainer { Tag: ComposeImage img }:
+                    sb.Append("<img src=\"").Append(WebUtility.HtmlEncode(img.Src)).Append('"');
+                    // Decorative is alt="" so assistive technology skips the picture. A picture
+                    // nobody has described keeps no alt at all rather than claiming to be decorative.
+                    if (img.Alt is not null)
+                        sb.Append(" alt=\"").Append(WebUtility.HtmlEncode(img.Alt)).Append('"');
+                    if (img.Width is > 0 && img.Height is > 0)
+                        sb.Append(" width=\"").Append(img.Width.Value).Append("\" height=\"").Append(img.Height.Value)
+                          .Append("\" style=\"max-width: 100%; height: auto;\"");
+                    sb.Append(" />");
                     break;
 
                 case Run run:
@@ -664,8 +807,9 @@ public static class RichTextDocumentConverter
             Italic: run.FontStyle == FontStyles.Italic && !baseline.Italic,
             Underline: Has(TextDecorations.Underline),
             Strike: Has(TextDecorations.Strikethrough),
-            Code: run.FontFamily?.Source?.Contains("Consolas", StringComparison.OrdinalIgnoreCase) == true
-                  || run.FontFamily?.Source?.Contains("Cascadia", StringComparison.OrdinalIgnoreCase) == true);
+            // The run's own font, not an inherited one, so a theme whose body font
+            // happened to be a code font could never make every run code.
+            Code: IsCodeFont(run.ReadLocalValue(TextElement.FontFamilyProperty) as FontFamily));
     }
 
     // ─────────────────────────── FlowDocument → Markdown ───────────────────────
@@ -677,34 +821,24 @@ public static class RichTextDocumentConverter
         return sb.ToString().Trim('\n');
     }
 
-    /// <summary>
-    /// Emits a run of sibling blocks, joining consecutive blockquote paragraphs
-    /// with a "&gt;" continuation line so they re-parse as one quote.
-    /// </summary>
     private static void EmitBlocksMarkdown(StringBuilder sb, IEnumerable<Block> blocks)
     {
-        bool prevQuote = false;
         foreach (var block in blocks)
-        {
-            bool isQuote = block is Paragraph { Tag: TagBlockquote };
-            if (isQuote)
-            {
-                if (prevQuote && sb.Length >= 2 && sb[^1] == '\n' && sb[^2] == '\n')
-                {
-                    // Replace the blank separator with a ">" continuation line.
-                    sb.Length -= 1;
-                    sb.Append(">\n");
-                }
-                var qp = (Paragraph)block;
-                sb.Append("> ");
-                EmitInlinesMarkdown(sb, qp.Inlines, BaselineOf(qp), "> ");
-                sb.Append("\n\n");
-                prevQuote = true;
-                continue;
-            }
-            prevQuote = false;
             EmitBlockMarkdown(sb, block);
-        }
+    }
+
+    /// <summary>
+    /// A quote is its content's Markdown with "&gt; " in front of every line.
+    /// Blank lines become a bare "&gt;" so a multi-paragraph quote re-parses as
+    /// one quote; a list or a nested quote inside it just gains the marker.
+    /// </summary>
+    private static void EmitQuoteMarkdown(StringBuilder sb, Section quote)
+    {
+        var inner = new StringBuilder();
+        EmitBlocksMarkdown(inner, quote.Blocks);
+        foreach (var line in inner.ToString().Trim('\n').Split('\n'))
+            sb.Append(line.Length == 0 ? ">" : "> " + line).Append('\n');
+        sb.Append('\n');
     }
 
     private static void EmitBlockMarkdown(StringBuilder sb, Block block)
@@ -728,11 +862,10 @@ public static class RichTextDocumentConverter
                     TagH4 => "#### ",
                     TagH5 => "##### ",
                     TagH6 => "###### ",
-                    TagBlockquote => "> ",
                     _ => string.Empty,
                 };
                 sb.Append(prefix);
-                EmitInlinesMarkdown(sb, p.Inlines, BaselineOf(p), prefix == "> " ? "> " : string.Empty);
+                EmitInlinesMarkdown(sb, p.Inlines, BaselineOf(p), string.Empty);
                 sb.Append("\n\n");
                 break;
 
@@ -758,6 +891,10 @@ public static class RichTextDocumentConverter
 
             case Table table:
                 EmitTableMarkdown(sb, table);
+                break;
+
+            case Section quote when IsQuote(quote):
+                EmitQuoteMarkdown(sb, quote);
                 break;
 
             case Section section:
@@ -849,11 +986,12 @@ public static class RichTextDocumentConverter
                     sb.Append('\n').Append(continuationPrefix);
                     break;
 
-                case Run mdImg when mdImg.Tag is string mdImgTag
-                                    && mdImgTag.StartsWith(ImageTagPrefix, StringComparison.Ordinal):
-                    var mdAlt = mdImg.Text == ImageAltPlaceholder ? string.Empty : mdImg.Text;
-                    sb.Append("![").Append(mdAlt.Replace("]", @"\]")).Append("](")
-                      .Append(mdImgTag[ImageTagPrefix.Length..]).Append(')');
+                case InlineUIContainer { Tag: ComposeImage mdImg }:
+                    sb.Append("![").Append((mdImg.Alt ?? string.Empty).Replace("]", @"\]")).Append("](")
+                      .Append(mdImg.Src);
+                    if (mdImg.Alt is null)
+                        sb.Append(" \"").Append(NoDescriptionTitle).Append('"');
+                    sb.Append(')');
                     break;
 
                 case Run run:
@@ -868,7 +1006,10 @@ public static class RichTextDocumentConverter
                         };
                     var strike = style.Strike ? "~~" : string.Empty;
                     // Underline has no Markdown form — the text passes through unstyled.
-                    var text = run.Text;
+                    // Words that look like a Markdown image stay words: "![x](cid:y)" typed in a
+                    // message must not become a picture after a switch to Markdown mode (#729
+                    // security review).
+                    var text = run.Text.Replace("![", @"!\[", StringComparison.Ordinal);
                     if (marker.Length > 0 || strike.Length > 0)
                     {
                         // Emphasis markers don't survive leading/trailing spaces.
@@ -910,7 +1051,43 @@ public static class RichTextDocumentConverter
 
     // ─────────────────────────── Plain text & snapshot ─────────────────────────
 
-    public static string ToPlainText(FlowDocument doc) => HtmlStripper.ToPlainText(ToHtml(doc));
+    /// <summary>
+    /// The text/plain rendering. A quote gets "&gt; " in front of each line, the
+    /// way plain-text mail has always marked quoted text, so the plain part of a
+    /// reply still shows what was quoted. Everything else goes through
+    /// <see cref="HtmlStripper"/>.
+    /// </summary>
+    public static string ToPlainText(FlowDocument doc) => PlainTextOf(doc.Blocks);
+
+    private static string PlainTextOf(IEnumerable<Block> blocks)
+    {
+        var parts = new List<string>();
+        var pendingHtml = new StringBuilder();
+
+        void Flush()
+        {
+            if (pendingHtml.Length == 0) return;
+            var text = HtmlStripper.ToPlainText(pendingHtml.ToString(), labelImages: true);
+            if (text.Length > 0) parts.Add(text);
+            pendingHtml.Clear();
+        }
+
+        foreach (var block in blocks)
+        {
+            if (block is Section quote && IsQuote(quote))
+            {
+                Flush();
+                var inner = PlainTextOf(quote.Blocks);
+                if (inner.Length > 0)
+                    parts.Add(string.Join("\n", inner.Split('\n')
+                        .Select(line => line.Length == 0 ? ">" : "> " + line)));
+                continue;
+            }
+            EmitBlockHtml(pendingHtml, block);
+        }
+        Flush();
+        return string.Join("\n\n", parts);
+    }
 
     /// <summary>All three representations in one pass — handed to the ViewModel via RichBodyProvider.</summary>
     public static RichBodySnapshot Snapshot(FlowDocument doc) =>
@@ -947,6 +1124,9 @@ public static class RichTextDocumentConverter
         public string? Src;
         public string? Class;
         public string? Style;
+        public string? Width;
+        public string? Height;
+        public string? Title;
         public List<HtmlNode> Children = [];
 
         private static readonly HashSet<string> VoidTags =
@@ -978,7 +1158,7 @@ public static class RichTextDocumentConverter
                     continue;
                 }
 
-                int gt = html.IndexOf('>', lt + 1);
+                int gt = TagEnd(html, lt + 1);
                 if (gt < 0) { AppendText(stack.Peek(), html[lt..]); break; }
 
                 var raw = html[(lt + 1)..gt].Trim();
@@ -1012,12 +1192,15 @@ public static class RichTextDocumentConverter
                 }
 
                 var node = new HtmlNode { Name = name };
-                var attrs = body[nameEnd..];
-                node.Href = ExtractAttr(attrs, "href");
-                node.Alt = ExtractAttr(attrs, "alt");
-                node.Src = ExtractAttr(attrs, "src");
-                node.Class = ExtractAttr(attrs, "class");
-                node.Style = ExtractAttr(attrs, "style");
+                var attrs = ParseAttributes(body[nameEnd..]);
+                node.Href = attrs.GetValueOrDefault("href");
+                node.Alt = attrs.GetValueOrDefault("alt");
+                node.Src = attrs.GetValueOrDefault("src");
+                node.Class = attrs.GetValueOrDefault("class");
+                node.Style = attrs.GetValueOrDefault("style");
+                node.Width = attrs.GetValueOrDefault("width");
+                node.Title = attrs.GetValueOrDefault("title");
+                node.Height = attrs.GetValueOrDefault("height");
                 stack.Peek().Children.Add(node);
 
                 if (!selfClosed && !VoidTags.Contains(name))
@@ -1036,21 +1219,71 @@ public static class RichTextDocumentConverter
             parent.Children.Add(new HtmlNode { Text = text });
         }
 
-        private static string? ExtractAttr(string attrs, string attribute)
+        /// <summary>
+        /// The index of the "&gt;" that ends the tag starting before <paramref name="from"/>, as the
+        /// tokenizer finds it: a "&gt;" inside a quoted attribute value does not count. -1 when none.
+        /// </summary>
+        private static int TagEnd(string html, int from)
         {
-            var idx = attrs.IndexOf(attribute + "=", StringComparison.OrdinalIgnoreCase);
-            if (idx < 0) return null;
-            if (idx > 0 && (char.IsLetterOrDigit(attrs[idx - 1]) || attrs[idx - 1] == '-')) return null;
-            int v = idx + attribute.Length + 1;
-            if (v >= attrs.Length) return null;
-            char quote = attrs[v];
-            if (quote is '"' or '\'')
+            char quote = '\0';
+            bool afterEquals = false;
+            for (int i = from; i < html.Length; i++)
             {
-                int endQuote = attrs.IndexOf(quote, v + 1);
-                return endQuote < 0 ? attrs[(v + 1)..] : attrs[(v + 1)..endQuote];
+                char c = html[i];
+                if (quote != '\0')
+                {
+                    if (c == quote) quote = '\0';
+                    continue;
+                }
+                if (c == '>') return i;
+                if (c == '=') { afterEquals = true; continue; }
+                if (afterEquals && c is '"' or '\'') { quote = c; afterEquals = false; continue; }
+                if (!char.IsWhiteSpace(c)) afterEquals = false;
             }
-            int endSpace = attrs.IndexOf(' ', v);
-            return endSpace < 0 ? attrs[v..] : attrs[v..endSpace];
+            return -1;
+        }
+
+        /// <summary>
+        /// A tag's attributes read as the HTML tokenizer reads them: a name runs to whitespace, "/"
+        /// or "="; a value is quoted, or runs to whitespace. The first of a repeated name wins, as
+        /// in a browser. Reading "src=" wherever it appeared let <c>alt="a src=cid:x"</c> choose a
+        /// picture that the real src did not (#729 security review).
+        /// </summary>
+        private static Dictionary<string, string> ParseAttributes(string rest)
+        {
+            var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            int i = 0;
+            while (i < rest.Length)
+            {
+                if (char.IsWhiteSpace(rest[i]) || rest[i] == '/') { i++; continue; }
+                int start = i;
+                i++;
+                while (i < rest.Length && !char.IsWhiteSpace(rest[i]) && rest[i] != '/' && rest[i] != '=') i++;
+                var name = rest[start..i];
+                while (i < rest.Length && char.IsWhiteSpace(rest[i])) i++;
+                string value = string.Empty;
+                if (i < rest.Length && rest[i] == '=')
+                {
+                    i++;
+                    while (i < rest.Length && char.IsWhiteSpace(rest[i])) i++;
+                    if (i < rest.Length && rest[i] is '"' or '\'')
+                    {
+                        char q = rest[i++];
+                        int end = rest.IndexOf(q, i);
+                        if (end < 0) end = rest.Length;
+                        value = rest[i..end];
+                        i = Math.Min(end + 1, rest.Length);
+                    }
+                    else
+                    {
+                        int vs = i;
+                        while (i < rest.Length && !char.IsWhiteSpace(rest[i])) i++;
+                        value = rest[vs..i];
+                    }
+                }
+                result.TryAdd(name, value);
+            }
+            return result;
         }
 
         public string InnerText()

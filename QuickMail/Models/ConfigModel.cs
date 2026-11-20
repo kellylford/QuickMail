@@ -20,6 +20,23 @@ public class ConfigModel
     public bool ReadAsPlainText { get; set; } = false;
 
     /// <summary>
+    /// Show pictures that travel inside a message (<c>cid:</c> parts) in the reading pane, message
+    /// tabs and message windows. They contact no server, so there is no tracking or privacy cost;
+    /// on by default. Pictures a message links to on the web are a separate matter; see
+    /// <see cref="LoadWebPictures"/>. Off shows each picture's alt text instead, as before.
+    /// </summary>
+    public bool ShowEmbeddedPictures { get; set; } = true;
+
+    /// <summary>
+    /// Load the pictures a message links to on the web for every message, rather than only when the
+    /// user asks for them with Load Pictures (#508). Off by default: fetching a picture tells its
+    /// server that the message was opened, when, and from which IP address — which is what a
+    /// tracking pixel is for. QuickMail fetches them itself, without cookies, from public
+    /// addresses only.
+    /// </summary>
+    public bool LoadWebPictures { get; set; }
+
+    /// <summary>
     /// How to display the message list.
     /// Values: "messages" (flat list), "conversations" (grouped by subject), "from" (grouped by sender).
     /// </summary>
@@ -133,6 +150,52 @@ public class ConfigModel
     /// </summary>
     public int MailSyncPollMinutes { get; set; } = 5;
 
+    /// <summary>
+    /// Days of Inbox mail whose full bodies sync downloads for offline reading (#637).
+    /// 0 (the default) is off: bodies are cached only as messages are opened or prefetched.
+    /// Offered as 0, 7, 30, 90, 180, 365 or <see cref="OfflineBodyDaysAll"/>; never wider than
+    /// <see cref="SyncDays"/> when that is set.
+    /// Attachments are not included — they are fetched when opened and need a connection.
+    /// </summary>
+    public int OfflineBodyDays { get; set; } = 0;
+
+    /// <summary>
+    /// When true, the offline-bodies pass also downloads the text of messages in folders other than the Inbox
+    /// (#717, phase 3) — every folder except Trash, Junk, Drafts and the Outbox, Sent included — so full-message
+    /// search covers Sent and archived mail without opening each message first. Off by default: it can multiply
+    /// what is downloaded.
+    /// </summary>
+    public bool OfflineBodyAllFolders { get; set; } = false;
+
+    /// <summary>
+    /// <see cref="OfflineBodyDays"/> value for every message, however old. Not 0, which is "off"
+    /// here — unlike <see cref="SyncDays"/>, where 0 is "all mail".
+    /// </summary>
+    public const int OfflineBodyDaysAll = -1;
+
+    /// <summary>
+    /// The offline-bodies window actually used: <see cref="OfflineBodyDays"/> capped by
+    /// <see cref="SyncDays"/>. 0 is off; <see cref="int.MaxValue"/> is unbounded, so a wider
+    /// window always compares greater.
+    /// </summary>
+    public int EffectiveOfflineBodyDays
+    {
+        get
+        {
+            if (OfflineBodyDays == 0) return 0;
+            var wanted = OfflineBodyDays < 0 ? int.MaxValue : OfflineBodyDays;
+            return SyncDays <= 0 ? wanted : Math.Min(wanted, SyncDays);
+        }
+    }
+
+    /// <summary>
+    /// The oldest date inside an effective offline-bodies window of <paramref name="effectiveDays"/>
+    /// (a positive <see cref="EffectiveOfflineBodyDays"/>); the unbounded window starts at the
+    /// beginning of time.
+    /// </summary>
+    public static DateTimeOffset OfflineBodyWindowStart(int effectiveDays, DateTimeOffset now)
+        => effectiveDays == int.MaxValue ? DateTimeOffset.MinValue : now.AddDays(-effectiveDays);
+
     // ── Appearance ────────────────────────────────────────────────────────────────
 
     /// <summary>
@@ -175,11 +238,12 @@ public class ConfigModel
     /// <summary>Announce background loading and sync progress.</summary>
     public bool AnnounceStatus { get; set; } = true;
 
-    /// <summary>Announce action results (search counts, move/delete confirmations).</summary>
+    /// <summary>Announce action results (search counts, copy confirmations). Delete, archive and move have their own
+    /// setting, <see cref="AnnounceMessageActions"/>.</summary>
     public bool AnnounceResults { get; set; } = true;
 
     /// <summary>
-    /// Announce the outcome of common message commands — delete and archive (issue #317). Split out
+    /// Announce the outcome of common message commands — delete, archive (issue #317) and move (#670). Split out
     /// from <see cref="AnnounceStatus"/> so users can silence this frequent chatter (it can interrupt
     /// the screen reader reading the next message) without muting sync/loading progress. On by default.
     /// </summary>
@@ -218,6 +282,13 @@ public class ConfigModel
     /// are. Mirrors <see cref="ContactListShowFieldLabels"/>.
     /// </summary>
     public bool MessageListShowFieldLabels { get; set; } = false;
+
+    /// <summary>
+    /// What separates the fields of a message list row's spoken name, for all three row kinds:
+    /// a period (default, what rows have always said), a comma, or a space (#802). Set in the
+    /// Message List Fields window.
+    /// </summary>
+    public RowFieldSeparator MessageListFieldSeparator { get; set; } = RowFieldSeparator.Period;
 
     /// <summary>
     /// When true, the address-book contact list speaks field labels in each row's accessible name
@@ -264,8 +335,41 @@ public class ConfigModel
     /// <summary>Editing mode new compose windows start in. Drafts reopen in the mode they were saved in; templates always reopen in plain text.</summary>
     public ComposeMode DefaultComposeMode { get; set; } = ComposeMode.PlainText;
 
+    /// <summary>
+    /// Spell-check compose text in the background as it is typed or pasted. Off, compose windows
+    /// don't turn WPF's spell checker on until Check Spelling (F7) or Next/Previous Misspelling
+    /// (Ctrl+F7 / Ctrl+Shift+F7) asks for it: WPF's background check of a long pasted text with
+    /// many unknown words blocks the window for seconds and screen readers misread lines meanwhile
+    /// (#883, dotnet/wpf#6106). On by default.
+    /// </summary>
+    public bool CheckSpellingAsYouType { get; set; } = true;
+
     /// <summary>Automatically save composes as drafts while editing.</summary>
     public bool AutoSaveDrafts { get; set; } = true;
+
+    /// <summary>Ask before sending or queuing a message. Off preserves the existing send workflow.</summary>
+    public bool ConfirmBeforeSend { get; set; }
+
+    /// <summary>
+    /// Remember the people messages are sent to, in recipients.json, apart from the address book (#1037).
+    /// Off by default. Only the remembering: whether they are suggested is <see cref="SuggestPeopleEmailed"/>.
+    /// </summary>
+    public bool RememberRecipients { get; set; }
+
+    /// <summary>
+    /// Show address suggestions while typing in To, Cc, Bcc and an appointment's Invite field (#1037). On by
+    /// default. Off, no list ever appears and Tab and Enter keep what was typed, whatever the two below say.
+    /// </summary>
+    public bool SuggestAddresses { get; set; } = true;
+
+    /// <summary>Suggest contacts and groups from the address book, synced contacts included. On by default.</summary>
+    public bool SuggestFromAddressBook { get; set; } = true;
+
+    /// <summary>
+    /// Suggest people remembered from sent mail (<see cref="RememberRecipients"/>). On by default; it offers
+    /// nothing until remembering has been turned on.
+    /// </summary>
+    public bool SuggestPeopleEmailed { get; set; } = true;
 
     /// <summary>Seconds between automatic draft saves. Clamped to 30–600.</summary>
     public int AutoSaveIntervalSeconds { get; set; } = 120;
@@ -297,10 +401,45 @@ public class ConfigModel
     /// </summary>
     public bool ConnectionDiagnostics { get; set; } = false;
 
+    /// <summary>
+    /// Makes the space bar in every text field reach screen readers as a typed character
+    /// (issue #300). WPF inserts a space through an editing command and marks the key handled,
+    /// so Windows never sends the WM_CHAR a screen reader watches to end a word, and word echo
+    /// is silent until the next punctuation mark. Off by default, so only someone who turns it on
+    /// gets the change: with it on, typed-character echo was reported to stop speaking "space".
+    /// Takes effect immediately.
+    /// </summary>
+    public bool NvdaTypingFix { get; set; } = false;
+
+    /// <summary>
+    /// Whether File, Export Settings and File, Import Settings are offered (issue #507). Off by
+    /// default: moving settings means writing account details and the address book to a file, or
+    /// replacing this computer's settings, so it waits until the user asks for it. Stays on once
+    /// turned on. Belongs to this computer: an import never changes it.
+    /// </summary>
+    public bool AllowSettingsTransfer { get; set; } = false;
+
     // ── Tutorial ──────────────────────────────────────────────────────────────────
 
     /// <summary>Show a confirmation dialog before emptying trash. Default on.</summary>
     public bool ConfirmEmptyTrash { get; set; } = true;
+
+    // ── Saving messages (#728) ────────────────────────────────────────────────────
+
+    /// <summary>
+    /// The format Save (Ctrl+S) writes without asking, and the type Save As starts on:
+    /// "eml" (the original message), "txt", "html" or "pdf". See <see cref="MessageSaveFormats"/>.
+    /// </summary>
+    public string SaveMessageFormat { get; set; } = "eml";
+
+    /// <summary>
+    /// The folder Save (Ctrl+S) writes into without asking. Empty means the user's Documents folder,
+    /// resolved at save time rather than stored, so a profile moved between machines still works.
+    /// </summary>
+    public string SaveMessageFolder { get; set; } = string.Empty;
+
+    /// <summary>Where Save As last saved to, so the next Save As starts there. Not shown in Settings.</summary>
+    public string LastSaveAsFolder { get; set; } = string.Empty;
 
     // ── Notifications ─────────────────────────────────────────────────────────────
 
@@ -315,6 +454,53 @@ public class ConfigModel
     /// </summary>
     public bool NotifyOnWatchedConversation { get; set; } = false;
 
+    // ── Sounds (#912) ─────────────────────────────────────────────────────────────
+
+    /// <summary>Play sounds for mail events such as a message being sent. Default off. A rule's own
+    /// sound does not depend on this: adding one to a rule is already asking for it.</summary>
+    public bool PlayEventSounds { get; set; } = false;
+
+    /// <summary>Silences every sound, including rule sounds. Only an explicit preview still plays.</summary>
+    public bool MuteSounds { get; set; } = false;
+
+    /// <summary>How loud QuickMail's sounds play, 0-100, within whatever Windows is set to.</summary>
+    public int SoundVolume { get; set; } = 80;
+
+    /// <summary>
+    /// Check the sound scheme gallery, at most once a day, for updates to schemes added from it, and
+    /// say when one is waiting (#971). Default on. Only asked when a gallery scheme is here.
+    /// </summary>
+    public bool CheckSoundSchemeUpdates { get; set; } = true;
+
+    /// <summary>When QuickMail last checked the gallery for updates to sound schemes, in UTC; null if never.</summary>
+    public DateTime? LastSoundSchemeUpdateCheck { get; set; }
+
+    /// <summary>
+    /// The newer gallery versions already announced (#971): gallery id to the SHA-256 of the file last
+    /// said for it, so a waiting update is said once, not every day. Replaced as a whole, never changed in place.
+    /// </summary>
+    public Dictionary<string, string> AnnouncedSoundSchemeUpdates { get; set; } = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// The sound scheme in use (#932): a built-in pack's id ("glass", "softbell", "wood") or a scheme of
+    /// the person's own ("user-&lt;guid&gt;"). Replaces 0.8.67's SoundPack, which is read when this is absent.
+    /// An id this build doesn't have plays as Glass and is kept, as written, until someone chooses another.
+    /// </summary>
+    public string SoundSchemeId { get; set; } = SoundCatalog.DefaultPack;
+
+    /// <summary>
+    /// Every scheme with something stored, by id: one <c>[sounds.&lt;id&gt;]</c> section each. A built-in
+    /// scheme is here only if the person changed it; every scheme of their own is here. A section this
+    /// build doesn't understand is kept so that saving doesn't erase it. Replaced as a whole on save,
+    /// never changed in place: the sound worker reads it from another thread.
+    /// </summary>
+    public Dictionary<string, SoundScheme> SoundSchemes { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>A scheme as stored, or a built-in one as it ships. Null for an id that is neither.</summary>
+    public SoundScheme? FindSoundScheme(string id) =>
+        SoundSchemes.TryGetValue(id, out var scheme) ? scheme
+        : SoundCatalog.IsBuiltInSchemeId(id) ? SoundCatalog.BuiltInScheme(id) : null;
+
     /// <summary>
     /// When closing the main window, hide QuickMail to the notification area (system tray) instead
     /// of exiting, so new-mail watchers keep running and notifications keep arriving. Default off
@@ -325,6 +511,14 @@ public class ConfigModel
     /// <summary>Whether the one-time "still running in the notification area" hint has been shown.
     /// Maintained automatically the first time the window hides to the tray.</summary>
     public bool TrayHintShown { get; set; } = false;
+
+    /// <summary>
+    /// When Windows starts QuickMail at sign-in (issue #770), start without opening the window over
+    /// whatever the user is doing: in the notification area when <see cref="CloseToTray"/> is on,
+    /// otherwise minimized on the taskbar. Default on. Whether QuickMail starts at sign-in at all
+    /// is not stored here — the Windows Run key is the source of truth (LaunchAtSignInService).
+    /// </summary>
+    public bool StartMinimizedAtSignIn { get; set; } = true;
 
     /// <summary>Whether the user has completed the first-run keyboard tutorial.</summary>
     public bool TutorialCompleted { get; set; } = false;
@@ -372,6 +566,13 @@ public class ConfigModel
     /// Empty (the default) means no preference — the editor opens on the local calendar as before.
     /// </summary>
     public string DefaultCalendarSource { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Whether the Calendar node sits at the bottom of the folder tree rather than the top.
+    /// Default off — Calendar is the first root, as it has always been. Set from the Calendar
+    /// node's context menu, for users who arrow the folder tree from the top to reach mail.
+    /// </summary>
+    public bool CalendarAtEndOfFolderList { get; set; } = false;
 
     /// <summary>
     /// Obsolete: the calendar is now a folder in the folder tree, not a toggle pane.

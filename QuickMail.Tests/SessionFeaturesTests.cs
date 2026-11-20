@@ -240,6 +240,10 @@ public class IdleNewMailTests
         public event Action<IReadOnlyList<MailMessageSummary>>? FolderReadStatesReconciled;
         public event Action<int>? RulesApplied;
         public event Action<int, int>? SyncProgressChanged;
+        public event Action<int, int>? OfflineBodyProgressChanged;
+    public event Action<int, int>? OfflineBodyPassCompleted;
+    public event Action<int, int>? SenderEmailBackfillProgressChanged;
+    public event Action<int, int>? SenderEmailBackfillEnded;
 #pragma warning restore CS0067
 
         public Task SyncAllAccountsAsync(IEnumerable<AccountModel> accounts,
@@ -265,6 +269,8 @@ public class IdleNewMailTests
             => Task.FromResult<IReadOnlyList<MailMessageSummary>>(Array.Empty<MailMessageSummary>());
 
         public void SeedRebuildBaseline(IEnumerable<Guid> accountIds) { }
+        public Task ApplyPendingRulesAsync(AccountModel account, MailFolderModel folder, CancellationToken ct) => Task.CompletedTask;
+        public Task BackfillOfflineBodiesAsync(IEnumerable<AccountModel> accounts, IReadOnlyDictionary<Guid, List<MailFolderModel>> cachedFolders, CancellationToken ct) => Task.CompletedTask;
         public DateTimeOffset? LastSyncedUtc(Guid accountId) => null;
     }
 

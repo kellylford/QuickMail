@@ -8,10 +8,14 @@ namespace QuickMail.Services;
 
 public interface IRuleService
 {
-    /// <summary>Load all rules from rules.json. Returns empty list if file is missing or corrupted.</summary>
+    /// <summary>Load all rules from rules.json. Returns an empty list if the file is missing or empty, and
+    /// throws <see cref="RulesFileUnreadableException"/> if it is there but can't be read or parsed (#700) —
+    /// never an empty list, which a caller could save back over the rules it failed to read.</summary>
     List<MailRule> LoadRules();
 
-    /// <summary>Persist all rules to rules.json. Creates the data directory if needed.</summary>
+    /// <summary>Persist all rules to rules.json, replacing what it holds. Creates the data directory if needed.
+    /// If nothing has been read yet it reads the file first, and throws <see cref="RulesFileUnreadableException"/>
+    /// rather than replace a file it can't read.</summary>
     void SaveRules(List<MailRule> rules);
 
     /// <summary>
@@ -45,9 +49,11 @@ public interface IRuleService
     /// untouched, and any account missing from the map is skipped entirely (fail-closed),
     /// matching the "client rules only ever act on the Inbox" model.
     /// </para>
-    /// Returns messages that were moved or deleted (should be removed from UI).
+    /// Returns how many stored Inbox messages the run looked at, what each enabled rule for those accounts
+    /// moved or deleted (a message counts under the first rule that took it, #685), and the messages that
+    /// were moved or deleted, which should be removed from the UI (#949).
     /// </summary>
-    Task<List<MailMessageSummary>> ApplyRulesToExistingAsync(
+    Task<ExistingMailRunReport> ApplyRulesToExistingAsync(
         ILocalStoreService store,
         IReadOnlyDictionary<Guid, string> inboxFolderByAccount,
         CancellationToken ct);

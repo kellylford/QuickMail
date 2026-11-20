@@ -1,5 +1,9 @@
 # Keyboard Shortcuts Reference
 
+## How a shortcut is shown and spoken (#849)
+
+A menu item or button names its command with `sc:CommandShortcut.Id` (`Helpers/CommandShortcut.cs`). That one attribute sets the key drawn after a menu item (`InputGestureText`) and the key a screen reader is told (`AutomationProperties.AcceleratorKey`), both read from the window's `CommandRegistry` through `ICommandRegistry.GetGestureText`. They are re-read whenever the element loads, which is every time a menu opens, and on `ICommandRegistry.BindingsChanged`, so a key rebound in Settings shows everywhere at once, the command palette included. Toolbar tooltips come from `sc:CommandShortcut.ToolTip` and exist only while open, so they are not also read as help text. `ShortcutExposureTests` fails on a literal key in any of the three windows' XAML.
+
 ## Registered shortcut table (MainWindow)
 
 | Key | Command ID | Title |
@@ -9,46 +13,105 @@
 | Ctrl+2 / Ctrl+Y | `view.focusFolders` | Focus Folder Tree (or tab 2 when tabs are open) |
 | Ctrl+3 | *(hardcoded)* | Focus message list (or tab 3 when tabs are open) |
 | Ctrl+4–8 | *(hardcoded)* | Jump to tab 4–8 (when tabs are open) |
-| Ctrl+9 | *(hardcoded/registry)* | Jump to last tab (tabs open) or `view.focusStatusBar` (no tabs) |
+| Ctrl+9 | *(hardcoded)* | Jump to last tab (when tabs are open); with no tabs open, Ctrl+9 is `view.focusStatusBar`, the next row |
+| Ctrl+9 | `view.focusStatusBar` | Focus Status Bar (when no tabs are open). Left/Right move between the status bar regions: status, connection, rules, offline reading (when downloading is switched on, #717), sender-address update (only while the one-time update after upgrading runs, #803), sync progress |
 | Ctrl+Alt+1 | `view.focusAccounts` | Focus Account List (always) |
 | Ctrl+Alt+2 | *(hardcoded)* | Focus Folder Tree (always) |
 | Ctrl+Alt+3 | `view.focusMessages` | Focus Message List (always) |
 | F6 / Shift+F6 | *(hardcoded)* | Cycle panes |
 | Escape | *(hardcoded)* | Close reading pane |
 | Escape | `view.closeContactMail` | Close Contact Mail Results — dispatched only when no earlier Escape case claims the key (reading pane, calendar, tab mode) and the search box does not have focus |
+| Escape | `view.closeSearchResults` | Close Search Results — the same conditions as Close Contact Mail Results; the two share Escape and never apply at once (#717) |
 | Ctrl+Shift+P | *(hardcoded)* | Command Palette |
 | Ctrl+N | `mail.new` | New Message |
 | Ctrl+R | `mail.reply` | Reply |
 | Ctrl+Shift+R | `mail.replyAll` | Reply All |
-| Ctrl+F | `mail.forward` | Forward |
+| Ctrl+Shift+F | `mail.forward` | Forward |
 | Delete | `mail.delete` | Delete |
 | Ctrl+Shift+M | `mail.archive` | Move to Archive (the account's Archive folder) |
 | Ctrl+Q | `mail.markRead` | Mark as Read |
+| Ctrl+S | `mail.save` | Save — the selection (or a group header's messages) in the default format, into the save folder, without asking (#728). The message window registers `message.save` on the same key |
+| F12 | `mail.saveAs` | Save As… — the Save dialog, with a type list; several messages ask for a folder and format for all (#728). Message window: `message.saveAs` |
+| *(unassigned)* | `mail.saveAttachments` | Save All Attachments… — every attachment of the selection (or a group header's messages) into one folder the user picks, without opening the messages (#931). On the message, conversation, sender and recipient context menus |
+| Ctrl+P | `mail.print` | Print… — one message, through the Windows Print dialog (#728). Message window: `message.print`. Ctrl+S, Ctrl+P and F12 are relayed out of both message bodies, since focus is there while reading |
+| Ctrl+C | `mail.copyMessages` | Copy Messages — the selection (or a group header's messages), to paste into a folder (#929). Also puts each original on the Windows clipboard as an .eml file, for Explorer and for attaching in a compose window. Message-area focus only, and never while a text box has focus, so Ctrl+C keeps copying text everywhere else |
+| Ctrl+X | `mail.cutMessages` | Cut Messages — as Copy, but the paste moves them. Nothing moves until the paste (#929) |
+| Ctrl+V | `mail.pasteMessages` | Paste Messages — into the folder selected in the folder tree when it has focus (focus stays there), else into the folder the message list shows. Folder tree or message area only; never while a text box has focus (#929) |
+| Ctrl+C | `mail.copyAttachment` | Copy Attachment — the attachment selected in the reading pane's attachment list, to the Windows clipboard as a file (#929). Attachment-list focus only; it shares Ctrl+C with `mail.copyMessages`, and the two scopes never overlap. Message window: `message.copyAttachment` |
+| *(unassigned)* | `mail.copyAllAttachments` | Copy All Attachments — every attachment of the open message, to the clipboard as files (#929). Message window: `message.copyAllAttachments` |
+| Ctrl+Shift+T | `mail.createRuleFromMessage` | Create Rule from Message. Registered before `view.focusTabs`, and always available on a selection so the key stays here (#678). Message window: `message.createRule`, on the window's own message |
+| Ctrl+Shift+L | `mail.rules` | Manage Rules. Message window: `window.manageRules`; the Rules Manager opens on the message's account and returns focus to that window |
 | F5 | `mail.refresh` | Refresh |
 | Ctrl+Shift+E | `mail.emptyTrash` | Empty Trash |
+| *(unassigned)* | `mail.sendOutboxNow` | Send Outbox Now — tries every queued message and draft right away, including ones marked Failed (#637) |
 | Ctrl+Shift+W | `mail.toggleWatch` | Watch Conversation — watches the selected message's conversation, or unwatches it if already watched. On a Conversations group header it acts on that group; on a From/To group header it is unavailable (a sender group spans many conversations) |
 | *(unassigned)* | `mail.watchManager` | Watched Conversations… (review, rename, stop watching) |
 | *(unassigned)* | `view.filterWatched` | Show Watched Conversations Only |
+| *(unassigned)* | `view.filterAll` | Show All Messages |
+| *(unassigned)* | `view.filterUnread` | Show Unread Only |
+| *(unassigned)* | `view.filterRead` | Show Read Only |
+| *(unassigned)* | `view.filterWithAttachments` | Show Messages with Attachments |
+| *(unassigned)* | `view.filterReplied` | Show Replied Only |
+| *(unassigned)* | `view.filterForwarded` | Show Forwarded Only |
+| *(unassigned)* | `view.filterToMe` | Show Messages Addressed to Me |
+| *(unassigned)* | `view.sortDateDesc` | Sort: Newest First |
+| *(unassigned)* | `view.sortDateAsc` | Sort: Oldest First |
+| *(unassigned)* | `view.sortAlphaAsc` | Sort: A → Z |
+| *(unassigned)* | `view.sortAlphaDesc` | Sort: Z → A |
+| *(unassigned)* | `view.sortCountDesc` | Sort: Most Messages — only in the grouped views (any view mode but the flat message list) |
+| *(unassigned)* | `view.sortCountAsc` | Sort: Fewest Messages — as Most Messages |
+| *(unassigned)* | `view.sortFlaggedFirst` | Sort: Flagged First |
+| *(unassigned)* | `view.toggleConversation` | Cycle View Mode — steps through the four message-list view modes |
+| *(unassigned)* | `view.clearView` | Clear View — leaves the applied saved view (available only while one is applied) |
+| *(unassigned)* | `view.resetFolderView` | Reset Folder View — available on a real folder, not an account header |
+| *(the view's hotkey)* | `view.saved.{id}` | [view name] — one per saved view, category Views; its default key is the hotkey set in the view manager, if any |
 | Ctrl+Shift+V | `view.openViewMenu` | Open View Menu |
-| Ctrl+Shift+F | `view.searchFolders` | Search Folders… |
+| Ctrl+, | `settings.open` | Settings… (File menu). The File menu showed it before anything handled it (#849) |
+| Ctrl+Shift+Y | `view.searchFolders` | Search Folders… |
+| *(unassigned)* | `view.folderPicker` | Go to Folder… — the flat folder list with a search box, the only picker that also offers the virtual folders |
+| Ctrl+Shift+I | `view.goToStartupFolder` | Go to Startup Folder — the folder QuickMail opens in, All Mail if none is set; Outlook's Go to Inbox key. (Ctrl+Shift+I in the compose window is Insert Image, a separate registry) |
 | Ctrl+Shift+S | `view.search` | Search Messages… |
+| *(unassigned)* | `mail.searchServer` | Search the Server Too — in Search Results, asks each account's server for the same search and adds what it finds (#717) |
+| *(unassigned)* | `mail.saveSearch` | Save Search as View… — in Search Results, opens the view manager to save the search (#717) |
+| Ctrl+/ | `mail.advancedSearch` | Advanced Search… (#717). `/` alone still opens the search box from the lists; those handlers take it only with no modifier. Not relayed from inside the reading pane, like Ctrl+Shift+S |
 | Ctrl+Shift+G | `contacts.grabAddresses` | Grab Addresses from Message |
 | Ctrl+Shift+B | `contacts.openAddressBook` | Address Book |
+| *(unassigned)* | `contacts.syncNow` | Sync Contacts Now — available when contact sync is set up |
+| *(unassigned)* | `account.manage` | Manage Accounts |
+| *(unassigned)* | `account.reconnect` | Reconnect Account — the account selected in the account list; always available, and says so when there is nothing to reconnect (#615) |
 | F1 | `help.userGuide` | Open User Guide |
+| *(unassigned)* | `help.about` | About QuickMail |
+| *(unassigned)* | `help.reportBug` | Report a Bug |
+| *(unassigned)* | `help.armVersion` | Get the ARM Version — registered on every machine; only the Help menu entry hides on non-ARM hardware |
+| *(unassigned)* | `help.adminConsent` | Grant Admin Consent for Your Organization (#607) |
+| *(unassigned)* | `help.connectionDiagnostics` | Connection Diagnostics — registered only while Connection Diagnostics is switched on in Settings (`ApplyConnectionDiagnosticsSetting`) |
+| *(unassigned)* | `settings.export` | Export Settings… — registered only while settings transfer is allowed (`ApplySettingsTransferSetting`) |
+| *(unassigned)* | `settings.import` | Import Settings… — as Export Settings |
 | *(unassigned)* | `settings.toggleCustomAnnouncements` | Toggle Custom Announcements |
+| *(unassigned)* | `settings.toggleMuteSounds` | Mute All Sounds |
 | Ctrl+A | `mail.selectAll` | Select All Messages (message list focus only) |
 | K | `mail.toggleFlag` | Toggle Flag |
 | Ctrl+Shift+K | `mail.pickFlag` | Pick Flag… |
 | *(unassigned)* | `mail.openFlagManager` | Manage Flags… |
+| Alt+Down | `mail.nextUnread` | Next Unread Message — the nearest unread message below the current one, in the flat list or a group tree (message-area focus only) |
+| Alt+Up | `mail.previousUnread` | Previous Unread Message — the nearest unread message above the current one (message-area focus only) |
+| Alt+Up | `account.moveUp` | Move Account Up (account-list focus only) |
+| Alt+Down | `account.moveDown` | Move Account Down (account-list focus only) |
+| Alt+Home | `account.moveToStart` | Move Account to Start (account-list focus only) |
+| Alt+End | `account.moveToEnd` | Move Account to End (account-list focus only) |
 | Shift+, | `mail.jumpToFirstInGroup` | First Message in Group |
 | Shift+. | `mail.jumpToLastInGroup` | Last Message in Group |
 | *(unassigned)* | `mail.acceptInvite` | Accept Invitation |
 | *(unassigned)* | `mail.declineInvite` | Decline Invitation |
 | *(unassigned)* | `mail.tentativeInvite` | Tentatively Accept Invitation |
 | *(unassigned)* | `help.keyboardTutorial` | Keyboard Tutorial |
+| *(unassigned)* | `help.soundTutorial` | Sound Tutorial |
 | Ctrl+Shift+T | `view.focusTabs` | Focus Tab Strip |
 | Alt+A | `view.focusAttachments` | Focus Attachment List (of the open message) |
 | Alt+Enter | `view.showProperties` | View Properties |
+| Ctrl+Shift+H | `view.togglePlainText` | Toggle Plain Text View — re-renders the open message in place (reading pane and tab modes; the message window has its own command) |
+| Ctrl+Shift+U | `view.loadPictures` | Load Pictures — shows the open message's pictures from the web, for as long as that message is open (#508) |
+| Ctrl+W | `mail.closeMessage` | Close Message — closes the reading pane. Available only while a message is open in Reading Pane mode. Shares Ctrl+W with `tabs.close`, which is available whenever a message tab is active. The two can both be available, in Reading Pane mode with a message tab opened by Open in New Tab; then Close Tab wins, because it is registered first (see the note below the table) |
 | Ctrl+Tab | `tabs.next` | Next Tab |
 | Ctrl+Shift+Tab | `tabs.previous` | Previous Tab |
 | Ctrl+W | `tabs.close` | Close Tab |
@@ -59,6 +122,8 @@
 | *(unassigned)* | `tabs.promote` | Move Tab to New Window |
 | *(unassigned)* | `mail.openInNewTab` | Open in New Tab |
 | *(unassigned)* | `mail.openInWindow` | Open in New Window |
+| *(unassigned)* | `mail.moveToFolder` | Move to Folder… — the selection, or a group header's messages |
+| *(unassigned)* | `mail.copyToFolder` | Copy to Folder… — as Move to Folder |
 | *(unassigned)* | `theme.manager.open` | Manage Themes |
 | *(unassigned)* | `theme.next` | Next Theme |
 | *(unassigned)* | `theme.previous` | Previous Theme |
@@ -66,15 +131,138 @@
 | *(unassigned)* | `view.density.comfortable` | Density: Comfortable |
 | *(unassigned)* | `view.density.compact` | Density: Compact |
 | *(unassigned)* | `view.rowFields` | Message List Fields… |
+| *(unassigned)* | `folder.new` | New Folder… — under the folder-tree selection, or the selected account's root (#250) |
+| Delete | `folder.delete` | Delete Folder — folder-tree focus on a real folder; shares Delete with `mail.delete` |
+| *(unassigned)* | `folder.setStartupFolder` | Set as Startup Folder — the folder selected in the folder tree (#516) |
+| *(unassigned)* | `folder.clearStartupFolder` | Clear Startup Folder |
 | *(unassigned)* | `folder.expand` | Expand Folder — the selected folder and every subfolder in it |
 | *(unassigned)* | `folder.collapse` | Collapse Folder — the selected folder and every subfolder in it |
 | *(unassigned)* | `folder.expandAll` | Expand All Folders |
 | *(unassigned)* | `folder.collapseAll` | Collapse All Folders — account headers included |
+| *(unassigned)* | `folder.hide` | Hide Folder — hides the selected folder and everything inside it from the folder tree and Go to Folder |
+| *(unassigned)* | `folder.showHidden` | Show All Hidden Folders |
+| *(unassigned)* | `calendar.calendarAtTopOfFolderList` | Calendar at Top of Folder List |
+| *(unassigned)* | `calendar.calendarAtBottomOfFolderList` | Calendar at Bottom of Folder List |
+| Ctrl+Shift+C | `view.calendar` | Calendar — opens the calendar view; available when there is a calendar |
+| *(unassigned)* | `calendar.syncNow` | Sync Calendars Now — available when calendar sync is set up |
+| *(unassigned)* | `calendar.search` | Search Appointments — while the calendar is open. Ctrl+Shift+S (`view.search`) routes here in the calendar, so search is one gesture app-wide |
+| Ctrl+G | `calendar.goToDate` | Go to Date — while the calendar is open |
+| T | `calendar.toggleTodayFilter` | Toggle Today Filter — calendar list or month grid focus (category View) |
+| Enter | `calendar.openSourceMessage` | Open Calendar Event Source Message — calendar list focus with an event selected; on a pending invitation it shows the response menu (category View) |
+| N | `calendar.newEvent` | New Appointment — calendar list or month grid focus |
+| E | `calendar.editEvent` | Edit Appointment — calendar list focus with an event selected |
+| Delete | `calendar.deleteEvent` | Delete Appointment — calendar list focus with an event selected |
+| *(unassigned)* | `calendar.exportEvent` | Export Appointment as .ics — calendar list focus with an event selected |
+| *(unassigned)* | `calendar.importIcs` | Import Calendar File (.ics)… (#762) |
+| *(unassigned)* | `calendar.setDefaultCalendar` | Use as Default Calendar for New Appointments — folder-tree focus on a calendar node (#497) |
+| *(unassigned)* | `calendar.clearDefaultCalendar` | Clear Default Calendar |
+| *(unassigned)* | `calendar.acceptInvite` | Accept Invitation — calendar list focus on a pending invitation |
+| *(unassigned)* | `calendar.tentativeInvite` | Tentative Invitation — as Accept Invitation |
+| *(unassigned)* | `calendar.declineInvite` | Decline Invitation — as Accept Invitation |
+| A | `calendar.viewAgenda` | Agenda View — calendar list or month grid focus |
+| D | `calendar.viewDay` | Day View — calendar list or month grid focus |
+| W | `calendar.viewWeek` | Week View — calendar list or month grid focus |
+| M | `calendar.viewMonth` | Month View — calendar list or month grid focus |
+| Enter | `calendar.drillIntoDay` | Open Selected Day — month grid focus with a day selected |
+| Ctrl+Left | `calendar.prevPeriod` | Previous Day or Week — calendar list or month grid focus |
+| Ctrl+Right | `calendar.nextPeriod` | Next Day or Week — calendar list or month grid focus |
+
+The calendar's single-letter keys (T, N, E, A, D, W, M) and its Enter and Delete are scoped to the
+calendar's own panes, so they never take a letter away from type-ahead elsewhere. F5 is not a
+separate calendar command: `mail.refresh` refreshes the calendar while it is open.
+
+**When two commands share a key, which one runs.** `CommandRegistry.FindByGesture` returns an
+available user override first; otherwise it walks the default bindings in registration order and
+returns the first one that is available. Only focus-based conditions keep a shared key predictable,
+and they do not all exclude each other today:
+
+- Enter: `calendar.openSourceMessage` needs calendar-list focus and `calendar.drillIntoDay`
+  month-grid focus, so they never both apply.
+- Delete: `folder.delete` needs folder-tree focus, which `mail.delete` excludes. But `mail.delete`
+  does not exclude the calendar: it needs only a selected message or group header, and it is
+  registered before `calendar.deleteEvent` (MainViewModel registers it first; MainWindow's
+  replacement keeps that place). Opening the calendar empties the message list but does not itself
+  clear the selected message, so Delete in the calendar list reaches `calendar.deleteEvent` only
+  while no message is selected.
+- Ctrl+W: `tabs.close` (a message tab is active) is registered before `mail.closeMessage` (a message
+  open in Reading Pane mode). Activating a message tab opens its message in the reading pane, so in
+  Reading Pane mode with a tab opened by Open in New Tab both are available, and Close Tab wins.
+
+Alt+Up and Alt+Down appear twice above on purpose. `mail.previousUnread` / `mail.nextUnread` are
+scoped to the message area and `account.moveUp` / `account.moveDown` to the account list, and
+`FindByGesture` returns whichever of the two is available for the current focus — the same
+arrangement Delete has for `mail.delete` and `folder.delete`. Both scopes must stay focus-based: one
+that can be true in two panes at once makes which command runs depend on registration order.
+
+A custom binding recorded on a shared gesture used to break the other half of the pair.
+`FindByGesture` returned a matching user override without asking whether it was available, and the
+dispatcher looks a gesture up only once — so re-recording Previous Unread Message on its own default
+Alt+Up left Move Account Up unreachable by keyboard while its menu still advertised the key. An
+available override still wins outright; an unavailable one now falls through to the defaults, and is
+kept only as the last resort so a lone unavailable override still beats an unrelated default.
+
+Moving an account reorders it everywhere, not just in the account list — the order is the array
+order in `accounts.json`, which the folder tree's account roots and the compose window's From list
+both read straight through. Each move announces what it landed next to ("Moved above Work") as an
+`AnnouncementCategory.Result`, and puts keyboard focus back on the row that moved.
 
 The folder tree's own Right and Left arrow keys expand and collapse one level. They are
 in-control navigation — the same kind as the arrow keys inside a list box — and are not registered
 commands. The four `folder.expand*` / `folder.collapse*` commands above are the bulk equivalents
 (#590): they act on the whole branch, or on the whole tree.
+
+## Keeping the table complete
+
+The table above lists every command registered in the main window's `CommandRegistry`: the ones
+`MainWindow.xaml.cs` registers in `OnLoaded`, and the ones `MainViewModel.cs` and its partials
+register (`RegisterCommands`, `RegisterThemeCommands`, `RegisterOneViewCommand`,
+`ApplyConnectionDiagnosticsSetting`, and `ApplySettingsTransferSetting` in
+`MainViewModel.SettingsImport.cs`). `KeyboardShortcutsDocTests` fails when a registered id has no row
+of its own (the Command ID column), when a row names an id nothing registers, or when a row's key
+disagrees with the code's default key. Add the row in the same change as the registration. Ids built
+at run time (`theme.apply.{id}`, `view.saved.{id}`) are covered by one row per family.
+
+`MessageWindow` keeps its own registry, but takes the user's main-window key changes for its matching
+commands: `MessageWindow.MainCommandIds` maps each of them (`message.reply` to `mail.reply`,
+`window.close` to `mail.closeMessage`, and so on) and `TranslateMainOverrides` applies the bindings
+(#849). Its other commands keep their default keys.
+
+The other windows also keep their own registry, which feeds only that window's local command palette
+(`Ctrl+Shift+P`) and does not follow key changes made in Settings: `ComposeWindow`,
+`AddressBookWindow`, `AdvancedSearchWindow`, `WatchedConversationsWindow`, `RowFieldsWindow`,
+`UnifiedRulesWindow`, `FlagManagerWindow`, `FlagPickerWindow`, `ThemeManagerWindow`,
+`EventEditorWindow`, `GoToDateWindow`, `SpellCheckDialog`, `MarkdownPreviewWindow`,
+`SoundTutorialWindow`, `SoundGalleryWindow`, `ReportBugWindow`, `ConnectionDiagnosticsWindow`,
+`ExportSettingsWindow`, `ImportSettingsWindow` and `SettingsImportedWindow`. Those are not listed
+id by id here; the window's own section below describes its keys where they need explaining, and
+its palette is the complete list.
+
+## Inside the Command Palette
+
+`Ctrl+Shift+P` opens the palette itself (hardcoded — it cannot be dispatched through the palette
+it opens). The keys **inside** the palette are in-window navigation, not registered commands, for
+the same reason the folder tree's arrow keys are not: they have no meaning outside it and no
+command title. All of them are handled in `CommandPaletteWindow.OnPreviewKeyDown`.
+
+| Key | Action |
+|-----|--------|
+| *(typing)* | Filters the list. Matches any part of a name, its initials (`gtf` → Go to Folder), its category, or several words in any order |
+| `Enter` | Run the top match — or the command arrowed to |
+| `Up` / `Down` | Move the selection. Focus stays in the filter box |
+| `Page Up` / `Page Down` | Move the selection ten at a time |
+| `Escape` | Clear the filter; close the palette when the box is already empty |
+| `Tab` | Swallowed — the filter box is the only focusable control in the window |
+
+The filter box holds keyboard focus for the whole life of the window and never gives it up. That
+is deliberate and is the constraint the design turns on: an earlier version moved focus onto the
+list to make a screen reader speak the row, and typing then had to be forwarded back to the box
+by hand. The list is `Focusable="False"`, its rows are not focusable either (so a mouse click
+cannot steal focus), and the box declares through UI Automation that it controls the list, which
+is what lets a screen reader report the active command without focus moving.
+
+Because the list never receives a keystroke, it declares **no** `TextSearch.TextPath` —
+`TypeAheadWiringTests.TheCommandPaletteList_DeclaresNoTextSearchTextPath` keeps an inert one from
+drifting back in.
 
 ## Message List Fields Window
 
@@ -103,6 +291,28 @@ carries a second copy of the row's name (see `Views/FieldCheckList.cs`); the cos
 that control. First-letter uses QuickMail's own accumulator (`TypeAheadPrefixTracker`), not WPF
 `TextSearch`, which only works on a `Selector` — so this list is **not** a `TypeAheadWiringTests`
 site.
+
+## Advanced Search Window
+
+Opened with **Ctrl+/**, **View → Advanced Search…**, the command palette, or **Change Search** on
+the Search Results bar (#717). Modeless, per the modal dialog rules: it has text fields and opens
+over the reading pane.
+
+| Key | Action |
+|---|---|
+| `Enter` | Search (the default button) |
+| `F6` / `Shift+F6` | Cycle: Fields → Look in → Accounts (when searching accounts) → Buttons |
+| `Up` / `Down` in Look in | Choose This folder or Every folder of these accounts (selection follows focus) |
+| `Up` / `Down` in Accounts | Move between accounts — the list is one tab stop, and `Space` checks or unchecks the account |
+| `Home` / `End`, *letter* | First / last account; jump to the next account starting with that letter |
+| `Ctrl+Shift+P` | Window-local command palette (Search, Clear Fields, Close Advanced Search) |
+| `Escape` | Close — unless a drop-down is open, which Escape closes instead |
+
+Access keys: Words anywhere (W), From (F), To (T), Cc (C), Subject (S), Body (B), Attachment name
+(N), Has attachments (A), Read state (R), Flag (L), Received from (V), Received up to (U), Accounts
+to search (H), Also search the mail server (M). The two **Look in** choices have none: the first names the current folder through a
+binding, where an underscore is read and shown as an underscore rather than marking a key. Arrow
+keys choose between them.
 
 ## Watched Conversations Window
 
@@ -144,7 +354,7 @@ editable, because changing it would silently change which messages the watch col
 
 **Spell checking**: `F7` (`compose.checkSpelling`) opens the **Check Spelling dialog** — a modeless "Spelling" window that reviews the body and then the subject. Each error is announced as "Not in dictionary: \<word\>" with focus on the suggestions list (first suggestion selected). In-dialog keys: `Alt+C` Change (also the Enter default), `Alt+L` Change All, `Alt+I` Ignore, `Alt+G` Ignore All, `Alt+A` Add to Dictionary (persists to `custom.lex` in the profile directory), `Alt+R` Read in Context, `Alt+T` / `Alt+S` / `Alt+N` focus Change-to / Suggestions / context, `F6` cycles panes, `Ctrl+Shift+P` opens the dialog's palette, `Escape` cancels. Inline navigation is `Ctrl+F7` / `Ctrl+Shift+F7` (`compose.nextMisspelling` / `compose.prevMisspelling`; these were `F7` / `Shift+F7` before the dialog took the classic F7 binding — user overrides in `hotkeys.json` are unaffected). `Alt+F7` repeats the current spelling announcement; `Alt+1/2/3` accept an inline suggestion.
 
-**Menu bar**: `ComposeWindow` has a standard menu bar (File / Edit / View / Format / Tools). It is not a tab stop (reached with Alt or F10, per platform convention). Every item dispatches to the same handler or command as its keyboard shortcut, and `InputGestureText` must match the registered default gesture. **Top-level menus are never disabled** (Windows standard — a disabled top-level menu is skipped by arrow navigation, stranding its items); availability is expressed per item. Format items gray out in Plain Text mode only, and because WPF skips disabled items during arrow navigation, opening the Format menu in Plain Text announces a Hint explaining why. The View menu's mode items get radio-style check marks synced in `SyncModeSelector`. The window's `PreviewKeyDown` steps aside on Escape when a menu, combo dropdown, or the autocomplete popup is open so transient UI can close itself.
+**Menu bar**: `ComposeWindow` has a standard menu bar (File / Edit / View / Format / Tools). It is not a tab stop (reached with Alt or F10, per platform convention). Every item dispatches to the same handler or command as its keyboard shortcut, and `sc:CommandShortcut.Id` shows and reports its key from the registry (#849). **Top-level menus are never disabled** (Windows standard — a disabled top-level menu is skipped by arrow navigation, stranding its items); availability is expressed per item. Format items gray out in Plain Text mode only, and because WPF skips disabled items during arrow navigation, opening the Format menu in Plain Text announces a Hint explaining why. The View menu's mode items get radio-style check marks synced in `SyncModeSelector`. The window's `PreviewKeyDown` steps aside on Escape when a menu, combo dropdown, or the autocomplete popup is open so transient UI can close itself.
 
 **Formatting** works in both rich modes. HTML mode applies real formatting to the RichTextBox; Markdown mode inserts the equivalent syntax through `MarkdownEditing` (`Helpers/MarkdownEditing.cs` — pure, unit-tested text operations applied via `TextBox.SelectedText` so each toggle is one undo unit). Exception: underline has no Markdown form and the Markdig pipeline uses `DisableHtml()`, so underline in Markdown announces that it requires HTML mode. Formatting result announcements go through `ComposeWindow.AnnounceFormatting`, which defers to `DispatcherPriority.ApplicationIdle` and interrupts — menu invocations restore focus to the editor on close, and an immediate announcement would be silenced by the screen reader's focus speech.
 
@@ -152,9 +362,11 @@ editable, because changing it would silently change which messages the watch col
 
 **Draft autosave**: compose windows auto-save dirty composes as drafts on a `DispatcherTimer` (config keys `AutoSaveDrafts`, default on, and `AutoSaveIntervalSeconds`, default 120, clamped 30–600; both editable in Settings → General → Composing). `ComposeViewModel.AutoSaveAsync` is quiet by design: success only updates the visual `AutoSaveText` status ("Auto-saved 3:42 PM") with **no announcement**; a failure raises `AutoSaveFailed` once (announced with `AnnouncementCategory.Status`) and re-arms after the next success. Autosave skips template edits, untouched composes, and composes with no recipient/subject/body/attachment. The palette command `compose.announceAutoSave` ("Announce Last Auto-Save") speaks the last autosave time on demand.
 
+**Offline (#637)**: no new compose gestures. `Ctrl+S` and auto-save fall back to the local Outbox when the server cannot be reached ("Draft saved on this computer. It will upload when you're online.", `Result`; auto-save says "Auto-save is keeping your draft on this computer until you're online." once, `Status`). `Alt+S` queues the message and closes the window when the server never answered ("Message queued. It will be sent when you're online.", `Result`); a server that answered and refused still fails in the window. `Escape` with unsaved changes → Save closes the window once the draft is kept locally; it stays open only when `ComposeViewModel.LastSaveOutcome` is `Failed` (nowhere took it — `--online` mode, or a broken store). The main window's `mail.sendOutboxNow` drains the queue on demand.
+
 **Compose modes** (`ComposeMode`: PlainText / Markdown / Html) are switched with `Ctrl+Shift+1/2/3`, the View menu, or the mode ComboBox in the status row. Plain Text and Markdown edit in `BodyBox` (TextBox); HTML mode edits in `RichBodyBox` — a native WPF `RichTextBox`, deliberately **not** WebView2 `contenteditable`, so screen readers stay in their normal edit cursor with no virtual cursor.
 
-**Never replace `RichTextBox.Document` — enforced.** WPF's `RichTextBoxAutomationPeer` binds its UIA TextPattern to the text container of the document present at peer creation and never rebinds, even for freshly created peers. After a `Document` assignment, screen readers permanently read the stale (empty) original document instead of what is on screen — the editor goes completely silent. All content loads must mutate the existing document via `RichTextDocumentConverter.LoadInto(doc, html)`. Regression-tested in `ComposeUiaTextPatternTests`, which asserts the UIA TextPattern text through real mode switches. Formatting commands (Ctrl+B/I/U, Ctrl+Shift+X strikethrough, Ctrl+Alt+1/2/3 headings, Ctrl+Shift+L/N lists, Ctrl+L insert link, Ctrl+Space clear formatting, Ctrl+T announce formatting state, Ctrl+Shift+T show formatting in a browsable list — `FormattingListWindow`) are HTML-mode-only via `IsAvailable`; `F8` opens the preview window (`MarkdownPreviewWindow`) in both Markdown and HTML modes — a fully focusable WebView2 in a separate window so screen readers can browse the rendered output as a web page. Conversions run through `IMarkdownService` (Markdig with an explicit bounded pipeline: pipe tables, strikethrough, auto-links, raw HTML disabled, task lists excluded for WCAG) and `RichTextDocumentConverter` (FlowDocument ↔ HTML/Markdown; headings 1–6, pre with fence language, hr, and blockquote tracked via `Paragraph.Tag`; table header cells and alignment via `TableCell.Tag`; image src via `Run.Tag` with alt text as run text; verbatim hrefs via `Hyperlink.Tag`). The Markdown → HTML → FlowDocument → Markdown round trip must stay lossless — `MarkdownRoundTripTests` holds an exact-equality corpus plus well-formedness/WCAG-structure checks on the wrapped document (`WrapDocument` emits a full HTML5 document: doctype, `lang`, charset, subject as title). Rich-mode messages are sent as `multipart/alternative` by `MimeMessageBuilder` whenever `ComposeModel.HtmlBody` is non-empty. Every formatting action announces its result ("Bold on", "Heading 2") via `AccessibilityHelper.Announce` with `AnnouncementCategory.Result`. The default mode for new composes is `DefaultComposeMode` in `config.ini` (plain/markdown/html); drafts reopen in the mode they were saved in (stored as `X-QuickMail-Compose-Mode` MIME header); templates always reopen in plain text. `RichTextDocumentConverter.LoadInto` accepts both HTML fragments and full HTML documents (the `<html>` and `<body>` wrappers are treated as transparent block containers), so the full wrapped document from `detail.HtmlBody` can be loaded directly into the rich editor when restoring an HTML draft.
+**Never replace `RichTextBox.Document` — enforced.** WPF's `RichTextBoxAutomationPeer` binds its UIA TextPattern to the text container of the document present at peer creation and never rebinds, even for freshly created peers. After a `Document` assignment, screen readers permanently read the stale (empty) original document instead of what is on screen — the editor goes completely silent. All content loads must mutate the existing document via `RichTextDocumentConverter.LoadInto(doc, html)`. Regression-tested in `ComposeUiaTextPatternTests`, which asserts the UIA TextPattern text through real mode switches. Formatting commands (Ctrl+B/I/U, Ctrl+Shift+X strikethrough, Ctrl+Alt+0 normal text (`compose.normalText`), Ctrl+Alt+1–6 headings (`compose.heading1`–`6`), Ctrl+Shift+9 quote (`compose.quote`, Gmail's key), Ctrl+Shift+L/N lists, Ctrl+Shift+I insert image (`compose.insertImage`, available in every mode — Plain Text offers to attach instead), Alt+Enter image properties (`compose.imageProperties`), Ctrl+K insert link from the body (`compose.insertLinkFromBody`; `compose.checkAddresses` shares Ctrl+K and is available everywhere except the body of a Markdown or HTML message — `FindByGesture` picks whichever is available, as in Outlook), Ctrl+L insert link, Ctrl+Space clear formatting, Ctrl+T announce formatting state, Ctrl+Shift+T show formatting in a browsable list — `FormattingListWindow`) are available in Markdown and HTML modes but not Plain Text, via `IsAvailable`; `F8` opens the preview window (`MarkdownPreviewWindow`) in both Markdown and HTML modes — a fully focusable WebView2 in a separate window so screen readers can browse the rendered output as a web page. Conversions run through `IMarkdownService` (Markdig with an explicit bounded pipeline: pipe tables, strikethrough, auto-links, raw HTML disabled, task lists excluded for WCAG) and `RichTextDocumentConverter` (FlowDocument ↔ HTML/Markdown; headings 1–6, pre with fence language, and hr tracked via `Paragraph.Tag`; a blockquote is a `Section` tagged `BLOCKQUOTE` containing its blocks, so quotes nest and can hold headings and lists (`RichTextBlockEditing` wraps and unwraps them; WPF undo does not restore `Paragraph.Tag`, so the window re-derives heading tags from size and weight after Undo/Redo); table header cells and alignment via `TableCell.Tag`; pictures as an `InlineUIContainer` holding a real `Image` named by its alt text, tagged with a `ComposeImage` (src, alt — empty for decorative, null for undescribed — and size); verbatim hrefs via `Hyperlink.Tag`). The Markdown → HTML → FlowDocument → Markdown round trip must stay lossless — `MarkdownRoundTripTests` holds an exact-equality corpus plus well-formedness/WCAG-structure checks on the wrapped document (`WrapDocument` emits a full HTML5 document: doctype, `lang`, charset, subject as title). Rich-mode messages are sent as `multipart/alternative` by `MimeMessageBuilder` whenever `ComposeModel.HtmlBody` is non-empty. Every formatting action announces its result ("Bold on", "Heading 2") via `AccessibilityHelper.Announce` with `AnnouncementCategory.Result`. The default mode for new composes is `DefaultComposeMode` in `config.ini` (plain/markdown/html); drafts reopen in the mode they were saved in (stored as `X-QuickMail-Compose-Mode` MIME header); templates always reopen in plain text. `RichTextDocumentConverter.LoadInto` accepts both HTML fragments and full HTML documents (the `<html>` and `<body>` wrappers are treated as transparent block containers), so the full wrapped document from `detail.HtmlBody` can be loaded directly into the rich editor when restoring an HTML draft.
 
 ## Appointment editor date and time fields
 
@@ -173,6 +385,27 @@ These are **deliberately not registered in `CommandRegistry`**. They are in-fiel
 Stepping and free-text parsing live in `Helpers/DateTimeFieldParser.cs` (pure, unit-tested in `DateTimeFieldParserTests`). A time field holds a full instant, not a `TimeSpan`, so stepping past midnight carries into the date instead of wrapping. `TryParseTime` uses an explicit format list and **rejects date-shaped text**: `DateTime.TryParse("8/3")` succeeds with a `TimeOfDay` of zero, which used to turn a date typed into the time box into a silent midnight.
 
 **Automation surface — do not change without listening first.** The control is a plain `TextBox` with no automation peer of its own. Three shapes were built and evaluated with three screen readers before this one was chosen: an edit field, an edit field claiming `AutomationControlType.Spinner`, and a purpose-built spinner control implementing `IValueProvider` and `IRangeValueProvider`. All three announced correctly, so the one that invents nothing won — replacing `TextBox.Text` raises the UIA value-change event screen readers already act on. There is **no** `AccessibilityHelper.Announce` in the stepping path, and there must not be: a programmatic announcement is filtered by the user's announcement settings, while a native value change is not.
+
+## Sound event lists: Space and Enter
+
+In **Help → Sound Tutorial**, Space and Enter on an event play its sound. In **Settings → Sounds**, Space on an event previews it; Enter stays with the dialog. These are in-list keys, like the arrows inside the same list, and meaningless outside it, so they are not registry commands. The Tutorial's local command palette (`Ctrl+Shift+P`) has **Play Sound for Selected Event** and **Close Sound Tutorial**.
+
+## Message list: Up, Down, Home and End at the ends (#923)
+
+In the message list and the Conversations, From and To trees, a plain Up or Home with the first row
+focused, or Down or End with the last, moves nothing, so the platform reports nothing. The list's
+`PreviewKeyDown` hands each key press to `Helpers/ListEdgeCue.cs` (a pure decision, unit-tested in
+`ListEdgeCueTests`; the focused row's place comes from `Views/ListEdgePosition.cs`, tested in
+`ListEdgePositionTests`) and then to `MainViewModel.SignalListEdge`. That plays the **Reached the end
+of a list** sound (`ListEnd`) through `ISoundService.TryPlayNow`, which refuses unless the sound can
+start at once (sounds on, not muted, a volume, a sound in the scheme, and nothing else playing or
+queued, apart from an earlier edge sound, which it replaces). Otherwise it announces "Top of list" /
+"Bottom of list" as a `Result`, through `QueuedAnnouncementRequested`, which the window raises with
+`interrupt: false` (`MostRecent` rather than `ImportantMostRecent`), so as not to cut off the row
+being read. How that sounds with each screen reader is still to be confirmed by ear. For a tree, the last row is the last *visible* one: a message when the last group is
+expanded. The handler never marks the key handled and changes no navigation; it only listens, so these
+are still the controls' own keys and not registry commands. A held key cues once, not on every
+auto-repeat; modified keys (Shift, Ctrl, Alt) and Page Up / Page Down never cue.
 
 ## Tab strips
 
@@ -195,3 +428,102 @@ Like the date-field stepping keys above, these are **deliberately not registered
 `CommandRegistry`**: they are in-control navigation keys, the same kind as the arrow keys inside a
 list box, and they do nothing outside a tab header. `Ctrl+Tab` / `Ctrl+Shift+Tab` remain
 `TabControl`'s own — the handler ignores any key pressed with a modifier.
+
+## Folder picker: Tab across the tree and the buttons
+
+In its tree presentation (`FolderPickerWindow` with `useTreeView: true` — move or copy messages,
+move or copy a folder, a rule's target folder, the startup folder) the picker handles `Tab` and
+`Shift+Tab` itself where they cross between the folder tree and the buttons. The ring is: the tree
+→ **New Folder** (where it is shown) → **Open** (while it is enabled) → **Cancel** → back to the
+tree. Coming back into the tree lands on the folder that was selected, not on the first row, and
+does not change the selection.
+
+WPF cannot do this half of it on its own. `TreeViewItem` leaves `IsTabStop` false, so reverse
+traversal finds no tab stop inside the tree, skips the whole control and wraps round to the last
+button: `Shift+Tab` out of the first button could not get back to the folders at all. Forward entry
+works by a different route — into a `TabNavigation="Once"` container it goes to the container's
+focused descendant rather than to a tab stop — which is why only one direction was broken. Making
+the items tab stops was measured first and is worse: reverse entry then lands on the first folder
+rather than the selected one, and `Shift+Tab` from there does not leave the tree at all.
+
+The other trap is that `Open` is disabled whenever the selection carries no folder (an account
+header, or an IMAP path segment that is not itself a mailbox), and focusing a disabled button does
+nothing while reporting nothing — so the handler steps to the first button that can actually take
+focus, and `Cancel`, always shown and always enabled, is the backstop.
+
+The main window solved the same problem the same way, earlier: `MessageList_PreviewKeyDown`,
+`ConversationTree_PreviewKeyDown` and the sender/recipient group trees all intercept `Shift+Tab`
+and call `SyncFolderTreeSelection`, and `AccountList_PreviewKeyDown` mirrors it. Its folder tree is
+a `TreeView` with the same `TabNavigation="Once"`, so without those handlers `Shift+Tab` out of the
+message list would skip it and land on the account list. A hand-wired `Shift+Tab` is what reaching
+a `TreeView` in reverse costs in this framework; expect to write one for any new tree.
+
+Like the date-field and tab-strip keys above, these are **deliberately not registered in
+`CommandRegistry`**: `Tab` and `Shift+Tab` are framework focus navigation, not application
+commands, and they carry no command title to show in the palette. Any other modifier is left alone
+— `Ctrl+Tab` and friends fall straight through. The flat list presentation ("Go to Folder") is not
+touched by any of this: `ListBoxItem` is a tab stop, so it traverses correctly both ways on its
+own. Covered by `FolderPickerTabOrderTests`.
+
+## Context-menu gestures: Shift+F10 and the Applications key
+
+Neither is registered in `CommandRegistry`. They are Windows' own context-menu gestures, carry no
+command title, and mean nothing outside the control they are pressed on — the same category as the
+in-control keys above. What follows is where they are handled and why, because four separate
+pieces of code answer them and the reasons are not guessable from any one of them.
+
+They do not reach an application the same way. `DefWindowProc` turns Shift+F10 into
+`WM_CONTEXTMENU` while processing the key **down**; the Applications key becomes `WM_CONTEXTMENU`
+only on the key **up**. `Helpers/ContextMenuKeys.cs` carries the full account (issue #631) — it is
+why the attachment lists open their own menu for Shift+F10 and deliberately leave the Applications
+key to Windows.
+
+`MainWindow` answers both at the window level, in `OnWindowKeyDown` (Shift+F10 only) and in the
+`WM_CONTEXTMENU` hook `OnWmContextMenu` (both keys). Each consults
+`Helpers/ContextMenuFocusPolicy.cs`, which exists because `Keyboard.FocusedElement` being null
+means two unrelated things:
+
+- **Nothing has been focused yet**, at startup. The panel is focused synchronously so
+  `ContextMenuOpening` has an element to route from; without it the Win32 system menu
+  (Move/Size/Close) appears instead of QuickMail's (issue #148).
+- **Focus is inside the reading pane's WebView2**, a child HWND outside the WPF tree. Treating this
+  as the first ran the startup repair on someone who was simply reading and moved focus to the
+  message list (issue #672).
+
+So while a message is being read, the window leaves both gestures alone: no focus is moved, and the
+`WM_CONTEXTMENU` is swallowed rather than falling through to the Win32 system menu. The swallow is
+scoped to the keyboard gesture (`lParam == -1`); the hook is on the top-level window, so a
+right-click anywhere in it arrives there too.
+
+The policy is a pure function so the decision can be unit-tested, the same carve-out
+`ContextMenuKeys` got: `ContextMenuFocusPolicyTests` covers all sixteen input combinations, since
+the failure mode at stake is silence and nobody reports silence.
+
+### The link menu inside the body (issue #671)
+
+What answers the gesture inside a message body is Chromium, not WPF — for Shift+F10 and the
+Applications key alike, both verified by hand. `LinkContextMenuSupport`
+handles WebView2's `ContextMenuRequested` and rebuilds the menu: **Open**, **Copy Address**, and
+**Copy Text** when the text is not the address again. **New Message to This Address** comes last on a `mailto:` link, so the items before it keep fixed
+positions whatever the link is. The labels drop the word "Link" to match the attachment menu
+(`MainWindow.xaml`) and the address-chip menu (`Controls/TokenizedAddressBox.xaml.cs`), which name
+the action and not the thing the menu was opened on. On anything that is not
+an allow-listed link the menu is emptied and marked handled, so body text shows nothing at all.
+
+This is why `AreDefaultContextMenusEnabled` is **true** on both message-body surfaces, which reads
+like the opposite of what the codebase wants. The event is not raised at all when it is false.
+Chromium's own items never reach the user — the collection is cleared before ours are added — so
+Save as, Inspect and Open link in new window are gone by construction
+rather than by the setting. A WPF `ContextMenu` was tried first and does not work over a WebView2:
+it takes keyboard focus but never enters menu mode, leaving arrow keys unhandled and a screen
+reader with the popup's own name and no item to read.
+
+One interaction needs the two layers to cooperate. `OnWindowKeyDown` is a **tunnelling** handler, so
+WPF sees Escape *before* the WebView2 does. Marking it handled there stops the key ever reaching
+Chromium and the menu cannot be dismissed at all; leaving it alone closes the reading pane as well
+as the menu. So while a link menu is up the handler skips the close and deliberately leaves the key
+**unhandled**, letting it pass down for Chromium to dismiss its own menu. WebView2 raises no
+"menu closed" event, so that claim is one-shot: shown when a menu is built, released by an Escape
+or by activating an item. Dismissing the menu another way (a click elsewhere) leaves the claim
+standing and costs one extra Escape.
+

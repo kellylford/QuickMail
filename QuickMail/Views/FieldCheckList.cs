@@ -156,6 +156,12 @@ public sealed class FieldCheckList : ItemsControl
     }
 
     /// <summary>Focuses a row's check box and scrolls it into view.</summary>
+    /// <summary>
+    /// Focuses the row the user was last on, going straight to its check box. For a window's F6
+    /// ring: focusing the list itself would have it spoken as "list" before the row it hands on to.
+    /// </summary>
+    internal bool FocusLastFocusedRow() => FocusRow(_lastFocusedIndex) || FocusRow(0);
+
     internal bool FocusRow(int index)
     {
         if (index < 0 || index >= Items.Count) return false;

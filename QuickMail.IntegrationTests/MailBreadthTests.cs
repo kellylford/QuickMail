@@ -192,7 +192,7 @@ public sealed class MailBreadthTests
 
         using var smtp = new MailKit.Net.Smtp.SmtpClient();
         await smtp.ConnectAsync(GreenMailFixture.Host, GreenMailFixture.SmtpPort, MailKit.Security.SecureSocketOptions.None, ct);
-        await smtp.SendAsync(message, ct);
+        await smtp.SendAsync(new MailKit.SendRequest(message), ct);
         await smtp.DisconnectAsync(quit: true, ct);
     }
 }
@@ -204,6 +204,9 @@ internal sealed class NoOpGraphSendService : ISendMailService
         throw new NotSupportedException("Graph send is not available in integration tests.");
     public Task SendIcsReplyAsync(string icsReplyContent, AccountModel account, string? password,
         string organizerEmail, CancellationToken ct = default) =>
+        throw new NotSupportedException("Graph send is not available in integration tests.");
+    public Task SendPreparedAsync(MimeKit.MimeMessage message, AccountModel account, string? password,
+        CancellationToken ct = default) =>
         throw new NotSupportedException("Graph send is not available in integration tests.");
     public Task VerifyAsync(AccountModel account, string? password, CancellationToken ct = default) =>
         throw new NotSupportedException("Graph send is not available in integration tests.");

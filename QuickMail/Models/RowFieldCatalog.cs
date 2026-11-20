@@ -41,6 +41,12 @@ public enum RowFieldFormat
 
     /// <summary>An int message count, spoken as "1 message" / "3 messages".</summary>
     Count,
+
+    /// <summary>An int unread count, spoken as "2 unread". Silent at zero (#800).</summary>
+    UnreadCount,
+
+    /// <summary>An <see cref="UnreadTally"/>, spoken as "2 of 5 unread". Silent at zero (#800).</summary>
+    UnreadOfTotal,
 }
 
 /// <summary>
@@ -123,6 +129,10 @@ public static class RowFieldCatalog
         new("hasunread", "Has unread",    "Unread",  "HasUnread",      RowFieldFormat.State, "Has unread"),
         new("preview",   "Preview",       "Preview", "Preview",        RowFieldFormat.Text),
         new("date",      "Date",          "Date",    "DateDisplay",    RowFieldFormat.Text),
+        // How many are unread, not just whether any are (#800). Off by default (absent from
+        // ConversationDefaultOrder), so nobody's spoken row changes until they turn one on.
+        new("unreadcount",   "Unread count",    "Unread", "UnreadCount",   RowFieldFormat.UnreadCount),
+        new("unreadoftotal", "Unread of total", "Unread", "UnreadOfTotal", RowFieldFormat.UnreadOfTotal),
     ];
 
     // ── Sender / To group headers ────────────────────────────────────────────
@@ -136,6 +146,9 @@ public static class RowFieldCatalog
         new("preview",       "Preview",       "Preview",        "Preview",       RowFieldFormat.Text),
         new("date",          "Date",          "Date",           "DateDisplay",   RowFieldFormat.Text),
         new("newestsubject", "Newest subject", "Newest subject", "NewestSubject", RowFieldFormat.Text),
+        // As on conversation rows (#800), and likewise off by default.
+        new("unreadcount",   "Unread count",    "Unread",         "UnreadCount",   RowFieldFormat.UnreadCount),
+        new("unreadoftotal", "Unread of total", "Unread",         "UnreadOfTotal", RowFieldFormat.UnreadOfTotal),
     ];
 
     // ── Default spoken order, by id ──────────────────────────────────────────

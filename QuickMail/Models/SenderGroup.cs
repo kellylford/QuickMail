@@ -10,6 +10,11 @@ namespace QuickMail.Models;
 /// </summary>
 public sealed class SenderGroup : INotifyPropertyChanged
 {
+    // A backstop for a row whose RowSpeech name is empty (#928); see MailMessageSummary.ToString.
+    // "Group", not "Sender": the To view uses this type for recipients.
+    public override string ToString() =>
+        string.IsNullOrWhiteSpace(SenderName) ? "Group" : SenderName;
+
     /// <summary>The trimmed From string used as the grouping key (case-insensitive).</summary>
     public string SenderKey { get; init; } = string.Empty;
 
@@ -30,6 +35,16 @@ public sealed class SenderGroup : INotifyPropertyChanged
         }
     }
 
+    /// <summary>
+    /// Stops listening to the messages. Rows outlive the groups built over them now that a reload keeps
+    /// them, so a group that has been replaced or discarded has to let go or it stays alive with them.
+    /// </summary>
+    public void ReleaseMessages()
+    {
+        foreach (var m in _messages)
+            m.PropertyChanged -= OnMessagePropertyChanged;
+    }
+
     private void OnMessagePropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName is nameof(MailMessageSummary.IsFlagged)
@@ -41,11 +56,25 @@ public sealed class SenderGroup : INotifyPropertyChanged
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(FlagLabel)));
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(FlagColorHex)));
         }
-        // The row speaks HasUnread, so reading the last unread message in the group has to
-        // refresh the node's name — otherwise it keeps saying "Has unread" after it stops being true.
+        // The row speaks HasUnread and the unread counts (#800), so reading a message in the group
+        // has to refresh the node's name — otherwise it keeps saying "Has unread" or "2 unread"
+        // after that stops being true.
+        else if (e.PropertyName is nameof(MailMessageSummary.Subject)
+                 or nameof(MailMessageSummary.From)
+                 or nameof(MailMessageSummary.Date))
+        {
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(NewestSubject)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(DateDisplay)));
+        }
+        else if (e.PropertyName is nameof(MailMessageSummary.Preview))
+        {
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Preview)));
+        }
         else if (e.PropertyName is nameof(MailMessageSummary.IsRead))
         {
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(HasUnread)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(UnreadCount)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(UnreadOfTotal)));
         }
     }
 
@@ -68,6 +97,12 @@ public sealed class SenderGroup : INotifyPropertyChanged
 
     /// <summary>True when at least one message in the group is unread.</summary>
     public bool HasUnread => Messages.Any(m => !m.IsRead);
+
+    /// <summary>How many messages in the group are unread (#800).</summary>
+    public int UnreadCount => Messages.Count(m => !m.IsRead);
+
+    /// <summary>Unread messages out of all of them, spoken as "2 of 5 unread" (#800).</summary>
+    public UnreadTally UnreadOfTotal => new(UnreadCount, Messages.Count);
 
     /// <summary>True when at least one message in the group is flagged.</summary>
     public bool HasFlagged => Messages.Any(m => m.IsFlagged);

@@ -52,7 +52,7 @@ public class QuickMailFixturesTests : IDisposable
         Assert.Contains(inbox, m => m.Subject.Length > 120);          // the pathological subject
 
         // The attachment indicator comes from UpsertDetailAsync, not the summary.
-        var withAttachment = inbox.Single(m => m.MessageId == "1004");
+        var withAttachment = inbox.Single(m => m.MessageId == UiProbeFixture.AttachmentMessageId);
         Assert.True(withAttachment.HasAttachments);
 
         // Reading-pane target: HTML body present and non-trivial.

@@ -109,17 +109,15 @@ public partial class AccountModel : ObservableObject
     // an IMAP-only reading sees every POP3 account as the same empty host on port 993 (#128).
 
     /// <summary>
-    /// Whether folders on this account can be created, renamed, moved, copied or deleted. False only
-    /// for POP3 (#128), whose Inbox, Sent, Drafts and Trash are made up by QuickMail and are the only
-    /// folders there can be.
+    /// Whether this account's special folders (Inbox, Sent, Drafts, Trash) are fixed — cannot be
+    /// moved or deleted. True only for POP3 (#128, #794): QuickMail makes those four up, and nothing
+    /// else would hold the account's incoming mail, sent copies, drafts or deletions. The user's own
+    /// folders on such an account can be managed like any other.
     /// <para>A capability the UI asks about, rather than a <see cref="BackendKind"/> comparison
-    /// repeated at each command that needs it: those comparisons are a state decision, they were
-    /// planted at four call sites, and the one place that forgot to make it — the message move/copy
-    /// picker's New Folder button — worked only because the backend's <c>NotSupportedException</c>
-    /// message happened to read well.</para>
+    /// repeated at each command that needs it: those comparisons are a state decision.</para>
     /// </summary>
     [JsonIgnore]
-    public bool SupportsFolderCrud => BackendKind != BackendKind.Pop3Smtp;
+    public bool HasFixedSpecialFolders => BackendKind == BackendKind.Pop3Smtp;
 
     /// <summary>The host this account receives mail from. Empty for Graph, which has no server.</summary>
     [JsonIgnore]
@@ -217,6 +215,16 @@ public partial class AccountModel : ObservableObject
     /// </summary>
     public string? ArchiveFolderFullName { get; set; }
 
+    /// <summary>
+    /// Full names of the folders the user hid from the folder tree and from Go to Folder (#963).
+    /// Hiding a folder hides every folder inside it too. Display only: a hidden folder still syncs,
+    /// still counts in the aggregate views, and is still offered as a Move/Copy destination.
+    /// Matched ordinally against <see cref="MailFolderModel.FullName"/>, which is exactly what the
+    /// server reported: Graph ids are case-sensitive, and an IMAP path comes back the same way each
+    /// time. Empty means nothing hidden.
+    /// </summary>
+    public List<string> HiddenFolders { get; set; } = [];
+
     // ── Shared mailbox linkage (#31) ─────────────────────────────────────────────
 
     /// <summary>
@@ -239,6 +247,16 @@ public partial class AccountModel : ObservableObject
     /// account.
     /// </summary>
     public string? SharedAddress { get; set; }
+
+    /// <summary>
+    /// Per-account new-mail notification opt-in for a shared mailbox (#31 PR 5). Shared mailboxes are
+    /// excluded from new-mail and watched-conversation toasts by default — they are often high-volume role
+    /// mailboxes and a user rarely wants a toast for each one. Turning this on adds THIS shared mailbox
+    /// back into the notification set; the global master switches (<c>ConfigModel.NotifyOnNewMail</c> /
+    /// <c>NotifyOnWatchedConversation</c>) still govern, so a toast fires only when both are on. Ignored
+    /// for a normal account (the global switch alone governs those). Defaults false; no migration.
+    /// </summary>
+    public bool NotifyOnNewMail { get; set; }
 
     /// <summary>
     /// The shared mailboxes (#31) that read through <paramref name="parent"/>, taken from
@@ -271,6 +289,23 @@ public partial class AccountModel : ObservableObject
     public string AccountLabel => string.IsNullOrWhiteSpace(AccountName) ? Username : AccountName;
     public string SenderDisplayName => string.IsNullOrWhiteSpace(DisplayName) ? AccountLabel : DisplayName;
     public string AccountLabelWithDefault => IsDefault ? $"{AccountLabel} - default" : AccountLabel;
+
+    /// <summary>
+    /// Accessible name for the Account Manager list item (#31 PR 5): the label plus the "shared mailbox"
+    /// qualifier so a screen-reader user can tell a shared mailbox from a normal account without selecting
+    /// it — matching the main-window account list. Unlike <see cref="AccessibleName"/> it omits the live
+    /// connection/unread state, which is monitoring detail the editor list doesn't need; it keeps the
+    /// "- default" marker so that distinction is still spoken.
+    /// </summary>
+    public string ManagerListAccessibleName
+    {
+        get
+        {
+            var shared = IsShared ? ", shared mailbox" : "";
+            var def = IsDefault ? " - default" : "";
+            return $"{AccountLabel}{shared}{def}";
+        }
+    }
 
     /// <summary>
     /// Short status line shown below the account name in the account list, and as a tooltip.

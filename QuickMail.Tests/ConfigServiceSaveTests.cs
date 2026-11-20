@@ -28,6 +28,25 @@ public class ConfigServiceSaveTests
         Assert.Equal(config.AnnounceHints, reloaded.AnnounceHints);
     }
 
+    // #883: the setting must survive a restart, and a config.ini written before it existed
+    // must still mean "on".
+    [Fact]
+    public void CheckSpellingAsYouType_DefaultsOn_AndRoundTripsOff()
+    {
+        var profile = MakeTempProfile();
+        var service = new ConfigService(profile);
+
+        var config = service.Load();
+        Assert.True(config.CheckSpellingAsYouType);
+
+        config.CheckSpellingAsYouType = false;
+        service.Save(config);
+
+        Assert.False(new ConfigService(profile).Load().CheckSpellingAsYouType);
+        Assert.Contains("CheckSpellingAsYouType = off",
+            File.ReadAllText(Path.Combine(profile.ProfileDir, "config.ini")));
+    }
+
     [Fact]
     public void SaveThenLoad_RoundTripsSort()
     {
@@ -101,6 +120,23 @@ public class ConfigServiceSaveTests
         var reloaded = new ConfigService(profile).Load();
         Assert.True(reloaded.MessageListShowFieldLabels);
         Assert.True(reloaded.RuleListShowFieldLabels);
+    }
+
+    [Theory]
+    [InlineData(RowFieldSeparator.Comma)]
+    [InlineData(RowFieldSeparator.Space)]
+    [InlineData(RowFieldSeparator.Period)]
+    public void SaveThenLoad_RoundTripsTheFieldSeparator(RowFieldSeparator separator)
+    {
+        // #802. Same failure shape as above: a setting with no parse case resets on every launch.
+        var profile = MakeTempProfile();
+        var service = new ConfigService(profile);
+
+        var config = service.Load();
+        config.MessageListFieldSeparator = separator;
+        service.Save(config);
+
+        Assert.Equal(separator, new ConfigService(profile).Load().MessageListFieldSeparator);
     }
 
     [Fact]
@@ -205,10 +241,19 @@ public class ConfigServiceSaveTests
 
         var config = service.Load();
         config.AnnounceMessageActions = false;
-        service.Save(config);
+        try
+        {
+            service.Save(config);
 
-        var reloaded = new ConfigService(profile).Load();
-        Assert.False(reloaded.AnnounceMessageActions);
+            var reloaded = new ConfigService(profile).Load();
+            Assert.False(reloaded.AnnounceMessageActions);
+        }
+        finally
+        {
+            // Save also turned off AccessibilityHelper's process-wide message-action switch; put
+            // the defaults back so tests that run after this one still hear those announcements.
+            QuickMail.Views.AccessibilityHelper.Configure(new ConfigModel());
+        }
     }
 
     [Fact]
@@ -325,5 +370,30 @@ public class ConfigServiceSaveTests
         // The file must be valid, parseable config after repeated in-place saves.
         var reloaded = new ConfigService(profile).Load();
         Assert.NotNull(reloaded);
+    }
+    [Fact]
+    public void SaveThenLoad_RoundTripsOfflineBodyDays()
+    {
+        // #637: off by default, and a chosen window survives a restart.
+        var profile = MakeTempProfile();
+        var service = new ConfigService(profile);
+        Assert.Equal(0, service.Load().OfflineBodyDays);
+
+        var config = service.Load();
+        config.OfflineBodyDays = 30;
+        service.Save(config);
+
+        Assert.Equal(30, new ConfigService(profile).Load().OfflineBodyDays);
+
+        // "All mail" is its own value, not 0 (which is off here).
+        config.OfflineBodyDays = ConfigModel.OfflineBodyDaysAll;
+        service.Save(config);
+        Assert.Equal(ConfigModel.OfflineBodyDaysAll, new ConfigService(profile).Load().OfflineBodyDays);
+
+        // Other folders besides the Inbox (#717): off by default, kept when turned on.
+        Assert.False(new ConfigService(profile).Load().OfflineBodyAllFolders);
+        config.OfflineBodyAllFolders = true;
+        service.Save(config);
+        Assert.True(new ConfigService(profile).Load().OfflineBodyAllFolders);
     }
 }

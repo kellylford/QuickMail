@@ -62,9 +62,12 @@ if errorlevel 1 (
 )
 echo.
 echo Locating vpk (Velopack CLI)...
+rem Read before the block below: %VPKPIN% inside it expands when the block is parsed.
+set /p VPKPIN=<"%~dp0.github\vpk-version"
 where vpk >nul 2>nul
 if errorlevel 1 (
-    echo INSTALLER FAILED: vpk not found. Install it with: dotnet tool install -g vpk
+    echo INSTALLER FAILED: vpk not found. Install the pinned version CI uses:
+    echo   dotnet tool install -g vpk --version %VPKPIN%
     exit /b 1
 )
 echo Reading version from QuickMail\QuickMail.csproj...

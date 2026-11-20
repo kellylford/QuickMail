@@ -996,7 +996,7 @@ public class CalendarViewModelTests
             Username = "work@example.com",
         };
         var store = new StubCalendarService();
-        var sync = new StubGraphCalendarSyncService();
+        var sync = new StubGraphCalendarSyncService { CalendarStore = store };
         var vm = new CalendarViewModel(store, onlineMode: false, showDeclinedEvents: false,
                                        showFieldLabels: false, graphSync: sync,
                                        graphAccountsProvider: () => new[] { account });
@@ -1031,8 +1031,8 @@ public class CalendarViewModelTests
             graphAccountsProvider: () => new[] { apple },
             calendarSourcesProvider: () => new[]
             {
-                (apple.Id, "https://p42-caldav.icloud.com/1/calendars/home/", "Home"),
-                (apple.Id, "https://p42-caldav.icloud.com/1/calendars/family/", "Family"),
+                new CalendarSourceInfo(apple.Id, "https://p42-caldav.icloud.com/1/calendars/home/", "Home", CanWrite: true),
+                new CalendarSourceInfo(apple.Id, "https://p42-caldav.icloud.com/1/calendars/family/", "Family", CanWrite: true),
             });
 
         EventEditorViewModel? editor = null;
@@ -1227,5 +1227,259 @@ public class CalendarViewModelTests
 
         Assert.Empty(sync.CreatedEvents);
         Assert.Equal("local-only", Assert.Single(store.StoredEvents).Uid);
+    }
+
+    /// <summary>
+    /// A new appointment is in the list the moment it is saved, without the user pressing F5
+    /// (issue #519). Both save targets are covered because they persist by different routes: the
+    /// local target upserts through the calendar service, while an account target hands the event
+    /// to the sync service, which stores the server's copy — so only a reload-and-refilter after
+    /// the push puts it on screen.
+    /// </summary>
+    [Fact]
+    public async Task SaveNewEvent_AccountTarget_ShowsInTheListWithoutARefresh()
+    {
+        var (vm, _, _, account) = MakePushVm();
+        await vm.LoadAsync();
+        Assert.Empty(vm.VisibleEvents);
+
+        await vm.SaveNewEventAsync(new CalendarEvent
+        {
+            Uid = "local-tmp", AccountId = account.Id, Summary = "Pushed",
+            StartTimeTicks = DateTime.UtcNow.AddDays(3).Ticks,
+        });
+
+        var row = Assert.Single(vm.VisibleEvents);
+        Assert.Equal("Pushed", row.Summary);
+        // And selection lands on it, so the focus handoff to the list opens on the new appointment.
+        Assert.Equal(row.Uid, vm.SelectedEvent?.Uid);
+    }
+
+    [Fact]
+    public async Task SaveNewEvent_LocalTarget_ShowsInTheListWithoutARefresh()
+    {
+        var (vm, _, _, _) = MakePushVm();
+        await vm.LoadAsync();
+
+        await vm.SaveNewEventAsync(new CalendarEvent
+        {
+            Uid = "local-only", AccountId = CalendarEvent.LocalAccountId, Summary = "Local",
+            StartTimeTicks = DateTime.UtcNow.AddDays(3).Ticks,
+        });
+
+        var row = Assert.Single(vm.VisibleEvents);
+        Assert.Equal("Local", row.Summary);
+        Assert.Equal(row.Uid, vm.SelectedEvent?.Uid);
+    }
+
+    /// <summary>
+    /// The symptom #569 was reported against, end to end: with ONE of an account's calendars
+    /// selected in the folder tree, a new appointment saved to that account is in the list at once,
+    /// without an F5.
+    ///
+    /// <para>
+    /// This is the configuration the bug needed. The other save tests run with no
+    /// <c>SourceFilter</c>, and with no calendar-id filter <c>ApplyFilters</c> short-circuits, so
+    /// they pass whatever the row is tagged with. Here the filter is live, so an untagged row — what
+    /// the service stored before #569 — fails it and the appointment is missing from the very
+    /// calendar it was just filed on, until the next sync restamps it.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task SaveNewEvent_WhileOneCalendarIsSelected_ShowsUnderThatCalendar()
+    {
+        var (vm, _, sync, account) = MakePushVm();
+        sync.DefaultCalendarId = "cal-default";
+        sync.DefaultCalendarName = "Calendar";
+        vm.SourceFilter = new MainViewModel.CalendarFilter(account.Id, "cal-default");
+        await vm.LoadAsync();
+
+        await vm.SaveNewEventAsync(new CalendarEvent
+        {
+            Uid = "local-tmp", AccountId = account.Id, Summary = "Dentist",
+            StartTimeTicks = DateTime.UtcNow.AddDays(3).Ticks,
+        });
+
+        var row = Assert.Single(vm.VisibleEvents);
+        Assert.Equal("Dentist", row.Summary);
+        Assert.Equal("cal-default", row.CalendarId);
+        Assert.Equal(row.Uid, vm.SelectedEvent?.Uid);
+    }
+
+    // ── The Calendar picker offers every writable calendar (#569 follow-up) ───────
+
+    private static (CalendarViewModel Vm, AccountModel Account) PickerVm(params CalendarSourceInfo[] sources)
+    {
+        var account = new AccountModel
+        {
+            Id = Guid.NewGuid(), BackendKind = BackendKind.MicrosoftGraph,
+            AccountName = "Work", Username = "kelly@work.example", SyncCalendar = true,
+        };
+        var stamped = sources.Select(s => s with { AccountId = account.Id }).ToList();
+        var vm = new CalendarViewModel(new StubCalendarService(), onlineMode: false,
+            showDeclinedEvents: false, showFieldLabels: false,
+            graphSync: new StubGraphCalendarSyncService(),
+            graphAccountsProvider: () => new[] { account },
+            calendarSourcesProvider: () => stamped);
+        return (vm, account);
+    }
+
+    private static EventEditorViewModel OpenEditor(CalendarViewModel vm)
+    {
+        EventEditorViewModel? editor = null;
+        vm.EditorRequested += e => editor = e;
+        vm.NewEventCommand.Execute(null);
+        Assert.NotNull(editor);
+        return editor!;
+    }
+
+    /// <summary>
+    /// A Microsoft or Google account offers one target per calendar, the way iCloud already did.
+    /// Until now it offered a single account-level entry, so an appointment could only ever be
+    /// filed onto the account's default calendar.
+    /// </summary>
+    [Fact]
+    public void NewEvent_ServerAccount_OffersOneTargetPerWritableCalendar()
+    {
+        var (vm, account) = PickerVm(
+            new CalendarSourceInfo(Guid.Empty, "cal-default", "Calendar", CanWrite: true),
+            new CalendarSourceInfo(Guid.Empty, "cal-team", "Team", CanWrite: true));
+
+        var editor = OpenEditor(vm);
+
+        // Local, the account's own default, then the two calendars.
+        Assert.Equal(4, editor.SaveTargetLabels.Count);
+        Assert.Contains("Work (default calendar)", editor.SaveTargetLabels);
+        Assert.Contains("Work: Calendar", editor.SaveTargetLabels);
+        Assert.Contains("Work: Team", editor.SaveTargetLabels);
+
+        // And picking one stamps the appointment with it, so it saves where the user said.
+        editor.SelectedTargetIndex = editor.SaveTargetLabels.ToList().IndexOf("Work: Team");
+        editor.Title = "Standup";
+        Assert.True(editor.TryBuildEvent(out var evt, out var error), error);
+        Assert.Equal(account.Id, evt.AccountId);
+        Assert.Equal("cal-team", evt.CalendarId);
+        Assert.Equal("Team", evt.CalendarName);
+    }
+
+    /// <summary>
+    /// A calendar the user only subscribes to — a holidays feed, a colleague's shared calendar — is
+    /// not a place an appointment can be saved, so it is not offered. It keeps its folder-tree node:
+    /// reading it is what it is for.
+    /// </summary>
+    [Fact]
+    public void NewEvent_LeavesOutCalendarsThatCannotBeWrittenTo()
+    {
+        var (vm, _) = PickerVm(
+            new CalendarSourceInfo(Guid.Empty, "cal-default", "Calendar", CanWrite: true),
+            new CalendarSourceInfo(Guid.Empty, "cal-holidays", "Holidays in the United States", CanWrite: false));
+
+        var editor = OpenEditor(vm);
+
+        // Local, the account's own default, then the one writable calendar.
+        Assert.Equal(3, editor.SaveTargetLabels.Count);
+        Assert.Contains("Work: Calendar", editor.SaveTargetLabels);
+        Assert.DoesNotContain(editor.SaveTargetLabels, l => l.Contains("Holidays"));
+    }
+
+    /// <summary>
+    /// An account whose calendars are not known yet — it has never synced — still gets a bare
+    /// account entry, because Microsoft and Google will file into the account's default calendar
+    /// when no calendar is named. Being unofferable would leave the user unable to save to the
+    /// account at all.
+    /// </summary>
+    [Fact]
+    public void NewEvent_ServerAccountWithNoKnownCalendars_StillOffersTheAccount()
+    {
+        var (vm, _) = PickerVm();
+
+        var editor = OpenEditor(vm);
+
+        Assert.Equal(2, editor.SaveTargetLabels.Count);
+        Assert.Contains("Work (default calendar)", editor.SaveTargetLabels);
+    }
+
+    /// <summary>
+    /// A default calendar set on the ACCOUNT node still opens the editor on that account's own
+    /// default calendar (#497).
+    ///
+    /// <para>
+    /// This is the regression the per-calendar picker nearly shipped. An account-level default
+    /// carries no calendar id, so once every target had one the exact match failed and the fallback
+    /// took the account's FIRST target — whichever calendar sorted first by name. A Microsoft
+    /// account whose calendars had never been discovered separately could only have had an
+    /// account-level default, so the editor would have opened on a calendar the user never chose,
+    /// and on Outlook's Birthdays calendar the save would have been refused outright.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public void NewEvent_AccountLevelDefault_OpensOnTheAccountsOwnDefaultCalendar()
+    {
+        var (vm, account) = PickerVm(
+            // Deliberately sorted so the account's own default is NOT the first entry.
+            new CalendarSourceInfo(Guid.Empty, "cal-birthdays", "Birthdays", CanWrite: true),
+            new CalendarSourceInfo(Guid.Empty, "cal-default", "Calendar", CanWrite: true));
+        vm.DefaultCalendar = new MainViewModel.CalendarFilter(account.Id, null);
+
+        var editor = OpenEditor(vm);
+
+        Assert.Equal("Work (default calendar)", editor.SaveTargetLabels[editor.SelectedTargetIndex]);
+        editor.Title = "Dentist";
+        Assert.True(editor.TryBuildEvent(out var evt, out var error), error);
+        Assert.Equal(account.Id, evt.AccountId);
+        // No calendar named, so the server files into the account's default — not into Birthdays.
+        Assert.Equal(string.Empty, evt.CalendarId);
+    }
+
+    /// <summary>A default naming one specific calendar still opens on exactly that calendar.</summary>
+    [Fact]
+    public void NewEvent_CalendarLevelDefault_OpensOnThatCalendar()
+    {
+        var (vm, account) = PickerVm(
+            new CalendarSourceInfo(Guid.Empty, "cal-birthdays", "Birthdays", CanWrite: true),
+            new CalendarSourceInfo(Guid.Empty, "cal-team", "Team", CanWrite: true));
+        vm.DefaultCalendar = new MainViewModel.CalendarFilter(account.Id, "cal-team");
+
+        var editor = OpenEditor(vm);
+
+        Assert.Equal("Work: Team", editor.SaveTargetLabels[editor.SelectedTargetIndex]);
+    }
+
+    /// <summary>
+    /// An account with calendars but none writable keeps its account entry, so the picker does not
+    /// silently disappear and file the appointment locally with nothing said.
+    /// </summary>
+    [Fact]
+    public void NewEvent_AccountWithOnlyReadOnlyCalendars_StillOffersTheAccount()
+    {
+        var (vm, _) = PickerVm(
+            new CalendarSourceInfo(Guid.Empty, "cal-holidays", "Holidays", CanWrite: false));
+
+        var editor = OpenEditor(vm);
+
+        Assert.True(editor.ShowSaveTarget);
+        Assert.Contains("Work (default calendar)", editor.SaveTargetLabels);
+    }
+
+    /// <summary>
+    /// iCloud is the exception and stays the exception: a CalDAV PUT needs a collection URL, so an
+    /// account with nothing discovered offers nothing rather than a target that cannot resolve.
+    /// </summary>
+    [Fact]
+    public void NewEvent_ICloudWithNoKnownCalendars_OffersOnlyLocal()
+    {
+        var apple = new AccountModel
+        {
+            Id = Guid.NewGuid(), ImapHost = "imap.mail.me.com", AccountName = "Apple", SyncCalendar = true,
+        };
+        var vm = new CalendarViewModel(new StubCalendarService(), onlineMode: false,
+            showDeclinedEvents: false, showFieldLabels: false,
+            graphSync: new StubGraphCalendarSyncService(),
+            graphAccountsProvider: () => new[] { apple },
+            calendarSourcesProvider: () => []);
+
+        var editor = OpenEditor(vm);
+
+        Assert.Equal("Local Calendar (this computer)", Assert.Single(editor.SaveTargetLabels));
     }
 }

@@ -123,6 +123,25 @@ public class SettingsViewModelTests
         Assert.Equal(100, loadedConfig.InitialSyncCount);
     }
 
+    [Fact]
+    public void OfflineBodyDays_RoundTripsThroughConfig()
+    {
+        // Off by default (#637): nobody's mail.db grows until they ask.
+        var configService = new StubConfigService();
+        var registry = new StubCommandRegistry();
+        Assert.Equal(0, new SettingsViewModel(configService, registry).OfflineBodyDays);
+
+        var cfg = configService.Load();
+        cfg.OfflineBodyDays = 30;
+        configService.Save(cfg);
+        var vm = new SettingsViewModel(configService, registry);
+        Assert.Equal(30, vm.OfflineBodyDays);
+
+        vm.OfflineBodyDays = 7;
+        vm.SaveCommand.Execute(null);
+        Assert.Equal(7, configService.Load().OfflineBodyDays);
+    }
+
     // ── CalDAV calendar source ──────────────────────────────────────────────────
 
     private sealed class RecordingCredentialService : ICredentialService
@@ -396,5 +415,27 @@ public class SettingsViewModelTests
 
         var vmLoad = new SettingsViewModel(configService, new StubCommandRegistry());
         Assert.False(vmLoad.AnnounceSpellingSuggestions);
+    }
+
+    // #883: "Check spelling as I type" is on unless the user turns it off.
+    [Fact]
+    public void CheckSpellingAsYouType_DefaultsToTrue()
+    {
+        var vm = new SettingsViewModel(new StubConfigService(), new StubCommandRegistry());
+        Assert.True(vm.CheckSpellingAsYouType);
+    }
+
+    [Fact]
+    public void CheckSpellingAsYouType_LoadAndSave_RoundTrips()
+    {
+        var configService = new StubConfigService();
+
+        var vmSave = new SettingsViewModel(configService, new StubCommandRegistry());
+        vmSave.CheckSpellingAsYouType = false;
+        vmSave.SaveCommand.Execute(null);
+
+        Assert.False(configService.Load().CheckSpellingAsYouType);
+        var vmLoad = new SettingsViewModel(configService, new StubCommandRegistry());
+        Assert.False(vmLoad.CheckSpellingAsYouType);
     }
 }

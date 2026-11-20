@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -62,11 +63,15 @@ public interface IMailService : IDisposable
     Task NoOpAsync(Guid accountId, CancellationToken ct = default);
 
     /// <summary>
-    /// Counts messages in the Trash folder (if it exists) without opening other folders.
-    /// Returns 0 if Trash does not exist or is empty.
+    /// Counts messages in the Trash folder without opening other folders. 0 means known to be empty:
+    /// this throws if that can't be found out, <see cref="TrashFolderNotFoundException"/> if there is no such folder.
     /// </summary>
     Task<int> CountTrashMessagesAsync(Guid accountId, CancellationToken ct = default);
 
+    /// <summary>
+    /// Permanently deletes everything in the Trash folder, and returns how many messages that was.
+    /// Throws <see cref="TrashFolderNotFoundException"/> if the account has no such folder.
+    /// </summary>
     Task<int> EmptyTrashAsync(Guid accountId, CancellationToken ct = default);
 
     /// <summary>
@@ -94,6 +99,18 @@ public interface IMailService : IDisposable
     Task<IList<string>> GetFolderMessageIdsAsync(Guid accountId, string folderName, CancellationToken ct = default);
 
     /// <summary>
+    /// Asks the server for messages matching <paramref name="query"/> (#717, phase 3), newest first, at most
+    /// <paramref name="maxResults"/>. <paramref name="folderNames"/> are the folders to search where the server
+    /// searches one folder at a time (IMAP); a server that searches the whole mailbox at once (Gmail, Microsoft
+    /// Graph) may ignore them. Results are not cached. The default — POP3, and any backend with no search —
+    /// finds nothing.
+    /// </summary>
+    Task<List<MailMessageSummary>> SearchServerAsync(
+        Guid accountId, MessageSearchQuery query, IReadOnlyList<string> folderNames, int maxResults,
+        CancellationToken ct = default)
+        => Task.FromResult(new List<MailMessageSummary>());
+
+    /// <summary>
     /// Lists every message in a folder as (id, receivedDateUtc, isRead) — the id listing plus each
     /// message's received timestamp and read state, in one server round-trip. The periodic sweep uses it
     /// to decide whether to fetch (#462): a folder's local cache only holds mail inside the SyncDays
@@ -113,6 +130,27 @@ public interface IMailService : IDisposable
     Task<IReadOnlyDictionary<string, string>> FetchPreviewsAsync(
         Guid accountId, string folderName, IList<string> messageIds,
         int maxLines, CancellationToken ct = default);
+
+    /// <summary>
+    /// The bare sender address(es) of the given messages in one folder, keyed by message id — what
+    /// <see cref="MailMessageSummary.FromEmail"/> holds — for the one-time backfill of rows cached before that
+    /// field existed (#803), each with the message's Message-ID, so the caller can check the id still names the
+    /// message it cached (review of #806). Only IMAP needs it: Graph and POP3 rows can be filled from what is
+    /// already cached, so the default finds nothing. Ids the server no longer has are simply missing from the result.
+    /// </summary>
+    Task<IReadOnlyDictionary<string, FetchedSender>> FetchSenderEmailsAsync(
+        Guid accountId, string folderName, IList<string> messageIds, CancellationToken ct = default)
+        => Task.FromResult<IReadOnlyDictionary<string, FetchedSender>>(new Dictionary<string, FetchedSender>());
+
+    /// <summary>
+    /// Whether each of the given messages in one folder has an attachment, keyed by message id, with its Message-ID so
+    /// the caller can check the id still names the message it cached (a renumbered folder), for the one-time
+    /// pass over mail cached before the list carried the flag (#931). Only IMAP needs it: Graph and POP3 summaries
+    /// always carried it, so the default finds nothing. Ids the server no longer has are missing from the result.
+    /// </summary>
+    Task<IReadOnlyDictionary<string, FetchedAttachmentFlag>> FetchAttachmentFlagsAsync(
+        Guid accountId, string folderName, IList<string> messageIds, CancellationToken ct = default)
+        => Task.FromResult<IReadOnlyDictionary<string, FetchedAttachmentFlag>>(new Dictionary<string, FetchedAttachmentFlag>());
 
     Task<int> PollAsync(Guid accountId, string folderName, CancellationToken ct = default);
 
@@ -134,23 +172,68 @@ public interface IMailService : IDisposable
 
     /// <summary>
     /// Appends a sent message to the server Sent folder so it appears in the Sent view.
-    /// Providers that auto-copy sent mail (e.g. Gmail) will silently duplicate; we rely on
-    /// the server to deduplicate or accept the extra copy — most handle this gracefully.
+    /// Providers that file their own copy of sent mail (Gmail, iCloud, Outlook.com) are detected
+    /// by <see cref="ComposeModel.OutgoingMessageId"/> where the backend can look, and then
+    /// nothing is added (#811).
     /// </summary>
     Task AppendToSentAsync(Guid accountId, ComposeModel sent, CancellationToken ct = default);
 
     /// <summary>Downloads and decodes a single attachment by its IMAP body-part specifier.</summary>
     Task<byte[]> DownloadAttachmentAsync(Guid accountId, string folderName, string messageId, string partSpecifier, CancellationToken ct = default);
 
+    /// <summary>
+    /// Writes the original message — every byte as the server holds it, attachments included — to
+    /// <paramref name="destination"/>, for saving as a .eml file (#728). Streamed, not returned as an
+    /// array: a message can be hundreds of megabytes, and holding copies of it in memory is a
+    /// denial of service a hostile server or sender can aim at. Never a copy rebuilt from the cached
+    /// parts: a saved file that claims to be the original must be. Must not mark the message read.
+    /// <para>Throws <see cref="MessageOriginalUnavailableException"/> when the original exists nowhere
+    /// QuickMail can reach; a connection failure propagates as itself, so the caller can tell
+    /// "offline, try later" from "gone". On any failure <paramref name="destination"/> may hold part
+    /// of the message; the caller discards it. The default is for backends with no way to get it.</para>
+    /// </summary>
+    Task CopyOriginalMessageToAsync(Guid accountId, string folderName, string messageId, Stream destination, CancellationToken ct = default)
+        => Task.FromException(new MessageOriginalUnavailableException("This account cannot provide the original message."));
+
     // ── Copy / Move messages ─────────────────────────────────────────────────
+    /// <summary>
+    /// Whether <see cref="AppendMessageAsync"/> works for this account: whether messages from another
+    /// account can be moved or copied into it (#929). False by default.
+    /// </summary>
+    bool CanAppendMessages(Guid accountId) => false;
+
+    /// <summary>
+    /// Adds a message to <paramref name="folderName"/> from its original (the bytes
+    /// <see cref="CopyOriginalMessageToAsync"/> writes), keeping whether it was read and flagged and,
+    /// where the backend can, when it arrived. How messages move and copy between accounts (#929):
+    /// <see cref="MoveMessagesAsync"/> and <see cref="CopyMessagesAsync"/> work by folder name over the
+    /// source account's own connection and cannot reach another account.
+    /// </summary>
+    Task AppendMessageAsync(Guid accountId, string folderName, Stream original, bool isRead, bool isFlagged,
+                            DateTimeOffset received, CancellationToken ct = default)
+        => Task.FromException(new NotSupportedException("This account cannot take messages from another account."));
     Task CopyMessagesAsync(Guid accountId, string folderName, IList<string> messageIds, string destinationFolder, CancellationToken ct = default);
     Task MoveMessagesAsync(Guid accountId, string folderName, IList<string> messageIds, string destinationFolder, CancellationToken ct = default);
 
     // ── Folder CRUD ──────────────────────────────────────────────────────────
     Task CreateFolderAsync(Guid accountId, string? parentFolderName, string name, CancellationToken ct = default);
     Task DeleteFolderAsync(Guid accountId, string folderName, CancellationToken ct = default);
-    /// <summary>Moves a folder by renaming it under a new parent. Pass null for <paramref name="newParentFolderName"/> to move to the account root.</summary>
+    /// <summary>
+    /// Renames a folder and optionally moves it under <paramref name="newParentFolderName"/>. What a
+    /// null parent means differs between backends — Microsoft 365 and POP3 keep the folder where it
+    /// is, IMAP puts it at the top of the personal namespace — so to move a folder, including to the
+    /// top level, use <see cref="MoveFolderAsync"/>, whose null always means the top level.
+    /// </summary>
     Task RenameFolderAsync(Guid accountId, string folderName, string newName, string? newParentFolderName, CancellationToken ct = default);
+
+    /// <summary>
+    /// Moves a folder, keeping its name, under <paramref name="newParentFolderName"/>; null moves it
+    /// to the top level of the account, beside Inbox (#954). A backend that cannot put a folder there
+    /// throws with a sentence the caller can show as is. Default: not supported, for test doubles and
+    /// any backend with no folders of its own.
+    /// </summary>
+    Task MoveFolderAsync(Guid accountId, string folderName, string? newParentFolderName, CancellationToken ct = default)
+        => Task.FromException(new NotSupportedException("This account cannot move folders."));
     /// <summary>Recursively copies a folder and all its messages into a new parent folder.</summary>
     Task CopyFolderAsync(Guid accountId, string folderName, string? destinationParentName, CancellationToken ct = default);
 }

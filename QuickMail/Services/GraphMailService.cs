@@ -56,13 +56,29 @@ public class GraphMailService : IMailService, IConnectionProbe
     // ── Connect ────────────────────────────────────────────────────────────────────
     public async Task ConnectAsync(AccountModel account, string? password = null, CancellationToken ct = default)
     {
-        var me = await _client.GetAsync<GraphMe>(account, "/me?$select=id,userPrincipalName", ct);
-        if (string.IsNullOrEmpty(me?.UserPrincipalName))
-            throw new InvalidOperationException("Graph /me returned no userPrincipalName.");
-        if (!string.Equals(account.Username, me.UserPrincipalName, StringComparison.OrdinalIgnoreCase))
+        if (account.IsShared)
         {
-            LogService.Log($"GraphMailService: token UPN {me.UserPrincipalName} differs from account.Username {account.Username}; updating.");
-            account.Username = me.UserPrincipalName;
+            // #31: a shared mailbox has no /me identity of its own — its token is the parent's, and the
+            // bare /users/{address} directory object needs a permission we don't hold. So skip the
+            // identity reconciliation (Username is already the shared address, fixed at add time) and
+            // probe a MAIL endpoint instead. This proves the .Shared grant and the address are good, and
+            // FAILS the connect (→ disconnected, surfaced) rather than returning an empty mailbox — the
+            // well-known folder resolve below swallows per-folder errors, so it can't be the check.
+            _ = await _client.GetAsync<GraphMailFolder>(account, "/me/mailFolders/Inbox?$select=id", ct)
+                ?? throw new InvalidOperationException(
+                    $"Shared mailbox '{account.SharedAddress}' returned no Inbox — check that access is " +
+                    "granted and the address is correct.");
+        }
+        else
+        {
+            var me = await _client.GetAsync<GraphMe>(account, "/me?$select=id,userPrincipalName", ct);
+            if (string.IsNullOrEmpty(me?.UserPrincipalName))
+                throw new InvalidOperationException("Graph /me returned no userPrincipalName.");
+            if (!string.Equals(account.Username, me.UserPrincipalName, StringComparison.OrdinalIgnoreCase))
+            {
+                LogService.Log($"GraphMailService: token UPN {me.UserPrincipalName} differs from account.Username {account.Username}; updating.");
+                account.Username = me.UserPrincipalName;
+            }
         }
         var wellKnown = await ResolveWellKnownFolderIdsAsync(account, ct);
 
@@ -150,7 +166,7 @@ public class GraphMailService : IMailService, IConnectionProbe
     private AccountModel Account(Guid accountId)
         => _accounts.TryGetValue(accountId, out var a)
             ? a
-            : throw new InvalidOperationException($"Graph account {accountId} is not connected.");
+            : throw new AccountNotConnectedException(accountId);
 
     // ── Folders ──────────────────────────────────────────────────────────────────
     public async Task<List<MailFolderModel>> GetFoldersAsync(Guid accountId, CancellationToken ct = default)
@@ -239,6 +255,35 @@ public class GraphMailService : IMailService, IConnectionProbe
         var page = await _client.GetAsync<GraphCollection<GraphMessage>>(account, path, GraphHeaders.ImmutableId, ct);
         return (page?.Value ?? new List<GraphMessage>())
             .Select(m => MapToSummary(m, account.Id, folderName)).ToList();
+    }
+
+    /// <summary>
+    /// Server search (#717, phase 3): Graph's <c>$search</c> over the whole mailbox, following pages until
+    /// <paramref name="maxResults"/>. Graph orders search results by relevance and allows no <c>$orderby</c>
+    /// with <c>$search</c>, so they are sorted newest first here. <paramref name="folderNames"/> is ignored;
+    /// each result carries its own folder.
+    /// </summary>
+    public async Task<List<MailMessageSummary>> SearchServerAsync(
+        Guid accountId, MessageSearchQuery query, IReadOnlyList<string> folderNames, int maxResults, CancellationToken ct = default)
+    {
+        var kql = Helpers.ServerSearchQuery.ToGraphKql(query);
+        if (kql == null || maxResults <= 0) return [];
+        var account = Account(accountId);
+        var top = Math.Min(maxResults, 250);
+        string? path = "/me/messages?$search=" + Uri.EscapeDataString("\"" + kql + "\"") + $"&$top={top}" +
+                       "&$select=id,internetMessageId,subject,from,toRecipients,receivedDateTime,isRead,bodyPreview,hasAttachments,flag,parentFolderId";
+        var found = new List<MailMessageSummary>();
+        while (path != null && found.Count < maxResults)
+        {
+            var page = await _client.GetAsync<GraphCollection<GraphMessage>>(account, path, GraphHeaders.ImmutableId, ct);
+            if (page?.Value == null) break;
+            found.AddRange(page.Value
+                .Where(m => !string.IsNullOrEmpty(m.ParentFolderId))
+                .Select(m => MapToSummary(m, accountId, m.ParentFolderId!)));
+            path = page.NextLink;
+        }
+        LogService.Log($"SearchServer (Graph): {found.Count} found");
+        return [.. found.OrderByDescending(m => m.Date).Take(maxResults)];
     }
 
     // ── Message detail ───────────────────────────────────────────────────────────
@@ -338,7 +383,7 @@ public class GraphMailService : IMailService, IConnectionProbe
     {
         var f = await _client.GetAsync<GraphMailFolder>(
             Account(accountId), $"/me/mailFolders/{DeletedItemsFolderId}?$select=totalItemCount", ct);
-        return f?.TotalItemCount ?? 0;
+        return f?.TotalItemCount ?? throw new InvalidOperationException("Deleted Items gave no count.");
     }
     public Task<IReadOnlyDictionary<string, string>> FetchPreviewsAsync(
         Guid accountId, string folderName, IList<string> messageIds, int maxLines, CancellationToken ct = default)
@@ -430,6 +475,24 @@ public class GraphMailService : IMailService, IConnectionProbe
         // partSpecifier carries the Graph attachment id (set by MapToDetail).
         => _client.GetBytesAsync(Account(accountId), $"/me/messages/{messageId}/attachments/{partSpecifier}/$value", GraphHeaders.ImmutableId, ct);
 
+    /// <summary>
+    /// The whole message as Exchange stores it (#728) — the same <c>$value</c> MIME download the
+    /// meeting-invite path uses. A GET never changes the read state.
+    /// </summary>
+    public async Task CopyOriginalMessageToAsync(Guid accountId, string folderName, string messageId, Stream destination, CancellationToken ct = default)
+    {
+        try
+        {
+            await _client.CopyToAsync(Account(accountId), $"/me/messages/{messageId}/$value",
+                GraphHeaders.ImmutableId, destination, ct);
+        }
+        catch (System.Net.Http.HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            throw new MessageOriginalUnavailableException(
+                "The message is no longer on the server. It may have been moved or deleted from another device.");
+        }
+    }
+
     public async Task CopyMessagesAsync(Guid accountId, string folderName, IList<string> messageIds, string destinationFolder, CancellationToken ct = default)
     {
         var account = Account(accountId);
@@ -475,6 +538,15 @@ public class GraphMailService : IMailService, IConnectionProbe
             await _client.PostAsync(account, $"/me/mailFolders/{folderName}/move", new { destinationId = newParentFolderName }, ct);
     }
 
+    public Task MoveFolderAsync(Guid accountId, string folderName, string? newParentFolderName, CancellationToken ct = default)
+    {
+        // The name is unchanged, so no PATCH: only the move. The top level of a mailbox is the
+        // hidden msgfolderroot that Inbox and Sent Items sit in, a well-known id Graph accepts as a
+        // destination (#954).
+        var destination = string.IsNullOrEmpty(newParentFolderName) ? RootFolderId : newParentFolderName;
+        return _client.PostAsync(Account(accountId), $"/me/mailFolders/{folderName}/move", new { destinationId = destination }, ct);
+    }
+
     public Task CopyFolderAsync(Guid accountId, string folderName, string? destinationParentName, CancellationToken ct = default)
     {
         // Graph copies the folder and all of its messages (and sub-folders) server-side in one call.
@@ -495,7 +567,10 @@ public class GraphMailService : IMailService, IConnectionProbe
         AccountId = accountId,
         FolderName = folderName,
         InternetMessageId = m.InternetMessageId ?? string.Empty,
-        From = m.From?.EmailAddress?.AsHeaderString() ?? string.Empty,
+        // Name alone in the list, address beside it for matching (#801, #803) — as IMAP and POP3 rows have it.
+        // The detail below keeps the full "Name <address>".
+        From = m.From?.EmailAddress?.AsDisplayString() ?? string.Empty,
+        FromEmail = m.From?.EmailAddress?.Address ?? string.Empty,
         To = JoinRecipients(m.ToRecipients),
         Subject = m.Subject ?? "(no subject)",
         Date = m.ReceivedDateTime,

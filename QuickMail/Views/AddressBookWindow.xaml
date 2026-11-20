@@ -181,7 +181,11 @@
                                     AutomationProperties.Name="Edit contact"
                                     IsEnabled="{Binding CanEditContact}"
                                     MinWidth="60" Margin="0,0,4,0" TabIndex="9"/>
+                            <!-- Runs what the Delete key runs in the contact list (issue #827). A Click
+                                 handler rather than an async command: an async command disables its
+                                 button while it runs, and this button holds focus during the delete. -->
                             <Button Content="_Delete"
+                                    x:Name="DeleteContactButton"
                                     Click="DeleteButton_Click"
                                     AutomationProperties.Name="Delete selected contact"
                                     IsEnabled="{Binding CanDeleteContact}"
@@ -217,12 +221,16 @@
                                     Click="Close_Click"/>
                         </StackPanel>
 
-                        <!-- Row 2: Error message (shown only when non-empty) -->
-                        <TextBlock Grid.Row="2" Text="{Binding ContactError}"
+                        <!-- Row 2: Error message (shown only when non-empty). It also carries
+                             the "synced contacts are read-only" message from a Delete (issue #827).
+                             The default Setter used to be Collapsed as well, so nothing written
+                             here was ever shown. -->
+                        <TextBlock Grid.Row="2" x:Name="ContactErrorText" Text="{Binding ContactError}"
+                                   TextWrapping="Wrap"
                                    Foreground="{DynamicResource Theme.Error}" Margin="0,4,0,0">
                             <TextBlock.Style>
                                 <Style TargetType="TextBlock">
-                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                    <Setter Property="Visibility" Value="Visible"/>
                                     <Style.Triggers>
                                         <DataTrigger Binding="{Binding ContactError}" Value="">
                                             <Setter Property="Visibility" Value="Collapsed"/>
@@ -251,6 +259,7 @@
                               KeyboardNavigation.TabNavigation="Once"
                               KeyboardNavigation.DirectionalNavigation="Contained"
                               PreviewKeyDown="ContactList_PreviewKeyDown"
+                              SelectionChanged="ContactList_SelectionChanged"
                               ContextMenuOpening="ContactList_ContextMenuOpening">
                         <ListView.ContextMenu>
                             <!-- Items are built in ContactList_ContextMenuOpening: the two
@@ -261,6 +270,11 @@
                         <ListView.ItemContainerStyle>
                             <Style TargetType="ListViewItem" BasedOn="{StaticResource {x:Type ListViewItem}}">
                                 <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                                <!-- The spoken name must land on the ROW CONTAINER, not on an element
+                                     inside the DataTemplate: a screen reader reads the item peer, whose
+                                     name comes from the container and otherwise falls back to the item's
+                                     ToString() — "QuickMail.Models.ContactModel" (issue #644). -->
+                                <Setter Property="AutomationProperties.Name" Value="{Binding AccessibleName}"/>
                             </Style>
                         </ListView.ItemContainerStyle>
                         <ListView.ItemTemplate>
@@ -268,7 +282,7 @@
                                 <!-- Name | Email | Account columns. The row's accessible name is the
                                      composed field data (concise or labeled per setting), so a screen
                                      reader hears one utterance rather than three cells. -->
-                                <Grid AutomationProperties.Name="{Binding AccessibleName}">
+                                <Grid>
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="Auto" MinWidth="120" SharedSizeGroup="ContactNameCol"/>
                                         <ColumnDefinition Width="*"/>
@@ -302,8 +316,7 @@
                         <TextBlock DockPanel.Dock="Top"
                                    Text="Groups"
                                    FontWeight="SemiBold"
-                                   Margin="0,0,0,3"
-                                   AutomationProperties.Name="Groups header"/>
+                                   Margin="0,0,0,3"/>
                         <ListView x:Name="GroupsList"
                                   ItemsSource="{Binding Groups}"
                                   SelectedItem="{Binding SelectedGroup, Mode=TwoWay}"
@@ -316,15 +329,16 @@
                             <ListView.ItemContainerStyle>
                                 <Style TargetType="ListViewItem" BasedOn="{StaticResource {x:Type ListViewItem}}">
                                     <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                                    <!-- On the container, not the template child — see the contact list above. -->
+                                    <Setter Property="AutomationProperties.Name" Value="{Binding Display}"/>
                                 </Style>
                             </ListView.ItemContainerStyle>
                             <ListView.ItemTemplate>
                                 <DataTemplate>
-                                    <StackPanel Orientation="Horizontal"
-                                                AutomationProperties.Name="{Binding Display}">
+                                    <StackPanel Orientation="Horizontal">
                                         <TextBlock Text="{Binding Name}" FontWeight="SemiBold"/>
                                         <TextBlock Text="  "/>
-                                        <TextBlock Text="{Binding Display, Converter={x:Static local:GroupSubtitleConverter.Instance}}"
+                                        <TextBlock Text="{Binding MemberSummary}"
                                                    Opacity="0.75"/>
                                     </StackPanel>
                                 </DataTemplate>
@@ -335,10 +349,9 @@
                     <!-- Right: members of selected group + insert buttons -->
                     <DockPanel Grid.Row="0" Grid.Column="1" Margin="8,0,0,0">
                         <TextBlock DockPanel.Dock="Top"
-                                   Text="{Binding SelectedGroup.Display, StringFormat='Members of {0}'}"
+                                   Text="{Binding SelectedGroup.Name, StringFormat='Members of {0}'}"
                                    FontWeight="SemiBold"
-                                   Margin="0,0,0,3"
-                                   AutomationProperties.Name="Group member list header"/>
+                                   Margin="0,0,0,3"/>
                         <StackPanel DockPanel.Dock="Top"
                                     Style="{StaticResource InsertRow}"
                                     Orientation="Horizontal"
@@ -371,12 +384,13 @@
                             <ListView.ItemContainerStyle>
                                 <Style TargetType="ListViewItem" BasedOn="{StaticResource {x:Type ListViewItem}}">
                                     <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                                    <!-- On the container, not the template child — see the contact list above. -->
+                                    <Setter Property="AutomationProperties.Name" Value="{Binding Display}"/>
                                 </Style>
                             </ListView.ItemContainerStyle>
                             <ListView.ItemTemplate>
                                 <DataTemplate>
-                                    <StackPanel Orientation="Horizontal"
-                                                AutomationProperties.Name="{Binding Display}">
+                                    <StackPanel Orientation="Horizontal">
                                         <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold"/>
                                         <TextBlock Text="  &lt;"/>
                                         <TextBlock Text="{Binding EmailAddress}" Opacity="0.75"/>
@@ -457,6 +471,127 @@
                                 Click="Close_Click"/>
                     </Grid>
                 </Grid>
+            </TabItem>
+
+            <!-- People I've Sent To (#1039): people remembered from sent mail who are not in the address
+                 book. Absent where there is no store (tests): the constructor collapses it, since whether
+                 there is one never changes. Its content binds to the SentTo view model. -->
+            <TabItem x:Name="SentToTab"
+                     Header="People I've Sent To"
+                     AutomationProperties.Name="People I've Sent To"
+                     KeyboardNavigation.TabNavigation="Local">
+                <DockPanel Margin="0,6,0,0" DataContext="{Binding SentTo}">
+                    <!-- Why the list is empty, or that remembering is off. Tab never reaches a TextBlock,
+                         so the same words are the list's help text below. -->
+                    <TextBlock DockPanel.Dock="Top"
+                               x:Name="SentToNotice"
+                               Text="{Binding Notice}"
+                               TextWrapping="Wrap"
+                               Foreground="{DynamicResource Theme.TextSecondary}"
+                               Margin="0,0,0,6">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Visibility" Value="Visible"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding Notice}" Value="">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+
+                    <!-- Insert into the message, as on the Contacts tab -->
+                    <StackPanel DockPanel.Dock="Top"
+                                Style="{StaticResource InsertRow}"
+                                Orientation="Horizontal"
+                                Margin="0,0,0,6">
+                        <TextBlock Text="Add selected person to:"
+                                   VerticalAlignment="Center" Margin="0,0,8,0"/>
+                        <Button Content="_To"
+                                Command="{Binding AddToToCommand}"
+                                IsEnabled="{Binding HasSelectedPerson}"
+                                AutomationProperties.Name="Add to To field"
+                                MinWidth="50" Margin="0,0,4,0" TabIndex="30"/>
+                        <Button Content="_Cc"
+                                Command="{Binding AddToCcCommand}"
+                                IsEnabled="{Binding HasSelectedPerson}"
+                                AutomationProperties.Name="Add to Cc field"
+                                MinWidth="50" Margin="0,0,4,0" TabIndex="31"/>
+                        <Button Content="_Bcc"
+                                Command="{Binding AddToBccCommand}"
+                                IsEnabled="{Binding HasSelectedPerson}"
+                                AutomationProperties.Name="Add to Bcc field"
+                                MinWidth="50" TabIndex="32"/>
+                    </StackPanel>
+
+                    <!-- Actions + the last outcome -->
+                    <StackPanel DockPanel.Dock="Bottom" Margin="0,8,0,0">
+                        <StackPanel Orientation="Horizontal">
+                            <!-- Click handlers, not commands: an async command disables its button while it
+                                 runs, and these buttons hold focus while they do (as Delete on Contacts). -->
+                            <Button x:Name="SaveSentToContactButton"
+                                    Content="_Save to Contacts"
+                                    Click="SaveSentToContact_Click"
+                                    IsEnabled="{Binding HasSelectedPerson}"
+                                    AutomationProperties.Name="Save selected person to contacts"
+                                    MinWidth="60" Margin="0,0,4,0" TabIndex="34"/>
+                            <Button x:Name="ForgetSentToButton"
+                                    Content="_Forget"
+                                    Click="ForgetSentTo_Click"
+                                    IsEnabled="{Binding HasSelectedPerson}"
+                                    AutomationProperties.Name="Forget selected person"
+                                    MinWidth="60" Margin="0,0,4,0" TabIndex="35"/>
+                            <Button x:Name="ForgetAllSentToButton"
+                                    Content="Forget _All…"
+                                    Click="ForgetAllSentTo_Click"
+                                    AutomationProperties.Name="Forget everyone"
+                                    MinWidth="60" Margin="0,0,4,0" TabIndex="36"/>
+                            <Border Margin="0,0,4,0"/>
+                            <Button Content="Close"
+                                    AutomationProperties.Name="Close address book"
+                                    MinWidth="60" TabIndex="37"
+                                    Click="Close_Click"/>
+                        </StackPanel>
+                        <TextBlock Text="{Binding ResultText}" TextWrapping="Wrap" Margin="0,4,0,0"/>
+                    </StackPanel>
+
+                    <!-- The list. Row name on the container (#644); type-ahead on the name (#371). -->
+                    <ListView x:Name="SentToList"
+                              ItemsSource="{Binding People}"
+                              SelectedItem="{Binding SelectedPerson}"
+                              SelectionMode="Single"
+                              AutomationProperties.Name="People I've sent to"
+                              AutomationProperties.HelpText="{Binding Notice}"
+                              IsTextSearchEnabled="True"
+                              TextSearch.TextPath="TypeAheadText"
+                              TabIndex="33"
+                              Grid.IsSharedSizeScope="True"
+                              KeyboardNavigation.TabNavigation="Once"
+                              KeyboardNavigation.DirectionalNavigation="Contained"
+                              PreviewKeyDown="SentToList_PreviewKeyDown">
+                        <ListView.ItemContainerStyle>
+                            <Style TargetType="ListViewItem" BasedOn="{StaticResource {x:Type ListViewItem}}">
+                                <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                                <Setter Property="AutomationProperties.Name" Value="{Binding AccessibleName}"/>
+                            </Style>
+                        </ListView.ItemContainerStyle>
+                        <ListView.ItemTemplate>
+                            <DataTemplate>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" MinWidth="120" SharedSizeGroup="SentToNameCol"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto" SharedSizeGroup="SentToWhenCol"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="{Binding DisplayName}" FontWeight="SemiBold" Margin="0,0,12,0"/>
+                                    <TextBlock Grid.Column="1" Text="{Binding EmailAddress}" Opacity="0.75" Margin="0,0,12,0"/>
+                                    <TextBlock Grid.Column="2" Text="{Binding LastSentText}" Opacity="0.6"/>
+                                </Grid>
+                            </DataTemplate>
+                        </ListView.ItemTemplate>
+                    </ListView>
+                </DockPanel>
             </TabItem>
         </TabControl>
     </DockPanel>

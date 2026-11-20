@@ -24,6 +24,11 @@ on:
     branches:
       - 'test/winget-**'
   workflow_dispatch:
+    inputs:
+      vpk_version:
+        description: 'vpk version to measure. Empty = the pinned one in .github/vpk-version. Set it to try a bump before editing that file.'
+        required: false
+        default: ''
 
 permissions:
   contents: read
@@ -50,7 +55,7 @@ jobs:
             rid: win-arm64
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       # Before the six-minute publish, not after it. The probe script is the last step in
       # this job, so a syntax error in it costs a full build to discover otherwise — which
@@ -69,30 +74,14 @@ jobs:
 
       - uses: actions/setup-dotnet@v6
         with:
-          dotnet-version: '8.0.x'
+          dotnet-version: '10.0.x'
 
       # QuickMail.csproj will not compile without these gitignored partial classes. The
       # values are irrelevant here — nothing in this workflow signs in to anything — so they
       # are written empty rather than pulled from secrets.
       - name: Write placeholder credential partials
         shell: pwsh
-        run: |
-          @'
-          namespace QuickMail.Services;
-          public partial class GoogleOAuthService
-          {
-              private const string ClientId     = "";
-              private const string ClientSecret = "";
-          }
-          '@ | Set-Content -Path "QuickMail/Services/GoogleOAuthService.Credentials.cs" -Encoding UTF8
-          @'
-          namespace QuickMail.Services;
-          public partial class BugReportService
-          {
-              private const string RelayUrl = "";
-              private const string RelayKey = "";
-          }
-          '@ | Set-Content -Path "QuickMail/Services/BugReportService.Credentials.cs" -Encoding UTF8
+        run: ./scripts/write-credential-partials.ps1
 
       # Native publish per leg. The release workflow cross-compiles ARM64 from an x64 runner;
       # here each leg builds for the machine it will actually install on, because the point is
@@ -100,12 +89,18 @@ jobs:
       - name: Publish
         run: dotnet publish QuickMail/QuickMail.csproj -c Release -r ${{ matrix.rid }} -o publish/
 
-      # Record the version rather than pin it: the release workflow installs vpk unpinned, so
+      # The release workflow's pinned vpk (.github/vpk-version) unless the dispatch names
+      # another, which is how a bump is measured before it ships. Recorded either way, since
       # whatever this run measured is only true for the version named here.
       - name: Install vpk
         shell: pwsh
+        env:
+          VPK_REQUESTED: ${{ github.event.inputs.vpk_version }}
         run: |
-          dotnet tool install -g vpk
+          $requested = "$env:VPK_REQUESTED".Trim()
+          $want = if ($requested) { $requested } else { (Get-Content .github/vpk-version -Raw).Trim() }
+          dotnet tool install -g vpk --version $want
+          if ($LASTEXITCODE -ne 0) { throw "dotnet tool install vpk $want failed." }
           # vpk has no --version; the installed version comes from the tool manifest. Kept to
           # one line because GITHUB_ENV rejects a multi-line value written this way.
           $v = ((dotnet tool list -g | Select-String '^vpk\s') -split '\s+')[1]
@@ -188,6 +183,9 @@ jobs:
 
       - name: Run the install-path matrix
         shell: pwsh
+        env:
+          # Read-only GitHub API calls (scenario 7's control manifest); contents: read is enough.
+          GH_TOKEN: ${{ github.token }}
         run: |
           ./scripts/winget-install-matrix.ps1 `
             -OldDir packs/1.0.0 -NewDir packs/1.0.1 `
@@ -204,6 +202,8 @@ jobs:
           path: |
             winget-matrix-${{ matrix.arch }}.md
             msi-fresh.log
+            msi-upgrade.log
+            winget-logs/
             packs/vpk-emitted-*.txt
           if-no-files-found: warn
           retention-days: 14

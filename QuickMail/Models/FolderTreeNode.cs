@@ -8,8 +8,12 @@ namespace QuickMail.Models;
 /// </summary>
 public sealed class FolderTreeNode : INotifyPropertyChanged
 {
+    private MailFolderModel? _folder;
+    private string _label = string.Empty;
+    private bool _isSharedAccount;
+
     /// <summary>Null for account-group nodes and synthetic intermediate nodes that have no real IMAP folder.</summary>
-    public MailFolderModel? Folder { get; init; }
+    public MailFolderModel? Folder { get => _folder; init => _folder = value; }
 
     /// <summary>True for account-level group nodes that serve as collapsible containers for folder children.</summary>
     public bool IsHeader { get; init; }
@@ -23,7 +27,7 @@ public sealed class FolderTreeNode : INotifyPropertyChanged
 
     /// <summary>True for the top-level node of a shared mailbox (#31) — drives the "shared mailbox"
     /// qualifier in <see cref="AutomationName"/>.</summary>
-    public bool IsSharedAccount { get; init; }
+    public bool IsSharedAccount { get => _isSharedAccount; init => _isSharedAccount = value; }
 
     /// <summary>
     /// True for the Calendar node and every node beneath it. Drives which context menu the tree
@@ -32,7 +36,7 @@ public sealed class FolderTreeNode : INotifyPropertyChanged
     /// </summary>
     public bool IsCalendarNode { get; init; }
 
-    public string Label { get; init; } = string.Empty;
+    public string Label { get => _label; init => _label = value; }
 
     public ObservableCollection<FolderTreeNode> Children { get; } = [];
 
@@ -46,7 +50,7 @@ public sealed class FolderTreeNode : INotifyPropertyChanged
     /// Do not move the count back out of the Name without checking with a screen-reader user first.
     /// </summary>
     public string AutomationName =>
-        ShowUnread ? $"{Label}, {Folder!.UnreadCount} unread"
+        ShowUnread ? $"{Label}, {Folder!.UnreadCount} {CountNoun}"
         : IsDefaultCalendar ? $"{Label}, default calendar"
         : IsSharedAccount ? $"{Label}, shared mailbox"
         : Label;
@@ -79,13 +83,17 @@ public sealed class FolderTreeNode : INotifyPropertyChanged
     // archived mail, so they're hidden here to avoid a misleading count (issue #227).
     private bool ShowUnread => Folder is { UnreadCount: > 0, SuppressUnreadCount: false };
 
+    // The Outbox count is mail waiting to leave, not mail waiting to be read (#637): "3 unread" on it
+    // would be a lie the screen reader repeats on every visit.
+    private string CountNoun => Folder?.Kind == SpecialFolderKind.Outbox ? "waiting" : "unread";
+
     /// <summary>
     /// UIA ItemStatus string used by AutomationProperties.ItemStatus on the TreeViewItem.
     /// Announced by screen readers after the folder name, e.g. "3 unread".
     /// Empty for folders with no unread messages and for header/group nodes.
     /// </summary>
     public string ItemStatusLabel =>
-        ShowUnread ? $"{Folder!.UnreadCount} unread" : string.Empty;
+        ShowUnread ? $"{Folder!.UnreadCount} {CountNoun}" : string.Empty;
 
     /// <summary>
     /// Visual unread badge shown next to the folder label, e.g. "(5)".
@@ -124,6 +132,40 @@ public sealed class FolderTreeNode : INotifyPropertyChanged
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ItemStatusLabel)));
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(UnreadDisplay)));
     }
+
+    /// <summary>
+    /// Takes on what a freshly built node for the same place in the tree says, keeping this node
+    /// object — and with it the TreeViewItem the tree generated for it, and keyboard focus if it is
+    /// there. A folder refresh builds a whole new tree; merging it into the live one node by node
+    /// (see <c>MainViewModel.MergeFolderNodes</c>) instead of swapping it in is what stops a
+    /// background sync moving focus in the folder tree (issue #719). Only the properties that can
+    /// differ between two nodes with the same key are taken: a refreshed <see cref="Folder"/>
+    /// object (new counts, a new display name), the label, and the shared-mailbox flag.
+    /// </summary>
+    internal void UpdateFrom(FolderTreeNode fresh)
+    {
+        var folderChanged = !ReferenceEquals(_folder, fresh._folder);
+        var labelChanged  = !string.Equals(_label, fresh._label, System.StringComparison.Ordinal);
+        var sharedChanged = _isSharedAccount != fresh._isSharedAccount;
+        if (!folderChanged && !labelChanged && !sharedChanged) return;
+
+        // The derived displays are compared rather than raised blindly: calendar and saved-view
+        // nodes get a new folder object on every build, and would otherwise raise on each one.
+        var (name, status, badge) = (AutomationName, ItemStatusLabel, UnreadDisplay);
+
+        _folder          = fresh._folder;
+        _label           = fresh._label;
+        _isSharedAccount = fresh._isSharedAccount;
+
+        if (folderChanged) Raise(nameof(Folder));
+        if (labelChanged)  Raise(nameof(Label));
+        if (sharedChanged) Raise(nameof(IsSharedAccount));
+        if (name   != AutomationName)  Raise(nameof(AutomationName));
+        if (status != ItemStatusLabel) Raise(nameof(ItemStatusLabel));
+        if (badge  != UnreadDisplay)   Raise(nameof(UnreadDisplay));
+    }
+
+    private void Raise(string name) => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
 
     public event PropertyChangedEventHandler? PropertyChanged;
 }

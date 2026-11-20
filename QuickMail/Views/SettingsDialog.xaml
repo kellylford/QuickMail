@@ -62,6 +62,20 @@
                                           IsChecked="{Binding ReadAsPlainText, Mode=TwoWay}"
                                           Margin="0,8,0,0"
                                           AutomationProperties.Name="Read messages as plain text"/>
+
+                                <!-- Pictures sent inside a message: no server is contacted. -->
+                                <!-- No access key: pressing one on a checkbox also flips it. -->
+                                <CheckBox Content="Show pictures included in messages"
+                                          IsChecked="{Binding ShowEmbeddedPictures, Mode=TwoWay}"
+                                          Margin="0,8,0,0"
+                                          AutomationProperties.Name="Show pictures included in messages"/>
+
+                                <!-- Pictures from the web (#508): fetching one tells its server the
+                                     message was opened, so off by default. No free access key. -->
+                                <CheckBox Content="Load pictures from the web automatically"
+                                          IsChecked="{Binding LoadWebPictures, Mode=TwoWay}"
+                                          Margin="0,8,0,0"
+                                          AutomationProperties.Name="Load pictures from the web automatically"/>
                             </StackPanel>
                         </GroupBox>
 
@@ -80,8 +94,8 @@
                                               AutomationProperties.LabeledBy="{Binding ElementName=ViewModeLabel}">
                                         <ComboBoxItem Tag="messages" Content="Messages (flat list)"/>
                                         <ComboBoxItem Tag="conversations" Content="Conversations (grouped by subject)"/>
-                                        <ComboBoxItem Tag="from" Content="By Sender"/>
-                                        <ComboBoxItem Tag="to" Content="By Recipient"/>
+                                        <ComboBoxItem Tag="from" Content="From (grouped by sender)"/>
+                                        <ComboBoxItem Tag="to" Content="To (grouped by recipient)"/>
                                     </ComboBox>
                                 </StackPanel>
 
@@ -158,6 +172,36 @@
                                                Foreground="{DynamicResource Theme.TextSecondary}" FontSize="{DynamicResource Theme.FontSizeSmall}"
                                                TextWrapping="Wrap" Margin="0,3,0,0"/>
                                 </StackPanel>
+
+                                <!-- Offline bodies (#637). Static items, like SyncDaysCombo: no bound item type,
+                                     so the ToString() rule for Selector items does not apply. -->
+                                <StackPanel Margin="0,8,0,0">
+                                    <Label x:Name="OfflineBodyLabel"
+                                           Content="Download _messages for offline reading:"
+                                           Target="{Binding ElementName=OfflineBodyCombo}"
+                                           FontWeight="SemiBold"/>
+                                    <ComboBox x:Name="OfflineBodyCombo"
+                                              SelectedValue="{Binding OfflineBodyDays, Mode=TwoWay}"
+                                              SelectedValuePath="Tag"
+                                              AutomationProperties.LabeledBy="{Binding ElementName=OfflineBodyLabel}">
+                                        <ComboBoxItem Tag="0" Content="Off"/>
+                                        <ComboBoxItem Tag="7" Content="Last 7 days"/>
+                                        <ComboBoxItem Tag="30" Content="Last 30 days"/>
+                                        <ComboBoxItem Tag="90" Content="Last 90 days"/>
+                                        <ComboBoxItem Tag="180" Content="Last 6 months"/>
+                                        <ComboBoxItem Tag="365" Content="Last year"/>
+                                        <ComboBoxItem Tag="-1" Content="All mail"/>
+                                    </ComboBox>
+                                    <TextBlock Text="Keeps the full text of Inbox messages on this computer so you can read them without a connection. Never wider than the sync range above. Attachments are fetched when you open them and need a connection."
+                                               Foreground="{DynamicResource Theme.TextSecondary}" FontSize="{DynamicResource Theme.FontSizeSmall}"
+                                               TextWrapping="Wrap" Margin="0,3,0,0"/>
+                                    <CheckBox Content="Include other folders, not just the Inbo_x"
+                                              IsChecked="{Binding OfflineBodyAllFolders, Mode=TwoWay}"
+                                              Margin="0,6,0,0"/>
+                                    <TextBlock Text="Also keeps the text of messages in Sent, Archive and your other folders, so searching finds words in them too. Trash, Junk and Drafts are left out."
+                                               Foreground="{DynamicResource Theme.TextSecondary}" FontSize="{DynamicResource Theme.FontSizeSmall}"
+                                               TextWrapping="Wrap" Margin="0,3,0,0"/>
+                                </StackPanel>
                             </StackPanel>
                         </GroupBox>
 
@@ -170,6 +214,45 @@
                                           AutomationProperties.Name="Show a confirmation dialog before permanently deleting all messages in trash"/>
                                 <TextBlock Text="Recommended: emptying trash cannot be undone."
                                            Foreground="{DynamicResource Theme.TextSecondary}" FontSize="{DynamicResource Theme.FontSizeSmall}" Margin="0,3,0,0"/>
+                            </StackPanel>
+                        </GroupBox>
+
+                        <!-- Saving Messages Group (#728) -->
+                        <GroupBox Header="Saving Messages" Padding="10" Margin="0,10,0,0"
+                                  AutomationProperties.Name="Saving messages">
+                            <StackPanel>
+                                <TextBlock TextWrapping="Wrap" Margin="0,0,0,8"
+                                           Foreground="{DynamicResource Theme.TextSecondary}" FontSize="{DynamicResource Theme.FontSizeSmall}"
+                                           Text="Save (Ctrl+S) saves the selected messages in this format and folder without asking. Save As (F12) lets you choose each time. An email message file is the original message, attachments included."/>
+                                <Label x:Name="SaveFormatLabel"
+                                       Content="Save _format:"
+                                       Target="{Binding ElementName=SaveFormatCombo}"
+                                       FontWeight="SemiBold"/>
+                                <ComboBox x:Name="SaveFormatCombo"
+                                          ItemsSource="{Binding SaveFormatOptions}"
+                                          DisplayMemberPath="Name"
+                                          SelectedValuePath="Format"
+                                          SelectedValue="{Binding SaveMessageFormat, Mode=TwoWay}"
+                                          AutomationProperties.LabeledBy="{Binding ElementName=SaveFormatLabel}"/>
+                                <Label x:Name="SaveFolderLabel"
+                                       Content="Save folder:"
+                                       Target="{Binding ElementName=SaveFolderBox}"
+                                       FontWeight="SemiBold" Margin="0,8,0,0"/>
+                                <!-- Read-only rather than disabled, so the value stays reachable by Tab. -->
+                                <TextBox x:Name="SaveFolderBox"
+                                         Text="{Binding SaveMessageFolderDisplay, Mode=OneWay}"
+                                         IsReadOnly="True"
+                                         AutomationProperties.LabeledBy="{Binding ElementName=SaveFolderLabel}"/>
+                                <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                                    <Button Content="Choose Folder…"
+                                            Command="{Binding ChooseSaveFolderCommand}"
+                                            AutomationProperties.Name="Choose save folder"
+                                            MinWidth="90" Margin="0,0,8,0"/>
+                                    <Button Content="Use Documents"
+                                            Command="{Binding UseDocumentsFolderCommand}"
+                                            AutomationProperties.Name="Use Documents"
+                                            MinWidth="90"/>
+                                </StackPanel>
                             </StackPanel>
                         </GroupBox>
 
@@ -213,6 +296,46 @@
                         <GroupBox Header="Com_posing" Padding="10" Margin="0,10,0,0"
                                   AutomationProperties.Name="Composing settings">
                             <StackPanel>
+                                <CheckBox x:Name="ConfirmBeforeSendCheckBox"
+                                          Content="Confirm _before sending a message"
+                                          IsChecked="{Binding ConfirmBeforeSend, Mode=TwoWay}"
+                                          Margin="0,0,0,8"
+                                          AutomationProperties.Name="Confirm before sending a message"/>
+                                <!-- #1037. Address suggestions: a master switch and its two sources, indented under it
+                                     like Custom announcements and its categories, then remembering. No access keys:
+                                     on this tab only Q and Z are free, and none of these labels has either. -->
+                                <CheckBox x:Name="SuggestAddressesCheckBox"
+                                          Content="Suggest addresses as I type"
+                                          IsChecked="{Binding SuggestAddresses, Mode=TwoWay}"
+                                          AutomationProperties.Name="Suggest addresses as I type"
+                                          AutomationProperties.HelpText="In To, Cc, Bcc and an appointment's Invite field. When off, no suggestions appear."/>
+                                <CheckBox x:Name="SuggestFromAddressBookCheckBox"
+                                          Content="Suggest from my address book"
+                                          IsChecked="{Binding SuggestFromAddressBook, Mode=TwoWay}"
+                                          Margin="16,4,0,0"
+                                          AutomationProperties.Name="Suggest from my address book"
+                                          AutomationProperties.HelpText="Contacts and groups, including contacts synced from your accounts."/>
+                                <CheckBox x:Name="SuggestPeopleEmailedCheckBox"
+                                          Content="Suggest people I've sent to"
+                                          IsChecked="{Binding SuggestPeopleEmailed, Mode=TwoWay}"
+                                          Margin="16,4,0,0"
+                                          AutomationProperties.Name="Suggest people I've sent to"
+                                          AutomationProperties.HelpText="Needs Remember people I send to, below."/>
+                                <TextBlock Text="The two sources apply only while Suggest addresses as I type is on."
+                                           Foreground="{DynamicResource Theme.TextSecondary}" FontSize="{DynamicResource Theme.FontSizeSmall}" Margin="16,2,0,8" TextWrapping="Wrap"/>
+                                <CheckBox x:Name="RememberRecipientsCheckBox"
+                                          Content="Remember people I send to"
+                                          IsChecked="{Binding RememberRecipients, Mode=TwoWay}"
+                                          AutomationProperties.Name="Remember people I send to"
+                                          AutomationProperties.HelpText="Needed for Suggest people I've sent to. Kept on this computer only, apart from your address book."/>
+                                <TextBlock Text="Needed for Suggest people I've sent to, above. Kept on this computer only, apart from your address book. Forget clears who is remembered."
+                                           Foreground="{DynamicResource Theme.TextSecondary}" FontSize="{DynamicResource Theme.FontSizeSmall}" Margin="0,3,0,4" TextWrapping="Wrap"/>
+                                <Button x:Name="ForgetRecipientsButton"
+                                        Content="Forget People I've Sent To…"
+                                        Command="{Binding ForgetRecipientsCommand}"
+                                        Visibility="{Binding HasRecipientHistory, Converter={StaticResource BoolToVisibilityConverter}}"
+                                        HorizontalAlignment="Left" Padding="10,3" Margin="0,0,0,8"
+                                        AutomationProperties.Name="Forget people I've sent to"/>
                                 <CheckBox Content="Automatically save _drafts while composing"
                                           IsChecked="{Binding AutoSaveDrafts, Mode=TwoWay}"
                                           AutomationProperties.Name="Automatically save the message as a draft while composing"/>
@@ -253,6 +376,14 @@
                                     <TextBlock Text="Drafts and templates always reopen in plain text."
                                                Foreground="{DynamicResource Theme.TextSecondary}" FontSize="{DynamicResource Theme.FontSizeSmall}" Margin="0,3,0,0"/>
                                 </StackPanel>
+
+                                <CheckBox x:Name="CheckSpellingAsYouTypeCheckBox"
+                                          Content="Check spelling as I t_ype"
+                                          IsChecked="{Binding CheckSpellingAsYouType, Mode=TwoWay}"
+                                          Margin="0,10,0,0"
+                                          AutomationProperties.HelpText="Turn off if the message stalls or a screen reader misreads lines after you paste long text. Check Spelling (F7) and Next Misspelling (Ctrl+F7) still work. Applies to messages you open afterwards."/>
+                                <TextBlock Text="Turn off if the message stalls, or a screen reader misreads lines, after you paste long text. Underlines and spelling announcements then start only when you use Check Spelling (F7) or Next Misspelling (Ctrl+F7) in that message. Applies to messages you open afterwards."
+                                           Foreground="{DynamicResource Theme.TextSecondary}" FontSize="{DynamicResource Theme.FontSizeSmall}" Margin="0,3,0,0" TextWrapping="Wrap"/>
                             </StackPanel>
                         </GroupBox>
 
@@ -263,47 +394,44 @@
                                 <CheckBox Content="Enable custom _announcements"
                                           IsChecked="{Binding CustomAnnouncements, Mode=TwoWay}"
                                           FontWeight="SemiBold"
-                                          AutomationProperties.Name="Enable all custom screen reader announcements from QuickMail"/>
+                                          AutomationProperties.HelpText="All of QuickMail's own screen reader announcements. When off, only native control announcements are spoken."/>
                                 <TextBlock Text="When off, only native control announcements are spoken."
                                            Foreground="{DynamicResource Theme.TextSecondary}" FontSize="{DynamicResource Theme.FontSizeSmall}" Margin="0,2,0,8"/>
 
                                 <CheckBox Content="Announce _hints and instructions"
                                           IsChecked="{Binding AnnounceHints, Mode=TwoWay}"
                                           Margin="16,0,0,0"
-                                          AutomationProperties.Name="Announce instructional hints such as how to use the search box"/>
+                                          AutomationProperties.HelpText="Instructional hints, such as how to use the search box"/>
 
                                 <CheckBox Content="Announce loading and sync _status"
                                           IsChecked="{Binding AnnounceStatus, Mode=TwoWay}"
                                           Margin="16,4,0,0"
-                                          AutomationProperties.Name="Announce background loading and sync progress"/>
+                                          AutomationProperties.HelpText="Background loading and sync progress"/>
 
                                 <CheckBox Content="Announce action _results"
                                           IsChecked="{Binding AnnounceResults, Mode=TwoWay}"
                                           Margin="16,4,0,0"
-                                          AutomationProperties.Name="Announce outcomes such as search result counts and move confirmations"/>
+                                          AutomationProperties.HelpText="Outcomes such as search result counts, copy confirmations, and reaching the top or bottom of the message list"/>
 
-                                <CheckBox Content="Announce _delete and archive actions"
+                                <CheckBox Content="Announce _delete, archive and move actions"
                                           IsChecked="{Binding AnnounceMessageActions, Mode=TwoWay}"
-                                          Margin="16,4,0,0"
-                                          AutomationProperties.Name="Announce delete and archive outcomes"/>
-                                <TextBlock Text="Turn off to stop delete and archive announcements from interrupting the next message."
+                                          Margin="16,4,0,0"/>
+                                <TextBlock Text="Turn off to stop delete, archive and move announcements from interrupting the next message."
                                            Foreground="{DynamicResource Theme.TextSecondary}" FontSize="{DynamicResource Theme.FontSizeSmall}" Margin="16,0,0,8"/>
 
                                 <CheckBox Content="Announce spelling errors _when typing"
                                           IsChecked="{Binding AnnounceSpellingWhileTyping, Mode=TwoWay}"
-                                          Margin="16,4,0,0"
-                                          AutomationProperties.Name="Announce spelling errors when typing"/>
+                                          Margin="16,4,0,0"/>
 
                                 <CheckBox Content="Announce spelling errors while _navigating"
                                           IsChecked="{Binding AnnounceSpellingWhileNavigating, Mode=TwoWay}"
                                           Margin="16,4,0,0"
-                                          AutomationProperties.Name="Announce spelling errors when the caret moves into a misspelled word during navigation"
-                                          AutomationProperties.HelpText="Ctrl+F7 and Ctrl+Shift+F7 always announce spelling regardless of this setting"/>
+                                          AutomationProperties.HelpText="When the caret moves into a misspelled word. Ctrl+F7 and Ctrl+Shift+F7 always announce spelling regardless of this setting"/>
 
                                 <CheckBox Content="Announce spelling _suggestions"
                                           IsChecked="{Binding AnnounceSpellingSuggestions, Mode=TwoWay}"
                                           Margin="16,4,0,0"
-                                          AutomationProperties.Name="Announce spelling suggestions when a misspelling is announced"/>
+                                          AutomationProperties.HelpText="Suggestions are read when a misspelling is announced"/>
 
                                 <TextBlock Text="Spelling Suggestions Verbosity"
                                            Margin="32,6,0,2"/>
@@ -391,6 +519,18 @@
                             </StackPanel>
                         </GroupBox>
 
+                        <!-- Screen reader typing (#300) -->
+                        <GroupBox Header="Screen Reader Typing" Padding="10" Margin="0,0,0,15"
+                                  AutomationProperties.Name="Screen reader typing settings">
+                            <StackPanel>
+                                <CheckBox Content="_NVDA Typing Fix"
+                                          IsChecked="{Binding NvdaTypingFix, Mode=TwoWay}"
+                                          AutomationProperties.Name="NVDA Typing Fix"/>
+                                <TextBlock Text="Sends the space bar to screen readers as a typed character in every text field, so NVDA speaks each word as you type it rather than running the words together at the next punctuation mark. Off by default. With it on, typed-character echo may no longer speak the space bar. Takes effect straight away."
+                                           Foreground="{DynamicResource Theme.TextSecondary}" FontSize="{DynamicResource Theme.FontSizeSmall}" Margin="0,3,0,0" TextWrapping="Wrap"/>
+                            </StackPanel>
+                        </GroupBox>
+
                         <!-- Account Sign-In Group -->
                         <GroupBox Header="Account _Sign-In" Padding="10" Margin="0,0,0,15"
                                   AutomationProperties.Name="Account sign-in settings">
@@ -411,6 +551,18 @@
                                           IsChecked="{Binding OfferPop3, Mode=TwoWay}"
                                           AutomationProperties.Name="Offer POP3 when adding an account"/>
                                 <TextBlock Text="Adds POP3/SMTP to the Connection method list under Advanced settings in Add Account, for mail services that offer no IMAP. Takes effect the next time QuickMail starts. POP3 downloads each message to this computer and keeps it there — QuickMail's own Inbox, Sent, Drafts and Trash — so the local copy is the only copy once a message leaves the server. Accounts already using POP3 keep working whether this is on or off."
+                                           Foreground="{DynamicResource Theme.TextSecondary}" FontSize="{DynamicResource Theme.FontSizeSmall}" Margin="0,3,0,0" TextWrapping="Wrap"/>
+                            </StackPanel>
+                        </GroupBox>
+
+                        <!-- Moving settings between computers (#507): off until the user asks for it -->
+                        <GroupBox Header="Moving Settings _Between Computers" Padding="10" Margin="0,0,0,15"
+                                  AutomationProperties.Name="Moving settings between computers">
+                            <StackPanel>
+                                <CheckBox Content="Allow e_xporting and importing settings"
+                                          IsChecked="{Binding AllowSettingsTransfer, Mode=TwoWay}"
+                                          AutomationProperties.Name="Allow exporting and importing settings"/>
+                                <TextBlock Text="Adds Export Settings and Import Settings to the File menu, for moving your QuickMail setup to another computer. An exported file holds your account details, signatures and address book, but never a password. Importing replaces this computer's settings with the ones in the file, after keeping a copy of them."
                                            Foreground="{DynamicResource Theme.TextSecondary}" FontSize="{DynamicResource Theme.FontSizeSmall}" Margin="0,3,0,0" TextWrapping="Wrap"/>
                             </StackPanel>
                         </GroupBox>
@@ -515,6 +667,8 @@
                               SelectionMode="Single"
                               BorderThickness="1"
                               Margin="0,0,0,6"
+                              IsTextSearchEnabled="False"
+                              PreviewTextInput="HotkeyListView_PreviewTextInput"
                               KeyDown="HotkeyListView_KeyDown"
                               SelectionChanged="HotkeyListView_SelectionChanged"
                               AutomationProperties.Name="Keyboard shortcuts list">
@@ -589,7 +743,7 @@
 
                         <!-- Startup sync -->
                         <!-- Access keys across this whole dialog: G A K U W P (tabs), S (Save),
-                             C (Cancel). This tab therefore uses F I H L Y J X D, all otherwise
+                             C (Cancel). This tab therefore uses F I H L Y J X D N O M, all otherwise
                              unused. WPF cycles between duplicates rather than activating, so a
                              collision costs the user the keystroke entirely. -->
                         <GroupBox Header="Startup S_ync" Padding="10" Margin="0,0,0,15"
@@ -619,6 +773,36 @@
                                                  AutomationProperties.Name="Every folder"
                                                  AutomationProperties.HelpText="Checks every folder on every account before settling. Slowest start, and how QuickMail behaved before this setting existed."/>
                                 </StackPanel>
+                            </StackPanel>
+                        </GroupBox>
+
+                        <!-- Start at Windows sign-in (#770). Installed copies only: a portable or
+                             development copy can move, which would leave Windows a dead entry. -->
+                        <GroupBox Header="Windows Sig_n-In" Padding="10" Margin="0,0,0,15"
+                                  AutomationProperties.Name="Windows sign-in settings">
+                            <StackPanel>
+                                <StackPanel Visibility="{Binding IsLaunchAtSignInSupported, Converter={StaticResource BoolToVisibilityConverter}}">
+                                    <CheckBox Content="Start QuickMail aut_omatically when I sign in to Windows"
+                                              IsChecked="{Binding LaunchAtSignIn, Mode=TwoWay}"
+                                              AutomationProperties.Name="Start QuickMail automatically when I sign in to Windows"
+                                              AutomationProperties.HelpText="{Binding LaunchAtSignInHelp}"/>
+                                    <TextBlock Text="{Binding LaunchAtSignInHelp}"
+                                               FontWeight="SemiBold" Margin="0,3,0,0" TextWrapping="Wrap"/>
+                                    <TextBlock Text="Off unless you turn it on. QuickMail is then listed in Task Manager's Startup apps and in Windows Settings under Apps, Startup, where you can also turn it off. Applied when settings are saved."
+                                               Foreground="{DynamicResource Theme.TextSecondary}" FontSize="{DynamicResource Theme.FontSizeSmall}" Margin="0,3,0,8" TextWrapping="Wrap"/>
+
+                                    <CheckBox Content="Start _minimized"
+                                              IsChecked="{Binding StartMinimizedAtSignIn, Mode=TwoWay}"
+                                              AutomationProperties.Name="Start minimized"/>
+                                    <TextBlock Text="When Windows starts QuickMail, it does not open its window over what you are doing: it starts in the notification area if Keep running in the notification area is on (General tab), and otherwise minimized on the taskbar."
+                                               Foreground="{DynamicResource Theme.TextSecondary}" FontSize="{DynamicResource Theme.FontSizeSmall}" Margin="0,3,0,0" TextWrapping="Wrap"/>
+                                </StackPanel>
+                                <!-- Read-only rather than a disabled check box: a disabled control is
+                                     skipped by Tab, so the reason would be unreachable from the keyboard. -->
+                                <TextBox Text="Available in the installed version of QuickMail. This copy is portable or a development build, and Windows would lose track of it if it were moved."
+                                         IsReadOnly="True" IsReadOnlyCaretVisible="True" TextWrapping="Wrap"
+                                         AutomationProperties.Name="Start at sign-in"
+                                         Visibility="{Binding IsLaunchAtSignInUnsupported, Converter={StaticResource BoolToVisibilityConverter}}"/>
                             </StackPanel>
                         </GroupBox>
                     </StackPanel>
@@ -676,6 +860,111 @@
                     </StackPanel>
                 </ScrollViewer>
             </TabItem>
+            <!-- Sounds Tab (#912) -->
+            <!-- No access key: every letter of "Sounds" is already used (S Save, U Startup, O/N/D on the Startup tab). -->
+            <TabItem Header="Sounds" AutomationProperties.Name="Sounds">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="10">
+                        <CheckBox x:Name="PlayEventSoundsCheck"
+                                  Content="P_lay sounds for mail events"
+                                  IsChecked="{Binding PlayEventSounds, Mode=TwoWay}"/>
+                        <TextBlock Text="A rule's own sound plays whether or not this is on."
+                                   TextWrapping="Wrap" Margin="20,2,0,8"
+                                   Foreground="{DynamicResource Theme.TextSecondary}" FontSize="{DynamicResource Theme.FontSizeSmall}"/>
+
+                        <CheckBox Content="_Mute all sounds"
+                                  IsChecked="{Binding MuteSounds, Mode=TwoWay}"/>
+                        <TextBlock Text="Silences everything, including rule sounds. Sounds keep playing during Windows Do Not Disturb unless you mute them here."
+                                   TextWrapping="Wrap" Margin="20,2,0,8"
+                                   Foreground="{DynamicResource Theme.TextSecondary}" FontSize="{DynamicResource Theme.FontSizeSmall}"/>
+
+                        <Label Content="_Volume:" Target="{Binding ElementName=SoundVolumeCombo}" Padding="0,0,0,2"/>
+                        <ComboBox x:Name="SoundVolumeCombo" AutomationProperties.Name="Volume" Width="100" HorizontalAlignment="Left" Margin="0,0,0,12"
+                                  ItemsSource="{Binding SoundVolumeOptions}"
+                                  SelectedItem="{Binding SelectedSoundVolume, Mode=TwoWay}"
+                                  DisplayMemberPath="Label"/>
+
+                        <!-- Sound schemes (#932). Access keys: every letter of "Sound scheme" but O was taken, and
+                             Rename and Import have none left (L M V E D R F are this tab's, G A K U W P S C the
+                             tabs' and dialog's). -->
+                        <Label Content="S_ound scheme:" Target="{Binding ElementName=SoundSchemeCombo}" Padding="0,0,0,2"/>
+                        <ComboBox x:Name="SoundSchemeCombo" AutomationProperties.Name="Sound scheme" Width="220" HorizontalAlignment="Left" Margin="0,0,0,6"
+                                  ItemsSource="{Binding SoundSchemes}"
+                                  SelectedItem="{Binding SelectedSoundScheme, Mode=TwoWay}"
+                                  DisplayMemberPath="Name"/>
+                        <WrapPanel Margin="0,0,0,4">
+                            <Button x:Name="NewSoundSchemeButton" Content="_New scheme…" AutomationProperties.Name="New scheme"
+                                    MinWidth="90" Margin="0,0,8,4" Click="NewSoundSchemeButton_Click"/>
+                            <Button x:Name="CopySoundSchemeButton" Content="Cop_y scheme…" AutomationProperties.Name="Copy scheme"
+                                    MinWidth="90" Margin="0,0,8,4" Click="CopySoundSchemeButton_Click"/>
+                            <Button x:Name="RenameSoundSchemeButton" Content="Rename scheme…" AutomationProperties.Name="Rename scheme"
+                                    MinWidth="90" Margin="0,0,8,4" Click="RenameSoundSchemeButton_Click"
+                                    IsEnabled="{Binding IsUserSchemeSelected}"/>
+                            <Button x:Name="DeleteSoundSchemeButton" Content="Dele_te scheme…" AutomationProperties.Name="Delete scheme"
+                                    MinWidth="90" Margin="0,0,8,4" Click="DeleteSoundSchemeButton_Click"
+                                    IsEnabled="{Binding IsUserSchemeSelected}"/>
+                            <Button x:Name="ResetSoundSchemeButton" Content="Reset sc_heme…" AutomationProperties.Name="Reset scheme"
+                                    MinWidth="90" Margin="0,0,8,4" Click="ResetSoundSchemeButton_Click"
+                                    IsEnabled="{Binding CanResetScheme}"/>
+                        </WrapPanel>
+                        <WrapPanel Margin="0,0,0,4">
+                            <Button x:Name="ExportSoundSchemeButton" Content="E_xport scheme…" AutomationProperties.Name="Export scheme"
+                                    MinWidth="90" Margin="0,0,8,4" Click="ExportSoundSchemeButton_Click"/>
+                            <Button x:Name="ImportSoundSchemeButton" Content="Import scheme…" AutomationProperties.Name="Import scheme"
+                                    MinWidth="90" Margin="0,0,8,4" Click="ImportSoundSchemeButton_Click"/>
+                            <!-- #937: B, the one letter of "Browse" left on this tab. -->
+                            <Button x:Name="BrowseSoundSchemesButton" Content="_Browse schemes…" AutomationProperties.Name="Browse schemes"
+                                    MinWidth="90" Margin="0,0,8,4" Click="BrowseSoundSchemesButton_Click"
+                                    Visibility="{Binding HasSoundGallery, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                        </WrapPanel>
+                        <!-- #971. No access key: every letter in it is already this tab's or the dialog's (see above). -->
+                        <CheckBox x:Name="CheckSoundSchemeUpdatesCheck"
+                                  Content="Check for updates to sound schemes from the gallery"
+                                  AutomationProperties.Name="Check for updates to sound schemes from the gallery"
+                                  IsChecked="{Binding CheckSoundSchemeUpdates, Mode=TwoWay}" Margin="0,4,0,8"
+                                  Visibility="{Binding HasSoundGallery, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                        <TextBlock Text="{Binding SoundSchemeMessage}" TextWrapping="Wrap" Margin="0,0,0,8"
+                                   Visibility="{Binding HasSoundSchemeMessage, Converter={StaticResource BoolToVisibilityConverter}}"/>
+
+                        <Label Content="Sound _events:" Target="{Binding ElementName=SoundEventList}" Padding="0,0,0,2"/>
+                        <!-- Not a tab stop and not announced: each row already says its sound. -->
+                        <TextBlock x:Name="SchemeSoundCountText" Text="{Binding SchemeSoundCount}" Margin="0,0,0,4"
+                                   Foreground="{DynamicResource Theme.TextSecondary}" FontSize="{DynamicResource Theme.FontSizeSmall}"/>
+                        <ListBox x:Name="SoundEventList" AutomationProperties.Name="Sound events" Height="170" Margin="0,0,0,12"
+                                 ItemsSource="{Binding SoundEventRows}"
+                                 SelectedItem="{Binding SelectedSoundEvent, Mode=TwoWay}"
+                                 DisplayMemberPath="AccessibleName"
+                                 IsTextSearchEnabled="False"
+                                 PreviewKeyDown="SoundEventList_PreviewKeyDown"
+                                 PreviewTextInput="SoundEventList_PreviewTextInput">
+                            <ListBox.ItemContainerStyle>
+                                <Style TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
+                                    <Setter Property="AutomationProperties.Name" Value="{Binding AccessibleName}"/>
+                                </Style>
+                            </ListBox.ItemContainerStyle>
+                        </ListBox>
+
+                        <Label Content="Soun_d for this event:" Target="{Binding ElementName=SoundChoiceCombo}" Padding="0,0,0,2"/>
+                        <ComboBox x:Name="SoundChoiceCombo" AutomationProperties.Name="Sound for this event" Margin="0,0,0,8"
+                                  ItemsSource="{Binding SoundChoices}"
+                                  SelectedItem="{Binding SelectedSoundChoice, Mode=TwoWay}"
+                                  DisplayMemberPath="Label"/>
+
+                        <StackPanel Orientation="Horizontal">
+                            <Button x:Name="PreviewSoundButton" Content="P_review" MinWidth="90" Margin="0,0,8,0"
+                                    Command="{Binding PreviewSoundCommand}"/>
+                            <Button x:Name="ChooseSoundFileButton" Content="Choose _File…" MinWidth="110" Margin="0,0,8,0"
+                                    Click="ChooseSoundFileButton_Click"/>
+                            <Button x:Name="RemoveSoundFileButton" Content="Remove f_ile…" AutomationProperties.Name="Remove file" MinWidth="110"
+                                    Click="RemoveSoundFileButton_Click"
+                                    IsEnabled="{Binding CanRemoveSoundFile}"/>
+                        </StackPanel>
+                        <TextBlock Text="{Binding SoundFileMessage}" TextWrapping="Wrap" Margin="0,8,0,0"
+                                   Visibility="{Binding HasSoundFileMessage, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
             <!-- Appearance Tab -->
             <TabItem Header="A_ppearance" AutomationProperties.Name="Appearance">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">

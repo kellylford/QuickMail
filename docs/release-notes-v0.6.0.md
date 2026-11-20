@@ -1,4 +1,4 @@
-# QuickMail v0.6 Release Notes
+# QuickMail v0.6.0 Release Notes
 
 ## New Features
 

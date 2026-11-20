@@ -46,6 +46,7 @@ sealed class StubImapMailService : IMailService
     public Task CreateFolderAsync(Guid accountId, string? parentFolderName, string name, CancellationToken ct = default) => Task.CompletedTask;
     public Task DeleteFolderAsync(Guid accountId, string folderName, CancellationToken ct = default) => Task.CompletedTask;
     public Task RenameFolderAsync(Guid accountId, string folderName, string newName, string? newParentFolderName, CancellationToken ct = default) => Task.CompletedTask;
+    public Task MoveFolderAsync(Guid accountId, string folderName, string? newParentFolderName, CancellationToken ct = default) => Task.CompletedTask;
     public Task CopyFolderAsync(Guid accountId, string folderName, string? destinationParentName, CancellationToken ct = default) => Task.CompletedTask;
     public void Dispose() { }
 }
@@ -61,32 +62,37 @@ class StubImapMailServiceBase : IMailService
     public virtual Task ConnectAsync(AccountModel account, string? password = null, CancellationToken ct = default) => _inner.ConnectAsync(account, password, ct);
     public bool IsConnected(Guid accountId) => _inner.IsConnected(accountId);
     public virtual Task DisconnectAsync(Guid accountId, CancellationToken ct = default) => _inner.DisconnectAsync(accountId, ct);
-    public Task<List<MailFolderModel>> GetFoldersAsync(Guid accountId, CancellationToken ct = default) => _inner.GetFoldersAsync(accountId, ct);
-    public Task<List<MailMessageSummary>> GetMessageSummariesAsync(Guid accountId, string folderName, int maxMessages, CancellationToken ct = default) => _inner.GetMessageSummariesAsync(accountId, folderName, maxMessages, ct);
+    public virtual Task<List<MailFolderModel>> GetFoldersAsync(Guid accountId, CancellationToken ct = default) => _inner.GetFoldersAsync(accountId, ct);
+    public virtual Task<List<MailMessageSummary>> GetMessageSummariesAsync(Guid accountId, string folderName, int maxMessages, CancellationToken ct = default) => _inner.GetMessageSummariesAsync(accountId, folderName, maxMessages, ct);
     // Virtual: the two fetch entry points a sync exercises, so a double can record which folders
     // were actually visited (#516 startup sync scope) without reimplementing IMailService.
     public virtual Task<List<MailMessageSummary>> GetMessagesSinceDateAsync(Guid accountId, string folderName, DateTime since, CancellationToken ct = default) => _inner.GetMessagesSinceDateAsync(accountId, folderName, since, ct);
     public virtual Task<List<MailMessageSummary>> GetMessagesSinceAsync(Guid accountId, string folderName, string sinceMessageId, int initialCount, CancellationToken ct = default) => _inner.GetMessagesSinceAsync(accountId, folderName, sinceMessageId, initialCount, ct);
-    public Task<MailMessageDetail> GetMessageDetailAsync(Guid accountId, string folderName, string messageId, CancellationToken ct = default) => _inner.GetMessageDetailAsync(accountId, folderName, messageId, ct);
-    public Task<MailMessageDetail> PrefetchMessageDetailAsync(Guid accountId, string folderName, string messageId, CancellationToken ct = default) => _inner.PrefetchMessageDetailAsync(accountId, folderName, messageId, ct);
-    public Task MarkReadAsync(Guid accountId, string folderName, string messageId, CancellationToken ct = default) => _inner.MarkReadAsync(accountId, folderName, messageId, ct);
+    // Virtual: a double needs to serve a specific detail, and to tell the two apart — the #636
+    // repair must use the prefetch lease in the background so repairing a cached row does not
+    // mark it read behind the user's back.
+    public virtual Task<MailMessageDetail> GetMessageDetailAsync(Guid accountId, string folderName, string messageId, CancellationToken ct = default) => _inner.GetMessageDetailAsync(accountId, folderName, messageId, ct);
+    public virtual Task<MailMessageDetail> PrefetchMessageDetailAsync(Guid accountId, string folderName, string messageId, CancellationToken ct = default) => _inner.PrefetchMessageDetailAsync(accountId, folderName, messageId, ct);
+    // Virtual, with MoveToTrashBatchAsync below: a client rule can do several things to a message (#682), and a
+    // double records them to show the order they run in.
+    public virtual Task MarkReadAsync(Guid accountId, string folderName, string messageId, CancellationToken ct = default) => _inner.MarkReadAsync(accountId, folderName, messageId, ct);
     public Task MarkReadBatchAsync(Guid accountId, string folderName, IList<string> messageIds, CancellationToken ct = default) => _inner.MarkReadBatchAsync(accountId, folderName, messageIds, ct);
     public Task SetMessageFlaggedAsync(Guid accountId, string folderName, string messageId, bool flagged, CancellationToken ct = default) => _inner.SetMessageFlaggedAsync(accountId, folderName, messageId, flagged, ct);
-    public Task MoveToTrashAsync(Guid accountId, string folderName, string messageId, CancellationToken ct = default) => _inner.MoveToTrashAsync(accountId, folderName, messageId, ct);
-    public Task MoveToTrashBatchAsync(Guid accountId, string folderName, IList<string> messageIds, CancellationToken ct = default) => _inner.MoveToTrashBatchAsync(accountId, folderName, messageIds, ct);
+    public virtual Task MoveToTrashAsync(Guid accountId, string folderName, string messageId, CancellationToken ct = default) => _inner.MoveToTrashAsync(accountId, folderName, messageId, ct);
+    public virtual Task MoveToTrashBatchAsync(Guid accountId, string folderName, IList<string> messageIds, CancellationToken ct = default) => _inner.MoveToTrashBatchAsync(accountId, folderName, messageIds, ct);
     public Task PermanentlyDeleteBatchAsync(Guid accountId, string folderName, IList<string> messageIds, CancellationToken ct = default) => _inner.PermanentlyDeleteBatchAsync(accountId, folderName, messageIds, ct);
     public Task NoOpAsync(Guid accountId, CancellationToken ct = default) => _inner.NoOpAsync(accountId, ct);
-    public Task<int> CountTrashMessagesAsync(Guid accountId, CancellationToken ct = default) => _inner.CountTrashMessagesAsync(accountId, ct);
-    public Task<int> EmptyTrashAsync(Guid accountId, CancellationToken ct = default) => _inner.EmptyTrashAsync(accountId, ct);
+    public virtual Task<int> CountTrashMessagesAsync(Guid accountId, CancellationToken ct = default) => _inner.CountTrashMessagesAsync(accountId, ct);
+    public virtual Task<int> EmptyTrashAsync(Guid accountId, CancellationToken ct = default) => _inner.EmptyTrashAsync(accountId, ct);
     public Task<IList<string>> GetFolderMessageIdsAsync(Guid accountId, string folderName, CancellationToken ct = default) => _inner.GetFolderMessageIdsAsync(accountId, folderName, ct);
-    public Task<IReadOnlyList<(string Id, DateTimeOffset ReceivedUtc, bool IsRead)>> GetFolderMessageIdDatesAsync(Guid accountId, string folderName, CancellationToken ct = default) => _inner.GetFolderMessageIdDatesAsync(accountId, folderName, ct);
+    public virtual Task<IReadOnlyList<(string Id, DateTimeOffset ReceivedUtc, bool IsRead)>> GetFolderMessageIdDatesAsync(Guid accountId, string folderName, CancellationToken ct = default) => _inner.GetFolderMessageIdDatesAsync(accountId, folderName, ct);
     public Task<IReadOnlyDictionary<string, string>> FetchPreviewsAsync(Guid accountId, string folderName, IList<string> messageIds, int maxLines, CancellationToken ct = default) => _inner.FetchPreviewsAsync(accountId, folderName, messageIds, maxLines, ct);
     public Task<int> PollAsync(Guid accountId, string folderName, CancellationToken ct = default) => _inner.PollAsync(accountId, folderName, ct);
     public Task<(int Total, int Unread)> GetInboxStatusAsync(Guid accountId, CancellationToken ct = default) => _inner.GetInboxStatusAsync(accountId, ct);
-    public Task<string?> FindDraftsFolderNameAsync(Guid accountId, CancellationToken ct = default) => _inner.FindDraftsFolderNameAsync(accountId, ct);
-    public Task<string> AppendDraftAsync(Guid accountId, ComposeModel draft, string? replaceMessageId, CancellationToken ct = default) => _inner.AppendDraftAsync(accountId, draft, replaceMessageId, ct);
-    public Task AppendToSentAsync(Guid accountId, ComposeModel sent, CancellationToken ct = default) => _inner.AppendToSentAsync(accountId, sent, ct);
-    public Task<byte[]> DownloadAttachmentAsync(Guid accountId, string folderName, string messageId, string partSpecifier, CancellationToken ct = default) => _inner.DownloadAttachmentAsync(accountId, folderName, messageId, partSpecifier, ct);
+    public virtual Task<string?> FindDraftsFolderNameAsync(Guid accountId, CancellationToken ct = default) => _inner.FindDraftsFolderNameAsync(accountId, ct);
+    public virtual Task<string> AppendDraftAsync(Guid accountId, ComposeModel draft, string? replaceMessageId, CancellationToken ct = default) => _inner.AppendDraftAsync(accountId, draft, replaceMessageId, ct);
+    public virtual Task AppendToSentAsync(Guid accountId, ComposeModel sent, CancellationToken ct = default) => _inner.AppendToSentAsync(accountId, sent, ct);
+    public virtual Task<byte[]> DownloadAttachmentAsync(Guid accountId, string folderName, string messageId, string partSpecifier, CancellationToken ct = default) => _inner.DownloadAttachmentAsync(accountId, folderName, messageId, partSpecifier, ct);
     // Virtual: a double needs to make the server refuse, so a test can tell "it worked" from "it
     // was recorded anyway" — which is the whole of the remembered-destination rule (#515).
     public virtual Task CopyMessagesAsync(Guid accountId, string folderName, IList<string> messageIds, string destinationFolder, CancellationToken ct = default) => _inner.CopyMessagesAsync(accountId, folderName, messageIds, destinationFolder, ct);
@@ -94,6 +100,7 @@ class StubImapMailServiceBase : IMailService
     public Task CreateFolderAsync(Guid accountId, string? parentFolderName, string name, CancellationToken ct = default) => _inner.CreateFolderAsync(accountId, parentFolderName, name, ct);
     public Task DeleteFolderAsync(Guid accountId, string folderName, CancellationToken ct = default) => _inner.DeleteFolderAsync(accountId, folderName, ct);
     public Task RenameFolderAsync(Guid accountId, string folderName, string newName, string? newParentFolderName, CancellationToken ct = default) => _inner.RenameFolderAsync(accountId, folderName, newName, newParentFolderName, ct);
+    public Task MoveFolderAsync(Guid accountId, string folderName, string? newParentFolderName, CancellationToken ct = default) => _inner.MoveFolderAsync(accountId, folderName, newParentFolderName, ct);
     public Task CopyFolderAsync(Guid accountId, string folderName, string? destinationParentName, CancellationToken ct = default) => _inner.CopyFolderAsync(accountId, folderName, destinationParentName, ct);
     public void Dispose() => _inner.Dispose();
 }
@@ -106,19 +113,32 @@ sealed class StubSmtpService : ISendMailService
     /// <summary>Set to make a send fail, the way a rejected MAIL FROM or a refused login does.</summary>
     public Exception? SendFailure { get; set; }
 
+    public Func<Task>? SendWait { get; set; }
+
     /// <summary>Every message handed to SendAsync, so a test can assert a send never happened.</summary>
     public List<(ComposeModel Compose, AccountModel Account)> Sent { get; } = new();
 
-    public Task SendAsync(ComposeModel compose, AccountModel account, string? password, CancellationToken ct = default)
+    public async Task SendAsync(ComposeModel compose, AccountModel account, string? password, CancellationToken ct = default)
     {
-        if (SendFailure is not null) return Task.FromException(SendFailure);
+        if (SendFailure is not null) throw SendFailure;
         Sent.Add((compose, account));
-        return Task.CompletedTask;
+        if (SendWait is not null) await SendWait();
     }
     public Task SendIcsReplyAsync(string icsReplyContent, AccountModel account, string? password,
         string organizerEmail, CancellationToken ct = default)
     {
         SentReplies.Add((account, icsReplyContent, organizerEmail));
+        return Task.CompletedTask;
+    }
+
+    /// <summary>Every prepared message sent (meeting invitations and cancellations, #866).</summary>
+    public List<(MimeKit.MimeMessage Message, AccountModel Account, string? Password)> SentPrepared { get; } = new();
+
+    public Task SendPreparedAsync(MimeKit.MimeMessage message, AccountModel account, string? password,
+        CancellationToken ct = default)
+    {
+        if (SendFailure is not null) return Task.FromException(SendFailure);
+        SentPrepared.Add((message, account, password));
         return Task.CompletedTask;
     }
 
@@ -184,8 +204,21 @@ sealed class StubOAuthService : IOAuthService
         if (ThrowOnGetAccessToken is { } ex) throw ex;
         return Task.FromResult(string.Empty);
     }
-    public Task<string> GetAccessTokenSilentAsync(AccountModel account, string[] scopes, CancellationToken ct = default) => Task.FromResult(string.Empty);
-    public Task EnsureSilentTokenAsync(AccountModel account, CancellationToken ct = default) => Task.CompletedTask;
+    public Task<string> GetAccessTokenSilentAsync(AccountModel account, string[] scopes, CancellationToken ct = default)
+    {
+        SilentChecks++;
+        return ThrowOnEnsureSilent is { } ex ? Task.FromException<string>(ex) : Task.FromResult(string.Empty);
+    }
+    /// <summary>When set, EnsureSilentTokenAsync and GetAccessTokenSilentAsync throw it — e.g. an
+    /// InteractiveSignInRequiredException to simulate a lapsed sign-in (#615 Reconnect).</summary>
+    public Exception? ThrowOnEnsureSilent { get; set; }
+    /// <summary>How many silent sign-in checks were made (EnsureSilentTokenAsync + GetAccessTokenSilentAsync).</summary>
+    public int SilentChecks { get; private set; }
+    public Task EnsureSilentTokenAsync(AccountModel account, CancellationToken ct = default)
+    {
+        SilentChecks++;
+        return ThrowOnEnsureSilent is { } ex ? Task.FromException(ex) : Task.CompletedTask;
+    }
     /// <summary>
     /// Username interactive sign-in completes as. Left null, sign-in returns an empty username —
     /// which the editor VMs treat as a wrong-identity mismatch (#202) and abandon, so any test that
@@ -196,11 +229,37 @@ sealed class StubOAuthService : IOAuthService
     /// <summary>What the token's tenant id says about the signed-in account (#233).</summary>
     public bool SignInIsPersonalAccount { get; set; }
 
-    public Task<OAuthResult> SignInInteractiveAsync(AccountModel account, CancellationToken ct = default) => Task.FromResult(SignInResult());
+    /// <summary>Accounts SignInInteractiveAsync was called for, in order (#615).</summary>
+    public List<AccountModel> InteractiveSignIns { get; } = [];
+    public Task<OAuthResult> SignInInteractiveAsync(AccountModel account, CancellationToken ct = default)
+    {
+        InteractiveSignIns.Add(account);
+        // Signing in as the account itself puts its sign-in in the cache, so the next silent check passes.
+        if (string.Equals(SignInUsername, account.Username, StringComparison.OrdinalIgnoreCase))
+            ThrowOnEnsureSilent = null;
+        return Task.FromResult(SignInResult());
+    }
     public Task<OAuthResult> SignInInteractiveWithContactsAsync(AccountModel account, CancellationToken ct = default) => Task.FromResult(SignInResult());
     private OAuthResult SignInResult() => new(string.Empty, SignInUsername ?? string.Empty, SignInIsPersonalAccount);
-    public Task RequestContactsConsentAsync(AccountModel account, CancellationToken ct = default) => Task.CompletedTask;
+    /// <summary>When set, RequestContactsConsentAsync waits for it, and fails if it faults — to
+    /// simulate a contact consent that is still running, or declined, after the dialog has closed.</summary>
+    public Task? ContactsConsent { get; set; }
+    public Task RequestContactsConsentAsync(AccountModel account, CancellationToken ct = default) => ContactsConsent ?? Task.CompletedTask;
     public Task RequestCalendarConsentAsync(AccountModel account, CancellationToken ct = default) => Task.CompletedTask;
+
+    /// <summary>Parent account ids RequestSharedMailboxConsentAsync was called for (#31) — lets a test
+    /// assert the add-shared flow drove consent on the parent.</summary>
+    public List<Guid> SharedConsentRequestedFor { get; } = [];
+    /// <summary>When set, RequestSharedMailboxConsentAsync throws it — to simulate a declined or
+    /// admin-approval-pending consent so a test can assert the shared mailbox is left disconnected.</summary>
+    public Exception? ThrowOnSharedMailboxConsent { get; set; }
+    public Task RequestSharedMailboxConsentAsync(AccountModel parent, CancellationToken ct = default)
+    {
+        SharedConsentRequestedFor.Add(parent.Id);
+        if (ThrowOnSharedMailboxConsent is { } ex) throw ex;
+        return Task.CompletedTask;
+    }
+
     public Task SignOutAsync(AccountModel account) => Task.CompletedTask;
 }
 
@@ -298,6 +357,65 @@ class StubLocalStoreService : ILocalStoreService
         if (Pop3Uidls.TryGetValue(accountId, out var set)) set.ExceptWith(uidls);
         return Task.CompletedTask;
     }
+    /// <summary>In-memory POP3 local folders (#794), keyed by account then folder id.</summary>
+    public Dictionary<Guid, Dictionary<string, Pop3LocalFolder>> Pop3Folders { get; } = [];
+    public virtual Task<List<Pop3LocalFolder>> LoadPop3LocalFoldersAsync(Guid accountId)
+        => Task.FromResult(Pop3Folders.TryGetValue(accountId, out var f) ? f.Values.ToList() : new List<Pop3LocalFolder>());
+    public virtual Task SavePop3LocalFolderAsync(Guid accountId, Pop3LocalFolder folder)
+    {
+        if (!Pop3Folders.TryGetValue(accountId, out var f))
+            Pop3Folders[accountId] = f = new Dictionary<string, Pop3LocalFolder>(StringComparer.Ordinal);
+        f[folder.Id] = folder;
+        return Task.CompletedTask;
+    }
+    public virtual Task DeletePop3LocalFoldersAsync(Guid accountId, IEnumerable<string> folderIds, string refileTo)
+    {
+        if (Pop3Folders.TryGetValue(accountId, out var f))
+            foreach (var id in folderIds) f.Remove(id);
+        return Task.CompletedTask;
+    }
+    /// <summary>In-memory Outbox rows (#637), keyed by id, so compose and main-window tests can
+    /// assert what was queued without SQLite. Functional: upsert replaces, delete removes, and the
+    /// compose comes back with <see cref="ComposeModel.OutboxId"/> stamped like the real store.</summary>
+    public Dictionary<string, (OutboxItem Item, ComposeModel Compose)> OutboxRows { get; } = new(StringComparer.Ordinal);
+    public virtual Task UpsertOutboxItemAsync(OutboxItem item, ComposeModel compose)
+    {
+        item.HasAttachments = compose.Attachments.Any(a => a.IsLoaded);
+        item.UpdatedUtc = DateTimeOffset.UtcNow;
+        if (item.CreatedUtc == default) item.CreatedUtc = item.UpdatedUtc;
+        OutboxRows[item.Id] = (item, compose);
+        return Task.CompletedTask;
+    }
+    public virtual Task<List<OutboxItem>> LoadOutboxItemsAsync()
+        => Task.FromResult(OutboxRows.Values.Select(v => v.Item).OrderByDescending(i => i.CreatedUtc).ToList());
+    public virtual Task<OutboxItem?> LoadOutboxItemAsync(string id)
+        => Task.FromResult(OutboxRows.TryGetValue(id, out var row) ? row.Item : null);
+    public virtual Task<ComposeModel?> LoadOutboxComposeAsync(string id)
+    {
+        if (!OutboxRows.TryGetValue(id, out var row)) return Task.FromResult<ComposeModel?>(null);
+        row.Compose.OutboxId = id;
+        return Task.FromResult<ComposeModel?>(row.Compose);
+    }
+    public virtual Task UpdateOutboxStateAsync(string id, OutboxState state, int attempts, string? lastError, DateTimeOffset? nextAttemptUtc)
+    {
+        if (OutboxRows.TryGetValue(id, out var row))
+        {
+            row.Item.State = state; row.Item.Attempts = attempts; row.Item.LastError = lastError;
+            row.Item.NextAttemptUtc = nextAttemptUtc; row.Item.UpdatedUtc = DateTimeOffset.UtcNow;
+        }
+        return Task.CompletedTask;
+    }
+    public virtual Task DeleteOutboxItemAsync(string id) { OutboxRows.Remove(id); return Task.CompletedTask; }
+    public virtual Task<int> CountOutboxItemsAsync() => Task.FromResult(OutboxRows.Count);
+
+    public virtual Task<List<string>> GetMessageIdsMissingDetailAsync(Guid accountId, string folderName, DateTimeOffset since, int limit)
+        => Task.FromResult(new List<string>());
+    public virtual Task<int> BackfillSenderEmailsLocallyAsync(IReadOnlyCollection<Guid> graphAccountIds) => Task.FromResult(0);
+    public virtual Task<Dictionary<string, List<string>>> GetMessageIdsMissingSenderEmailAsync(Guid accountId)
+        => Task.FromResult(new Dictionary<string, List<string>>());
+    public virtual Task<int> UpdateSenderEmailsBatchAsync(
+        Guid accountId, string folderName, IEnumerable<(string MessageId, string FromEmail, string InternetMessageId)> updates)
+        => Task.FromResult(0);
     public virtual Task<string> GetMaxMessageKeyAsync(Guid accountId, string folderName) => Task.FromResult("0");
     public virtual Task<HashSet<string>> GetAllMessageIdsAsync(Guid accountId, string folderName) => Task.FromResult(new HashSet<string>());
     public virtual Task<Dictionary<string, bool>> LoadFolderReadStatesAsync(Guid accountId, string folderName) => Task.FromResult(new Dictionary<string, bool>());
@@ -336,7 +454,12 @@ class StubLocalStoreService : ILocalStoreService
         }
         return Task.FromResult(moving.Count);
     }
-    public virtual Task<HashSet<string>> GetExistingMessageIdsAsync(Guid accountId, string folderName, IEnumerable<string> messageIds) => Task.FromResult(new HashSet<string>());
+    public virtual Task<List<MailMessageSummary>> LoadRulesPendingSummariesAsync(Guid accountId, string folderName) => Task.FromResult(new List<MailMessageSummary>());
+    public virtual Task MarkRulesAppliedAsync(Guid accountId, string folderName, IEnumerable<string> messageIds) => Task.CompletedTask;
+    public virtual Task MarkFolderRulesAppliedAsync(Guid accountId, string folderName) => Task.CompletedTask;
+    public virtual Task<(long? MaxNumericId, long? MaxDateTicks)> GetRulesSettledBoundaryAsync(Guid accountId, string folderName) => Task.FromResult<(long?, long?)>((null, null));
+    public virtual Task EnsureRulesWatermarkAsync(Guid accountId, string folderName, long maxNumericId, long maxDateTicks) => Task.CompletedTask;
+    public virtual Task<bool> AccountHasRulesSettledMailAsync(Guid accountId, string exceptIdsStartingWith) => Task.FromResult(false);
     public virtual Task<int> CountSummariesAsync(Guid accountId) => Task.FromResult(0);
     public virtual Task<Dictionary<string, int>> CountSummariesByFolderAsync(Guid accountId) => Task.FromResult(new Dictionary<string, int>());
     public virtual Task<Dictionary<string, (int Total, int Unread)>> CountMessagesByFolderAsync(Guid accountId)
@@ -348,8 +471,24 @@ class StubLocalStoreService : ILocalStoreService
     public virtual Task UpdateFlagIdBatchAsync(IEnumerable<(Guid AccountId, string FolderName, string MessageId)> items, string? flagId) => Task.CompletedTask;
     public virtual Task UpsertCalendarEventAsync(CalendarEvent evt) => Task.CompletedTask;
     public virtual Task<List<CalendarEvent>> LoadCalendarEventsAsync() => Task.FromResult(new List<CalendarEvent>());
-    public virtual Task<IReadOnlyList<(Guid AccountId, string CalendarId, string CalendarName)>> LoadCalendarSourcesAsync()
-        => Task.FromResult<IReadOnlyList<(Guid, string, string)>>(new List<(Guid, string, string)>());
+    /// <summary>Each account's recorded calendar list, as ReplaceCalendarSourcesAsync left it.</summary>
+    public Dictionary<Guid, List<CalendarSourceInfo>> CalendarSources { get; } = [];
+
+    public virtual Task<IReadOnlyList<CalendarSourceInfo>> LoadCalendarSourcesAsync()
+        => Task.FromResult<IReadOnlyList<CalendarSourceInfo>>(
+            CalendarSources.Values.SelectMany(v => v).ToList());
+
+    public virtual Task ReplaceCalendarSourcesAsync(Guid accountId, IReadOnlyList<CalendarSourceInfo> sources)
+    {
+        CalendarSources[accountId] = [.. sources];
+        return Task.CompletedTask;
+    }
+
+    public virtual Task DeleteCalendarSourcesAsync(Guid accountId)
+    {
+        CalendarSources.Remove(accountId);
+        return Task.CompletedTask;
+    }
     public virtual Task UpdateCalendarResponseStatusAsync(string uid, Guid accountId, CalendarResponseStatus status) => Task.CompletedTask;
     public virtual Task DeleteCalendarEventAsync(string uid, Guid accountId) => Task.CompletedTask;
     public virtual Task<List<(Guid AccountId, string FolderName, string MessageId, string IcsText)>> LoadAllCalendarIcsAsync()
@@ -358,6 +497,40 @@ class StubLocalStoreService : ILocalStoreService
     public virtual Task ReplaceGraphCalendarEventsAsync(Guid accountId, IReadOnlyList<CalendarEvent> events) => Task.CompletedTask;
     public virtual Task<string?> GetDeltaTokenAsync(Guid accountId, string folderId) => Task.FromResult<string?>(null);
     public virtual Task SetDeltaTokenAsync(Guid accountId, string folderId, string deltaToken) => Task.CompletedTask;
+
+    // ── Full-text search (#717) ──
+    public virtual bool IsSearchIndexAvailable => SearchHits != null;
+    public virtual void StartBackgroundSearchIndexing() { }
+    public virtual Task<int> IndexPendingSearchAsync(int maxRows, CancellationToken ct = default) => Task.FromResult(0);
+
+    /// <summary>What <see cref="FindMessagesAsync"/> answers, keyed by the FTS5 expression it is asked. Null (the
+    /// default) reports the index unavailable, so existing tests keep matching rows in memory only.</summary>
+    public Dictionary<string, List<SearchHit>>? SearchHits { get; set; }
+    public List<string> SearchMatchesAsked { get; } = [];
+    public virtual Task<List<SearchHit>> FindMessagesAsync(string match, IReadOnlyCollection<(Guid AccountId, string FolderName)>? folders, bool indexPendingFirst = true, CancellationToken ct = default)
+    {
+        SearchMatchesAsked.Add(match);
+        return Task.FromResult(SearchHits != null && SearchHits.TryGetValue(match, out var hits) ? hits : new List<SearchHit>());
+    }
+
+    /// <summary>What <see cref="CountOfflineBodiesAsync"/> answers; the seeded rows otherwise.</summary>
+    public (int Total, int Downloaded)? OfflineBodyCounts { get; set; }
+    public virtual Task<(int Total, int Downloaded)> CountOfflineBodiesAsync(IReadOnlyCollection<(Guid AccountId, string FolderName)> folders, DateTimeOffset since, CancellationToken ct = default)
+        => Task.FromResult(OfflineBodyCounts ?? (0, 0));
+
+    /// <summary>The queries <see cref="SearchSummariesAsync"/> was asked, with their accounts.</summary>
+    public List<(string Query, IReadOnlyCollection<Guid> Accounts)> SummarySearchesAsked { get; } = [];
+
+    /// <summary>Answers a Search Results fetch from the seeded rows, matching them the way the search box does
+    /// without an index. Override for anything else.</summary>
+    public virtual async Task<List<MailMessageSummary>> SearchSummariesAsync(MessageSearchQuery query, IReadOnlyCollection<Guid> accountIds, CancellationToken ct = default)
+    {
+        SummarySearchesAsked.Add((query.ToQueryString(), accountIds));
+        var withoutAccounts = MessageSearchQuery.Parse(query.ToQueryString());
+        withoutAccounts.Accounts.Clear();
+        var matcher = new QuickMail.Helpers.MessageSearchMatcher(withoutAccounts, m => m.FolderName, _ => string.Empty);
+        return [.. (await LoadAllSummariesAsync()).Where(m => accountIds.Contains(m.AccountId) && matcher.Matches(m))];
+    }
 }
 
 sealed class StubContactService : IContactService
@@ -502,8 +675,21 @@ sealed class StubRuleService : IRuleService
     public int ApplyRulesReturnValue { get; set; } = 0;
     public List<MailMessageSummary> ApplyRulesRemovedMessages { get; set; } = [];
 
-    public List<MailRule> LoadRules() => LoadedRules;
-    public void SaveRules(List<MailRule> rules) => LoadedRules = rules;
+    /// <summary>Set to make <see cref="LoadRules"/> throw, so a failed client-rule load can be exercised.</summary>
+    public Exception? ThrowOnLoad { get; set; }
+
+    /// <summary>Set to make <see cref="SaveRules"/> throw, as a failed write does, leaving <see cref="LoadedRules"/> as it was.</summary>
+    public Exception? ThrowOnSave { get; set; }
+
+    public int SaveCount { get; private set; }
+
+    public List<MailRule> LoadRules() => ThrowOnLoad is { } ex ? throw ex : LoadedRules;
+    public void SaveRules(List<MailRule> rules)
+    {
+        if (ThrowOnSave is { } ex) throw ex;
+        SaveCount++;
+        LoadedRules = rules;
+    }
 
     public Task<(int MatchedCount, List<MailMessageSummary> RemovedMessages)> ApplyRulesAsync(
         List<MailMessageSummary> incoming, Guid accountId, CancellationToken ct)
@@ -512,9 +698,132 @@ sealed class StubRuleService : IRuleService
     public List<MailMessageSummary> TestRule(MailRule rule, IEnumerable<MailMessageSummary> messages)
         => messages.ToList(); // Stub matches everything
 
-    public Task<List<MailMessageSummary>> ApplyRulesToExistingAsync(
+    public Task<ExistingMailRunReport> ApplyRulesToExistingAsync(
         ILocalStoreService store, IReadOnlyDictionary<Guid, string> inboxFolderByAccount, CancellationToken ct)
-        => Task.FromResult(new List<MailMessageSummary>());
+        => Task.FromResult(ExistingMailRunReport.Empty);
+}
+
+/// <summary>
+/// Records what the compose window and main window queue (#637) without a store, and lets a test
+/// decide whether the Outbox is "available" (it is not in --online mode) and whether an enqueue
+/// blows up, the way a broken SQLite file would.
+/// </summary>
+sealed class StubOutboxService : IOutboxService
+{
+    public bool IsAvailable { get; set; } = true;
+    public Exception? EnqueueFailure { get; set; }
+    public List<(OutboxKind Kind, ComposeModel Compose, Guid AccountId, string? ExistingId, string Id)> Enqueued { get; } = [];
+    public List<string> Removed { get; } = [];
+    public List<OutboxItem> Items { get; } = [];
+    public Dictionary<string, ComposeModel> Composes { get; } = new(StringComparer.Ordinal);
+    public List<bool> Flushes { get; } = [];
+    public OutboxFlushResult NextFlushResult { get; set; } = OutboxFlushResult.Nothing;
+
+    public event Action? Changed;
+    public event Action<OutboxFlushResult>? FlushCompleted;
+
+    public void RaiseChanged() => Changed?.Invoke();
+    public void RaiseFlushCompleted(OutboxFlushResult r) => FlushCompleted?.Invoke(r);
+
+    /// <summary>Runs at the start of every enqueue — something that happens while the store write is in flight.</summary>
+    public Action? DuringEnqueue { get; set; }
+
+    private Task<string> Enqueue(OutboxKind kind, ComposeModel compose, Guid accountId, string? existingId)
+    {
+        DuringEnqueue?.Invoke();
+        if (!IsAvailable) throw new InvalidOperationException("The Outbox is not available in --online mode.");
+        if (EnqueueFailure != null) return Task.FromException<string>(EnqueueFailure);
+        var id = existingId ?? OutboxItem.NewId();
+        Enqueued.Add((kind, compose, accountId, existingId, id));
+        Items.RemoveAll(i => i.Id == id);
+        Items.Add(new OutboxItem { Id = id, AccountId = accountId, Kind = kind, Subject = compose.Subject, To = compose.To, CreatedUtc = DateTimeOffset.UtcNow });
+        Composes[id] = compose;
+        return Task.FromResult(id);
+    }
+    public Task<string> EnqueueDraftAsync(ComposeModel compose, Guid accountId, string? existingId, CancellationToken ct = default)
+        => Enqueue(OutboxKind.Draft, compose, accountId, existingId);
+    public Task<string> EnqueueSendAsync(ComposeModel compose, Guid accountId, string? existingId, CancellationToken ct = default)
+        => Enqueue(OutboxKind.Send, compose, accountId, existingId);
+    public Task<IReadOnlyList<OutboxItem>> ListAsync(CancellationToken ct = default)
+        => Task.FromResult<IReadOnlyList<OutboxItem>>([.. Items.OrderByDescending(i => i.CreatedUtc)]);
+    public Task<OutboxItem?> GetAsync(string id, CancellationToken ct = default)
+        => Task.FromResult(Items.FirstOrDefault(i => i.Id == id));
+    public Task<ComposeModel?> LoadComposeAsync(string id, CancellationToken ct = default)
+    {
+        if (!Composes.TryGetValue(id, out var c)) return Task.FromResult<ComposeModel?>(null);
+        c.OutboxId = id;
+        return Task.FromResult<ComposeModel?>(c);
+    }
+    /// <summary>When set, RemoveAsync raises Changed inline the way the real service does.</summary>
+    public bool RaiseChangedOnRemove { get; set; }
+    public Task<bool> RemoveAsync(string id, CancellationToken ct = default)
+    {
+        Removed.Add(id);
+        var existed = Items.RemoveAll(i => i.Id == id) > 0;
+        Composes.Remove(id);
+        Held.Remove(id);
+        if (existed && RaiseChangedOnRemove) Changed?.Invoke();
+        return Task.FromResult(existed);
+    }
+    public HashSet<string> Held { get; } = new(StringComparer.Ordinal);
+    public void Hold(string id) => Held.Add(id);
+    public void Release(string id) => Held.Remove(id);
+    public Task<int> CountAsync(CancellationToken ct = default) => Task.FromResult(Items.Count);
+    /// <summary>When set, FlushAsync raises FlushCompleted with NextFlushResult before returning,
+    /// as the real drain does when anything reached an outcome.</summary>
+    public bool RaiseFlushCompletedDuringFlush { get; set; }
+    public Task<OutboxFlushResult> FlushAsync(bool force = false, CancellationToken ct = default)
+    {
+        Flushes.Add(force);
+        if (RaiseFlushCompletedDuringFlush && NextFlushResult.Any) FlushCompleted?.Invoke(NextFlushResult);
+        return Task.FromResult(NextFlushResult);
+    }
+    /// <summary>The account each FlushAccountAsync call was for, in order (#614).</summary>
+    public List<Guid> AccountFlushes { get; } = [];
+    public Task<OutboxFlushResult> FlushAccountAsync(Guid accountId, bool force = false, CancellationToken ct = default)
+    {
+        AccountFlushes.Add(accountId);
+        return FlushAsync(force, ct);
+    }
+}
+
+/// <summary>
+/// A settable stand-in for the app's online/offline state (#637). Tests flip accounts and the
+/// machine signal and raise the events by hand; the notes fed back by the code under test are
+/// recorded so a test can assert which failure sites report what.
+/// </summary>
+sealed class StubConnectivityService : IConnectivityService
+{
+    private readonly Dictionary<Guid, AccountConnectivity> _accounts = [];
+    public bool IsNetworkAvailable { get; set; } = true;
+    private bool? _isOnline;
+    public bool IsOnline
+    {
+        get => _isOnline ?? (IsNetworkAvailable && !(_accounts.Count > 0 && _accounts.Values.All(s => s == AccountConnectivity.Offline)));
+        set => _isOnline = value;
+    }
+    public List<(Guid AccountId, string Source, bool Reachable)> Notes { get; } = [];
+
+    public void SetAccount(Guid accountId, bool online) => _accounts[accountId] = online ? AccountConnectivity.Online : AccountConnectivity.Offline;
+    public bool IsAccountOnline(Guid accountId) => IsNetworkAvailable && AccountState(accountId) != AccountConnectivity.Offline;
+    public AccountConnectivity AccountState(Guid accountId) => _accounts.TryGetValue(accountId, out var s) ? s : AccountConnectivity.Unknown;
+    public void NoteAccountReachable(Guid accountId, string source) { _accounts[accountId] = AccountConnectivity.Online; Notes.Add((accountId, source, true)); }
+    public void NoteAccountUnreachable(Guid accountId, string source) { _accounts[accountId] = AccountConnectivity.Offline; Notes.Add((accountId, source, false)); }
+    public void NoteOperationOutcome(Guid accountId, Exception? ex, string source, CancellationToken callerToken = default)
+    {
+        if (ex != null && ConnectionFailure.IsConnectionFailure(ex, callerToken)) NoteAccountUnreachable(accountId, source);
+        else NoteAccountReachable(accountId, source);
+    }
+    public void Forget(Guid accountId) => _accounts.Remove(accountId);
+
+    public event Action<bool>? OnlineChanged;
+    public event Action<Guid, bool>? AccountOnlineChanged;
+    public event Action<bool>? NetworkAvailabilityChanged;
+
+    public int OnlineChangedSubscribers => OnlineChanged?.GetInvocationList().Length ?? 0;
+    public void RaiseOnlineChanged(bool online) { _isOnline = online; OnlineChanged?.Invoke(online); }
+    public void RaiseAccountOnlineChanged(Guid accountId, bool online) { SetAccount(accountId, online); AccountOnlineChanged?.Invoke(accountId, online); }
+    public void RaiseNetworkAvailabilityChanged(bool available) { IsNetworkAvailable = available; NetworkAvailabilityChanged?.Invoke(available); }
 }
 
 sealed class StubSyncService : ISyncService
@@ -525,13 +834,27 @@ sealed class StubSyncService : ISyncService
     public event Action<IReadOnlyList<MailMessageSummary>>? FolderReadStatesReconciled;
     public event Action<int>? RulesApplied;
     public event Action<int, int>? SyncProgressChanged;
+    public event Action<int, int>? OfflineBodyProgressChanged;
+    public event Action<int, int>? OfflineBodyPassCompleted;
 #pragma warning restore CS0067
+    public event Action<int, int>? SenderEmailBackfillProgressChanged;
+    public event Action<int, int>? SenderEmailBackfillEnded;
+    public void RaiseSenderEmailBackfillProgress(int done, int total) => SenderEmailBackfillProgressChanged?.Invoke(done, total);
+    public void RaiseSenderEmailBackfillEnded(int filled, int planned) => SenderEmailBackfillEnded?.Invoke(filled, planned);
+    /// <summary>Every backfill request (#637), so a test can assert Settings triggered one.</summary>
+    public int BackfillCalls { get; private set; }
+    public Task BackfillOfflineBodiesAsync(IEnumerable<AccountModel> accounts, IReadOnlyDictionary<Guid, List<MailFolderModel>> cachedFolders, CancellationToken ct)
+    {
+        BackfillCalls++;
+        return Task.CompletedTask;
+    }
     public Task SyncAllAccountsAsync(IEnumerable<AccountModel> accounts, IReadOnlyDictionary<Guid, List<MailFolderModel>> cachedFolders, CancellationToken ct) => Task.CompletedTask;
     public Task<IReadOnlyList<MailMessageSummary>> SyncOneFolderAsync(AccountModel account, MailFolderModel folder, CancellationToken ct) => Task.FromResult<IReadOnlyList<MailMessageSummary>>(Array.Empty<MailMessageSummary>());
     public Task<IReadOnlyList<MailMessageSummary>> SyncOneFolderOnlineAsync(AccountModel account, MailFolderModel folder, CancellationToken ct) => Task.FromResult<IReadOnlyList<MailMessageSummary>>(Array.Empty<MailMessageSummary>());
     public Task<int> ReconcileFolderAsync(AccountModel account, MailFolderModel folder, CancellationToken ct) => Task.FromResult(0);
     public Task<IReadOnlyList<MailMessageSummary>> SyncFolderFullAsync(AccountModel account, MailFolderModel folder, CancellationToken ct) => Task.FromResult<IReadOnlyList<MailMessageSummary>>(Array.Empty<MailMessageSummary>());
     public void SeedRebuildBaseline(IEnumerable<Guid> accountIds) { }
+    public Task ApplyPendingRulesAsync(AccountModel account, MailFolderModel folder, CancellationToken ct) => Task.CompletedTask;
     public DateTimeOffset? LastSyncedUtc(Guid accountId) => null;
 }
 
@@ -554,6 +877,10 @@ sealed class StubCommandRegistry : ICommandRegistry
     public void Unregister(string id) => _commands.Remove(id);
     public void ApplyUserOverrides(IEnumerable<HotkeyBinding> bindings) { }
     public IReadOnlyList<string> GetOrphanOverrideCommandIds() => [];
+    public string GetGestureText(string id) => FindById(id)?.GestureText ?? string.Empty;
+#pragma warning disable CS0067 // the stub never rebinds anything, so nothing ever raises it
+    public event EventHandler? BindingsChanged;
+#pragma warning restore CS0067
 
     // Test helpers
     public void RegisterTestCommand(string id, string category, string title)
@@ -608,29 +935,81 @@ sealed class StubFlagService : IFlagService
 
 sealed class StubCalendarService : ICalendarService
 {
-    public List<CalendarEvent> StoredEvents { get; set; } = [];
+    /// <summary>
+    /// What the cache holds. Assigning the whole list is how a test says "the store already had
+    /// these" — a starting state, not a write — so it counts as loaded too and the test does not
+    /// have to refresh before reading. A write that goes through the service afterwards still
+    /// needs its reload to show up in <see cref="Events"/>, which is the part that matters.
+    /// </summary>
+    public List<CalendarEvent> StoredEvents
+    {
+        get => _stored;
+        set { _stored = value; _loaded = value.ToList(); }
+    }
+    private List<CalendarEvent> _stored = [];
+
     public int RefreshCallCount { get; private set; }
 
-    public IReadOnlyList<CalendarEvent> Events => StoredEvents;
+    /// <summary>
+    /// What a caller sees, which is what the last load put here — deliberately NOT an alias for
+    /// <see cref="StoredEvents"/>.
+    ///
+    /// <para>
+    /// The real <c>CalendarService</c> holds an in-memory list that changes only when something
+    /// reloads it from the provider, so a ViewModel that persists an event and then forgets to
+    /// reload goes on showing the list from before. A stub whose Events pointed straight at its
+    /// storage could not tell that apart from a working save — which is the shape of issue #519,
+    /// where a new appointment was not in the list until F5. Mirroring the real service's shape
+    /// (reload on refresh and upsert, mutate in place on status and delete) is what makes a
+    /// missing reload fail a test.
+    /// </para>
+    /// </summary>
+    public IReadOnlyList<CalendarEvent> Events => _loaded;
+    private List<CalendarEvent> _loaded = [];
 
     public Task RefreshAsync(CancellationToken ct = default)
     {
         RefreshCallCount++;
+        _loaded = StoredEvents.ToList();
         return Task.CompletedTask;
     }
 
     public Task UpsertEventAsync(CalendarEvent evt, CancellationToken ct = default)
+    {
+        Upsert(evt);
+        _loaded = StoredEvents.ToList();   // the real service reloads after an upsert
+        return Task.CompletedTask;
+    }
+
+    public int BatchUpsertCallCount { get; private set; }
+
+    public Task UpsertEventsAsync(IReadOnlyCollection<CalendarEvent> events, CancellationToken ct = default)
+    {
+        BatchUpsertCallCount++;
+        foreach (var evt in events)
+            Upsert(evt);
+        _loaded = StoredEvents.ToList();   // one reload for the whole batch, as the real service does
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// The same store write, callable from a stub whose own body is not async — the calendar sync
+    /// stub writes the server's copy here the way the real sync service writes it to SQLite.
+    /// </summary>
+    public void Upsert(CalendarEvent evt)
     {
         var idx = StoredEvents.FindIndex(e => e.Uid == evt.Uid && e.AccountId == evt.AccountId);
         if (idx >= 0)
             StoredEvents[idx] = evt;
         else
             StoredEvents.Add(evt);
-        return Task.CompletedTask;
     }
 
     public Task SetResponseStatusAsync(string uid, Guid accountId, CalendarResponseStatus status, CancellationToken ct = default)
     {
+        // In place, as the real service does. _loaded is a shallow copy, so its rows ARE these
+        // objects and this is visible through Events without touching it — unlike DeleteEventAsync
+        // below, which changes list membership and so has to be applied to both.
         var idx = StoredEvents.FindIndex(e => e.Uid == uid && e.AccountId == accountId);
         if (idx >= 0) StoredEvents[idx].ResponseStatus = status;
         return Task.CompletedTask;
@@ -639,6 +1018,7 @@ sealed class StubCalendarService : ICalendarService
     public Task DeleteEventAsync(string uid, Guid accountId, CancellationToken ct = default)
     {
         StoredEvents.RemoveAll(e => e.Uid == uid && e.AccountId == accountId);
+        _loaded.RemoveAll(e => e.Uid == uid && e.AccountId == accountId);
         return Task.CompletedTask;
     }
 }
@@ -652,9 +1032,34 @@ sealed class StubGraphCalendarSyncService : IGraphCalendarSyncService
     public Exception? CreateFailure { get; set; }
     public List<CalendarEvent> CreatedEvents { get; } = [];
 
+    /// <summary>
+    /// The calendar store the real service writes the server's copy into. Wire it and a create or
+    /// update push shows up in the calendar exactly as it does in the app:
+    /// <c>GraphCalendarSyncService</c> upserts the returned event before returning, so the
+    /// <c>RefreshAsync</c> the ViewModel does next reloads a list that already contains it. A stub
+    /// that only records the push cannot tell a working create apart from one the list never picks
+    /// up until F5 (issue #519).
+    /// </summary>
+    public StubCalendarService? CalendarStore { get; set; }
+
+    /// <summary>
+    /// What the account's default calendar resolves to — what a created event with no chosen
+    /// calendar gets tagged with. Set it to a calendar a test also filters on, to exercise the
+    /// per-calendar folder-tree node that #569 was reported against.
+    /// </summary>
+    public string DefaultCalendarId { get; set; } = string.Empty;
+    public string DefaultCalendarName { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Runs when a pull happens, so a test can put into the store what the server "had" — the real
+    /// service writes the fetched slice there before returning, and the caller reloads from it.
+    /// </summary>
+    public Action? OnSync { get; set; }
+
     public Task<GraphCalendarSyncResult> SyncAllAsync(CancellationToken ct = default)
     {
         SyncCallCount++;
+        OnSync?.Invoke();
         return Task.FromResult(Result);
     }
 
@@ -673,6 +1078,13 @@ sealed class StubGraphCalendarSyncService : IGraphCalendarSyncService
         return Task.CompletedTask;
     }
 
+    /// <summary>What <see cref="ServerSendsInvitationsAsync"/> answers (#866). The real service says
+    /// true for Microsoft and Google, and whatever an iCloud server advertises.</summary>
+    public bool ServerSendsInvitations { get; set; } = true;
+
+    public Task<bool> ServerSendsInvitationsAsync(AccountModel account, CancellationToken ct = default)
+        => Task.FromResult(ServerSendsInvitations);
+
     public Task<CalendarEvent> CreateEventAsync(AccountModel account, CalendarEvent evt, CancellationToken ct = default)
     {
         if (CreateFailure != null) throw CreateFailure;
@@ -683,8 +1095,16 @@ sealed class StubGraphCalendarSyncService : IGraphCalendarSyncService
             Summary = evt.Summary, Location = evt.Location, Description = evt.Description,
             StartTimeTicks = evt.StartTimeTicks, EndTimeTicks = evt.EndTimeTicks,
             IsAllDay = evt.IsAllDay, ResponseStatus = CalendarResponseStatus.Accepted,
+            // Tagged with the calendar it was filed on, as the real service does since #569. The
+            // save target names no calendar for a Google or Microsoft account, so the service
+            // resolves the account's default; DefaultCalendar stands in for that here. A stub that
+            // left this blank would model the BUG — a row that fails the per-calendar folder-tree
+            // node's filter and is invisible under the calendar it was just saved to.
+            CalendarId = string.IsNullOrEmpty(evt.CalendarId) ? DefaultCalendarId : evt.CalendarId,
+            CalendarName = string.IsNullOrEmpty(evt.CalendarId) ? DefaultCalendarName : evt.CalendarName,
         };
         CreatedEvents.Add(created);
+        CalendarStore?.Upsert(created);
         return Task.FromResult(created);
     }
 
@@ -698,6 +1118,7 @@ sealed class StubGraphCalendarSyncService : IGraphCalendarSyncService
         if (WriteFailure != null) throw WriteFailure;
         evt.IsGraph = true;
         UpdatedEvents.Add(evt);
+        CalendarStore?.Upsert(evt);
         return Task.FromResult(evt);
     }
 

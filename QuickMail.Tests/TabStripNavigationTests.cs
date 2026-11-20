@@ -227,31 +227,41 @@ public class TabStripNavigationTests
     [StaFact]
     public void SettingsDialog_EveryTabIsReachableWithTheArrowKeys()
     {
-        // The regression #528 reported, against the real dialog: its six tabs wrap onto two rows,
+        // The regression #528 reported, against the real dialog: its tabs wrap onto two rows,
         // which is what broke geometric navigation. Pressing Right once per tab must visit every
         // one of them and come back to where it started.
+        //
+        // ThemedControls.xaml is merged rather than simulated (issue #652). It is what gives a tab
+        // header its real Padding, and without it the six headers are narrow enough to fit on one
+        // line — the layout that was never broken. An earlier version hand-stamped a guess at the
+        // themed values instead; the guess had already drifted from the style it was standing in for.
         EnsureApplication();
+        WpfTestHost.EnsureStyles("AccessibleStyles", "ThemedControls");
+
         var vm     = new SettingsViewModel(new StubConfigService(), new StubCommandRegistry());
         var dialog = new SettingsDialog(vm) { ShowActivated = false };
         dialog.Show();
+
+        // Pin the window to the size its XAML declares (issue #652). Windows 11 26H2 added
+        // Settings > Accessibility > Visual effects > "Open apps maximized", which opens every app
+        // window maximized — a developer running with it on gets this dialog on the full work area
+        // (1485 DIPs at 200% scaling here), where all six headers fit on one row, so the premise
+        // assertion below failed every run on that machine while CI stayed green. Width and
+        // RestoreBounds still held the declared 520x560: the window is only PLACED maximized.
+        //
+        // The setting reaches EVERY window, not just a process's first, so any future test with a
+        // geometry premise has to pin its window the same way. It is an accessibility setting a real
+        // user turns on deliberately — the app is expected to work under it, and a test that quietly
+        // depends on the opposite is testing the developer's Settings app, not QuickMail.
+        dialog.WindowState = WindowState.Normal;
         TabOrderWalker.Drain();
         try
         {
             var tabs = FindTabControl(dialog);
             Assert.NotNull(tabs);
             var items = tabs!.Items.Cast<TabItem>().ToArray();
-            Assert.Equal(6, items.Length);
+            Assert.Equal(7, items.Length);
 
-            // The test process merges AccessibleStyles.xaml but not ThemedControls.xaml, which is
-            // what gives a tab header its real Padding — without it the six headers are narrow
-            // enough to fit on one line, which is the layout that was never broken. Stamping the
-            // themed padding and font size on reproduces what the user has, so the walk below runs
-            // against the two-row strip #528 was reported against.
-            foreach (var item in items)
-            {
-                item.Padding  = new Thickness(12, 6, 12, 6);
-                item.FontSize = 13;
-            }
             dialog.UpdateLayout();
             TabOrderWalker.Drain();
 

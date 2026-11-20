@@ -502,13 +502,13 @@ public class ConfigFeatureGateTests
             .IsEnabled(FeatureFlag.GraphBackend));
 
     [Fact]
-    public void Default_SharedMailboxesOff() // #31: off while the multi-PR feature is built
-        => Assert.False(new ConfigFeatureGate(new ConfigModel(), Array.Empty<string>())
+    public void Default_SharedMailboxesOn() // #31: on by default as of 0.8.42 — feature shipped
+        => Assert.True(new ConfigFeatureGate(new ConfigModel(), Array.Empty<string>())
             .IsEnabled(FeatureFlag.SharedMailboxes));
 
     [Fact]
-    public void Config_EnablesSharedMailboxes() // testers turn it on with SharedMailboxes=true
-        => Assert.True(new ConfigFeatureGate(ConfigWith("SharedMailboxes", "true"), Array.Empty<string>())
+    public void Config_DisablesSharedMailboxes() // a user can still hide it with SharedMailboxes=false
+        => Assert.False(new ConfigFeatureGate(ConfigWith("SharedMailboxes", "false"), Array.Empty<string>())
             .IsEnabled(FeatureFlag.SharedMailboxes));
 }
 

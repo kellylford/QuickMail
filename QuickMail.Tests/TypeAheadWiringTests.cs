@@ -5,6 +5,7 @@ using System.Linq;
 using System.Reflection;
 using System.Xml.Linq;
 using QuickMail.Models;
+using QuickMail.Services;
 using QuickMail.ViewModels;
 using QuickMail.Views;
 using Xunit;
@@ -62,11 +63,13 @@ public class TypeAheadWiringTests
         new("Views/AddressBookWindow.xaml",    "ContactList",      "TypeAheadText",           typeof(ContactModel)),
         new("Views/AddressBookWindow.xaml",    "GroupsList",       "Name",                    typeof(GroupModel)),
         new("Views/AddressBookWindow.xaml",    "GroupMembersList", "TypeAheadText",           typeof(ContactModel)),
+        new("Views/AddressBookWindow.xaml",    "SentToList",       "TypeAheadText",           typeof(RememberedPerson)),
         new("Views/AccountManagerDialog.xaml", "AccountListBox",   "AccountLabelWithDefault", typeof(AccountModel)),
         new("Views/MainWindow.xaml",           "AccountList",      "AccountLabel",            typeof(AccountModel)),
-        new("Views/CommandPaletteWindow.xaml", "CommandList",      "Title",                   typeof(CommandDefinition)),
         new("Views/FolderPickerWindow.xaml",   "FolderListBox",    "FolderPath",              typeof(FolderPickerWindow.FolderPickerItem)),
         new("Views/WatchedConversationsWindow.xaml", "WatchList",  "Label",                   typeof(WatchRow)),
+        new("Views/SoundGalleryWindow.xaml",   "SchemeList",       "Name",                    typeof(SoundGalleryRow)),
+        new("Views/SoundTutorialWindow.xaml",  "SoundEventList",   "Label",                   typeof(SoundTutorialRow)),
     ];
 
     private static readonly XNamespace X = "http://schemas.microsoft.com/winfx/2006/xaml";
@@ -173,6 +176,27 @@ public class TypeAheadWiringTests
         }
 
         Assert.True(problems.Count == 0, Report("TextSearch declared on a TreeView, where it does nothing", problems));
+    }
+
+    /// <summary>
+    /// The command palette's list is driven by its filter box, not by keystrokes of its own: it
+    /// is <c>Focusable="False"</c>, so WPF <c>TextSearch</c> would never see a character. It did
+    /// declare a <c>TextPath</c> — and had a row in <see cref="Sites"/> — until the filter box
+    /// arrived. Both were removed together, and this keeps the declaration from drifting back in
+    /// as an inert one, which is the shape <see cref="NoTreeView_DeclaresATextSearchTextPath"/>
+    /// exists to catch elsewhere (issue #418).
+    /// </summary>
+    [Fact]
+    public void TheCommandPaletteList_DeclaresNoTextSearchTextPath()
+    {
+        var doc = XamlDocuments().Single(d => d.Relative == "Views/CommandPaletteWindow.xaml").Doc;
+
+        var list = doc.Descendants()
+                      .FirstOrDefault(e => (string?)e.Attribute(X + "Name") == "CommandList");
+        Assert.NotNull(list);
+
+        Assert.Null(list!.Attribute(TextPathAttr));
+        Assert.DoesNotContain(Sites, s => s.ElementName == "CommandList");
     }
 
     [Fact]

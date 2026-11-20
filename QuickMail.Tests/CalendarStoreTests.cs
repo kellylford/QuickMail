@@ -1,4 +1,6 @@
 using System;
+using System.Globalization;
+using System.Threading;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
@@ -157,6 +159,191 @@ public class CalendarStoreTests : IDisposable
         Assert.Contains(sources, s => s.AccountId == acctA && s.CalendarId == "cal-home" && s.CalendarName == "Home");
         Assert.Contains(sources, s => s.AccountId == acctA && s.CalendarId == "cal-work" && s.CalendarName == "Work");
         Assert.Contains(sources, s => s.AccountId == acctB && s.CalendarId == "cal-fam"  && s.CalendarName == "Family");
+    }
+
+    /// <summary>
+    /// The recorded calendar list is what a source list is, once the sync has enumerated. It
+    /// carries calendars with no events — which the old derivation could not see at all, so the
+    /// first appointment could never be filed into one — and it carries writability.
+    /// </summary>
+    [Fact]
+    public async Task ReplaceCalendarSources_RecordsTheListIncludingEmptyAndReadOnlyCalendars()
+    {
+        var account = Guid.NewGuid();
+
+        await _store.ReplaceCalendarSourcesAsync(account,
+        [
+            new CalendarSourceInfo(account, "cal-home", "Home", CanWrite: true),
+            new CalendarSourceInfo(account, "cal-empty", "Family", CanWrite: true),
+            new CalendarSourceInfo(account, "cal-holidays", "Holidays", CanWrite: false),
+        ]);
+
+        var sources = await _store.LoadCalendarSourcesAsync();
+
+        Assert.Equal(3, sources.Count);
+        // Never had an event in it, and is still offerable.
+        Assert.Contains(sources, s => s.CalendarId == "cal-empty" && s.CanWrite);
+        Assert.Contains(sources, s => s.CalendarId == "cal-holidays" && !s.CanWrite);
+    }
+
+    /// <summary>Re-enumerating drops a calendar the user has deleted or unsubscribed from.</summary>
+    [Fact]
+    public async Task ReplaceCalendarSources_ForgetsWhatIsNoLongerThere()
+    {
+        var account = Guid.NewGuid();
+        await _store.ReplaceCalendarSourcesAsync(account,
+        [
+            new CalendarSourceInfo(account, "cal-home", "Home", CanWrite: true),
+            new CalendarSourceInfo(account, "cal-gone", "Old", CanWrite: true),
+        ]);
+
+        await _store.ReplaceCalendarSourcesAsync(account,
+            [new CalendarSourceInfo(account, "cal-home", "Home", CanWrite: true)]);
+
+        Assert.Equal("cal-home", Assert.Single(await _store.LoadCalendarSourcesAsync()).CalendarId);
+    }
+
+    /// <summary>
+    /// An account the sync has not enumerated yet still reports the calendars its rows are tagged
+    /// with — a profile upgraded between releases keeps its folder tree instead of emptying out
+    /// while the first sync of the session runs.
+    /// </summary>
+    [Fact]
+    public async Task LoadCalendarSources_FallsBackToTaggedRows_ForAnUnenumeratedAccount()
+    {
+        var enumerated = Guid.NewGuid();
+        var notYet = Guid.NewGuid();
+
+        await _store.ReplaceGraphCalendarEventsAsync(notYet,
+            [new CalendarEvent { Uid = "old-1", AccountId = notYet, CalendarId = "cal-legacy", CalendarName = "Legacy" }]);
+        await _store.ReplaceCalendarSourcesAsync(enumerated,
+            [new CalendarSourceInfo(enumerated, "cal-new", "New", CanWrite: true)]);
+
+        var sources = await _store.LoadCalendarSourcesAsync();
+
+        Assert.Contains(sources, s => s.AccountId == notYet && s.CalendarId == "cal-legacy" && s.CanWrite);
+        Assert.Contains(sources, s => s.AccountId == enumerated && s.CalendarId == "cal-new");
+    }
+
+    /// <summary>
+    /// Once an account HAS been enumerated, its recorded list wins outright. Falling back per
+    /// account rather than globally is what stops a calendar the user unsubscribed from being
+    /// resurrected by the stale rows still tagged with it.
+    /// </summary>
+    [Fact]
+    public async Task LoadCalendarSources_DoesNotFallBackForAnAccountAlreadyEnumerated()
+    {
+        var account = Guid.NewGuid();
+        await _store.ReplaceGraphCalendarEventsAsync(account,
+            [new CalendarEvent { Uid = "x", AccountId = account, CalendarId = "cal-gone", CalendarName = "Unsubscribed" }]);
+        await _store.ReplaceCalendarSourcesAsync(account,
+            [new CalendarSourceInfo(account, "cal-home", "Home", CanWrite: true)]);
+
+        var sources = await _store.LoadCalendarSourcesAsync();
+
+        Assert.Equal("cal-home", Assert.Single(sources).CalendarId);
+    }
+
+    /// <summary>
+    /// An enumeration that found nothing still counts as an enumeration. Otherwise the account
+    /// looks untouched forever and the per-account fallback resurrects the calendars its stale rows
+    /// are tagged with — the unsubscribed calendar it exists to keep out, marked writable.
+    /// </summary>
+    [Fact]
+    public async Task ReplaceCalendarSources_WithAnEmptyList_StillCountsAsEnumerated()
+    {
+        var account = Guid.NewGuid();
+        await _store.ReplaceGraphCalendarEventsAsync(account,
+            [new CalendarEvent { Uid = "x", AccountId = account, CalendarId = "cal-gone", CalendarName = "Unsubscribed" }]);
+
+        await _store.ReplaceCalendarSourcesAsync(account, []);
+
+        Assert.Empty(await _store.LoadCalendarSourcesAsync());
+    }
+
+    /// <summary>The marker row is bookkeeping, never a calendar anything can be filed onto.</summary>
+    [Fact]
+    public async Task LoadCalendarSources_NeverReturnsTheEnumerationMarker()
+    {
+        var account = Guid.NewGuid();
+        await _store.ReplaceCalendarSourcesAsync(account,
+            [new CalendarSourceInfo(account, "cal-home", "Home", CanWrite: true)]);
+
+        var sources = await _store.LoadCalendarSourcesAsync();
+
+        Assert.DoesNotContain(sources, s => s.CalendarId.Length == 0);
+        Assert.Equal("cal-home", Assert.Single(sources).CalendarId);
+    }
+
+    /// <summary>
+    /// Removing an account takes its calendar list with it, as it already took its messages,
+    /// folders and events. Without this the names of a former employer's calendars stayed in the
+    /// database indefinitely.
+    /// </summary>
+    [Fact]
+    public async Task DeleteAccountData_AlsoForgetsTheCalendarList()
+    {
+        var gone = Guid.NewGuid();
+        var kept = Guid.NewGuid();
+        await _store.ReplaceCalendarSourcesAsync(gone, [new CalendarSourceInfo(gone, "g", "Gone", CanWrite: true)]);
+        await _store.ReplaceCalendarSourcesAsync(kept, [new CalendarSourceInfo(kept, "k", "Kept", CanWrite: true)]);
+
+        await _store.DeleteAccountDataAsync(gone);
+
+        Assert.Equal(kept, Assert.Single(await _store.LoadCalendarSourcesAsync()).AccountId);
+    }
+
+    /// <summary>
+    /// Sorted the way a person reads a list, not the way bytes compare. The picker and the folder
+    /// tree both show this order and are read down by ear, so it is worth pinning.
+    ///
+    /// <para>
+    /// Two orderings are wrong here and the test names both. Plain byte order puts every capital
+    /// ahead of every lowercase, so "apple" lands after "Zulu". SQLite's NOCASE fixes that and
+    /// nothing else — it folds ASCII A-Z only, so an accented name is still stranded at the bottom,
+    /// which is why the sort happens in C# against the current culture instead.
+    /// </para>
+    ///
+    /// <para>
+    /// Culture is pinned because that is what the comparison reads: in Swedish "ä" sorts after "z",
+    /// so an ambient-culture run would be asserting the machine's locale rather than the change.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task LoadCalendarSources_SortsTheWayAPersonWouldRead()
+    {
+        var previous = Thread.CurrentThread.CurrentCulture;
+        Thread.CurrentThread.CurrentCulture = new CultureInfo("en-US");
+        try
+        {
+            var account = Guid.NewGuid();
+            await _store.ReplaceCalendarSourcesAsync(account,
+            [
+                new CalendarSourceInfo(account, "c1", "Zulu", CanWrite: true),
+                new CalendarSourceInfo(account, "c2", "apple", CanWrite: true),
+                new CalendarSourceInfo(account, "c3", "Beta", CanWrite: true),
+                new CalendarSourceInfo(account, "c4", "Ärger", CanWrite: true),
+            ]);
+
+            var names = (await _store.LoadCalendarSourcesAsync()).Select(s => s.CalendarName).ToList();
+
+            // Byte order would give Beta, Zulu, apple, Ärger; NOCASE apple, Beta, Zulu, Ärger.
+            Assert.Equal(new[] { "apple", "Ärger", "Beta", "Zulu" }, names);
+        }
+        finally { Thread.CurrentThread.CurrentCulture = previous; }
+    }
+
+    [Fact]
+    public async Task DeleteCalendarSources_ForgetsOnlyThatAccount()
+    {
+        var keep = Guid.NewGuid();
+        var drop = Guid.NewGuid();
+        await _store.ReplaceCalendarSourcesAsync(keep, [new CalendarSourceInfo(keep, "k", "Keep", CanWrite: true)]);
+        await _store.ReplaceCalendarSourcesAsync(drop, [new CalendarSourceInfo(drop, "d", "Drop", CanWrite: true)]);
+
+        await _store.DeleteCalendarSourcesAsync(drop);
+
+        Assert.Equal(keep, Assert.Single(await _store.LoadCalendarSourcesAsync()).AccountId);
     }
 
     [Fact]

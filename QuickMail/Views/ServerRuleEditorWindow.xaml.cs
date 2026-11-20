@@ -28,28 +28,34 @@ public partial class ServerRuleEditorWindow : Window
 
     // The account whose rule this is. The folder picker scopes to it: a rule files mail within one
     // mailbox, so another account's "Archive" is the wrong folder, not a second option.
-    // Asked for at pick time rather than captured at construction: this window is modeless, and the
-    // list behind it owns the account selection, so the account can move while the editor is open.
-    // The save path reads that selection when it saves, so the picker must read it when it picks —
-    // capturing here would let a rule be saved to one account with a folder chosen from another.
+    // The owner captures that account when it opens the editor (#683): this window is modeless and the
+    // list behind it stays usable, so the list's selection can move while the editor is open, but the
+    // rule still belongs to — and is saved to — the account it was opened on.
     private readonly Func<Guid?>? _ruleAccountId;
+
+    // How the folder picker creates a folder without this window reaching a mail service itself
+    // (issue #645). Null hides the picker's New Folder button.
+    private readonly FolderCreationSupport? _folderCreation;
 
     public ServerRuleEditorWindow(
         ServerRuleEditorViewModel vm,
         IEnumerable<AccountModel> accounts,
         IReadOnlyDictionary<Guid, List<MailFolderModel>> cachedFolders,
-        Func<Guid?>? ruleAccountId = null)
+        Func<Guid?>? ruleAccountId = null,
+        FolderCreationSupport? folderCreation = null)
     {
         _vm = vm;
         _accounts = accounts;
         _cachedFolders = cachedFolders;
         _ruleAccountId = ruleAccountId;
+        _folderCreation = folderCreation;
         InitializeComponent();
         DataContext = vm;
 
         vm.PickFolderRequested += OnPickFolderRequested;
         vm.CloseRequested += OnCloseRequested;
         vm.AnnouncementRequested += OnAnnouncementRequested;
+        vm.PickSoundFileRequested = PickSoundFile;
 
         Loaded += (_, _) =>
         {
@@ -58,14 +64,40 @@ public partial class ServerRuleEditorWindow : Window
         };
     }
 
+    private string? PickSoundFile()
+    {
+        var dialog = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = "Choose Sound File",
+            Filter = "Sound files (*.wav;*.mp3)|*.wav;*.mp3",
+        };
+        return dialog.ShowDialog(this) == true ? dialog.FileName : null;
+    }
+
+    private void ChooseRuleSoundButton_Click(object sender, RoutedEventArgs e)
+    {
+        // On success, the Sound box, so its value, the new file, is read (#932). Otherwise back here:
+        // the file dialog gives focus back on its own only some of the time.
+        if (_vm.TryChooseRuleSoundFile()) RuleSoundCombo.Focus();
+        else ChooseRuleSoundButton.Focus();
+    }
+
     private (string Id, string Name)? OnPickFolderRequested(string? currentFolderId)
     {
         var picker = FolderPickerWindow.ForRuleTarget(
-            _accounts, _cachedFolders, _ruleAccountId?.Invoke(), currentFolderId, title: "Choose Folder");
+            _accounts, _cachedFolders, _ruleAccountId?.Invoke(), currentFolderId, title: "Choose Folder",
+            folderCreator: _folderCreation?.CreateAsync);
         picker.Owner = this;
+
+        (string Id, string Name)? chosen = null;
         if (picker.ShowDialog() == true && picker.SelectedFolder is MailFolderModel folder)
-            return (folder.FullName, folder.DisplayName);
-        return null;
+            chosen = (folder.FullName, folder.DisplayName);
+
+        // Apply a folder created inside the picker, even on Cancel (a no-op otherwise): it exists on
+        // the server whichever button closed the picker, and the main window's folder tree could not
+        // be rebuilt while that modal loop was running.
+        _folderCreation?.PickerClosed();
+        return chosen;
     }
 
     private void OnCloseRequested() => Close();
@@ -92,6 +124,8 @@ public partial class ServerRuleEditorWindow : Window
         _vm.PickFolderRequested -= OnPickFolderRequested;
         _vm.CloseRequested -= OnCloseRequested;
         _vm.AnnouncementRequested -= OnAnnouncementRequested;
+        _vm.PickSoundFileRequested = null;
+        _vm.StopSounds();   // A preview shouldn't play on over speech once the editor has gone.
 
         // Hand foreground back to the Rules Manager (our owner), not the main window. This window is
         // the active foreground window as it closes, so it may pass foreground to its owner — a

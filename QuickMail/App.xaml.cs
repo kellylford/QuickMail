@@ -31,9 +31,24 @@ public partial class App : Application
     /// </summary>
     public ProfileContext? Profile { get; private set; }
 
+    /// <summary>Start at Windows sign-in (#770). Exposed for Settings, like <see cref="Profile"/>.</summary>
+    public ILaunchAtSignInService? LaunchAtSignIn { get; private set; }
+
+    /// <summary>The sound scheme gallery (#937): GitHub Pages, or the --soundGallery folder or URL.</summary>
+    public SoundGalleryService? SoundGallery { get; private set; }
+
+    /// <summary>
+    /// True when Windows started this process at sign-in and the user wants that to be unobtrusive
+    /// (StartMinimizedAtSignIn): the main window starts minimized without taking focus, moves to the
+    /// notification area if close-to-tray is on, and holds its one-time startup dialogs until the
+    /// user first brings it up.
+    /// </summary>
+    public bool StartQuietly { get; private set; }
+
     // Held so OnExit can dispose them.
     private GraphSendMailService? _graphSendMail;
     private ContactService? _contactService;
+    private RecipientHistoryService? _recipientHistory;
     private GooglePeopleClient? _googlePeopleClient;
     private GoogleCalendarClient? _googleCalendarClient;
     private CalDavCalendarClient? _calDavCalendarClient;
@@ -44,10 +59,17 @@ public partial class App : Application
     private ImapMailService? _imapBackend;
     private GraphMailService? _graphBackend;
     private Pop3MailService? _pop3Backend;
+    private OutboxService? _outboxService;
+    private ConnectivityService? _connectivity;
     private UpdateCheckService? _updateCheckService;
     private ThemeService? _themeService;
     private BugReportService? _bugReportService;
     private WindowsToastNotificationService? _notificationService;
+    private SoundService? _soundService;
+    // Files QuickMail has put on the Windows clipboard (#929): tidied at start, deleted at exit.
+    private ClipboardStaging? _clipboardStaging;
+    // Messages in no mailbox: opened .eml files and attached emails (#939).
+    private OpenedMessageService? _openedMessages;
     private AutoDiscoverService? _autoDiscoverService;
     private ConnectionTruthProbe? _truthProbe;
 
@@ -62,7 +84,21 @@ public partial class App : Application
     public static void Main(string[] args)
     {
         Velopack.VelopackApp.Build()
-            .OnBeforeUninstallFastCallback(_ => LaunchUninstallDataPrompt())
+            .OnBeforeUninstallFastCallback(_ =>
+            {
+                RemoveStartupEntries();
+                RunHookStep("email file removal", () => EmailFileAssociation.Unregister());
+                LaunchUninstallDataPrompt();
+            })
+            // A Windows Installer upgrade runs the OLD copy's uninstall hook before installing
+            // this one (#245), which took the startup entries away; put them back (#770).
+            .OnAfterInstallFastCallback(_ =>
+            {
+                RestoreStartupEntries();
+                RegisterEmailFiles();
+            })
+            // An update registers too, so copies installed before .eml opening (#939) get it.
+            .OnAfterUpdateFastCallback(_ => RegisterEmailFiles())
             .Run();
 
         // One instance per profile (issue #240): with close-to-tray the process can be running
@@ -70,9 +106,23 @@ public partial class App : Application
         // rather than pile up processes sharing one SQLite store. When another instance owns
         // this profile, TryAcquire has already signaled it to come to the foreground, so this
         // launch simply ends. --help is exempt so usage is always available.
+        // A launch by Windows at sign-in (#770) that finds QuickMail already running — the user
+        // opened it before Windows got round to its startup apps — ends without signaling, so
+        // it never pulls that window to the front.
+        // A restart (#507) waits for the process it replaces to let go of the profile first.
+        Helpers.AppRestart.WaitForPreviousInstance(args);
+
         if (!IsHelpRequest(args))
         {
-            _singleInstance = SingleInstanceService.TryAcquire(args);
+            // A restart never signals the instance it replaces (that would bring the closing window
+            // forward), and keeps trying a while longer if it is slow to let go of the profile.
+            var isRestart = Helpers.AppRestart.IsReplacement(args);
+            _singleInstance = SingleInstanceService.TryAcquire(args, signalExisting: !isRestart && !IsSignInLaunch(args));
+            for (var attempt = 0; _singleInstance is null && isRestart && attempt < 60; attempt++)
+            {
+                System.Threading.Thread.Sleep(1000);
+                _singleInstance = SingleInstanceService.TryAcquire(args, signalExisting: false);
+            }
             if (_singleInstance is null) return;
         }
 
@@ -84,16 +134,84 @@ public partial class App : Application
         }
     }
 
-    // Uninstall-time offer to remove user data, mirroring the old installer's prompt.
-    // Update.exe kills hook processes after ~30 seconds — far too short to leave a question
-    // pending — so the prompt runs in a detached PowerShell process that outlives the
-    // uninstall. The default answer keeps everything; only an explicit Yes deletes the
-    // default profile (%APPDATA%\QuickMail) and QuickMail entries in Windows Credential
-    // Manager. Custom --profileDir locations are never touched. The whole mechanism is
-    // best-effort: on script-restricted machines (AppLocker, Constrained Language Mode)
-    // the prompt may never appear, in which case data is kept — the safe default.
-    // Diagnostics go to %TEMP%\quickmail-uninstall.log: LogService is not configured in
-    // the hook context (OnStartup never runs), so it cannot be used here.
+    // Uninstall cleanup for start at sign-in (#770): an uninstalled QuickMail must not leave an
+    // entry in Task Manager's Startup apps. Removes every profile's entry that starts this copy,
+    // and hands what it removed to the next install in case this is the first half of an
+    // upgrade (StartupEntryHandoff). Runs before the data prompt and, like it, must never fail
+    // the uninstall.
+    private static void RemoveStartupEntries()
+    {
+        try
+        {
+            if (Environment.ProcessPath is { } exe)
+            {
+                var removed = LaunchAtSignInService.RemoveAllFor(exe);
+                StartupEntryHandoff.Save(StartupEntryHandoff.DefaultPath, removed, DateTimeOffset.Now);
+            }
+        }
+        catch (Exception ex)
+        {
+            WriteHookDiagnostic($"startup entry removal failed: {ex}");
+        }
+    }
+
+    // Install hook: restores the startup entries an upgrade's uninstall half removed (see
+    // RemoveStartupEntries). On an ordinary install there is no hand-off and nothing happens.
+    // Must never fail the install.
+    private static void RestoreStartupEntries()
+    {
+        try
+        {
+            var entries = StartupEntryHandoff.Take(StartupEntryHandoff.DefaultPath, DateTimeOffset.Now);
+            if (entries.Count == 0 || Environment.ProcessPath is not { } exe) return;
+            var restored = LaunchAtSignInService.Restore(entries, exe);
+            WriteHookDiagnostic($"install hook: restored {restored} of {entries.Count} startup entr{(entries.Count == 1 ? "y" : "ies")}");
+        }
+        catch (Exception ex)
+        {
+            WriteHookDiagnostic($"startup entry restore failed: {ex}");
+        }
+    }
+
+    // Install and update hook: offers QuickMail in Open with for .eml files (#939). Never fails the install.
+    private static void RegisterEmailFiles() => RunHookStep("email file registration", () =>
+    {
+        if (Environment.ProcessPath is { } exe) EmailFileAssociation.Register(exe);
+    });
+
+    private static void RunHookStep(string what, Action step)
+    {
+        try { step(); }
+        catch (Exception ex) { WriteHookDiagnostic($"{what} failed: {ex}"); }
+    }
+    // The install/uninstall hooks run before OnStartup, so LogService is not configured; they
+    // write here instead (%TEMP%\quickmail-uninstall.log, which the data prompt also uses).
+    private static void WriteHookDiagnostic(string text)
+    {
+#pragma warning disable RCS1075 // last-resort diagnostics writer in the install/uninstall hooks — LogService is not configured here, and a failure to write the diagnostic has no further channel
+        try
+        {
+            System.IO.File.AppendAllText(
+                System.IO.Path.Combine(System.IO.Path.GetTempPath(), "quickmail-uninstall.log"),
+                $"{DateTime.Now:s} {text}\r\n");
+        }
+        catch (Exception) { }
+#pragma warning restore RCS1075
+    }
+
+    private static bool IsSignInLaunch(string[] args) =>
+        args.Contains(LaunchAtSignInService.StartupArg, StringComparer.OrdinalIgnoreCase);
+
+    // Uninstall-time offer to remove user data, mirroring the old installer's prompt. The prompt
+    // runs in a detached PowerShell process that outlives the uninstall, and first works out
+    // whether this "uninstall" is really the first half of an upgrade, in which case it asks
+    // nothing (see Helpers/UninstallDataPrompt). The default answer keeps everything; only an
+    // explicit Yes deletes the default profile (%APPDATA%\QuickMail) and QuickMail entries in
+    // Windows Credential Manager. Custom --profileDir locations are never touched. The whole
+    // mechanism is best-effort: on script-restricted machines (AppLocker, Constrained Language
+    // Mode) the prompt may never appear, in which case data is kept — the safe default.
+    // Diagnostics go to %TEMP%\quickmail-uninstall.log: LogService is not configured in the hook
+    // context (OnStartup never runs), so it cannot be used here.
     private static void LaunchUninstallDataPrompt()
     {
         var diagLog = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "quickmail-uninstall.log");
@@ -102,50 +220,30 @@ public partial class App : Application
             var dataDir = System.IO.Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "QuickMail");
             if (!System.IO.Directory.Exists(dataDir)) return;
+            if (Environment.ProcessPath is not { } exe) return;
 
-            var script = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "quickmail-uninstall-prompt.ps1");
-            System.IO.File.WriteAllText(script, """
-                $log = Join-Path $env:TEMP 'quickmail-uninstall.log'
-                Add-Content -Path $log -Value "$(Get-Date -Format s) prompt script started"
-                Add-Type -AssemblyName System.Windows.Forms
-                $dir = Join-Path $env:APPDATA 'QuickMail'
-                if (-not (Test-Path $dir)) { exit }
-                $msg = "QuickMail has been uninstalled.`n`n" +
-                       "Do you also want to remove your QuickMail data? This permanently deletes all accounts, settings, contacts, rules, templates, saved views, and cached mail stored under:`n$dir`n`n" +
-                       "It also removes QuickMail's saved passwords and sign-ins from Windows Credential Manager.`n`n" +
-                       "Choose No to keep everything, so a future install picks up exactly where you left off."
-                $owner = New-Object System.Windows.Forms.Form -Property @{ TopMost = $true }
-                $r = [System.Windows.Forms.MessageBox]::Show($owner, $msg, 'QuickMail Uninstall',
-                    [System.Windows.Forms.MessageBoxButtons]::YesNo,
-                    [System.Windows.Forms.MessageBoxIcon]::Question,
-                    [System.Windows.Forms.MessageBoxDefaultButton]::Button2)
-                Add-Content -Path $log -Value "$(Get-Date -Format s) user answered: $r"
-                if ($r -eq [System.Windows.Forms.DialogResult]::Yes) {
-                    Remove-Item -LiteralPath $dir -Recurse -Force -ErrorAction SilentlyContinue
-                    (cmdkey /list) | ForEach-Object {
-                        if ($_ -match 'target=(QuickMail\S*)') { cmdkey /delete:$($Matches[1]) | Out-Null }
-                    }
-                    Add-Content -Path $log -Value "$(Get-Date -Format s) data removal completed"
-                }
-                Remove-Item -LiteralPath $PSCommandPath -Force -ErrorAction SilentlyContinue
-                """);
+            // A name of its own: an earlier prompt still waiting would otherwise delete this one's
+            // script on its way out (the script removes itself).
+            var script = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"quickmail-uninstall-prompt-{Guid.NewGuid():N}.ps1");
+            System.IO.File.WriteAllText(script, UninstallDataPrompt.Script);
 
             System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
             {
                 FileName = "powershell.exe",
-                Arguments = $"-NoProfile -ExecutionPolicy Bypass -STA -WindowStyle Hidden -File \"{script}\"",
+                Arguments = UninstallDataPrompt.Arguments(script, exe, dataDir, diagLog),
                 UseShellExecute = false,
                 CreateNoWindow = true,
+                // Not the hook's own working directory, which Velopack sets to the install's
+                // current\ folder: a process's working directory cannot be deleted, so the
+                // waiting prompt would keep that folder from being removed by the uninstall.
+                WorkingDirectory = System.IO.Path.GetTempPath(),
             });
-            System.IO.File.AppendAllText(diagLog, $"{DateTime.Now:s} uninstall hook: prompt process launched\r\n");
+            WriteHookDiagnostic("uninstall hook: prompt process launched");
         }
         catch (Exception ex)
         {
             // The uninstall itself must never fail or stall because of this prompt.
-#pragma warning disable RCS1075 // this IS the last-resort diagnostics writer — a failure to write the diagnostic has no further channel and must not escape into the uninstall hook
-            try { System.IO.File.AppendAllText(diagLog, $"{DateTime.Now:s} uninstall hook failed: {ex}\r\n"); }
-            catch (Exception) { }
-#pragma warning restore RCS1075
+            WriteHookDiagnostic($"uninstall hook failed: {ex}");
         }
     }
 
@@ -157,7 +255,9 @@ public partial class App : Application
         if (IsHelpRequest(e.Args))
         {
             MessageBox.Show(
-                "Usage: QuickMail.exe [options]\n\n" +
+                "Usage: QuickMail.exe [options] [file.eml]\n\n" +
+                "  file.eml              Open this email file in its own window. If QuickMail\n" +
+                "                        is already running, it opens there.\n\n" +
                 "Options:\n" +
                 "  --profileDir <path>   Store all data in <path> instead of the default\n" +
                 "                        %AppData%\\QuickMail directory. The directory is\n" +
@@ -165,9 +265,15 @@ public partial class App : Application
                 "  --online              Run in fully online mode: fetch everything live from\n" +
                 "                        IMAP on every folder selection. Nothing is read from\n" +
                 "                        or written to the local SQLite cache.\n\n" +
+                "  --soundGallery <path> Browse sound schemes in <path> (a folder or https URL)\n" +
+                "                        instead of the published gallery. It must be signed\n" +
+                "                        with the gallery's key.\n\n" +
                 "  --updateFeed <path>   Check for updates in <path> (a folder or URL of\n" +
                 "                        Velopack packages) instead of GitHub Releases.\n" +
                 "                        For testing update delivery.\n\n" +
+                "  --startup             Passed by Windows when it starts QuickMail as you\n" +
+                "                        sign in (Settings > Startup). Starts minimized if\n" +
+                "                        that option is on.\n\n" +
                 "  --help                Show this message and exit.\n\n" +
                 "  /debug                Write verbose debug output to quickmail.log.",
                 "QuickMail",
@@ -191,6 +297,16 @@ public partial class App : Application
         // Point the journal at the profile now; whether it actually records is decided below from
         // the ConnectionDiagnostics setting (off by default).
         ConnectionJournal.Configure(profile.ProfileDir);
+
+        // A new install (#507): no account has ever been saved here, so Manage Accounts offers to import
+        // settings instead of starting from nothing. Read before a staged import can write accounts.json.
+        var isNewInstall = SettingsImporter.IsNewInstall(profile.ProfileDir);
+
+        // A settings import staged by the last session (#507) is applied here, before any service
+        // has read a file it replaces, so nothing in memory can write the old settings back over it.
+        var settingsImport = SettingsImporter.ApplyPendingAtStartup(profile.ProfileDir, DateTime.Now);
+        if (settingsImport is not null)
+            LogService.Log($"Settings import applied at startup: {(settingsImport.Succeeded ? "succeeded" : "failed")}.");
 
         // /debug enables verbose debug logging to the log file.
         if (e.Args.Contains("/debug", StringComparer.OrdinalIgnoreCase))
@@ -223,9 +339,20 @@ public partial class App : Application
         if (onlineMode)
             LogService.Log("Online mode enabled — SQLite cache bypassed.");
 
+        // Start at sign-in (#770): installed copies only — their path survives updates, so the
+        // entry never goes stale. Never from a ui-probe run, which must not touch the registry.
+        LaunchAtSignIn = new LaunchAtSignInService(
+            Environment.ProcessPath,
+            ProfileContext.ParseProfileDir(e.Args) is null ? null : profile.ProfileDir,
+            isSupported: VelopackRuntime.IsInstalled && UiProbe == null);
+
         // Left/Right/Home/End through a wrapped tab strip (#528). A class handler so a window
         // with tabs added later cannot be left out.
         TabStripNavigation.Install();
+
+        // A context menu opened from the keyboard takes focus once, on its first item, rather than
+        // on the menu and then the item (#693). A class handler, so no menu can be left out.
+        ContextMenuInitialFocus.Install();
 
         // Debug screenshot capture (#175): the real engine exists only under /debug;
         // otherwise a null object keeps the feature structurally unreachable. One
@@ -275,7 +402,17 @@ public partial class App : Application
             // cache of the account but the account itself.
             var localStore = new LocalStoreService(profile);
             if (!onlineMode)
+            {
                 localStore.Initialize();
+                // Full-text search (#717): index whatever is waiting — every cached message, the first
+                // launch after upgrading — without holding up startup.
+                localStore.StartBackgroundSearchIndexing();
+
+                // The Local Calendar from a settings import (#507) needs the store, so it lands here.
+                // Off the UI thread: the store's continuations must not need this thread back.
+                if (System.IO.File.Exists(System.IO.Path.Combine(profile.ProfileDir, SettingsImporter.PendingCalendarFileName)))
+                    Task.Run(() => SettingsImporter.ApplyPendingCalendarAsync(profile.ProfileDir, localStore)).GetAwaiter().GetResult();
+            }
 
             _pop3Backend          = new Pop3MailService(localStore, onlineMode);
             var pop3Backend       = _pop3Backend;
@@ -293,6 +430,11 @@ public partial class App : Application
             // the throwaway probe account Test Connection builds, for instance — is routed by its
             // BackendKind rather than defaulting to IMAP.
             var mailRouter = new MailServiceRouter(new IMailService[] { imapBackend, graphBackend, pop3Backend }, BackendFor);
+            // Opened .eml files and attached emails live under one reserved account id (#939), so every
+            // path that reads a message through the router (pictures, attachments, Save, Print, Forward)
+            // works on them unchanged.
+            _openedMessages = new OpenedMessageService();
+            mailRouter.RegisterAccount(OpenedMessageService.AccountId, _openedMessages);
 
             // ui-probe (#180 Decision D): network hard-off at the DI root. EVERY
             // consumer of the mail/send/oauth services gets the offline no-op —
@@ -310,6 +452,11 @@ public partial class App : Application
             // delta cursor — hence wired after localStore. Each notifier filters to its own accounts.
             _graphNotifier  = new GraphChangeNotifier(graphBackend.Client, localStore, configService);
             _changeNotifier = new ChangeNotifierRouter(new IChangeNotifier[] { imapBackend, _graphNotifier });
+
+            // The app's one answer to "are we online?" (#637): Windows' network signal plus what real
+            // operations report per account. Null in ui-probe mode, which is structurally offline and
+            // must not say so in its captures.
+            _connectivity = probeMode ? null : new ConnectivityService(new NetworkChangeAvailabilitySource());
 
             // Load accounts once — after the store is initialized — and reuse the list for the VM.
             // Router registration runs via mainVm.RegisterAccountBackend (set below), which also
@@ -362,6 +509,36 @@ public partial class App : Application
                 }
             }
 
+            // One-time sender-address backfill (#803): rows cached before from_email existed get it filled in
+            // place. Unlike the #366 rebuild above, nothing is cleared — POP3's cache is the only copy of its mail.
+            // The local half runs here, before the first list is shown, so an older Microsoft row already reads by
+            // name (#801). IMAP rows with no cached body are fetched by the first sync's trickle, and the
+            // marker is written only once that has worked through every IMAP account in the profile, connected at
+            // startup or not; until then each launch resumes it (both halves only touch rows still lacking an
+            // address). Each part is recorded as it finishes, so a launch repeats only what is left: the local half
+            // runs once, and an account the server half has worked through is not asked again while another one
+            // can't connect (review of #806). Skipped in --online mode (no local store).
+            var senderBackfill = new SenderAddressBackfillProgress(profile.ProfileDir);
+            var senderBackfillPending = !onlineMode && !probeMode && !senderBackfill.IsDone;
+            if (senderBackfillPending && !senderBackfill.IsLocalDone)
+            {
+                // Isolated like the #366 clear: a failure here must never stop startup.
+                try
+                {
+                    var graphIds = accounts.Where(a => a.BackendKind == BackendKind.MicrosoftGraph).Select(a => a.Id).ToList();
+                    // Timed: it holds up the first window, once (review of #806). About a second per 100,000 rows.
+                    var senderTimer = System.Diagnostics.Stopwatch.StartNew();
+                    var filled = localStore.BackfillSenderEmailsLocallyAsync(graphIds).GetAwaiter().GetResult();
+                    LogService.Log($"Sender-address backfill: {filled} cached row(s) filled locally in {senderTimer.ElapsedMilliseconds} ms.");
+                    senderBackfill.RecordLocalDone();
+                }
+                catch (Exception senderEx)
+                {
+                    senderBackfillPending = false;
+                    LogService.Log("Sender-address backfill failed locally; will retry next launch.", senderEx);
+                }
+            }
+
             // Before anything connects: an account hand-configured before the provider catalog
             // existed can be pointed at one of our hosts with the wrong encryption mode, which fails
             // every send with an error about the socket rather than the setting; and one holding a
@@ -377,6 +554,17 @@ public partial class App : Application
 
             _contactService = new ContactService(profile);
             var contactService = _contactService;
+            _recipientHistory = new RecipientHistoryService(profile);
+            // Your own addresses are never remembered (#1037), but an earlier build did remember them, and
+            // an address can become yours later by being added as an account. Forget them each start; it
+            // writes nothing when none are there. Off the startup path, and best effort.
+            var ownAddresses = ViewModels.ComposeViewModel.OwnAddresses(accounts);
+            var history = _recipientHistory;
+            _ = Task.Run(async () =>
+            {
+                try { await history.ForgetAsync(ownAddresses); }
+                catch (Exception ex) { LogService.Log("Startup: could not forget the user's own addresses from the remembered people", ex); }
+            });
             _templateService = new TemplateService(profile);
             var templateService = _templateService;
             // accountService drives the one-time "All accounts" → per-account rule migration (#333 D1).
@@ -384,10 +572,26 @@ public partial class App : Application
             // Server-side (Exchange/Graph) Inbox rules — read/manage a Graph account's messageRules.
             // Reuses the shared GraphClient (no own disposables), so no disposal wiring needed.
             var serverRuleService = new GraphServerRuleService(accountService, graphBackend.Client);
-            var syncService = new SyncService(effectiveMail, localStore, configService, ruleService, probeMode: probeMode);
+            var syncService = new SyncService(effectiveMail, localStore, configService, ruleService, probeMode: probeMode, connectivity: _connectivity);
+            // The Outbox (#637): mail written while the server could not be reached. Drains through the
+            // same router and send service as a live send, so a queued message leaves exactly as an
+            // online one would have. It drains on reconnect, after the startup connect, on the fallback
+            // sync tick, and on Send Outbox Now.
+            _outboxService = new OutboxService(localStore, effectiveMail, effectiveSmtp, accountService, credentialService, connectivity: _connectivity, onlineMode: onlineMode);
+            var outboxService = _outboxService;
             // The one-time immutable-id wipe emptied these accounts' store, so their first re-sync would
             // read old mail as new and re-run rules over it on upgrade day. Baseline it (#366/N5).
             if (immutableIdRebuilt) syncService.SeedRebuildBaseline(rebuiltGraphAccountIds);
+
+            // The server half of the sender-address backfill (#803, above): marks it done once every IMAP account in
+            // the profile has been worked through. The list is taken here, from all of them, because the sync itself
+            // is handed the connected ones only — an account that can't connect at startup must keep the marker
+            // unwritten, not be silently left out (review of #806). Accounts an earlier launch finished are not owed.
+            if (senderBackfillPending)
+                syncService.RequestSenderEmailBackfill(
+                    senderBackfill.Owed(accounts.Where(a => a.BackendKind == BackendKind.ImapSmtp && !a.IsShared).Select(a => a.Id)),
+                    senderBackfill.RecordDone,
+                    senderBackfill.RecordAccountDone);
 
             // #529 step 4: an IMAP→Graph convert purges the account's store before it re-syncs. If the
             // app closed (or crashed) between the purge and the first baselined sync, the store is empty
@@ -411,6 +615,10 @@ public partial class App : Application
             var contactSyncService  = new ContactSyncService(accountService, contactService, graphContactSource, googleContactSource, iCloudContactSource);
 
             var startupCfg = configService.Load();
+            // #300: before any window with a text field exists, so every editor that loads from
+            // here on sends Space to screen readers as a typed character.
+            TypedSpaceFix.Register();
+            TypedSpaceFix.SetEnabled(startupCfg.NvdaTypingFix);
             // ui-probe (#180): theme/scale land in the loaded config BEFORE
             // ThemeService.Initialize so the first render is already correct;
             // ThemeService never persists, so config.ini is untouched.
@@ -468,8 +676,27 @@ public partial class App : Application
                                                                  _calDavCalendarClient, credentialService);
 
             _updateCheckService = new UpdateCheckService(configService, ParseUpdateFeed(e.Args));
+            try
+            {
+                SoundGallery = new SoundGalleryService(ParseArgValue(e.Args, "--soundGallery"));
+            }
+            catch (ArgumentException ex)
+            {
+                LogService.Log("--soundGallery was not an https address or a folder; using the published gallery", ex);
+                SoundGallery = new SoundGalleryService();
+            }
             _bugReportService   = new BugReportService(credentialService);
             _notificationService = new WindowsToastNotificationService();
+            var soundsFolder = System.IO.Path.Combine(profile.ProfileDir, SoundCatalog.CustomFolderName);
+            // The one-time move of 0.8.69's shared sound files into each scheme's folder (#948), before
+            // the sound service starts, so nothing plays from a folder being changed.
+            if (!probeMode) SoundFolderMigration.RunAtStartup(profile.ProfileDir, ruleService.LoadRules);
+            // Then the folders of schemes that are no longer anywhere (#955), such as a new scheme
+            // left by QuickMail stopping while Settings was open. Nothing else is open at this point.
+            if (!probeMode) SoundSchemeFolderCleanup.RunAtStartup(profile.ProfileDir);
+            _soundService = probeMode ? null : new SoundService(
+                configService, soundsFolder, new NAudioSoundOutput(), isQuiet: WindowsQuietState.IsQuiet);
+            ruleService.Sounds = _soundService;
             // Answers the question the app cannot answer about itself: when an account shows as
             // disconnected, is it actually unreachable? Probes on a connection that shares nothing
             // with the pools or watchers. Label resolution reads the live account list.
@@ -479,6 +706,12 @@ public partial class App : Application
             _truthProbe = probeMode ? null : new ConnectionTruthProbe(
                 mailRouter,
                 id => accounts.FirstOrDefault(a => a.Id == id)?.AccountLabel ?? id.ToString());
+
+            // Off the startup path: tidying folders a crashed QuickMail left behind is not worth a delay.
+
+            _clipboardStaging = probeMode ? null : new ClipboardStaging();
+
+            if (_clipboardStaging is { } staging) _ = Task.Run(() => staging.DeleteAbandoned());
 
             var mainVm = new MainViewModel(
                 effectiveMail, accountService, credentialService, localStore, effectiveOAuth, syncService, configService, commandRegistry, viewService, ruleService, effectiveSmtp,
@@ -492,20 +725,47 @@ public partial class App : Application
                 truthProbe: probeMode ? null : _truthProbe,
                 rowLayoutService: rowLayoutService,
                 watchService: watchService,
-                folderViewState: folderViewState);
+                folderViewState: folderViewState,
+                outboxService: outboxService,
+                connectivity: _connectivity,
+                soundService: _soundService,
+                clipboard: probeMode ? null : ClipboardService.Default,
+                clipboardStaging: _clipboardStaging,
+                openedMessages: probeMode ? null : _openedMessages,
+                soundGallery: probeMode ? null : SoundGallery);   // #971: the daily check for scheme updates
             mainVm.RegisterAccountBackend = a => { if (!probeMode) mailRouter.RegisterAccount(a.Id, BackendFor(a)); };
+            // #31: a credential-less shared mailbox borrows its parent account's token. The resolver runs
+            // on background sweep threads, so it goes through ResolveAccountById — a thread-safe snapshot
+            // of the account list — never the UI-thread-owned Accounts collection directly.
+            msOAuthService.ResolveAccount = mainVm.ResolveAccountById;
             mainVm.ImmutableIdRebuildAnnouncePending = immutableIdRebuilt;   // #366 one-time re-sync notice
+            mainVm.ProfileDirectory = profile.ProfileDir;   // #507 folder heal after a settings import
+            mainVm.IsNewInstall = isNewInstall;               // #507 import offer in Manage Accounts
             // Registers/unregisters the Help command and shows or hides the menu item, and sets
             // ConnectionJournal.Enabled — so nothing records until the user opts in.
             mainVm.ApplyConnectionDiagnosticsSetting(startupCfg.ConnectionDiagnostics);
+            mainVm.ApplySettingsTransferSetting(startupCfg.AllowSettingsTransfer);   // #507, off by default
             mainVm.LoadAccountList(accounts);
 
-            var mainWindow = new MainWindow(mainVm, effectiveSmtp, accountService, credentialService, effectiveMail, effectiveOAuth, commandRegistry, contactService, configService, localStore, viewService, ruleService, templateService, featureGate, flagService, customDictionary, themeService, _bugReportService, _notificationService, contactSyncService, graphCalendarSync, serverRuleService, providerCatalog, _autoDiscoverService, _truthProbe, rowLayoutService, watchService);
+            var mainWindow = new MainWindow(mainVm, effectiveSmtp, accountService, credentialService, effectiveMail, effectiveOAuth, commandRegistry, contactService, configService, localStore, viewService, ruleService, templateService, featureGate, flagService, customDictionary, themeService, _bugReportService, _notificationService, contactSyncService, graphCalendarSync, serverRuleService, providerCatalog, _autoDiscoverService, _truthProbe, rowLayoutService, watchService, outboxService, _connectivity, _recipientHistory);
 
             // Clicking a new-mail toast brings QuickMail to the foreground and opens the referenced
             // message. OnActivated may fire on a background thread, so marshal to the UI thread first.
             _notificationService.Activated += act =>
                 mainWindow.Dispatcher.BeginInvoke(() => mainWindow.HandleNotificationActivation(act));
+
+            if (IsSignInLaunch(e.Args) && UiProbe == null)
+            {
+                StartQuietly = startupCfg.StartMinimizedAtSignIn;
+                LogService.Log(StartQuietly
+                    ? "Started by Windows at sign-in; starting minimized."
+                    : "Started by Windows at sign-in.");
+            }
+            if (StartQuietly)
+            {
+                mainWindow.ShowActivated = false;
+                mainWindow.WindowState = WindowState.Minimized;
+            }
 
             mainWindow.Show();
 
@@ -513,7 +773,26 @@ public partial class App : Application
             // another process; restore the window (and drop the tray icon) exactly as the
             // tray icon's Open action would. The signal arrives on a thread-pool thread.
             _singleInstance?.ListenForActivation(() =>
-                mainWindow.Dispatcher.BeginInvoke(() => mainWindow.RestoreFromTray()));
+                mainWindow.Dispatcher.BeginInvoke(() =>
+                {
+                    mainWindow.RestoreFromTray();
+                    OpenRequestedEmailFiles(mainVm, _singleInstance?.TakeOpenRequests() ?? []);
+                }));
+
+            // Started to open a .eml file (#939), from Explorer's Open with: shown once the main window
+            // has drawn, so the message window opens over it rather than behind it. Anything another
+            // launch left while this one was starting is taken up too.
+            if (!probeMode)
+            {
+                var atStart = SingleInstanceService.EmailFileFrom(e.Args) is { } first ? new List<string> { first } : [];
+                void OnRendered(object? s, EventArgs a)
+                {
+                    mainWindow.ContentRendered -= OnRendered;
+                    atStart.AddRange(_singleInstance?.TakeOpenRequests() ?? []);
+                    OpenRequestedEmailFiles(mainVm, atStart);
+                }
+                mainWindow.ContentRendered += OnRendered;
+            }
         }
         catch (Exception ex)
         {
@@ -525,10 +804,28 @@ public partial class App : Application
         }
     }
 
+    /// <summary>Opens each .eml file asked for, in its own message window (#939).</summary>
+    private static async void OpenRequestedEmailFiles(MainViewModel vm, IReadOnlyList<string> paths)
+    {
+        // async void: an event-style reaction on the UI thread; OpenEmailFileAsync reports its own failures.
+        foreach (var path in paths)
+        {
+            try { await vm.OpenEmailFileAsync(path); }
+            catch (Exception ex) { LogService.Log("OpenRequestedEmailFiles", ex); }
+        }
+    }
     protected override void OnExit(ExitEventArgs e)
     {
+        // Copied messages and attachments. Kept while the clipboard still offers them: Windows holds the
+        // paths after QuickMail has gone, and pasting into Explorer afterwards would find nothing. The next
+        // start tidies them (DeleteAbandoned). Otherwise nothing can paste them, so they go now.
+        _openedMessages?.Dispose();
+        if (_clipboardStaging != null && ClipboardService.Default.GetMarker() == null)
+            _clipboardStaging.DeleteMine();
         _changeNotifier?.Dispose(); // stops all watchers (IDLE + Graph poll) + severs the event chain
+        _connectivity?.Dispose();   // stops listening to NetworkChange; after the notifiers, which feed it
         _graphNotifier?.Dispose();  // disposes the Graph poll CTS (StopWatchers already ran; idempotent)
+        _outboxService?.Dispose();  // cancels an in-flight drain before the pools it sends through go away
         _imapBackend?.Dispose();    // closes connection pools (StopWatchers already ran, and is idempotent)
         _graphBackend?.Dispose();   // releases GraphClient/HttpClient; after the notifiers, which poll through its client
         _pop3Backend?.Dispose();    // releases the per-account session locks (POP3 holds no open connection)
@@ -538,11 +835,14 @@ public partial class App : Application
         _calDavCalendarClient?.Dispose();
         _cardDavContactClient?.Dispose();
         _contactService?.Dispose();
+        _recipientHistory?.Dispose();
         _templateService?.Dispose();
         _updateCheckService?.Dispose();
         _bugReportService?.Dispose();
         _themeService?.Dispose();   // unsubscribes SystemParameters/SystemEvents static events
         _notificationService?.Dispose(); // unhooks the toast-activation static event
+        _soundService?.Dispose();   // ends the sound worker; after everything that could ask for a sound
+        SoundGallery?.Dispose();
         _autoDiscoverService?.Dispose(); // releases the autoconfig HttpClient
         _truthProbe?.Dispose();     // cancels in-flight probes before releasing their token source
         ScreenshotCapture?.Dispose(); // flushes any in-flight PNG save (best effort, bounded)
@@ -566,6 +866,17 @@ public partial class App : Application
                 disable.Add(args[i + 1]);
         }
         return (enable, disable);
+    }
+
+    /// <summary>The value after a flag such as --soundGallery, or null if it isn't given.</summary>
+    private static string? ParseArgValue(string[] args, string flag)
+    {
+        for (int i = 0; i < args.Length - 1; i++)
+        {
+            if (string.Equals(args[i], flag, StringComparison.OrdinalIgnoreCase))
+                return args[i + 1];
+        }
+        return null;
     }
 
     private static bool IsHelpRequest(string[] args)
@@ -676,7 +987,11 @@ public partial class App : Application
             {
                 try
                 {
-                    if (System.IO.Directory.GetLastWriteTimeUtc(dir) < cutoff)
+                    // Folders that tidy themselves, by their own rules (#929, #939): the files QuickMail has
+                    // on the clipboard, and .eml files waiting to be opened. A folder's own timestamp does
+                    // not change when files deeper inside it do, so age would delete them from under use.
+                    var name = System.IO.Path.GetFileName(dir);
+                    if (name is "Clipboard" or "Open") continue;                    if (System.IO.Directory.GetLastWriteTimeUtc(dir) < cutoff)
                         System.IO.Directory.Delete(dir, recursive: true);
                 }
                 catch (Exception ex)

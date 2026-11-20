@@ -28,6 +28,15 @@ public class SmtpServiceDispatchTests
             return Task.CompletedTask;
         }
 
+        public bool PreparedCalled { get; private set; }
+
+        public Task SendPreparedAsync(MimeKit.MimeMessage message, AccountModel account, string? password,
+            CancellationToken ct = default)
+        {
+            PreparedCalled = true;
+            return Task.CompletedTask;
+        }
+
         public bool VerifyCalled { get; private set; }
 
         public Task VerifyAsync(AccountModel account, string? password, CancellationToken ct = default)

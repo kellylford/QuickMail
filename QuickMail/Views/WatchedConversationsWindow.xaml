@@ -115,7 +115,7 @@
                  ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                  AutomationProperties.Name="Watched conversations">
             <ListBox.ItemContainerStyle>
-                <Style TargetType="ListBoxItem">
+                <Style TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
                     <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
                     <Setter Property="Padding" Value="6,4"/>
                 </Style>
@@ -124,8 +124,8 @@
                 <DataTemplate>
                     <StackPanel>
                         <TextBlock Text="{Binding Label}" TextTrimming="CharacterEllipsis"/>
-                        <TextBlock FontSize="{DynamicResource Theme.FontSizeSmall}"
-                                   Foreground="{DynamicResource Theme.TextSecondary}">
+                        <TextBlock Style="{StaticResource RowSecondaryText}"
+                                   FontSize="{DynamicResource Theme.FontSizeSmall}">
                             <Run Text="{Binding CountText, Mode=OneWay}"/><Run Text=" · watched "/><Run Text="{Binding WatchedSince, Mode=OneWay}"/>
                         </TextBlock>
                     </StackPanel>

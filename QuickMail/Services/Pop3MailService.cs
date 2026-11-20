@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using MailKit.Net.Pop3;
 using MimeKit;
+using QuickMail.Helpers;
 using QuickMail.Models;
 
 namespace QuickMail.Services;
@@ -25,9 +26,12 @@ namespace QuickMail.Services;
 /// leave-on-server off, dropped from the server) nothing can fetch it again. That single fact drives
 /// the sync contract below: no code path may delete cached mail because a server listing did not
 /// mention it.</item>
-/// <item>Four synthetic folders are exposed — Inbox, Sent, Drafts, Trash — and only the Inbox is
-/// backed by the server. Folder CRUD throws <see cref="NotSupportedException"/>; callers gate on
-/// <see cref="BackendKind.Pop3Smtp"/> rather than catching.</item>
+/// <item>Four built-in folders are exposed — Inbox, Sent, Drafts, Trash — and only the Inbox is
+/// backed by the server. Any other folder is one the user made (#794): it exists only in the store
+/// (<see cref="Pop3LocalFolder"/>), is filed under an opaque id that never changes, and nests by
+/// <see cref="MailFolderModel.ParentId"/> — the shape Microsoft 365 folders already have, so the
+/// tree, the pickers and folder paths need nothing new. The built-in four cannot be renamed, moved or
+/// deleted.</item>
 /// </list>
 ///
 /// <para><b>The sync contract (#462).</b> <c>SyncService</c> routes any folder whose max message key
@@ -61,8 +65,19 @@ public class Pop3MailService : IMailService
     /// know an id was never on the server.</summary>
     internal const string LocalIdPrefix = "local-";
 
-    /// <summary>The complete folder namespace of a POP3 account. Anything else does not exist.</summary>
-    internal static readonly string[] SyntheticFolders = [InboxFolder, SentFolder, DraftsFolder, TrashFolder];
+    /// <summary>The built-in folders of a POP3 account. Every other folder is a <see cref="Pop3LocalFolder"/>.</summary>
+    internal static readonly string[] BuiltInFolders = [InboxFolder, SentFolder, DraftsFolder, TrashFolder];
+
+    /// <summary>Prefix of a local folder's id (#794). No built-in name starts with it.</summary>
+    internal const string LocalFolderPrefix = "folder-";
+
+    /// <summary>
+    /// <see cref="MailFolderModel.ParentId"/> of a top-level local folder. Not null, because a null
+    /// ParentId means "IMAP-style path in FullName" to <c>FolderTreeBuilder</c> and
+    /// <c>FolderPaths</c>, and this folder's FullName is an opaque id; an id that matches no folder is
+    /// how both of them already root a Microsoft 365 top-level folder.
+    /// </summary>
+    internal const string TopLevelParentId = "";
 
     private readonly ILocalStoreService _store;
     private readonly bool _onlineMode;
@@ -77,6 +92,14 @@ public class Pop3MailService : IMailService
     /// download back to back, so this is load-bearing.
     /// </summary>
     private readonly ConcurrentDictionary<Guid, SemaphoreSlim> _locks = new();
+
+    /// <summary>
+    /// Serializes filing mail against changing folders (#794). Each checks that a folder exists and
+    /// then writes, so without this a rule could file a message into a folder between a delete
+    /// reading the folder list and removing it — leaving the message under an id no folder has,
+    /// unreachable from every part of the UI. Local and quick, so one lock serves every account.
+    /// </summary>
+    private readonly SemaphoreSlim _folderLock = new(1, 1);
 
     private bool _disposed;
 
@@ -144,8 +167,8 @@ public class Pop3MailService : IMailService
     // ── Folders ───────────────────────────────────────────────────────────────
 
     /// <summary>
-    /// The four synthetic folders, with counts read from the local store so the folder tree shows
-    /// real unread numbers (there is no server-side STATUS to ask).
+    /// The four built-in folders and every folder the user made, with counts read from the local
+    /// store so the folder tree shows real unread numbers (there is no server-side STATUS to ask).
     /// </summary>
     public async Task<List<MailFolderModel>> GetFoldersAsync(Guid accountId, CancellationToken ct = default)
     {
@@ -159,9 +182,21 @@ public class Pop3MailService : IMailService
 
         if (_onlineMode) return folders;
 
+        // Not caught: a listing without the user's folders would replace the cached folder list and
+        // make them vanish from the tree without a word. Throwing leaves the caller's last good list
+        // in place, as for an IMAP account whose server cannot be reached.
+        foreach (var local in await _store.LoadPop3LocalFoldersAsync(accountId))
+            folders.Add(new()
+            {
+                AccountId   = accountId,
+                FullName    = local.Id,
+                DisplayName = local.DisplayName,
+                ParentId    = local.ParentId ?? TopLevelParentId,
+            });
+
         try
         {
-            // One grouped aggregate for all four folders, rather than four scans that each build a
+            // One grouped aggregate for every folder, rather than a scan per folder that each build a
             // dictionary of every id in a folder only to count it.
             var counts = await _store.CountMessagesByFolderAsync(accountId);
             foreach (var f in folders)
@@ -284,7 +319,9 @@ public class Pop3MailService : IMailService
 
     /// <summary>
     /// Removes messages from the local store, and — only when the account is set to remove collected
-    /// mail from the server — issues the matching DELEs.
+    /// mail from the server — issues the matching DELEs first. If the server can't be reached this
+    /// throws with the local copies still there, so the delete can be tried again; removing them
+    /// first left nothing for a retry to act on, and the mail stayed on the server for good.
     /// <para>The DELE is addressed by index, and indexes are only meaningful within one session, so
     /// every id is re-resolved against a fresh UIDL listing first. An id no longer listed (another
     /// client collected it) is skipped rather than deleted by position: deleting the wrong message
@@ -295,8 +332,6 @@ public class Pop3MailService : IMailService
     {
         if (_onlineMode) return;   // nothing was ever collected; see LoadFromStoreAsync
 
-        await _store.DeleteSummariesAsync(accountId, folderName, messageIds);
-
         // Locally-authored mail (sent, drafts) was never on the server; nothing to delete there.
         var serverIds = messageIds.Where(id => !id.StartsWith(LocalIdPrefix, StringComparison.Ordinal)).ToList();
 
@@ -305,10 +340,11 @@ public class Pop3MailService : IMailService
         // and the same mail re-downloading into the Inbox on the very next sweep.
         await _store.AddPop3CollectedUidlsAsync(accountId, serverIds);
 
-        if (!_accounts.TryGetValue(accountId, out var account) || account.Pop3LeaveMailOnServer)
+        if (!_accounts.TryGetValue(accountId, out var account) || account.Pop3LeaveMailOnServer || serverIds.Count == 0)
+        {
+            await _store.DeleteSummariesAsync(accountId, folderName, messageIds);
             return;
-
-        if (serverIds.Count == 0) return;
+        }
 
         var wanted = new HashSet<string>(serverIds, StringComparer.Ordinal);
         var anyDeleted = await RunMaildropSessionAsync(accountId, async client =>
@@ -325,6 +361,8 @@ public class Pop3MailService : IMailService
 
             return (Result: deleted, Quit: deleted);
         }, ct);
+
+        await _store.DeleteSummariesAsync(accountId, folderName, messageIds);
 
         LogService.Log($"POP3 [{account.AccountLabel}]: permanently deleted {serverIds.Count} message(s) locally, {(anyDeleted ? "and on the server" : "none still on the server")}.");
     }
@@ -390,6 +428,30 @@ public class Pop3MailService : IMailService
 
         using var ms = new MemoryStream(mimeBytes);
         var message  = await MimeMessage.LoadAsync(ms, ct);
+
+        return await ExtractPartAsync(message, messageId, partSpecifier, ct);
+    }
+
+    /// <summary>
+    /// One part of a parsed message, as DownloadAttachmentAsync returns it: an inline picture by its
+    /// Content-ID, or an attachment by its index in <see cref="MimeMessage.Attachments"/>. Shared with
+    /// <see cref="OpenedMessageService"/>, which holds .eml files the same way this holds collected mail.
+    /// </summary>
+    internal static async Task<byte[]> ExtractPartAsync(MimeMessage message, string messageId, string partSpecifier, CancellationToken ct)
+    {
+        // A picture sent inside the message is addressed by its Content-ID (#729; see InlineImagesOf).
+        if (partSpecifier.StartsWith(InlinePartPrefix, StringComparison.Ordinal))
+        {
+            var cid = partSpecifier[InlinePartPrefix.Length..];
+            var inlinePart = message.BodyParts.OfType<MimePart>()
+                .FirstOrDefault(p => string.Equals(p.ContentId, cid, StringComparison.OrdinalIgnoreCase)
+                                     && p.Content is not null)
+                ?? throw new InvalidOperationException($"Picture '{cid}' is not in POP3 message {messageId}.");
+            using var inlineBuf = new MemoryStream();
+            await inlinePart.Content!.DecodeToAsync(inlineBuf, ct);
+            return inlineBuf.ToArray();
+        }
+
         var parts    = message.Attachments.ToList();
 
         if (!int.TryParse(partSpecifier, out var idx) || idx < 0 || idx >= parts.Count)
@@ -449,7 +511,7 @@ public class Pop3MailService : IMailService
     /// reported as received now: their real date is inside the message, which POP3 cannot show us
     /// without downloading it, and "now" is the answer that puts them inside the sweep's window so
     /// the fetch actually happens.</para>
-    /// <para>Only the Inbox contacts the server; the synthetic folders have no server side, and in
+    /// <para>Only the Inbox contacts the server; every other folder has no server side, and in
     /// <c>--online</c> mode there is no store, so both answer from what they have.</para>
     /// </summary>
     public async Task<IReadOnlyList<(string Id, DateTimeOffset ReceivedUtc, bool IsRead)>> GetFolderMessageIdDatesAsync(
@@ -537,7 +599,7 @@ public class Pop3MailService : IMailService
             .ToDictionary(s => s.MessageId, s => s.Preview, StringComparer.Ordinal);
     }
 
-    // ── Copy / Move (between the synthetic folders) ───────────────────────────
+    // ── Copy / Move (between this account's folders) ──────────────────────────
 
     public Task CopyMessagesAsync(
         Guid accountId, string folderName, IList<string> messageIds, string destinationFolder, CancellationToken ct = default)
@@ -547,23 +609,241 @@ public class Pop3MailService : IMailService
         Guid accountId, string folderName, IList<string> messageIds, string destinationFolder, CancellationToken ct = default)
         => MoveLocalAsync(accountId, folderName, destinationFolder, messageIds, copy: false);
 
-    // ── Folder CRUD — not supported ───────────────────────────────────────────
-    // POP3 has no folder namespace. Callers gate on BackendKind (MainWindow's SupportsServerFolders
-    // guards the folder-tree entry points) so the user rarely reaches these; they throw with a plain
-    // reason rather than silently doing nothing, because ungated paths (the folder picker's New
-    // Folder button) surface the thrown message as the explanation.
+    // ── Taking messages from another account (#929) ───────────────────────────
+
+    public bool CanAppendMessages(Guid accountId) => !_onlineMode;
+
+    /// <summary>
+    /// Files a message from another account into one of this account's local folders: stored exactly
+    /// as collected mail is, with its original kept, so it opens, saves and forwards like any other.
+    /// The date shown is the message's own Date header, as for every POP3 message.
+    /// </summary>
+    public async Task AppendMessageAsync(Guid accountId, string folderName, Stream original, bool isRead, bool isFlagged,
+                                         DateTimeOffset received, CancellationToken ct = default)
+    {
+        if (_onlineMode)
+            throw new InvalidOperationException(OnlineModeExplanation);
+
+        using var buffer = new MemoryStream();
+        await original.CopyToAsync(buffer, ct);
+        var raw = buffer.ToArray();
+        buffer.Position = 0;
+        var msg = await MimeMessage.LoadAsync(buffer, ct);
+
+        var id = NewLocalId();
+        await StoreMessageAsync(accountId, id, msg, folderName, isRead, ct, raw);
+        if (isFlagged)
+            await SetMessageFlaggedAsync(accountId, folderName, id, true, ct);
+    }
+    // ── Local folders (#794) ──────────────────────────────────────────────────
+    // POP3 has no folder namespace on the server, so the folders a user makes live in the store
+    // alone. Each failure throws with a sentence the caller shows as is ("Failed to create folder:
+    // …"), because every one of them is something the user did and can correct. Each runs under
+    // _folderLock, as filing mail does.
 
     public Task CreateFolderAsync(Guid accountId, string? parentFolderName, string name, CancellationToken ct = default)
-        => throw new NotSupportedException("POP3 accounts have no server folders, so folders cannot be created.");
-
-    public Task DeleteFolderAsync(Guid accountId, string folderName, CancellationToken ct = default)
-        => throw new NotSupportedException("POP3 accounts have no server folders, so folders cannot be deleted.");
+        => UnderFolderLockAsync(() => CreateFolderCoreAsync(accountId, parentFolderName, name), ct);
 
     public Task RenameFolderAsync(Guid accountId, string folderName, string newName, string? newParentFolderName, CancellationToken ct = default)
-        => throw new NotSupportedException("POP3 accounts have no server folders, so folders cannot be renamed or moved.");
+        => UnderFolderLockAsync(() => RenameFolderCoreAsync(accountId, folderName, newName, newParentFolderName), ct);
+
+    public Task MoveFolderAsync(Guid accountId, string folderName, string? newParentFolderName, CancellationToken ct = default)
+        => UnderFolderLockAsync(() => MoveFolderCoreAsync(accountId, folderName, newParentFolderName), ct);
+
+    public Task DeleteFolderAsync(Guid accountId, string folderName, CancellationToken ct = default)
+        => UnderFolderLockAsync(() => DeleteFolderCoreAsync(accountId, folderName), ct);
 
     public Task CopyFolderAsync(Guid accountId, string folderName, string? destinationParentName, CancellationToken ct = default)
-        => throw new NotSupportedException("POP3 accounts have no server folders, so folders cannot be copied.");
+        => UnderFolderLockAsync(() => CopyFolderCoreAsync(accountId, folderName, destinationParentName), ct);
+
+    private async Task UnderFolderLockAsync(Func<Task> action, CancellationToken ct)
+    {
+        await _folderLock.WaitAsync(ct);
+        try { await action(); }
+        finally { _folderLock.Release(); }
+    }
+
+    private async Task CreateFolderCoreAsync(Guid accountId, string? parentFolderName, string name)
+    {
+        ThrowIfOnlineMode();
+        var locals = await _store.LoadPop3LocalFoldersAsync(accountId);
+        var parent = ResolveParent(parentFolderName, locals);
+        var clean  = ValidateName(name, parent, locals, renaming: null);
+        await _store.SavePop3LocalFolderAsync(accountId, new Pop3LocalFolder(NewFolderId(), clean, parent));
+    }
+
+    /// <summary>
+    /// Renames and/or moves a local folder. A null or empty <paramref name="newParentFolderName"/>
+    /// keeps the folder where it is — the contract <c>GraphMailService</c> has, the other backend
+    /// whose folders nest by parent reference. The id does not change, so the folder's mail stays
+    /// filed under it and every rule targeting it keeps working.
+    /// </summary>
+    private async Task RenameFolderCoreAsync(Guid accountId, string folderName, string newName, string? newParentFolderName)
+    {
+        ThrowIfOnlineMode();
+        ThrowIfBuiltIn(folderName, "renamed or moved");
+        var locals = await _store.LoadPop3LocalFoldersAsync(accountId);
+        var folder = FindLocal(folderName, locals);
+
+        var parent = string.IsNullOrEmpty(newParentFolderName)
+            ? folder.ParentId
+            : ResolveParent(newParentFolderName, locals);
+        if (parent != null && SubtreeIds(folder.Id, locals).Contains(parent))
+            throw new InvalidOperationException(
+                $"'{folder.DisplayName}' cannot be moved into itself or into a folder inside it.");
+
+        var clean = ValidateName(newName, parent, locals, renaming: folder.Id);
+        await _store.SavePop3LocalFolderAsync(accountId, folder with { DisplayName = clean, ParentId = parent });
+    }
+
+    /// <summary>
+    /// Moves a local folder, keeping its name, under <paramref name="newParentFolderName"/> — null or
+    /// empty for the top level, beside the built-in four (#954). Unlike
+    /// <see cref="RenameFolderCoreAsync"/>, a null parent here is a destination, not "stay put". The
+    /// name is checked against its new siblings, so a folder cannot land beside one of the same name,
+    /// built-in or not.
+    /// </summary>
+    private async Task MoveFolderCoreAsync(Guid accountId, string folderName, string? newParentFolderName)
+    {
+        ThrowIfOnlineMode();
+        ThrowIfBuiltIn(folderName, "moved");
+        var locals = await _store.LoadPop3LocalFoldersAsync(accountId);
+        var folder = FindLocal(folderName, locals);
+
+        var parent = ResolveParent(newParentFolderName, locals);
+        if (parent != null && SubtreeIds(folder.Id, locals).Contains(parent))
+            throw new InvalidOperationException(
+                $"'{folder.DisplayName}' cannot be moved into itself or into a folder inside it.");
+
+        var clean = ValidateName(folder.DisplayName, parent, locals, renaming: folder.Id);
+        await _store.SavePop3LocalFolderAsync(accountId, folder with { DisplayName = clean, ParentId = parent });
+    }
+
+    /// <summary>
+    /// Deletes a local folder and every folder inside it. Their mail goes to Trash first, never
+    /// straight out of the store: this store is the only copy of POP3 mail, and the confirmation the
+    /// user just answered promised Trash. The store refiles the mail and drops the folders in one
+    /// transaction, and <see cref="_folderLock"/> keeps a move from filing into one of them part way
+    /// through, so no message is ever left filed under a folder that no longer exists.
+    /// </summary>
+    private async Task DeleteFolderCoreAsync(Guid accountId, string folderName)
+    {
+        ThrowIfOnlineMode();
+        ThrowIfBuiltIn(folderName, "deleted");
+        var locals = await _store.LoadPop3LocalFoldersAsync(accountId);
+        await _store.DeletePop3LocalFoldersAsync(
+            accountId, SubtreeIds(FindLocal(folderName, locals).Id, locals), refileTo: TrashFolder);
+    }
+
+    /// <summary>
+    /// Copies a folder, the folders inside it and all their mail under
+    /// <paramref name="destinationParentName"/> (null or empty: the top level). The source may be a
+    /// built-in folder — copying the Inbox makes an ordinary local folder called Inbox.
+    /// </summary>
+    private async Task CopyFolderCoreAsync(Guid accountId, string folderName, string? destinationParentName)
+    {
+        ThrowIfOnlineMode();
+        var locals = await _store.LoadPop3LocalFoldersAsync(accountId);
+        var parent = ResolveParent(destinationParentName, locals);
+
+        var builtIn = BuiltInName(folderName);
+        var source  = builtIn is not null
+            ? new Pop3LocalFolder(builtIn, builtIn, null)
+            : FindLocal(folderName, locals);
+        if (parent != null && SubtreeIds(source.Id, locals).Contains(parent))
+            throw new InvalidOperationException(
+                $"'{source.DisplayName}' cannot be copied into itself or into a folder inside it.");
+
+        var name = ValidateName(source.DisplayName, parent, locals, renaming: null);
+        await CopyFolderTreeAsync(accountId, source, name, parent, locals);
+    }
+
+    private async Task CopyFolderTreeAsync(
+        Guid accountId, Pop3LocalFolder source, string name, string? parent, List<Pop3LocalFolder> locals)
+    {
+        var copy = new Pop3LocalFolder(NewFolderId(), name, parent);
+        await _store.SavePop3LocalFolderAsync(accountId, copy);
+
+        var ids = await _store.GetAllMessageIdsAsync(accountId, source.Id);
+        if (ids.Count > 0)
+            await _store.RefileMessagesAsync(accountId, source.Id, copy.Id, ids, copy: true);
+
+        // Children of the source as it was before this copy began — `locals` is that snapshot, and
+        // the new folders are not in it, so the walk cannot descend into what it is creating.
+        foreach (var child in locals.Where(f => string.Equals(f.ParentId, source.Id, StringComparison.Ordinal)))
+            await CopyFolderTreeAsync(accountId, child, child.DisplayName, copy.Id, locals);
+    }
+
+    /// <summary>The canonical built-in name <paramref name="folderName"/> refers to, or null.</summary>
+    private static string? BuiltInName(string? folderName) =>
+        BuiltInFolders.FirstOrDefault(f => string.Equals(f, folderName, StringComparison.OrdinalIgnoreCase));
+
+    private static void ThrowIfBuiltIn(string folderName, string what)
+    {
+        if (BuiltInName(folderName) is { } builtIn)
+            throw new NotSupportedException(
+                $"{builtIn} is one of the four built-in folders of a POP3 account, so it cannot be {what}.");
+    }
+
+    private void ThrowIfOnlineMode()
+    {
+        if (_onlineMode) throw new InvalidOperationException(OnlineModeExplanation);
+    }
+
+    private static Pop3LocalFolder FindLocal(string folderName, List<Pop3LocalFolder> locals) =>
+        locals.FirstOrDefault(f => string.Equals(f.Id, folderName, StringComparison.Ordinal))
+        ?? throw new InvalidOperationException("That folder no longer exists on this account.");
+
+    /// <summary>The stored parent for a folder going under <paramref name="parentFolderName"/>:
+    /// null for the top level, else the canonical built-in name or an existing local folder's id.</summary>
+    private static string? ResolveParent(string? parentFolderName, List<Pop3LocalFolder> locals)
+    {
+        if (string.IsNullOrEmpty(parentFolderName)) return null;
+        return BuiltInName(parentFolderName) ?? FindLocal(parentFolderName, locals).Id;
+    }
+
+    /// <summary><paramref name="rootId"/> and the id of every local folder inside it.</summary>
+    private static HashSet<string> SubtreeIds(string rootId, List<Pop3LocalFolder> locals)
+    {
+        var ids = new HashSet<string>(StringComparer.Ordinal) { rootId };
+        bool grew = true;
+        while (grew)
+        {
+            grew = false;
+            foreach (var f in locals)
+                if (f.ParentId != null && ids.Contains(f.ParentId) && ids.Add(f.Id))
+                    grew = true;
+        }
+        return ids;
+    }
+
+    /// <summary>
+    /// The trimmed name, after refusing one that is blank, contains a slash or a control character,
+    /// or repeats a sibling's. The slash is refused because folder paths are shown and matched with
+    /// '/' between the names ("Inbox/Lists"); at the top level the built-in four count as siblings.
+    /// </summary>
+    internal static string ValidateName(string? name, string? parent, IEnumerable<Pop3LocalFolder> locals, string? renaming)
+    {
+        var clean = (name ?? string.Empty).Trim();
+        if (clean.Length == 0)
+            throw new ArgumentException("A folder needs a name.");
+        if (clean.Contains('/'))
+            throw new ArgumentException("A folder name cannot contain a slash (/).");
+        if (clean.Any(char.IsControl))
+            throw new ArgumentException("A folder name cannot contain control characters.");
+
+        var siblings = locals
+            .Where(f => string.Equals(f.ParentId, parent, StringComparison.Ordinal) &&
+                        !string.Equals(f.Id, renaming, StringComparison.Ordinal))
+            .Select(f => f.DisplayName);
+        if (parent is null) siblings = siblings.Concat(BuiltInFolders);
+
+        if (siblings.Any(s => string.Equals(s, clean, StringComparison.OrdinalIgnoreCase)))
+            throw new InvalidOperationException($"There is already a folder named '{clean}' there.");
+        return clean;
+    }
+
+    private static string NewFolderId() => LocalFolderPrefix + Guid.NewGuid().ToString("N");
 
     // ── Download ──────────────────────────────────────────────────────────────
 
@@ -600,7 +880,11 @@ public class Pop3MailService : IMailService
         var ledger = await _store.LoadPop3CollectedUidlsAsync(accountId);
         var seen   = new HashSet<string>(ledger, StringComparer.Ordinal);
         bool anyServerDerivedRow = false;
-        foreach (var folder in SyntheticFolders)
+        // Every folder, the user's own included (#794): a message a rule filed into one is as
+        // collected as one left in the Inbox, and missing it here would download it again.
+        var allFolders = BuiltInFolders.Concat(
+            (await _store.LoadPop3LocalFoldersAsync(accountId)).Select(f => f.Id));
+        foreach (var folder in allFolders)
         {
             foreach (var id in await _store.GetAllMessageIdsAsync(accountId, folder))
             {
@@ -641,9 +925,19 @@ public class Pop3MailService : IMailService
                 }
 
                 MimeMessage msg;
+                byte[] raw;
                 try
                 {
-                    msg = await client.GetMessageAsync(i, ct);
+                    // The bytes exactly as the server sent them, kept as the message's original (#728),
+                    // and parsed from those same bytes — not parsed first and written back out.
+                    using (var stream = await client.GetStreamAsync(i, false, ct))
+                    using (var buffer = new MemoryStream())
+                    {
+                        await stream.CopyToAsync(buffer, ct);
+                        raw = buffer.ToArray();
+                    }
+                    using var parse = new MemoryStream(raw, writable: false);
+                    msg = await MimeMessage.LoadAsync(parse, ct);
                 }
                 catch (OperationCanceledException) { throw; }
                 catch (Exception ex)
@@ -653,7 +947,7 @@ public class Pop3MailService : IMailService
                     continue;
                 }
 
-                var summary = await StoreMessageAsync(accountId, uidl, msg, InboxFolder, isRead: false, ct);
+                var summary = await StoreMessageAsync(accountId, uidl, msg, InboxFolder, isRead: false, ct, raw);
                 downloaded.Add(summary);
 
                 if (!account.Pop3LeaveMailOnServer)
@@ -732,10 +1026,17 @@ public class Pop3MailService : IMailService
 
     /// <summary>
     /// Writes one downloaded (or locally authored) message to the store as summary + detail, keeping
-    /// the raw bytes when it has attachments so they can be extracted later.
+    /// the raw bytes of every message. They were once kept only for messages with attachments, so the
+    /// attachments could be extracted later (#128); since #728 they are also what Save writes as a
+    /// .eml, and once a collected message leaves the server the store holds the only original there is.
     /// </summary>
+    /// <param name="raw">
+    /// The bytes as the server sent them, for a downloaded message. Null for one QuickMail wrote itself
+    /// (a sent copy, a draft), whose original is the message as QuickMail serializes it.
+    /// </param>
     private async Task<MailMessageSummary> StoreMessageAsync(
-        Guid accountId, string messageId, MimeMessage msg, string folderName, bool isRead, CancellationToken ct)
+        Guid accountId, string messageId, MimeMessage msg, string folderName, bool isRead, CancellationToken ct,
+        byte[]? raw = null)
     {
         var summary = BuildSummary(accountId, messageId, msg, folderName, isRead);
         var detail  = BuildDetail(accountId, messageId, msg, folderName, isRead);
@@ -743,14 +1044,88 @@ public class Pop3MailService : IMailService
         await _store.UpsertSummariesAsync([summary]);
         await _store.UpsertDetailAsync(detail);
 
-        if (detail.Attachments.Count > 0)
+        if (raw is null)
         {
             using var ms = new MemoryStream();
             await msg.WriteToAsync(ms, ct);
-            await _store.StoreMimeBytesAsync(accountId, folderName, messageId, ms.ToArray());
+            raw = ms.ToArray();
         }
+        await _store.StoreMimeBytesAsync(accountId, folderName, messageId, raw);
 
         return summary;
+    }
+
+    /// <summary>
+    /// The original of a POP3 message (#728): the bytes kept when it was collected, or — for a message
+    /// collected before every original was kept, and still on the server — downloaded again by its
+    /// UIDL and kept from then on. Never rebuilt from the cached parts: either the original exists or
+    /// Save says it does not.
+    /// <para>A POP3 message has to be held in memory whole regardless — the store keeps it as one
+    /// blob, and collection already downloads it that way — so this writes out bytes it already has.</para>
+    /// </summary>
+    public async Task CopyOriginalMessageToAsync(Guid accountId, string folderName, string messageId, Stream destination, CancellationToken ct = default)
+    {
+        if (_onlineMode)
+            throw new MessageOriginalUnavailableException(OnlineModeExplanation);
+
+        var stored = await _store.LoadMimeBytesAsync(accountId, folderName, messageId);
+        if (stored is { Length: > 0 })
+        {
+            await destination.WriteAsync(stored, ct);
+            return;
+        }
+
+        const string notKept =
+            "QuickMail did not keep the original of this message when it was downloaded, and it is no longer on the server.";
+
+        // A message written here (a sent copy, a draft) never came from the server to be fetched again.
+        if (messageId.StartsWith(LocalIdPrefix, StringComparison.Ordinal))
+            throw new MessageOriginalUnavailableException(notKept);
+
+        // What the cached copy says the message is, to check the server hands back the same one: a
+        // server may reuse a UIDL (RFC 1939 allows it once the old message is gone), and keeping the
+        // wrong message's bytes would make it this message's original — and its attachments — for good.
+        var cached = await _store.LoadDetailAsync(accountId, folderName, messageId);
+        var expectedId = cached?.InternetMessageId?.Trim('<', '>', ' ');
+
+        var bytes = await RunMaildropSessionAsync<byte[]?>(accountId, async client =>
+        {
+            if (client.Count == 0) return (Result: null, Quit: false);
+            var uidls = await client.GetMessageUidsAsync(ct);
+            var index = uidls.IndexOf(messageId);
+            if (index < 0) return (Result: null, Quit: false);
+
+            // The raw bytes as the server sent them, not a parse-and-reserialize of them.
+            using var raw = await client.GetStreamAsync(index, false, ct);
+            using var ms  = new MemoryStream();
+            await raw.CopyToAsync(ms, ct);
+            // Nothing was marked for deletion, so there is nothing for a QUIT to commit.
+            return (Result: ms.ToArray(), Quit: false);
+        }, ct);
+
+        if (bytes is null) throw new MessageOriginalUnavailableException(notKept);
+
+        using (var check = new MemoryStream(bytes, writable: false))
+        {
+            var fetched = await MimeMessage.LoadAsync(check, ct);
+            // The Message-ID when the cached copy has one; otherwise the subject and date together —
+            // weaker, but a reused UIDL landing on a message with the same subject AND the same
+            // Date header is not a coincidence a server produces.
+            var same = !string.IsNullOrEmpty(expectedId)
+                ? string.Equals(expectedId, fetched.MessageId?.Trim('<', '>', ' '), StringComparison.Ordinal)
+                : cached is not null
+                  && string.Equals(cached.Subject ?? string.Empty, fetched.Subject ?? string.Empty, StringComparison.Ordinal)
+                  && cached.Date == fetched.Date;
+            if (!same)
+            {
+                LogService.Log($"POP3: UIDL {messageId} now names a different message on the server; not keeping it as the original.");
+                throw new MessageOriginalUnavailableException(notKept);
+            }
+        }
+
+        // Keep it, so the next save needs no server and survives the server letting it go.
+        await _store.StoreMimeBytesAsync(accountId, folderName, messageId, bytes);
+        await destination.WriteAsync(bytes, ct);
     }
 
     /// <summary>
@@ -783,7 +1158,7 @@ public class Pop3MailService : IMailService
     }
 
     /// <summary>
-    /// Copies or moves messages between the synthetic folders, carrying everything that makes the
+    /// Copies or moves messages between this account's folders, built-in or local, carrying everything that makes the
     /// message what it is: the stored rows themselves (so no field is lost when the model gains one),
     /// the flag, the body and the raw bytes. The re-file happens in the store, in SQL — nothing about
     /// a message is read into managed memory to be written straight back out, which for a POP3
@@ -794,15 +1169,28 @@ public class Pop3MailService : IMailService
     {
         if (_onlineMode) return;   // no store, so there is nothing filed anywhere to move
 
+        // Under the folder lock: the check below and the refile after it must not straddle a delete.
+        await UnderFolderLockAsync(() => MoveLocalCoreAsync(accountId, fromFolder, toFolder, messageIds, copy),
+                                   CancellationToken.None);
+    }
+
+    private async Task MoveLocalCoreAsync(
+        Guid accountId, string fromFolder, string toFolder, IList<string> messageIds, bool copy)
+    {
         // A rule created against another account, or a mixed-account move offering an IMAP folder
         // name, can hand this any string. Filing rows under a name GetFoldersAsync never returns
         // makes them unreachable from every part of the UI — and this store may hold the only copy
-        // of the message. Refuse loudly instead — and canonicalize the casing, since the store's
-        // folder lookups compare exactly.
-        toFolder = SyntheticFolders.FirstOrDefault(f => string.Equals(f, toFolder, StringComparison.OrdinalIgnoreCase))
-            ?? throw new NotSupportedException(
-                $"POP3 accounts have only the built-in Inbox, Sent, Drafts and Trash folders; " +
-                $"'{toFolder}' does not exist on this account, so the messages were not filed there.");
+        // of the message. Refuse loudly instead — and canonicalize a built-in name's casing, since
+        // the store's folder lookups compare exactly. A local folder's id is matched exactly: it is
+        // generated, never typed, and a rule left pointing at a deleted folder must not match.
+        toFolder = BuiltInName(toFolder)
+            ?? (await _store.LoadPop3LocalFoldersAsync(accountId))
+                   .FirstOrDefault(f => string.Equals(f.Id, toFolder, StringComparison.Ordinal))?.Id
+            ?? throw new NotSupportedException(toFolder.StartsWith(LocalFolderPrefix, StringComparison.Ordinal)
+                // A local folder's id means nothing to the user: this is a rule still aimed at a
+                // folder deleted since, or one brought from another computer where it never existed.
+                ? "That folder no longer exists on this account, so the messages were not filed there."
+                : $"'{toFolder}' is not a folder of this POP3 account, so the messages were not filed there.");
 
         if (string.Equals(fromFolder, toFolder, StringComparison.OrdinalIgnoreCase)) return;
 
@@ -824,10 +1212,11 @@ public class Pop3MailService : IMailService
             AccountId         = accountId,
             FolderName        = folderName,
             InternetMessageId = msg.MessageId ?? string.Empty,
-            // Display form in the summary, full addresses in the detail — literally ImapMailService's
-            // formatters, so the message list reads the same whichever backend fetched the message.
-            From              = ImapMailService.FormatAddressListDisplay(msg.From),
-            To                = ImapMailService.FormatAddressList(msg.To),
+            // Display form in the summary, full addresses in the detail — the formatters IMAP uses too, so the
+            // message list reads the same whichever backend fetched the message.
+            From              = AddressListFormat.Display(msg.From),
+            FromEmail         = AddressListFormat.Emails(msg.From),
+            To                = AddressListFormat.Full(msg.To),
             Subject           = string.IsNullOrEmpty(msg.Subject) ? "(no subject)" : msg.Subject,
             Date              = NormalizeDate(msg.Date),
             IsRead            = isRead,
@@ -835,6 +1224,24 @@ public class Pop3MailService : IMailService
             HasAttachments    = msg.Attachments.Any(),
             IsMailingList     = !string.IsNullOrEmpty(msg.Headers["List-Id"]),
         };
+
+    /// <summary>Part-specifier prefix for a picture sent inside the message: the rest is its Content-ID.</summary>
+    internal const string InlinePartPrefix = "cid:";
+
+    /// <summary>Pictures sent inside the message (image parts with a Content-ID), as metadata for a later download.</summary>
+    internal static List<AttachmentModel> InlineImagesOf(MimeMessage msg) =>
+        msg.BodyParts.OfType<MimePart>()
+            .Where(p => !string.IsNullOrEmpty(p.ContentId)
+                        && p.ContentType.MediaType.Equals("image", StringComparison.OrdinalIgnoreCase))
+            .Select(p => new AttachmentModel
+            {
+                FileName      = p.FileName ?? "image",
+                ContentType   = p.ContentType.MimeType,
+                FileSize      = DecodedSize(p),
+                ContentId     = p.ContentId,
+                PartSpecifier = InlinePartPrefix + p.ContentId,
+            })
+            .ToList();
 
     internal static MailMessageDetail BuildDetail(
         Guid accountId, string messageId, MimeMessage msg, string folderName, bool isRead)
@@ -863,16 +1270,17 @@ public class Pop3MailService : IMailService
             AccountId         = accountId,
             FolderName        = folderName,
             InternetMessageId = msg.MessageId ?? string.Empty,
-            From              = ImapMailService.FormatAddressList(msg.From),
-            To                = ImapMailService.FormatAddressList(msg.To),
-            Cc                = ImapMailService.FormatAddressList(msg.Cc),
-            ReplyTo           = ImapMailService.FormatAddressList(msg.ReplyTo),
+            From              = AddressListFormat.Full(msg.From),
+            To                = AddressListFormat.Full(msg.To),
+            Cc                = AddressListFormat.Full(msg.Cc),
+            ReplyTo           = AddressListFormat.Full(msg.ReplyTo),
             Subject           = string.IsNullOrEmpty(msg.Subject) ? "(no subject)" : msg.Subject,
             Date              = NormalizeDate(msg.Date),
             IsRead            = isRead,
             PlainTextBody     = msg.TextBody ?? string.Empty,
             HtmlBody          = msg.HtmlBody ?? string.Empty,
             Attachments       = attachments,
+            InlineImages      = InlineImagesOf(msg),
             DraftComposeMode  = ImapMailService.ParseComposeMode(msg.Headers["X-QuickMail-Compose-Mode"]),
         };
 
@@ -994,6 +1402,7 @@ public class Pop3MailService : IMailService
         foreach (var sem in _locks.Values)
             sem.Dispose();
         _locks.Clear();
+        _folderLock.Dispose();
         _accounts.Clear();
         _passwords.Clear();
         GC.SuppressFinalize(this);

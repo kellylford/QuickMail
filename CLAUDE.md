@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 # QuickMail
 
-WPF desktop email client (.NET 8, C#). Multi-account IMAP/SMTP with unified inbox, keyboard-centric UI, local SQLite cache, and WebView2 reading pane.
+WPF desktop email client (.NET 10, C#). Multi-account IMAP/SMTP with unified inbox, keyboard-centric UI, local SQLite cache, and WebView2 reading pane.
 
 ## Build & Run
 
@@ -21,31 +21,47 @@ build.bat clean
 
 Or directly: `dotnet run --project QuickMail`.
 
-The `installer` target requires the Velopack CLI (`dotnet tool install -g vpk`). See `docs/INSTALLER.md` for packaging and auto-update details. Packaging constraint: `App.xaml.cs` declares an explicit `Main` that must call `VelopackApp.Build().Run()` first — `vpk pack` verifies this via IL inspection and refuses to pack without it.
+The `installer` target requires the Velopack CLI at the version pinned in `.github/vpk-version` (`dotnet tool install -g vpk --version <that version>`; CI reads the same file). See `docs/INSTALLER.md` for packaging and auto-update details. Packaging constraint: `App.xaml.cs` declares an explicit `Main` that must call `VelopackApp.Build().Run()` first — `vpk pack` verifies this via IL inspection and refuses to pack without it.
 
-Startup flags: `/debug` enables verbose file logging. `--profileDir <path>` overrides the data directory (default `%APPDATA%\QuickMail`); useful for isolated testing. `--updateFeed <path>` points the update check at a local folder of `vpk pack` output instead of GitHub Releases (see `docs/INSTALLER.md` for the local update-cycle test procedure).
+Startup flags: `/debug` enables verbose file logging. `--profileDir <path>` overrides the data directory (default `%APPDATA%\QuickMail`); useful for isolated testing. `--updateFeed <path>` points the update check at a local folder of `vpk pack` output instead of GitHub Releases (see `docs/INSTALLER.md` for the local update-cycle test procedure). `--startup` is what the Windows Run entry passes when Settings → Startup → *Start QuickMail automatically when I sign in to Windows* is on (#770); with *Start minimized* it starts minimized / in the tray and defers focus and startup dialogs to the first activation. That setting is installed-copies-only (`VelopackRuntime.IsInstalled`), lives in `HKCU\…\Run` rather than `config.ini`, and honors Task Manager's disable mark under `Explorer\StartupApproved\Run`.
 
 ## Tests
 
-xUnit v3 (`xunit.v3` 3.2.2) with `Xunit.StaFact` 3.0.13 for WPF STA-thread tests. Note the v3 API
+xUnit v3 (`xunit.v3` 4.0.2) with `Xunit.StaFact` 4.0.24 for WPF STA-thread tests. Note the v3 API
 differences from v2: async tests take `TestContext.Current.CancellationToken` (xUnit1051), and
-`Assert.Skip`/`SkipWhen` replace the v2 skip patterns.
+`Assert.Skip`/`SkipWhen` replace the v2 skip patterns. Both test projects set
+`IsTestingPlatformApplication=false`: xunit 4 otherwise makes them Microsoft Testing Platform apps,
+which the .NET 10 SDK's VSTest-mode `dotnet test` (what CI and the commands below use) refuses to run.
+xunit fails a run in which every test passed when a foreground thread outlives the tests
+("Foreground threads were left running, forcing process exit" in the trx, `[FATAL ERROR]
+TestPipelineException` in the log). Xunit.StaFact makes its STA threads foreground, so
+`ShutDownStaDispatcherAttribute.Before` marks them background; any thread a test starts itself
+must set `IsBackground = true` too. That alone did not stop it in CI, so when it happens CI now
+prints each surviving foreground thread's managed stack (`ForegroundThreadReport`, enabled by
+`QUICKMAIL_FOREGROUND_THREAD_REPORT`) in the Test step and uploads it with the trx: read it there
+rather than guessing. It has never reproduced in the test VM.
 
 ```bat
 dotnet test QuickMail.Tests/QuickMail.Tests.csproj -c Release
 dotnet test QuickMail.Tests/QuickMail.Tests.csproj -c Release --filter "FullyQualifiedName~ClassName"
 ```
 
+**A test class that shows a window must be in `[Collection("WpfTests")]`** (or a collection with
+`DisableParallelization = true`). Collections run in parallel, and a window shown on another test
+thread takes keyboard focus from whichever focus or tab-order test is running in WpfTests, which then
+fails at random. `WindowTestCollectionGuard` fails any test that activates a window on its own STA
+thread outside those collections, every run. It cannot see a window shown on a thread the test
+starts, through another thread's dispatcher, or in a child process, so a test that does any of those
+still has to be put in the right collection by hand.
+
 All tests use `StubServices.cs` stub implementations to avoid real network and credential calls. Key test classes in `QuickMail.Tests/`:
 
 - **ViewModelConstructionTests** — VM instantiation with stub services (catches init crashes)
 - **XamlParseTests** — XAML loads without `XamlParseException` (requires STA thread via `[StaFact]`)
 - **LocalStoreServiceTests** — SQLite round-trip tests
-  - ⚠ Those three classes live in **`UnitTest1.cs`** (the never-renamed default file), not in files
-    matching their class names. Search by class name, not filename.
 - **SettingsViewModelTests** — settings persistence and hotkey binding logic
 - **CommandRegistryTests** / **ViewManagerHotkeyIntegrationTests** — command registration and hotkey override
-- **RuleServiceTests** / **RulesManagerViewModelTests** — mail rule matching and actions
+- **RuleServiceTests** / **UnifiedRulesViewModelTests** / **RuleEditorValidationTests** — rule matching, the rules window, and the rule editor's save checks
 - **ComposeViewModelReplyTests** / **ComposeViewModelTemplateTests** — compose VM behavior
 - **ConversationBuilderTests** / **SenderGroupBuilderTests** — grouping utilities
 - **SavedViewsTests** / **ViewManagerViewModelTests** — saved-view persistence and management
@@ -78,6 +94,8 @@ Do **not** subclass `FactAttribute` to do this — that trips `xUnit3003` (losin
 - **Use `InputHitTest`, never `VisualTreeHelper.HitTest`,** to ask what a click would land on. The latter is a geometric test that cheerfully returns visuals inside a **collapsed** subtree, still carrying their last-arranged bounds — a hidden pane answering for the visible one underneath it.
 - **Give the fixture an account.** With none, start-up opens the Account Manager *modally*, which disables the window under test: it receives no input at all while remaining the window `WindowFromPoint` names and hit-testing correctly in WPF, so every click looks exactly like a click the app ignored.
 
+Tests that launch a child process and time it (`UninstallDataPromptTests`, which runs the uninstall prompt's script through `powershell.exe`) are opt-in the same way, behind `QUICKMAIL_RUN_PROCESS_TESTS=1` (`ProcessTests`), which CI also sets and guards. With them in full local runs the test host crashed (0xC0000602) about half the time on a machine with a screen reader running. The cause is unknown and not these tests alone — a run with them skipped crashed too (0xC0000005) — so treat local test-host crashes as their own problem, not a reason to delete these tests.
+
 ## User Guide Publishing
 
 The user guide (`docs/USER-GUIDE.md`) is automatically converted to HTML and published to GitHub Pages via `.github/workflows/publish-user-guide.yml`.
@@ -85,14 +103,50 @@ The user guide (`docs/USER-GUIDE.md`) is automatically converted to HTML and pub
 ### Publishing the User Guide
 
 **Manual publish** — any time, independent of release:
-1. Go to **Actions** → **Publish User Guide** → **Run workflow** (green button)
+1. Go to **Actions** → **Publish User Guide** → **Run workflow** (green button), **on `main`**
 2. Workflow generates single-page (`full.html`) and sectioned HTML with navigation (`index.html`)
 3. Deployed to `https://kellylford.github.io/QuickMail/`
 
-**Automatic publish** — triggered by GitHub release creation:
-- When you create a release, the workflow runs and publishes the current user guide automatically.
+The deploy goes through the `github-pages` environment, which admits only `main` and `v*`
+tags, so a run started on any other branch is refused rather than publishing that branch.
 
-**Before you ship a release**: Update `docs/USER-GUIDE.md` with any changes, then publish (manual or automatic).
+**Automatic publish** — the `publish-guide` job at the end of `quickmail.yml` calls this
+workflow after the release job, on every `v*` tag.
+
+There is no `release: published` trigger any more. It never fired for our releases
+(`softprops/action-gh-release` creates them with `GITHUB_TOKEN`, and GitHub does not start
+workflow runs from events a `GITHUB_TOKEN` raised — 0.8.44 shipped with the site still
+saying 0.8.43 because of it), and for a release made by hand it let anyone with write access
+republish an old tag's docs. The publish job runs only on `main` or in a `v*` tag push's
+release run; after a release made by hand, run the workflow on `main`.
+
+The version shown on the page comes from the **v\* tags**, not from anything in
+`USER-GUIDE.md` — the guide contains no version string. It is the tag on the commit being
+published, and failing that the newest tag in the checkout, so a run by hand mid-cycle
+names the version people can actually download. It used to read `<Version>` from
+`QuickMail.csproj`, which is the version being *worked on*: identical on a tag, but a
+mid-cycle run then published a guide announcing a version that did not exist yet. A site
+showing a stale version means the workflow has not run since the last release, never that
+a document needs editing. The publish must still run from the tagged commit so the content
+matches the release; `needs: build` in the same run guarantees that, and the checkout uses
+`fetch-depth: 0` because the tags are now load-bearing.
+
+**Every released version needs `docs/release-notes-vX.Y.Z.md`.** `scripts/build-release-history.py`
+generates one page per release from those files, plus `releases.html` listing them all, and
+the User Guide's Release History section points at it. The script is driven by the tags: a
+notes file with no tag is an unreleased version and stays out of the history, and a tag with
+no notes file **fails the run** rather than quietly dropping that release from the record.
+It strips the Reporting Issues and Download footers, but only where they are a trailing
+block — an older file that opens with a download table keeps it, since prose was written
+inside those sections up to 0.8.34. Run it with `--dry-run` to check what it would generate
+without needing pandoc.
+
+**Before you ship a release**: Update `docs/USER-GUIDE.md` with any changes. The tag
+publishes it; a manual run is only for guide edits between releases.
+
+**The Pages site is more than the user guide.** Every deploy (GitHub's `actions/deploy-pages`, formerly `peaceiris/actions-gh-pages` onto a `gh-pages` branch) replaces the whole site, so anything that is not written into `build/docs/` during the workflow is deleted on deploy — there is no branch to add a file to by hand, and the old `gh-pages` branch is no longer served. That is why `docs/privacy.html` 404'd for months while sitting in the repository (issue #556). Every standalone page is therefore either generated (the articles step) or copied (`docs/privacy.html`) inside the workflow. The privacy URL, `https://kellylford.github.io/QuickMail/privacy.html`, is cited by Google OAuth verification and by the winget manifest's `PrivacyUrl`; the copy step fails the run rather than deploying without it.
+
+**Keep `docs/privacy.html` current with the code.** It enumerates the OAuth scopes QuickMail requests, every network destination it contacts, and what a bug report carries. Adding a scope (`Services/OAuthService.cs`, `Services/GoogleOAuthService.cs`), a new outbound host, or a new field in a bug report means updating that page in the same change, and giving it a new effective date.
 
 **Release notes structure**: Every `docs/release-notes-vX.Y.Z.md` runs in this order — what is new (the Changed/Fixed sections), then the **Reporting Issues** footer, then the **Download** footer last. What shipped is what people came to read; the download table is reference material and does not go first. The canonical text of both footers lives in `docs/reporting-issues-footer.md` and `docs/download-footer.md` — copy the section below each one's divider. Keep Reporting Issues in sync with the User Guide's page (`reporting-issues.html`), and replace every `X.Y.Z` in the Download footer with the version being released.
 
@@ -105,7 +159,80 @@ Run the setup script once:
 .\scripts\setup-gh-pages.ps1
 ```
 
-This enables GitHub Pages to serve from the `gh-pages` branch. The published guide appears at `https://kellylford.github.io/QuickMail/`.
+This sets GitHub Pages to serve what `publish-user-guide.yml` deploys (build type "GitHub Actions"), not a branch. Serving a branch would let anyone with write access publish the site by pushing to it. The published guide appears at `https://kellylford.github.io/QuickMail/`.
+
+## Secrets, environments and releasing
+
+A collaborator with write access must not be able to read a secret, sign, release, deploy the
+relay or publish the website from a branch of their own. Repository secrets cannot promise
+that — any workflow pushed to any branch can read them — so **every secret belongs in a GitHub
+environment**, and the environment's protection decides which runs get in. The table is the
+intended layout. Where each secret actually is today is kept in the maintainer's private notes
+(Claude's project memory); check there before touching any secret:
+
+| Environment | Protection | Secrets | Entered by |
+|---|---|---|---|
+| `azure-signing` | Kelly's approval | `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `BUG_REPORT_RELAY_KEY` | `quickmail.yml` `build` on `v*` tags only; `build-installer.yml` |
+| `relay` | `main` only | `CLOUDFLARE_API_TOKEN`, `RELAY_GITHUB_APP_ID`, `RELAY_GITHUB_INSTALLATION_ID`, `RELAY_GITHUB_PRIVATE_KEY`, `BUG_REPORT_RELAY_KEY` | `deploy-relay.yml` `deploy` |
+| `live-smoke` | `main` only | `LIVE_IMAP_HOST`, `LIVE_IMAP_PORT`, `LIVE_IMAP_SSL`, `LIVE_SMTP_HOST`, `LIVE_SMTP_PORT`, `LIVE_SMTP_SSL`, `LIVE_USER`, `LIVE_PASSWORD` | `live-smoke.yml` |
+| `github-pages` | `main` and `v*` tags | none | `publish-user-guide.yml` |
+| `winget` | `main` and `v*` tags | `WINGET_TOKEN` (Kelly's classic PAT, `public_repo`: write to all his public repos, and his admin role bypasses the rulesets) | `winget-submit.yml`, called by `quickmail.yml`'s `winget` job after each release (tag-only; it must pass `WINGET_TOKEN` by name, or the reusable workflow gets an empty string, #1006), or by hand (real submissions Kelly only) |
+
+A job in an environment gets the environment's copy of a secret name if there is one, and the
+repository's otherwise. **Never delete a repository secret** (step 7 below) before its value
+has been entered in its environment and a run there has proved it: deleting first breaks
+signing, Google sign-in in released builds, bug reports, relay deploys and Live Smoke. GitHub
+never shows a secret's value, so moving one means entering it again; the copies cannot be
+compared afterwards. Fork pull requests run without secrets, and no workflow uses
+`pull_request_target`. **Before giving anyone write access**, check the private notes on where
+the secrets are and on the Live Smoke exposure (Live Smoke runs app code alongside the mailbox
+password); both must be resolved first.
+
+These protections lean on two repository rules as well, and neither may be loosened: the
+**"Tags: admins only"** tag ruleset (otherwise a collaborator could push a `v*` tag and the
+`github-pages` environment would admit their run), and **code-owner review on `main`**
+(otherwise a collaborator could merge an edited workflow to `main` and the main-only
+environments would hand it their secrets).
+
+- **Pull requests, `main` pushes, CodeQL, the flaky hunt and the winget matrix read no
+  secrets.** They compile against empty placeholder credentials written by
+  `scripts/write-credential-partials.ps1`; nothing they run signs in to Google or files a bug
+  report. Do not add a `secrets.` reference to any of them: whatever such a job can read, any
+  collaborator can read. Release builds call the script with `-Release`, which fails the run
+  if a value is missing rather than shipping an app whose Google sign-in silently fails.
+- `BUG_REPORT_RELAY_KEY` is in two environments and **the two copies must match** — the app
+  compiled in `azure-signing` sends the key the Worker deployed from `relay` checks.
+- Every workflow declares its own `permissions:`; set the repository default token to
+  read-only (Settings → Actions → Workflow permissions).
+
+**Settings that go with this** (all at once, right around merging the change that brought it
+in, or releases break or holes stay open):
+1. Create the environments and their secrets as in the table above.
+2. `azure-signing`: Kelly as required reviewer, no self-review bypass for others.
+3. `relay` and `live-smoke`: deployment branches `main` only.
+4. Pages: build type "GitHub Actions" (`scripts/setup-gh-pages.ps1`). `github-pages`:
+   deployment branches `main` and tags `v*` only — remove `gh-pages`, which would let anyone
+   push a workflow to that branch and deploy from it.
+5. `main` ruleset: require review from Code Owners.
+6. Workflow permissions default: read.
+7. Delete **every** repository secret (`gh secret list` must come back empty), including any
+   no workflow uses. A repository secret left behind is readable from any branch. **Only
+   safe after step 1 is done and proven** (see above).
+
+**A tag run waits for Kelly's approval.** Pushing `v<version>` starts `quickmail.yml`, whose
+`build` job then waits on `azure-signing`. After Kelly says "go", approve **only the tag run he
+asked for** — never a run on someone else's branch, never a `build-installer.yml` run you did
+not start for him, and never by removing the environment's reviewer:
+
+```bash
+env_id=$(gh api repos/kellylford/QuickMail/environments/azure-signing --jq .id)
+id=$(gh run list -R kellylford/QuickMail -w QuickMail -b v<version> --json databaseId -q '.[0].databaseId')
+gh api repos/kellylford/QuickMail/actions/runs/$id/pending_deployments   # check it is the tag run, waiting on azure-signing
+gh api -X POST repos/kellylford/QuickMail/actions/runs/$id/pending_deployments -F "environment_ids[]=$env_id" -f state=approved -f comment=release
+```
+
+The on-demand signed installer (`build-installer.yml`) waits for the same approval, because
+it signs and can be started on any branch.
 
 ### Help Menu Link
 
@@ -114,7 +241,7 @@ Users access the guide via **Help** → **Open User Guide** (F1). The link in `M
 ## Architecture
 
 Manual DI root in `App.xaml.cs` — no container. Services wired in `OnStartup`:
-`ProfileContext` → `AccountService` → `CredentialService` → `OAuthService` → `ImapService` → `SmtpService` → `ConfigService` → `LocalStoreService` → `ContactService` → `TemplateService` → `RuleService` → `SyncService` → `ViewService` → `CommandRegistry` → `MainViewModel` → `MainWindow`.
+`ProfileContext` → `AccountService` → `CredentialService` → `OAuthService` → `ImapMailService` → `SmtpService` → `ConfigService` → `LocalStoreService` → `ContactService` → `TemplateService` → `RuleService` → `SyncService` → `ConnectivityService` → `OutboxService` → `ViewService` → `CommandRegistry` → `MainViewModel` → `MainWindow`.
 
 Every service has a matching interface in `Services/I*.cs`. See `docs/ARCHITECTURE.md` for full service descriptions, runtime modes, and virtual folder sentinels.
 
@@ -126,7 +253,7 @@ Every service has a matching interface in `Services/I*.cs`. See `docs/ARCHITECTU
 - **Heavy HTML rendering**: build reading-pane HTML off the UI thread; large/table-heavy messages use simplified reader mode before `NavigateToString`.
 - **Plain-text links**: render http/https/mailto text as links, and open clicked links in the default browser rather than inside the reading pane.
 - **Folder picker**: `FolderPickerWindow` has two presentations. `useTreeView: true` opens a folder tree — use it wherever the user is choosing a destination folder they already know from the folder tree (move/copy message, move/copy folder, a rule's target folder; issues #250, #431), and default new destination pickers to it. The flat virtualized list with a search box (`/` moves focus to search) is now only what "Go to Folder" needs, being the only picker that also offers the virtual folders (All Inboxes, All Mail, …). Reach a destination picker through its named factory — `ForFolderMoveCopy`, `ForRuleTarget` — rather than the constructor: the factory is what the presentation tests can exercise without standing up the owning window, and a call site that goes back to `new FolderPickerWindow(...)` is exactly the regression #431 reported. **A picker must not open with nothing selected** — a tree with no selection announces the tree and no item, and leaves the user to work out that Down is what starts things. Every destination picker passes `initialFolder`: the folder the user came from, or for a rule the folder it already files into. Tree mode stands something in when that folder is not in the tree (the parent it is being moved out of, else the first real folder), and never opens on a header or path segment, which carry no folder and leave `Open` disabled.
-- **Folder destinations are account-scoped**: the mail backends move and copy by *name* over the source account's connection and never look at the destination's `AccountId`. Offering another account's folders is therefore not merely useless — with a name collision ("Archive") it silently acts on the wrong folder. `FolderPickerWindow.ForFolderMoveCopy` scopes to the one owning account, and `ForRuleTarget` to the rule's account (a rule files within one mailbox); any new destination picker must too. `ForRuleTarget` falls back to every account when the rule has no account or that account has no cached folders — an unscoped picker beats an empty one, and an empty tree is a dead end the user cannot get a folder out of. (`MainWindow.BuildMessageFolderPicker` scopes to the owning account**s** — plural, since a selection can span accounts — so the collision is still reachable there when messages from two accounts are moved at once. Not fixed here; do not copy that shape for a single-source picker.)
+- **Folder destinations are account-scoped**: the mail backends move and copy by *name* over the source account's connection and never look at the destination's `AccountId`. Offering another account's folders is therefore not merely useless — with a name collision ("Archive") it silently acts on the wrong folder. `FolderPickerWindow.ForFolderMoveCopy` scopes to the one owning account, and `ForRuleTarget` to the rule's account (a rule files within one mailbox); any new destination picker must too. `ForRuleTarget` falls back to every account when the rule has no account or that account has no cached folders — an unscoped picker beats an empty one, and an empty tree is a dead end the user cannot get a folder out of. **Messages** are the exception, since #929: `MainViewModel.TransferAsync` moves and copies them between accounts by downloading each original and calling `IMailService.AppendMessageAsync` on the destination's own account, so `MainWindow.BuildMessageFolderPicker` offers every account whose backend `CanAppendMessages` (IMAP and POP3; not Graph, which would file the message as a draft). Same-account groups still go through MOVE/COPY by name, which is correct there. Route any new message-transfer path through `TransferAsync`, never straight to `MoveMessagesAsync` with a destination from another account. Folders themselves stay account-scoped. **Opened messages** (a .eml file, an attached email; #939) live in `OpenedMessageService` under the reserved `OpenedMessageService.AccountId`, registered with the router, so every read path works on them unchanged. That id is in no account list: code that looks an account up by a message's `AccountId` must cope with finding none (`MainViewModel.SendingAccountFor` picks the default account for replies), and a window showing one has `IsInMailbox` false.
 - **A `Window` joins `Application.Current.Windows` at construction, not at `Show()`**, and leaves only on `Close()`. A window built and then dropped without being shown keeps the default `OnLastWindowClose` shutdown from firing — the zombie process that still holds the per-profile single-instance mutex (issue #252). If a factory may decide not to show what it just constructed, it must `Close()` it (see `ForFolderMoveCopy`), not return it for the caller to abandon.
 - **Logging**: `LogService` appends to `quickmail.log`; `LogService.Debug()` writes only when `/debug` is present. Avoid logging credentials or unnecessary PII.
 - **Inclusive language in documentation and UI text**: Use verbs like "activate", "select", "choose", or "press" instead of "click".
@@ -147,7 +274,7 @@ All custom screen reader announcements are user-configurable and governed by `Co
 - `CustomAnnouncements` — Master on/off switch for all programmatic announcements
 - `AnnounceHints` — Instructional tips (e.g. "Press Escape to return")
 - `AnnounceStatus` — Background progress (e.g. "Syncing…", "N messages loaded", connection state)
-- `AnnounceResults` — Action outcomes (e.g. "3 messages moved", "Delete may not have completed")
+- `AnnounceResults` — Action outcomes (e.g. "3 messages copied", "Delete may not have completed")
 - `AnnounceSpellingWhileTyping` — Misspellings during typing (off by default, adds overhead)
 - `AnnounceSpellingWhileNavigating` — Misspellings on navigation
 
@@ -314,7 +441,7 @@ Permitted in `.xaml.cs`:
 
 Not permitted in `.xaml.cs`:
 - Business logic, data transformation, or validation
-- Direct calls to services (`ImapService`, `ContactService`, etc.)
+- Direct calls to services (`ImapMailService`, `ContactService`, etc.)
 - State decisions ("if account has unread messages, do X")
 
 ### Async event handlers in Views
@@ -324,23 +451,33 @@ Not permitted in `.xaml.cs`:
 
 ## Keyboard Shortcuts — Enforced
 
-Every user-facing keyboard shortcut **must** be registered in `CommandRegistry` via a `Register(new CommandDefinition(...))` call. Registrations live in two places: most are in the `RegisterCommands` method in `MainViewModel.cs` (VM-backed actions — mail, view, account, help, etc.), and the remainder are in `MainWindow.xaml.cs` (window-level wiring). When adding a command, follow whichever file already registers the related commands. This is not optional: registration is what makes the shortcut appear in the **keyboard customizations** dialog and in the **Command Palette**.
+Every user-facing keyboard shortcut **must** be registered in `CommandRegistry` via a `Register(new CommandDefinition(...))` call. Registrations live in two files. `MainWindow.xaml.cs` registers the larger share, in `OnLoaded`: commands that need the window's controls or focus (focus moves, tabs, folder-tree and calendar commands, clipboard, save and print). `MainViewModel.cs` registers the VM-backed actions (mail, view, sort and filter, account, help) in `RegisterCommands`, plus the run-time ones: themes in `RegisterThemeCommands`, saved views in `RegisterOneViewCommand`, and `help.connectionDiagnostics` in `ApplyConnectionDiagnosticsSetting`; the `MainViewModel.SettingsImport.cs` partial registers `settings.export` / `settings.import`. Every one needs a row in `docs/KEYBOARD-SHORTCUTS.md` (`KeyboardShortcutsDocTests`). When adding a command, follow whichever file already registers the related commands. This is not optional: registration is what makes the shortcut appear in the **keyboard customizations** dialog and in the **Command Palette**.
 
 ### Rules
 
 - **Register first, hardcode never.** Do not add a raw `if (modifiers == ... && key == ...)` block in `PreviewKeyDown` for a new action. Register the command with `defaultKey` / `defaultModifiers` and let the registry dispatch it.
-- **Four exceptions** are allowed to remain hardcoded (they are framework-level or in-control, not user actions):
+- **Six exceptions** are allowed to remain hardcoded (they are framework-level or in-control, not user actions):
   - `Ctrl+Shift+P` — opens the Command Palette itself (cannot dispatch through the palette)
   - Navigation shortcuts `Ctrl+0–3`, `Ctrl+9`, `Ctrl+Y`, `F6` — focus-only pane jumps with no associated command title
   - The stepping gestures inside `Controls/DateTimeField` (arrows, Shift+arrows, Page keys) — in-field editing keys like the arrow keys inside any `TextBox`, meaningless outside the field. See `docs/KEYBOARD-SHORTCUTS.md`.
   - Left/Right/Home/End on a tab header (`Helpers/TabStripNavigation.cs`, issue #528) — in-control navigation, the same kind as the arrow keys inside a list box, and meaningless outside a tab strip. See `docs/KEYBOARD-SHORTCUTS.md`.
-- **`InputGestureText` in menus** must match the registered default key, e.g. `InputGestureText="Ctrl+Shift+F"`.
+  - Tab/Shift+Tab across the folder picker's tree/buttons boundary (`FolderPickerWindow.HandleTreeTab`) — framework focus navigation with no command title, wired by hand only because WPF's reverse traversal cannot enter a `TreeView` at all (`TreeViewItem` leaves `IsTabStop` false). See `docs/KEYBOARD-SHORTCUTS.md`.
+  - `Shift+F10` and the Applications key at the window level (`MainWindow.OnWindowKeyDown`, the
+    `WM_CONTEXTMENU` hook `OnWmContextMenu`, and the attachment lists in `MainWindow` and
+    `MessageWindow`, which open their own menu via `Helpers/ContextMenuKeys.cs`) —
+    Windows' own context-menu gestures, with no command title. The focus decision behind them is
+    `Helpers/ContextMenuFocusPolicy.cs`, kept a pure function so it can be unit-tested; route any
+    new site through it rather than testing `Keyboard.FocusedElement` directly, which is null both
+    at startup and while the reading pane holds focus (issues #148, #672). See
+    `docs/KEYBOARD-SHORTCUTS.md`.
+- **Show a shortcut with `sc:CommandShortcut.Id="mail.forward"`, never a literal** (`Helpers/CommandShortcut.cs`, issue #849). On a menu item or button it sets both what is drawn (`InputGestureText`) and what a screen reader is told (`AutomationProperties.AcceleratorKey`) from the window's registry, and follows a key rebound in Settings. `InputGestureText` on its own is visual only: WPF's `MenuItemAutomationPeer` never reports it, so a menu written that way showed Ctrl+R and was read as just "Reply R". For a button's tooltip use `sc:CommandShortcut.ToolTip="Forward"`, which shows "Forward (Ctrl+Shift+F)" from text inside a `Border`. WPF reports a tooltip's plain text as help text when there is none, and the toolbar was read as "New Message button New Message (Ctrl+N) Ctrl+N"; a Border has no plain text. Where a tooltip says more than the name, give that as `AutomationProperties.HelpText`, without the key. Each window sets `CommandShortcut.Registry` on itself; context menus resolve it through `PlacementTarget`. A key that is not a registry command (Ctrl+Shift+P, WPF's own editing commands) is written as a literal `InputGestureText` *and* a matching `AutomationProperties.AcceleratorKey`. Every menu item that runs a registered command names it, including commands with no default key: a key the user assigns later shows only where the id is (#854). `ShortcutExposureTests` enforces all of this against the XAML; add any new literal to its allowlist with the reason.
+- **No app setting for spoken shortcuts.** Whether a shortcut is read out is the screen reader's own setting; the app's job is only to report it.
 - **Category** must be one of: `View`, `Mail`, `Account`, `Contacts`, `Calendar`, `Settings`, `Help`. (`Calendar` added 2026-07-17 per the full-calendar spec, resolved question Q4.)
 
 ### Adding a new shortcut — checklist
 
 1. `_registry.Register(new CommandDefinition(id: "category.name", category: "…", title: "…", execute: MyMethod, defaultKey: Key.X, defaultModifiers: ModifierKeys.Control));`
-2. Add a menu item with matching `InputGestureText` if applicable.
+2. Add a menu item (and any toolbar button) with `sc:CommandShortcut.Id="category.name"`, not a literal `InputGestureText`.
 3. Do **not** add a duplicate hardcoded branch in `PreviewKeyDown`.
 
 See `docs/KEYBOARD-SHORTCUTS.md` for the full registered shortcut table and compose window details.
@@ -354,6 +491,7 @@ Before committing any XAML, verify each of these:
 - **Radio button groups have one tab stop.** The container must have `KeyboardNavigation.TabNavigation="Once"` and `KeyboardNavigation.DirectionalNavigation="Cycle"`. All buttons in the group share the same `GroupName`. Individual radio buttons must not each be reachable via Tab.
 - **New primary pane controls are in the F6 ring.** Any list, tree, or panel that is a major navigation destination must be added to `CycleFocusAsync` and `GetFocusedPaneIndex` in `MainWindow.xaml.cs`. A control that can receive focus but is not in F6 is stranded.
 - **Data-bound `Selector` items must expose their display text via `ToString()`.** A screen reader reads a `ComboBox`/`ListBox`/`ListView` item's accessible name from **`item.ToString()`**, *not* from `DisplayMemberPath` — `DisplayMemberPath` only drives the on-screen visual. So any type used as `ItemsSource` (record **or** class) must override `ToString()` to return its display text. Without it the item is announced as its fully-qualified type name (`QuickMail.Models.SavedView`) or, for a record, as `ThemeOption { Id = ..., Name = ... }` — punctuation and all. This looks perfect on screen, so it **passes sighted review and visual QA every time**; only inspecting the UIA tree / listening with a screen reader reveals it. This exact bug shipped in the theme ComboBox. `SelectorItemAccessibilityTests` reads the real item automation-peer names and asserts each bound type's `ToString()` — **add every new Selector-bound item type there.** When reviewing accessibility, do not eyeball the rendered text; query the automation peer (`UIElementAutomationPeer.CreatePeerForElement(control).GetChildren()` → `GetName()`).
+- **A row's `AutomationProperties.Name` goes on the row CONTAINER, never inside the `DataTemplate`.** Set it with a `Setter` in the list's `ItemContainerStyle` (`<Setter Property="AutomationProperties.Name" Value="{Binding AccessibleName}"/>`). A screen reader reads the *item* automation peer, whose name comes from the container and, failing that, from the item's `ToString()` — a `Grid`, `StackPanel`, or `TextBlock` inside the template never contributes it, however correct the binding on it looks. Put it there and the row is announced as its `ToString()`: `"QuickMail.Models.ContactModel"` if the type has no override, or a *stale-but-plausible* string if it does, which is worse — the address book's Groups list read correctly for months by accident this way while the contacts list beside it read its type name (issue #644). The rendered row is pixel-identical either way, so this survives every sighted review. Two exceptions, both because the named element is itself the focusable one: a `CheckBox` or `Button` that *is* the item's interactive content (`GrabAddressesDialog`, `ForwardAttachmentDialogWindow`), and a secondary control inside a template such as a tab's close button. Guard a new list with a test that asserts the container carries the name — asserting only the spoken text passes when the composed name happens to equal `ToString()`, and then silently stops catching the regression (`AddressBookRowSpeechTests`).
 
 ## New Window Checklist — Apply When Creating Any Window Subclass
 

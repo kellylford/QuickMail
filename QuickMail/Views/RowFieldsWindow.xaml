@@ -17,30 +17,35 @@
         FontSize="{DynamicResource Theme.FontSizeBase}">
 
     <DockPanel>
-        <!-- Button row -->
+        <!-- Button row. The buttons size to their labels (MinWidth, not Width) so they grow
+             with the text scale instead of slicing their own labels — at 150% fixed widths
+             cut "Move Up" to "Move U" and "Reset to Defaults" to "Reset to Defa" (#549). A
+             WrapPanel rather than a StackPanel, as in the compose window: when the window is
+             too narrow for all four at a large scale they wrap to a second line instead of
+             running off the edge. Each button's right margin is its gap to the next. -->
         <Border x:Name="ButtonBar" DockPanel.Dock="Bottom" Padding="8,6"
                 KeyboardNavigation.TabNavigation="Continue">
-            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+            <WrapPanel HorizontalAlignment="Right">
                 <Button x:Name="MoveUpButton"
                         Content="Move _Up"
                         Command="{Binding MoveUpCommand}"
-                        Width="90" Margin="0,0,6,0"
+                        MinWidth="90" Margin="0,2,6,2"
                         AutomationProperties.Name="Move up"/>
                 <Button x:Name="MoveDownButton"
                         Content="Move _Down"
                         Command="{Binding MoveDownCommand}"
-                        Width="90" Margin="0,0,6,0"
+                        MinWidth="90" Margin="0,2,6,2"
                         AutomationProperties.Name="Move down"/>
                 <Button x:Name="ResetButton"
                         Content="_Reset to Defaults"
                         Command="{Binding ResetDefaultsCommand}"
-                        Width="130" Margin="0,0,6,0"
+                        MinWidth="130" Margin="0,2,6,2"
                         AutomationProperties.Name="Reset to defaults"/>
                 <Button x:Name="CloseButton"
                         Content="Close"
-                        Width="80"
+                        MinWidth="80" Margin="0,2,0,2"
                         AutomationProperties.Name="Close"/>
-            </StackPanel>
+            </WrapPanel>
         </Border>
 
         <!-- Spoken preview -->
@@ -188,6 +193,63 @@
                         </TextBlock.Style>
                     </TextBlock>
 
+                    <!-- #807. The word this field says. Saved a moment after typing pauses (Delay), so the
+                         preview and the rows behind the window follow without a save on every keystroke. -->
+                    <Label Content="Spo_ken as" Target="{Binding ElementName=WordBox}"
+                           Padding="0" FontWeight="SemiBold" Margin="0,10,0,2"/>
+                    <TextBox x:Name="WordBox"
+                             Text="{Binding SelectedField.Word, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, Delay=300}"
+                             IsEnabled="{Binding HasSelection}"
+                             MaxLength="40"
+                             AutomationProperties.Name="Spoken as"/>
+                    <TextBlock Text="For this field, the word is its label, said only while Speak field labels is on."
+                               TextWrapping="Wrap"
+                               Margin="0,2,0,0"
+                               Foreground="{DynamicResource Theme.TextSecondary}"
+                               FontSize="{DynamicResource Theme.FontSizeSmall}">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Visibility" Value="Collapsed"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding SelectedField.IsText}" Value="True">
+                                        <Setter Property="Visibility" Value="Visible"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+
+                    <!-- Only under Always speak, for a state field that has a word to say when off. -->
+                    <StackPanel>
+                        <StackPanel.Style>
+                            <Style TargetType="StackPanel">
+                                <Setter Property="Visibility" Value="Collapsed"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding SelectedShowsFalseWord}" Value="True">
+                                        <Setter Property="Visibility" Value="Visible"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </StackPanel.Style>
+                        <Label Content="Wh_en off, spoken as" Target="{Binding ElementName=FalseWordBox}"
+                               Padding="0" FontWeight="SemiBold" Margin="0,8,0,2"/>
+                        <TextBox x:Name="FalseWordBox"
+                                 Text="{Binding SelectedField.FalseWord, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, Delay=300}"
+                                 MaxLength="40"
+                                 AutomationProperties.Name="When off, spoken as"/>
+                    </StackPanel>
+
+                    <Button x:Name="DefaultWordButton"
+                            Content="Default _word"
+                            Command="{Binding RestoreDefaultWordCommand}"
+                            HorizontalAlignment="Left" Margin="0,6,0,0" Padding="10,2"
+                            AutomationProperties.Name="Default word"/>
+                    <TextBlock Text="An empty box says nothing for that word: a count then says just its number."
+                               TextWrapping="Wrap"
+                               Margin="0,2,0,0"
+                               Foreground="{DynamicResource Theme.TextSecondary}"
+                               FontSize="{DynamicResource Theme.FontSizeSmall}"/>
+
                     <!-- Overlap guidance, e.g. Status (combined) vs the separate Unread field.
                          Focusable so it is reachable in the options pane rather than being
                          visual-only text a keyboard user never lands on. -->
@@ -222,6 +284,21 @@
                               IsChecked="{Binding ShowFieldLabels, Mode=TwoWay}"
                               AutomationProperties.Name="Speak field labels"/>
                     <TextBlock Text="Applies to all row types. States and counts are never labelled — they already say what they are."
+                               TextWrapping="Wrap"
+                               Margin="0,2,0,0"
+                               Foreground="{DynamicResource Theme.TextSecondary}"
+                               FontSize="{DynamicResource Theme.FontSizeSmall}"/>
+
+                    <!-- #802. A ComboBox rather than radio buttons: one tab stop, and the arrow
+                         keys choose as they move, with no group wiring to get wrong (#441). -->
+                    <Label Content="_Between fields" Target="{Binding ElementName=SeparatorList}"
+                           Padding="0" FontWeight="SemiBold" Margin="0,12,0,2"/>
+                    <ComboBox x:Name="SeparatorList"
+                              ItemsSource="{Binding Separators}"
+                              SelectedItem="{Binding SelectedSeparator, Mode=TwoWay}"
+                              HorizontalAlignment="Left" MinWidth="140"
+                              AutomationProperties.Name="Between fields"/>
+                    <TextBlock Text="Applies to all row types. Only Period also ends the row with a period. Punctuation inside a field is never changed."
                                TextWrapping="Wrap"
                                Margin="0,2,0,0"
                                Foreground="{DynamicResource Theme.TextSecondary}"

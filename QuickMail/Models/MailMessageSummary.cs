@@ -1,10 +1,22 @@
 using System;
+using System.Linq;
 using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace QuickMail.Models;
 
 public partial class MailMessageSummary : ObservableObject
 {
+    // A backstop for a row whose RowSpeech name is empty (#928), which also happens if the user's
+    // layout has nothing to say for this message. Without it a screen reader reads the type name.
+    // It doesn't follow the user's field layout, which is acceptable for something that should
+    // rarely be heard: better a sender and subject than nothing.
+    public override string ToString()
+    {
+        var text = string.Join(". ", new[] { IsUnread ? "unread" : null, From, Subject }
+            .Where(part => !string.IsNullOrWhiteSpace(part)));
+        return text.Length > 0 ? text : "Message";
+    }
+
     public string MessageId { get; set; } = string.Empty;
     public Guid AccountId { get; set; }
     public string FolderName { get; set; } = string.Empty;
@@ -14,11 +26,13 @@ public partial class MailMessageSummary : ObservableObject
     /// where the message lives (#423). Holds the folder alone ("Inbox"), or an account-qualified
     /// "&lt;account&gt; -- &lt;folder&gt;" when the aggregate spans more than one account. Empty in
     /// single-folder views, where the folder is implied.
-    /// <para>Deliberately NOT an observable property: it is stamped on freshly-materialized summaries
-    /// during an aggregate load, BEFORE the row's UI container is generated, so no change notification
-    /// is needed. That stamp-before-insert ordering is load-bearing — a re-stamp after the row is shown
-    /// would not refresh the accessible name. Preserve it if this instance is ever reused.</para></summary>
-    public string FolderDisplayName { get; set; } = string.Empty;
+    /// <para>Observable (#451): rows shown before the folder list is known (a profile with no
+    /// persisted folder list yet, so the startup All Mail comes up from the message cache alone) are
+    /// stamped again when the folder list arrives, and the row's accessible-name MultiBinding has to
+    /// hear about it. Setting the value it already holds raises nothing, so re-stamping an
+    /// already-labelled list is silent.</para></summary>
+    [ObservableProperty]
+    private string _folderDisplayName = string.Empty;
 
     /// <summary>
     /// The RFC 5322 Message-ID header, a stable identity for the *same physical message* across
@@ -28,10 +42,53 @@ public partial class MailMessageSummary : ObservableObject
     /// Message-ID. Empty when the server did not supply one; empty identities are never merged.
     /// </summary>
     public string InternetMessageId { get; set; } = string.Empty;
-    public string From { get; set; } = string.Empty;
-    public string To { get; set; } = string.Empty;
-    public string Subject { get; set; } = string.Empty;
-    public DateTimeOffset Date { get; set; }
+
+    /// <summary>
+    /// The sender as the message list shows and speaks it: the display name where there is one,
+    /// otherwise the bare address. Never carries the address alongside a name — that is
+    /// <see cref="FromEmail"/>'s job.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(FromWithAddress))]
+    private string _from = string.Empty;
+
+    /// <summary>
+    /// The sender's bare email address(es), comma-separated in the rare case a From header names
+    /// more than one mailbox. Kept apart from <see cref="From"/> so the list can say only the name
+    /// while rules, Find Mail From Contact, and search still have the address to match (#803).
+    /// Empty on rows cached before this field existed; matchers fall back to <see cref="From"/>.
+    /// </summary>
+    public string FromEmail { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The sender with the address beside the name: "Name &lt;address&gt;", the shape Graph rows held in
+    /// <see cref="From"/> before #801. Matchers read it, so a rule or search that matched there still does and an
+    /// IMAP or POP3 row now matches on its address too (#803). Properties shows it: a message's own when no body is
+    /// cached to give the full sender, and every sender of a conversation or a From view group, through
+    /// <see cref="Helpers.SenderList"/> (review of #806). Never the message list, which shows <see cref="From"/>.
+    /// <see cref="From"/> alone where there is no separate address — a row cached before <see cref="FromEmail"/>
+    /// existed, or a sender with no name, whose From already is the address.
+    /// </summary>
+    /// <remarks>
+    /// Not a header: the name is left unquoted, so "Ford, Kelly &lt;kelly@example.com&gt;" parses as two addresses.
+    /// Where the result is replied to or written to a file, use <c>AddressListFormat.Mailbox</c> (review of #806).
+    /// </remarks>
+    public string FromWithAddress =>
+        string.IsNullOrEmpty(FromEmail) || string.Equals(From, FromEmail, StringComparison.OrdinalIgnoreCase)
+            ? From
+            : string.IsNullOrEmpty(From) ? FromEmail : $"{From} <{FromEmail}>";
+
+    // Observable because a reload keeps the row and updates it (see CopyLoadedStateFrom): the Outbox's
+    // subject carries the item's state, so "Queued: Hello" has to become "Failed: Hello" on screen.
+    [ObservableProperty]
+    private string _to = string.Empty;
+
+    [ObservableProperty]
+    private string _subject = string.Empty;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(DateDisplay))]
+    private DateTimeOffset _date;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(StatusDisplay))]
@@ -61,6 +118,13 @@ public partial class MailMessageSummary : ObservableObject
 
     [ObservableProperty]
     private bool _hasAttachments;
+
+    /// <summary>
+    /// Whether <see cref="HasAttachments"/> was actually decided (#931). False only for an IMAP summary the server sent
+    /// without a usable BODYSTRUCTURE: its row is left unchecked for the one-time pass rather than recorded as having
+    /// none. Not stored; the store keeps its own att_checked.
+    /// </summary>
+    public bool AttachmentsKnown { get; set; } = true;
 
     public bool IsMailingList { get; set; }
 
@@ -114,6 +178,41 @@ public partial class MailMessageSummary : ObservableObject
     /// </summary>
     [ObservableProperty]
     private bool _isWatched;
+
+    /// <summary>
+    /// Brings this row up to date from a reload of the same message, keeping the instance: the
+    /// selection, the row's container and any open tab all hold on to it. The identity fields are
+    /// copied too, since an aggregate view can move a row onto another folder's copy of the message.
+    /// Not <see cref="IsWatched"/> or <see cref="FolderDisplayName"/>: a loaded message has had neither
+    /// stamped yet, and the load stamps the row afterwards.
+    /// </summary>
+    public void CopyLoadedStateFrom(MailMessageSummary fresh)
+    {
+        MessageId         = fresh.MessageId;
+        AccountId         = fresh.AccountId;
+        FolderName        = fresh.FolderName;
+        InternetMessageId = fresh.InternetMessageId;
+        From              = fresh.From;
+        FromEmail         = fresh.FromEmail;
+        To                = fresh.To;
+        Subject           = fresh.Subject;
+        Date              = fresh.Date;
+        IsRead            = fresh.IsRead;
+        IsReplied         = fresh.IsReplied;
+        IsForwarded       = fresh.IsForwarded;
+        HasAttachments    = fresh.HasAttachments;
+        IsMailingList     = fresh.IsMailingList;
+        IsServerFlagged   = fresh.IsServerFlagged;
+
+        // A list from the server carries no preview for some rows and no flag names for any.
+        if (!string.IsNullOrEmpty(fresh.Preview)) Preview = fresh.Preview;
+        if (fresh.FlagName != null || fresh.FlagColorHex != null || fresh.FlagId != FlagId)
+        {
+            FlagName     = fresh.FlagName;
+            FlagColorHex = fresh.FlagColorHex;
+        }
+        FlagId = fresh.FlagId;
+    }
 
     // ── Computed display ──────────────────────────────────────────────────────
 

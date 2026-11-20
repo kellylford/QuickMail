@@ -1,7 +1,7 @@
 <Window x:Class="QuickMail.Views.UnifiedRulesWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Rules Manager"
+        Title="{Binding WindowTitle, Mode=OneWay}"
         Width="780" Height="560"
         MinWidth="620" MinHeight="440"
         WindowStartupLocation="CenterOwner"
@@ -54,10 +54,13 @@
                      ItemsSource="{Binding Rules}"
                      SelectedItem="{Binding SelectedRule}"
                      AutomationProperties.Name="Rules list"
+                     PreviewKeyDown="RulesListBox_PreviewKeyDown"
                      KeyDown="RulesListBox_KeyDown"
                      VirtualizingPanel.IsVirtualizing="False">
                 <ListBox.ItemContainerStyle>
-                    <Style TargetType="ListBoxItem">
+                    <!-- Built on the themed row style, or the selected row falls back to WPF's own highlight
+                         under the theme's text colour: near-white on near-white in the dark theme (#690). -->
+                    <Style TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
                         <Setter Property="Padding" Value="6,4"/>
                         <Setter Property="AutomationProperties.Name" Value="{Binding RowText}"/>
                     </Style>
@@ -104,7 +107,7 @@
                         AutomationProperties.Name="{Binding ToggleEnabledLabel, StringFormat={}{0} selected rule}"/>
                 <Button Content="Move Up" Command="{Binding MoveUpCommand}" Padding="10,0" Margin="0,0,6,4" AutomationProperties.Name="Move selected rule up"/>
                 <Button Content="Move Down" Command="{Binding MoveDownCommand}" Padding="10,0" Margin="0,0,6,4" AutomationProperties.Name="Move selected rule down"/>
-                <Button Content="Test" Command="{Binding TestRuleCommand}" Padding="10,0" Margin="0,0,6,4" AutomationProperties.Name="Test selected rule against selected messages"/>
+                <Button Content="Test" Command="{Binding TestRuleCommand}" Padding="10,0" Margin="0,0,6,4" AutomationProperties.Name="Test selected rule against the message list"/>
                 <Button Content="Run on Existing Mail" Command="{Binding RunOnExistingCommand}" Padding="10,0" Margin="0,0,0,4" AutomationProperties.Name="Run this account's rules on existing mail"/>
             </WrapPanel>
             <Button Grid.Column="1" Content="Close" Click="CloseButton_Click" Padding="12,0" VerticalAlignment="Top" AutomationProperties.Name="Close rules manager"/>

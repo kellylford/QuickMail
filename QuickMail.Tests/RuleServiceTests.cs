@@ -61,19 +61,140 @@ public class RuleServiceTests
         finally { if (Directory.Exists(dir)) Directory.Delete(dir, true); }
     }
 
+    // ── An unreadable rules file (#700) ─────────────────────────────────────
+    // It used to read as an empty list, and every writer saves the whole list back, so the next rule saved
+    // replaced every rule in the file with itself.
+
     [Fact]
-    public void LoadRules_CorruptedFile_ReturnsEmptyList()
+    public void LoadRules_CorruptedFile_Throws_AndLeavesTheFileAsItIs()
     {
         var dir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
         try
         {
             Directory.CreateDirectory(dir);
-            File.WriteAllText(Path.Combine(dir, "rules.json"), "this is not json {{{");
+            var path = Path.Combine(dir, "rules.json");
+            File.WriteAllText(path, "this is not json {{{");
+
+            var ex = Assert.Throws<RulesFileUnreadableException>(() => CreateService(dir).LoadRules());
+
+            // Names the folder: the user is the one who has to find it and repair or remove it.
+            Assert.Equal($"rules.json in {dir} is damaged and can't be read.", ex.Message);
+            Assert.Equal("this is not json {{{", File.ReadAllText(path));
+        }
+        finally { if (Directory.Exists(dir)) Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public void LoadRules_APathThatExistsButCantBeReadAsAFile_Throws_RatherThanReadingAsNoRules()
+    {
+        // File.Exists answers false for any error, not only for a missing file, and the load used to trust it: an
+        // unreadable path read as no rules and the next save replaced it. A folder where the file should be is a
+        // path File.Exists says is "not there" but that plainly is.
+        var dir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
+        try
+        {
+            Directory.CreateDirectory(Path.Combine(dir, "rules.json"));
+
+            var ex = Assert.Throws<RulesFileUnreadableException>(() => CreateService(dir).LoadRules());
+
+            Assert.StartsWith("rules.json can't be opened.", ex.Message);
+        }
+        finally { if (Directory.Exists(dir)) Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public void LoadRules_OnADriveThatIsntThere_Throws_RatherThanReadingAsNoRules()
+    {
+        // A profile on a drive that has disconnected reports a missing folder, just as a fresh profile does. Only the
+        // fresh profile has no rules: reading the other as none let the next save replace the real file (#700).
+        // (LoadRules_EmptyFile_ReturnsEmptyList pins the fresh-profile side: a missing folder on a drive that is there.)
+        var free = Enumerable.Range('D', 23).Select(c => (char)c).FirstOrDefault(c => !Directory.Exists($"{c}:\\"));
+        if (free == default) Assert.Skip("Every drive letter from D: to Z: is in use.");
+
+        var svc = CreateService($"{free}:\\QuickMailProfile");
+
+        Assert.Throws<RulesFileUnreadableException>(() => svc.LoadRules());
+    }
+
+    [Fact]
+    public void LoadRules_WhitespaceOnlyFile_ReturnsEmptyList()
+    {
+        // Nothing in it means nothing to lose, so it is no rules, not a damaged file.
+        var dir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
+        try
+        {
+            Directory.CreateDirectory(dir);
+            File.WriteAllText(Path.Combine(dir, "rules.json"), "  \r\n");
+
+            Assert.Empty(CreateService(dir).LoadRules());
+        }
+        finally { if (Directory.Exists(dir)) Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public void SaveRules_OverAnUnreadableFile_IsRefused_AndLeavesTheFileAsItIs()
+    {
+        // The service-level backstop: even a caller that saves without loading first cannot replace a file
+        // nobody has read.
+        var dir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
+        try
+        {
+            Directory.CreateDirectory(dir);
+            var path = Path.Combine(dir, "rules.json");
+            File.WriteAllText(path, "[{ \"Name\": \"Keep me\" ");   // cut off mid-rule
 
             var svc = CreateService(dir);
-            var rules = svc.LoadRules();
-            Assert.NotNull(rules);
-            Assert.Empty(rules);
+            Assert.Throws<RulesFileUnreadableException>(() => svc.SaveRules([new MailRule { Name = "New" }]));
+
+            Assert.Equal("[{ \"Name\": \"Keep me\" ", File.ReadAllText(path));
+        }
+        finally { if (Directory.Exists(dir)) Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public void LoadRules_ALockedFile_Throws_ThenReadsNormallyOnceItIsFree()
+    {
+        // A failed read is not cached, so a file that was only locked for a moment comes back on its own.
+        var dir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
+        try
+        {
+            var svc = CreateService(dir);
+            svc.SaveRules([new MailRule { Name = "Kept" }]);
+            var path = Path.Combine(dir, "rules.json");
+            var fresh = CreateService(dir);
+
+            using (new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.None))
+            {
+                var ex = Assert.Throws<RulesFileUnreadableException>(() => fresh.LoadRules());
+                // Not the system's message, which repeats the full path for something that fixes itself.
+                Assert.Equal("rules.json is open in another program, so it can't be read right now.", ex.Message);
+            }
+
+            Assert.Equal("Kept", Assert.Single(fresh.LoadRules()).Name);
+        }
+        finally { if (Directory.Exists(dir)) Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public void SaveRules_WhenTheWriteFails_TheNextLoadReadsTheFile_NotTheUnsavedChange()
+    {
+        // Writers change the cached list in place before saving it. A failed write must not leave that change
+        // looking saved.
+        var dir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
+        try
+        {
+            var svc = CreateService(dir);
+            svc.SaveRules([new MailRule { Name = "On disk" }]);
+            var path = Path.Combine(dir, "rules.json");
+
+            var all = svc.LoadRules();
+            all.Add(new MailRule { Name = "Never saved" });
+            // Readable, but not replaceable: the write's move over the file fails (Windows reports that as access
+            // denied, which callers handle alongside IOException).
+            using (new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read))
+                Assert.ThrowsAny<UnauthorizedAccessException>(() => svc.SaveRules(all));
+
+            Assert.Equal("On disk", Assert.Single(svc.LoadRules()).Name);
         }
         finally { if (Directory.Exists(dir)) Directory.Delete(dir, true); }
     }

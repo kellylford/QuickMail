@@ -602,9 +602,10 @@ public class ThemeService : IThemeService
     // ── OS probes ─────────────────────────────────────────────────────────────
 
     /// <summary>
-    /// True when Windows "choose your default app mode" is Light. .NET 8 has no
-    /// managed API (Application.ThemeMode is .NET 9+), so read the registry value
-    /// the OS itself uses.
+    /// True when Windows "choose your default app mode" is Light. WPF has no public
+    /// API that reports this setting: Application.ThemeMode (.NET 9+) applies WPF's
+    /// own Fluent theme, which QuickMail does not use, rather than telling a custom
+    /// theme system which mode the OS is in. So read the registry value the OS itself uses.
     /// </summary>
     private static bool ReadOsLightMode()
     {

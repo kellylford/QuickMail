@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -76,6 +76,12 @@ public partial class CalendarViewModel : ObservableObject
     /// </summary>
     public event Action<string, string>? ExportRequested;
 
+    /// <summary>
+    /// Raised to import .ics files (issue #762). The View shows an Open dialog, reads the chosen
+    /// files, and hands their text to <see cref="ImportFilesAsync"/>.
+    /// </summary>
+    public event Action? ImportRequested;
+
     [ObservableProperty]
     private BatchObservableCollection<CalendarEvent> _events = [];
 
@@ -96,7 +102,8 @@ public partial class CalendarViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(IsListView))]
     private CalendarViewMode _viewMode = CalendarViewMode.Agenda;
 
-    /// <summary>Check-state helpers for the View Mode menu.</summary>
+    /// <summary>Which slice is in effect. IsMonthView drives the Month grid's visibility and
+    /// the focus routing that goes with it; the other three are read by the calendar's tests.</summary>
     public bool IsAgendaView => ViewMode == CalendarViewMode.Agenda;
     public bool IsDayView => ViewMode == CalendarViewMode.Day;
     public bool IsWeekView => ViewMode == CalendarViewMode.Week;
@@ -211,14 +218,15 @@ public partial class CalendarViewModel : ObservableObject
 
     // Discovered calendar sources (AccountId, CalendarId, CalendarName) — used to offer one save
     // target per iCloud calendar (Home / Family). Null in tests and until sync has discovered any.
-    private readonly Func<IReadOnlyList<(Guid AccountId, string CalendarId, string CalendarName)>>? _calendarSourcesProvider;
+    private readonly Func<IReadOnlyList<CalendarSourceInfo>>? _calendarSourcesProvider;
 
     public CalendarViewModel(ICalendarService calendarService, bool onlineMode, bool showDeclinedEvents,
                              bool showFieldLabels = false,
                              IGraphCalendarSyncService? graphSync = null,
                              Func<IReadOnlyList<AccountModel>>? graphAccountsProvider = null,
                              Func<IReadOnlyList<AccountModel>>? allAccountsProvider = null,
-                             Func<IReadOnlyList<(Guid AccountId, string CalendarId, string CalendarName)>>? calendarSourcesProvider = null)
+                             Func<IReadOnlyList<CalendarSourceInfo>>? calendarSourcesProvider = null,
+                             ICalendarInvitationService? invitations = null)
     {
         _calendarService = calendarService;
         _onlineMode = onlineMode;
@@ -228,12 +236,48 @@ public partial class CalendarViewModel : ObservableObject
         _graphAccountsProvider = graphAccountsProvider;
         _allAccountsProvider = allAccountsProvider;
         _calendarSourcesProvider = calendarSourcesProvider;
+        _invitations = invitations;
+    }
+
+    private readonly ICalendarInvitationService? _invitations;
+
+    /// <summary>What happened to a meeting's invitations after a save (issue #866). Never throws.
+    /// The service bounds its own wait on the mail server, so the announcement is never held long.</summary>
+    private Task<InvitationOutcome> InvitationsAfterSaveAsync(AccountModel account, CalendarEvent saved, bool isNew)
+        => _invitations?.AfterSaveAsync(account, saved, isNew) ?? Task.FromResult(InvitationOutcome.None);
+
+    /// <summary>
+    /// The sentence the save or delete announcement ends with when a meeting's invitations went
+    /// somewhere: who was invited, updated or told it is cancelled, or why they were not. Empty
+    /// for an appointment nobody is invited to.
+    /// </summary>
+    internal static string DescribeInvitations(InvitationOutcome outcome)
+    {
+        if (outcome.IsNone) return string.Empty;
+        static string People(int n) => n == 1 ? "1 person" : $"{n} people";
+        if (outcome.Error is { } error)
+        {
+            // Name what was lost: a delete loses its cancellation, a first save its invitations.
+            var what = outcome is { Invited: 0, Updated: 0 } ? "The cancellation was"
+                     : outcome is { Updated: 0, Cancelled: 0 } ? "The invitations were"
+                     : "The update was";
+            return $" {what} not sent: {error}";
+        }
+        var parts = new List<string>();
+        if (outcome.Invited > 0)
+            parts.Add("Invitation sent to " + People(outcome.Invited));
+        if (outcome.Updated > 0)
+            parts.Add("Update sent to " + People(outcome.Updated));
+        if (outcome.Cancelled > 0)
+            parts.Add("Cancellation sent to " + People(outcome.Cancelled));
+        return " " + string.Join(". ", parts) + ".";
     }
 
     /// <summary>
-    /// iCloud accounts save per-calendar: each discovered CalDAV collection is its own save target
-    /// (Home / Family), unlike Microsoft/Google which save to their default calendar. Detected by
-    /// IMAP host, matching the sync service's eligibility.
+    /// Every provider now saves per-calendar, but iCloud is the one that CANNOT fall back to an
+    /// account-level target: a CalDAV PUT needs a collection URL, where Microsoft and Google will
+    /// file into the account's default calendar when no calendar is named. Detected by IMAP host,
+    /// matching the sync service's eligibility.
     /// </summary>
     private static bool IsICloudAccount(AccountModel a)
         => ProviderCatalog.IsICloud(a);
@@ -449,25 +493,41 @@ public partial class CalendarViewModel : ObservableObject
     {
         if (_onlineMode) { Announce("Calendar is unavailable in online mode.", AnnouncementCategory.Result); return; }
 
-        // Save targets: the local calendar (always, default; added by the editor) plus each
-        // server-backed account. Microsoft/Google contribute one target (their default calendar);
-        // an iCloud account contributes one target PER discovered calendar so the user picks Home
-        // vs. Family.
+        // Save targets: the local calendar (always, default; added by the editor), then every
+        // calendar the user can write to, on every server-backed account — "Apple: Family",
+        // "Work: Team" — so an appointment can be filed where it belongs rather than always
+        // landing on the account's default calendar.
+        //
+        // Read-only calendars are left out. A holidays feed or a colleague's shared calendar is
+        // worth reading, and keeps its node in the folder tree, but offering it here could only
+        // produce a save that fails and falls back to the local calendar.
         var sources = _calendarSourcesProvider?.Invoke() ?? [];
         var accountTargets = new List<CalendarSaveTarget>();
         foreach (var a in _graphAccountsProvider?.Invoke() ?? [])
         {
-            if (IsICloudAccount(a))
-            {
-                foreach (var (_, calId, calName) in sources.Where(s => s.AccountId == a.Id))
-                    accountTargets.Add(new CalendarSaveTarget($"{a.AccountLabel}: {calName}", a.Id, calId, calName));
-                // No discovered calendars yet (never synced) → offer nothing rather than a target
-                // that can't resolve a collection to PUT to.
-            }
-            else
-            {
-                accountTargets.Add(new CalendarSaveTarget(a.AccountLabel, a.Id));
-            }
+            var calendars = sources.Where(s => s.AccountId == a.Id).ToList();
+
+            // "Wherever this account normally files things" comes first, and stays on offer even
+            // once the individual calendars are known. Three things need it:
+            //
+            //  - A default calendar set on the ACCOUNT node (#497) means exactly this, and it is
+            //    the only default a Microsoft account could have had while its calendars went
+            //    undiscovered. It has to keep resolving to something the user would recognise —
+            //    matching it against the first per-calendar target instead would silently open the
+            //    editor on whichever calendar happened to sort first.
+            //  - An account whose calendars are all read-only would otherwise contribute nothing,
+            //    and the picker would vanish with no explanation.
+            //  - An account that has never synced has no calendars to list at all.
+            //
+            // Only Microsoft and Google: they file into the account's default when the write names
+            // no calendar. A CalDAV PUT needs a collection URL, so iCloud cannot, and offers
+            // nothing until its collections are discovered — exactly as before.
+            if (!IsICloudAccount(a))
+                accountTargets.Add(new CalendarSaveTarget($"{a.AccountLabel} (default calendar)", a.Id));
+
+            foreach (var cal in calendars.Where(c => c.CanWrite))
+                accountTargets.Add(new CalendarSaveTarget(
+                    cal.LabelUnder(a.AccountLabel), a.Id, cal.CalendarId, cal.CalendarName));
         }
         var editor = new EventEditorViewModel(DateTime.Now, accountTargets);
         // Preselect the user's default calendar (#497). Left alone the picker opens on Local, which
@@ -504,11 +564,15 @@ public partial class CalendarViewModel : ObservableObject
         try
         {
             var created = await _graphSync.CreateEventAsync(account, evt);
+            // The editor's copy, not the server's: it is the one that knows who the user invited
+            // (an iCloud create returns this same object; Microsoft and Google return their own).
+            var invitations = await InvitationsAfterSaveAsync(account, evt, isNew: true);
             await _calendarService.RefreshAsync(); // reload the in-memory list from the store
             ApplyFilters();
             SelectedEvent = Events.FirstOrDefault(e => e.Uid == created.Uid && e.AccountId == created.AccountId);
             var when = created.StartTime?.ToString("ddd, MMM d 'at' t") ?? "no date";
-            Announce($"Appointment created on {account.AccountLabel}. {created.Summary}, {when}.",
+            Announce($"Appointment created on {account.AccountLabel}. {created.Summary}, {when}."
+                     + DescribeInvitations(invitations),
                      AnnouncementCategory.Result);
             ListFocusRequested?.Invoke();
         }
@@ -518,10 +582,17 @@ public partial class CalendarViewModel : ObservableObject
             evt.AccountId = CalendarEvent.LocalAccountId;
             evt.CalendarId = string.Empty;
             evt.CalendarName = string.Empty;
+            // Local Calendar cannot invite anyone (there is no server to send from), so the copy kept
+            // here is a plain appointment — and the announcement has to say nobody was invited.
+            var hadAttendees = evt.HasAttendees;
+            evt.Attendees = [];
+            evt.Organizer = string.Empty;
+            evt.OrganizerName = string.Empty;
             await _calendarService.UpsertEventAsync(evt);
             ApplyFilters();
             SelectedEvent = Events.FirstOrDefault(e => e.Uid == evt.Uid && e.AccountId == evt.AccountId);
-            Announce($"Could not save to {account.AccountLabel}. Saved to Local Calendar instead.",
+            Announce($"Could not save to {account.AccountLabel}. Saved to Local Calendar instead."
+                     + (hadAttendees ? " Nobody was invited." : string.Empty),
                      AnnouncementCategory.Result);
             ListFocusRequested?.Invoke();
         }
@@ -541,13 +612,23 @@ public partial class CalendarViewModel : ObservableObject
             var pushAccount = ServerAccountFor(evt);
             if (pushAccount != null)
             {
+                // A calendar the provider says is read-only (shared read-only, or subscribed) could
+                // only fail — say so now rather than after the user has made an edit (#326).
+                if (ReadOnlyCalendarReason(evt, delete: false) is { } readOnly)
+                {
+                    Announce(readOnly, AnnouncementCategory.Result);
+                    return;
+                }
                 if (evt.IsRecurring)
                 {
                     Announce("Repeating events from your online calendar can't be edited yet.",
                              AnnouncementCategory.Result);
                     return;
                 }
-                var serverEditor = new EventEditorViewModel(evt);
+                // Only the organizer changes who is invited (#866); on someone else's meeting the
+                // Invite field shows the list read-only.
+                var serverEditor = new EventEditorViewModel(evt,
+                    userOrganizes: evt.IsOrganizedBy(pushAccount.Username, pushAccount.AuthUsername));
                 serverEditor.Saved += updated => _ = ServerUpdateAsync(pushAccount, evt, updated);
                 EditorRequested?.Invoke(serverEditor);
                 return;
@@ -564,7 +645,9 @@ public partial class CalendarViewModel : ObservableObject
         var source = evt.OccurrenceStart.HasValue
             ? evt
             : _calendarService.Events.FirstOrDefault(x => x.Uid == evt.Uid && x.AccountId == evt.AccountId) ?? evt;
-        var editor = new EventEditorViewModel(source);
+        // A Local appointment cannot send invitations, so a guest list it carries (an imported
+        // meeting) is shown read-only rather than offered for editing that could only be refused.
+        var editor = new EventEditorViewModel(source, userOrganizes: !source.HasAttendees);
         editor.Saved += updated => _ = editor.IsDetachSave && editor.OccurrenceStart.HasValue
             ? DetachOccurrenceAsync(source, editor.OccurrenceStart.Value, updated)
             : source.OccurrenceStart.HasValue
@@ -590,6 +673,93 @@ public partial class CalendarViewModel : ObservableObject
         ExportRequested?.Invoke(baseName + ".ics", ics);
     }
 
+    /// <summary>Starts an import of .ics files into the Local Calendar (issue #762).</summary>
+    [RelayCommand]
+    private void ImportIcs()
+    {
+        if (_onlineMode) { Announce("Calendar is unavailable in online mode.", AnnouncementCategory.Result); return; }
+        ImportRequested?.Invoke();
+    }
+
+    /// <summary>
+    /// Imports the text of one or more .ics files into the Local Calendar: stores every event in
+    /// one batch, rebuilds the list once, selects the first imported appointment, announces the
+    /// counts, and asks for list focus. Returns an error message naming each file that held no
+    /// usable event (for the View to show), or null when every file contributed something.
+    /// </summary>
+    /// <param name="beforeStore">Run once something importable was found, before it is stored —
+    /// the View uses it to bring the calendar into view when the import started elsewhere (the
+    /// File menu), so a file with nothing in it does not move the user.</param>
+    internal async Task<string?> ImportFilesAsync(IReadOnlyList<(string FileName, string Text)> files,
+                                                  Func<Task>? beforeStore = null)
+    {
+        if (_onlineMode || files.Count == 0) return null;
+
+        var existingLocalUids = _calendarService.Events
+            .Where(e => e.AccountId == CalendarEvent.LocalAccountId)
+            .Select(e => e.Uid)
+            .ToHashSet(StringComparer.Ordinal);
+
+        var pending = new Dictionary<string, CalendarEvent>(StringComparer.Ordinal);
+        var emptyFiles = new List<string>();
+        var skipped = 0;
+        foreach (var (fileName, text) in files)
+        {
+            // Earlier files in the same import count as "already there", so a series in one file
+            // and its moved occurrence in another still meet.
+            var plan = CalendarIcsImporter.Plan(text, _calendarService.Events
+                .Where(e => !pending.ContainsKey(e.Uid) || e.AccountId != CalendarEvent.LocalAccountId)
+                .Concat(pending.Values));
+            skipped += plan.Skipped;
+            if (plan.IsEmpty) { emptyFiles.Add(fileName); continue; }
+            foreach (var evt in plan.Events)
+                pending[evt.Uid] = evt;
+        }
+
+        string? error = emptyFiles.Count switch
+        {
+            0 => null,
+            1 => $"No calendar events were found in {emptyFiles[0]}.",
+            _ => "No calendar events were found in these files:\n" + string.Join("\n", emptyFiles),
+        };
+        if (pending.Count == 0) return error;
+
+        if (beforeStore != null) await beforeStore();
+        try
+        {
+            await _calendarService.UpsertEventsAsync(pending.Values.ToList());
+        }
+        catch (Exception ex)
+        {
+            LogService.Log("Calendar .ics import", ex);
+            return "The appointments could not be saved to the Local Calendar. See the log for details.";
+        }
+
+        ApplyFilters();
+        SelectedEvent = Events.FirstOrDefault(e => e.AccountId == CalendarEvent.LocalAccountId
+                                                   && pending.ContainsKey(e.Uid))
+                        ?? SelectedEvent;
+
+        var updated = pending.Keys.Count(existingLocalUids.Contains);
+        var added = pending.Count - updated;
+        Announce(ImportSummary(added, updated, skipped), AnnouncementCategory.Result);
+        ListFocusRequested?.Invoke();
+        return error;
+    }
+
+    /// <summary>The Result announcement for an import: "Imported 12 appointments to Local Calendar. 1 skipped."</summary>
+    internal static string ImportSummary(int added, int updated, int skipped)
+    {
+        static string Appts(int n) => n == 1 ? "1 appointment" : $"{n} appointments";
+        var text = (added, updated) switch
+        {
+            (> 0, 0) => $"Imported {Appts(added)} to Local Calendar.",
+            (0, > 0) => $"Updated {Appts(updated)} in Local Calendar.",
+            _        => $"Imported {Appts(added)} to Local Calendar and updated {updated}.",
+        };
+        return skipped > 0 ? $"{text} {skipped} skipped." : text;
+    }
+
     /// <summary>Deletes the selected local event (with confirmation). Bound to Delete.</summary>
     [RelayCommand]
     private void DeleteEvent(CalendarEvent? evt)
@@ -599,6 +769,11 @@ public partial class CalendarViewModel : ObservableObject
         if (!evt.IsUserCreated)
         {
             var pushAccount = ServerAccountFor(evt);
+            if (pushAccount != null && ReadOnlyCalendarReason(evt, delete: true) is { } readOnly)
+            {
+                Announce(readOnly, AnnouncementCategory.Result);
+                return;
+            }
             if (pushAccount != null && !evt.IsRecurring)
             {
                 var serverTarget = evt;
@@ -626,6 +801,25 @@ public partial class CalendarViewModel : ObservableObject
     }
 
     /// <summary>
+    /// The question the delete confirmation asks. For a meeting the user organized it also says
+    /// who will be told (issue #866): deleting it is what sends the cancellations, so the user
+    /// should know that before answering, not learn it from the announcement afterwards.
+    /// </summary>
+    public string DeletePrompt(CalendarEvent evt)
+    {
+        var question = evt.IsRecurring
+            ? $"Delete the repeating appointment “{evt.Summary}” and all its occurrences?"
+            : $"Delete the appointment “{evt.Summary}”?";
+        var account = ServerAccountFor(evt);
+        if (account is null || !evt.HasAttendees || !evt.IsOrganizedBy(account.Username, account.AuthUsername))
+            return question;
+        var people = EventAttendees.People(evt.Attendees);
+        if (people.Count == 0) return question;
+        var who = people.Count == 1 ? people[0].DisplayName : $"The {people.Count} people invited";
+        return $"{question}\n\n{who} will be sent a cancellation.";
+    }
+
+    /// <summary>
     /// The server-backed account (Microsoft or Google) a synced row can write back to, or null
     /// when the row is not writable from here (local rows, CalDAV rows, no sync service wired).
     /// </summary>
@@ -633,6 +827,16 @@ public partial class CalendarViewModel : ObservableObject
         => evt.IsGraph && _graphSync != null
             ? _graphAccountsProvider?.Invoke().FirstOrDefault(a => a.Id == evt.AccountId)
             : null;
+
+    /// <summary>Why the provider will not let this event be changed at all, or null (#326).</summary>
+    private string? ReadOnlyCalendarReason(CalendarEvent evt, bool delete)
+        => CalendarChangeRefusal.ReadOnlyCalendarReason(evt, _calendarSourcesProvider?.Invoke() ?? [], delete);
+
+    /// <summary>The provider's name as the user knows it, for a refusal message.</summary>
+    private static string ProviderName(AccountModel account)
+        => account.AuthType == AuthType.OAuth2Google ? "Google"
+         : IsICloudAccount(account) ? "iCloud"
+         : "Microsoft";
 
     /// <summary>Pushes an edit of a server-synced event to its calendar; local state only changes on success.</summary>
     private async Task ServerUpdateAsync(AccountModel account, CalendarEvent original, CalendarEvent edited)
@@ -647,16 +851,24 @@ public partial class CalendarViewModel : ObservableObject
             edited.AccountId = account.Id;
             edited.CalendarId = original.CalendarId;
             edited.CalendarName = original.CalendarName;
+            // Where the server keeps it. Without this an iCloud event made on an iPhone (stored
+            // under a random name, not its UID) was PUT to {uid}.ics — a second copy, or a refusal.
+            if (string.IsNullOrEmpty(edited.ResourceUrl))
+                edited.ResourceUrl = original.ResourceUrl;
             var updated = await _graphSync!.UpdateEventAsync(account, edited);
+            var invitations = await InvitationsAfterSaveAsync(account, edited, isNew: false);
             await _calendarService.RefreshAsync();
             ApplyFilters();
             SelectedEvent = Events.FirstOrDefault(e => e.Uid == updated.Uid && e.AccountId == account.Id);
-            Announce($"Updated on your online calendar. {updated.Summary}.", AnnouncementCategory.Result);
+            Announce($"Updated on your online calendar. {updated.Summary}."
+                     + DescribeInvitations(invitations),
+                     AnnouncementCategory.Result);
         }
         catch (Exception ex)
         {
             LogService.Log("Calendar server update", ex);
-            Announce("Could not update your online calendar.", AnnouncementCategory.Result);
+            Announce(CalendarChangeRefusal.DescribeFailure(ex, original, ProviderName(account)),
+                     AnnouncementCategory.Result);
         }
         ListFocusRequested?.Invoke();
     }
@@ -668,17 +880,23 @@ public partial class CalendarViewModel : ObservableObject
         {
             var index = _filteredEvents.FindIndex(e => e.Uid == evt.Uid && e.StartTimeTicks == evt.StartTimeTicks);
             await _graphSync!.DeleteEventAsync(account, evt);
+            var invitations = _invitations is null
+                ? InvitationOutcome.None
+                : await _invitations.AfterDeleteAsync(account, evt);
             await _calendarService.RefreshAsync();
             ApplyFilters();
             SelectedEvent = VisibleEvents.Count > 0
                 ? Events[Math.Min(Math.Max(index, 0), VisibleEvents.Count - 1)]
                 : null;
-            Announce($"Deleted from your online calendar. {evt.Summary}.", AnnouncementCategory.Result);
+            Announce($"Deleted from your online calendar. {evt.Summary}."
+                     + DescribeInvitations(invitations),
+                     AnnouncementCategory.Result);
         }
         catch (Exception ex)
         {
             LogService.Log("Calendar server delete", ex);
-            Announce("Could not update your online calendar.", AnnouncementCategory.Result);
+            Announce(CalendarChangeRefusal.DescribeFailure(ex, evt, ProviderName(account)),
+                     AnnouncementCategory.Result);
         }
         ListFocusRequested?.Invoke();
     }
@@ -814,8 +1032,47 @@ public partial class CalendarViewModel : ObservableObject
         ApplyFilters();
     }
 
-    /// <summary>Reapplies filters without re-fetching from the service. Called after external status updates.</summary>
-    public void ApplyFiltersFromExternalUpdate() => ApplyFilters();
+    /// <summary>
+    /// Rebuilds the visible list after something outside the calendar changed the events under it —
+    /// a status update, or a server pull landing while the user is reading the list — and puts the
+    /// selection back on the appointment it was on.
+    ///
+    /// <para>
+    /// Restoring the selection is the whole reason this is not a bare <c>ApplyFilters</c>. A pull
+    /// reloads every row from the store as a fresh object, so the one the list was sitting on stops
+    /// existing and the selection has nothing to bind to: the list drops to the top and takes
+    /// keyboard focus with it, in the middle of someone reading. Matching on identity rather than
+    /// reference puts them back where they were. A selection that genuinely went away — the
+    /// appointment was deleted on the server — is left as it was, which is what happened before.
+    /// </para>
+    /// </summary>
+    public void ApplyFiltersFromExternalUpdate()
+    {
+        var previousEvent = SelectedEvent;
+        var previousDay = SelectedMonthCell?.Date;
+
+        ApplyFilters();
+
+        if (previousEvent != null)
+        {
+            var again = _filteredEvents.FirstOrDefault(
+                e => e.Uid == previousEvent.Uid
+                     && e.AccountId == previousEvent.AccountId
+                     && e.StartTimeTicks == previousEvent.StartTimeTicks);
+            if (again != null) SelectedEvent = again;
+        }
+
+        // The Month grid needs its own restore, and needs it more: RebuildMonthCells reassigns
+        // SelectedMonthCell to the reference date's cell every time it runs, so a pull landing
+        // would move the user from the day they had arrowed to back onto today. Restoring the
+        // event alone does not cover it — in Month view SelectedEventDetail reads the CELL's
+        // DayDetail, so the day is what the user is actually on.
+        if (previousDay is { } day)
+        {
+            var cellAgain = MonthCells.FirstOrDefault(c => c.Date == day);
+            if (cellAgain != null) SelectedMonthCell = cellAgain;
+        }
+    }
 
     /// <summary>
     /// Rebuilds the visible list for the current view: applies declined/cancelled filters, windows
@@ -968,6 +1225,10 @@ public partial class CalendarViewModel : ObservableObject
             CalendarName    = master.CalendarName,
             RecurrenceRule  = master.RecurrenceRule,
             ExDates         = master.ExDates,
+            ResourceUrl     = master.ResourceUrl,
+            // Each occurrence is the same meeting: the same people, and the same organizer.
+            Attendees       = master.Attendees,
+            UserIsOrganizer = master.UserIsOrganizer,
             OccurrenceStart = occStart,
         };
     }

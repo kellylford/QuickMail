@@ -72,7 +72,8 @@ public sealed class GoogleCalendarClient : IDisposable
             {
                 var body = await resp.Content.ReadAsStringAsync(ct);
                 throw new HttpRequestException(
-                    $"Calendar API request failed ({(int)resp.StatusCode} {resp.StatusCode}): {Truncate(body, 500)}");
+                    $"Calendar API request failed ({(int)resp.StatusCode} {resp.StatusCode}): {Truncate(body, 500)}",
+                    inner: null, statusCode: resp.StatusCode);
             }
 
             var page = await resp.Content.ReadFromJsonAsync<GoogleCalendarListResponse>(JsonOpts, ct);
@@ -114,7 +115,8 @@ public sealed class GoogleCalendarClient : IDisposable
             {
                 var body = await resp.Content.ReadAsStringAsync(ct);
                 throw new HttpRequestException(
-                    $"Calendar API request failed ({(int)resp.StatusCode} {resp.StatusCode}): {Truncate(body, 500)}");
+                    $"Calendar API request failed ({(int)resp.StatusCode} {resp.StatusCode}): {Truncate(body, 500)}",
+                    inner: null, statusCode: resp.StatusCode);
             }
 
             var page = await resp.Content.ReadFromJsonAsync<GoogleCalendarEventsResponse>(JsonOpts, ct);
@@ -134,26 +136,35 @@ public sealed class GoogleCalendarClient : IDisposable
 
     /// <summary>Creates an event (<c>POST calendars/{calendarId}/events</c>) and returns the server's copy.</summary>
     internal Task<GoogleCalendarEvent> CreateEventAsync(
-        string username, GoogleEventWriteBody body, string calendarId = "primary", CancellationToken ct = default)
+        string username, GoogleEventWriteBody body, string calendarId = "primary", bool sendUpdates = false,
+        CancellationToken ct = default)
         => SendWriteAsync(username, HttpMethod.Post,
-                          $"calendars/{Uri.EscapeDataString(calendarId)}/events", body, ct);
+                          $"calendars/{Uri.EscapeDataString(calendarId)}/events{SendUpdatesQuery(sendUpdates)}", body, ct);
+
+    /// <summary>
+    /// <c>?sendUpdates=all</c> when the write should email the attendees: an invitation on create,
+    /// an update on patch, a cancellation on delete (issue #866). Google sends nothing without it,
+    /// so a meeting created through the API would reach nobody.
+    /// </summary>
+    private static string SendUpdatesQuery(bool sendUpdates) => sendUpdates ? "?sendUpdates=all" : string.Empty;
 
     /// <summary>Patches an event (<c>PATCH calendars/{calendarId}/events/{id}</c>) and returns the server's copy.
     /// Omitted (null) body fields are left unchanged on the server.</summary>
     internal Task<GoogleCalendarEvent> UpdateEventAsync(
         string username, string eventId, GoogleEventWriteBody body,
-        string calendarId = "primary", CancellationToken ct = default)
+        string calendarId = "primary", bool sendUpdates = false, CancellationToken ct = default)
         => SendWriteAsync(username, HttpMethod.Patch,
-                          $"calendars/{Uri.EscapeDataString(calendarId)}/events/{Uri.EscapeDataString(eventId)}", body, ct);
+                          $"calendars/{Uri.EscapeDataString(calendarId)}/events/{Uri.EscapeDataString(eventId)}{SendUpdatesQuery(sendUpdates)}", body, ct);
 
     /// <summary>Deletes an event (<c>DELETE calendars/{calendarId}/events/{id}</c>).</summary>
     internal async Task DeleteEventAsync(
-        string username, string eventId, string calendarId = "primary", CancellationToken ct = default)
+        string username, string eventId, string calendarId = "primary", bool sendUpdates = false,
+        CancellationToken ct = default)
     {
         var token = await _oauth.GetAccessTokenAsync(username, ct);
         using var req = new HttpRequestMessage(
             HttpMethod.Delete,
-            $"{_baseUrl}/calendars/{Uri.EscapeDataString(calendarId)}/events/{Uri.EscapeDataString(eventId)}");
+            $"{_baseUrl}/calendars/{Uri.EscapeDataString(calendarId)}/events/{Uri.EscapeDataString(eventId)}{SendUpdatesQuery(sendUpdates)}");
         req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
 
         using var resp = await _http.SendAsync(req, ct);
@@ -161,7 +172,8 @@ public sealed class GoogleCalendarClient : IDisposable
         {
             var respBody = await resp.Content.ReadAsStringAsync(ct);
             throw new HttpRequestException(
-                $"Calendar API request failed ({(int)resp.StatusCode} {resp.StatusCode}): {Truncate(respBody, 500)}");
+                $"Calendar API request failed ({(int)resp.StatusCode} {resp.StatusCode}): {Truncate(respBody, 500)}",
+                inner: null, statusCode: resp.StatusCode);
         }
     }
 
@@ -178,7 +190,8 @@ public sealed class GoogleCalendarClient : IDisposable
         var respBody = await resp.Content.ReadAsStringAsync(ct);
         if (!resp.IsSuccessStatusCode)
             throw new HttpRequestException(
-                $"Calendar API request failed ({(int)resp.StatusCode} {resp.StatusCode}): {Truncate(respBody, 500)}");
+                $"Calendar API request failed ({(int)resp.StatusCode} {resp.StatusCode}): {Truncate(respBody, 500)}",
+                inner: null, statusCode: resp.StatusCode);
 
         return JsonSerializer.Deserialize<GoogleCalendarEvent>(respBody, JsonOpts)
             ?? throw new InvalidOperationException("Calendar API returned no event body.");
@@ -220,6 +233,18 @@ internal sealed class GoogleCalendarListEntry
     [JsonPropertyName("primary")] public bool Primary { get; set; }
     /// <summary>True when the user has removed this calendar from their list — skip it.</summary>
     [JsonPropertyName("deleted")] public bool Deleted { get; set; }
+
+    /// <summary>
+    /// What the user may do with this calendar: "owner" and "writer" can have events added,
+    /// "reader" and "freeBusyReader" cannot — a subscribed holidays feed is a reader. Offering a
+    /// reader as a save target could only produce a failure.
+    /// </summary>
+    [JsonPropertyName("accessRole")] public string? AccessRole { get; set; }
+
+    /// <summary>Whether an event can be created on this calendar.</summary>
+    internal bool CanWrite =>
+        string.Equals(AccessRole, "owner", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(AccessRole, "writer", StringComparison.OrdinalIgnoreCase);
 }
 
 /// <summary>One event occurrence from the Calendar API (<c>singleEvents=true</c>).</summary>
@@ -235,6 +260,13 @@ internal sealed class GoogleCalendarEvent
     [JsonPropertyName("start")]       public GoogleEventTime? Start { get; set; }
     [JsonPropertyName("end")]         public GoogleEventTime? End { get; set; }
     [JsonPropertyName("attendees")]   public List<GoogleEventAttendee>? Attendees { get; set; }
+
+    /// <summary>
+    /// "default" for an ordinary event; "birthday", "outOfOffice", "workingLocation", "focusTime"
+    /// or "fromGmail" for the kinds Google manages itself and restricts other programs from
+    /// changing (issue #326).
+    /// </summary>
+    [JsonPropertyName("eventType")]   public string? EventType { get; set; }
 }
 
 /// <summary>Either <c>dateTime</c> (timed, RFC3339 with offset) or <c>date</c> (all-day, "yyyy-MM-dd").</summary>
@@ -248,11 +280,20 @@ internal sealed class GoogleEventOrganizer
 {
     [JsonPropertyName("email")]       public string? Email { get; set; }
     [JsonPropertyName("displayName")] public string? DisplayName { get; set; }
+    /// <summary>True when the organizer is the signed-in user.</summary>
+    [JsonPropertyName("self")]        public bool? Self { get; set; }
 }
 
 internal sealed class GoogleEventAttendee
 {
     [JsonPropertyName("self")]           public bool Self { get; set; }
+    [JsonPropertyName("email")]          public string? Email { get; set; }
+    [JsonPropertyName("displayName")]    public string? DisplayName { get; set; }
+    /// <summary>True for the entry that is the event's organizer, who is not one of its invitees.</summary>
+    [JsonPropertyName("organizer")]      public bool Organizer { get; set; }
+    [JsonPropertyName("optional")]       public bool Optional { get; set; }
+    /// <summary>True for a room or equipment booked by the event.</summary>
+    [JsonPropertyName("resource")]       public bool Resource { get; set; }
     /// <summary>"needsAction" | "declined" | "tentative" | "accepted".</summary>
     [JsonPropertyName("responseStatus")] public string? ResponseStatus { get; set; }
 }
@@ -270,4 +311,23 @@ internal sealed class GoogleEventWriteBody
     [JsonPropertyName("location")]    public string? Location { get; set; }
     [JsonPropertyName("start")]       public GoogleEventTime? Start { get; set; }
     [JsonPropertyName("end")]         public GoogleEventTime? End { get; set; }
+
+    /// <summary>
+    /// Who is invited (issue #866). Null leaves a PATCH's attendee list as it is; an empty list
+    /// removes everyone. Sent only when the user changed who is invited.
+    /// </summary>
+    [JsonPropertyName("attendees")]   public List<GoogleAttendeeWrite>? Attendees { get; set; }
+}
+
+/// <summary>One attendee in a create/patch body.</summary>
+internal sealed class GoogleAttendeeWrite
+{
+    [JsonPropertyName("email")]          public string Email { get; set; } = string.Empty;
+    [JsonPropertyName("displayName")]    public string? DisplayName { get; set; }
+    /// <summary>Carried through so a patch that adds one person does not reset the others' answers.</summary>
+    [JsonPropertyName("responseStatus")] public string? ResponseStatus { get; set; }
+    /// <summary>Sent only when true, like the two below: a patch that drops them would make an
+    /// optional guest required and turn a booked room into a guest.</summary>
+    [JsonPropertyName("optional")]       public bool? Optional { get; set; }
+    [JsonPropertyName("resource")]       public bool? Resource { get; set; }
 }

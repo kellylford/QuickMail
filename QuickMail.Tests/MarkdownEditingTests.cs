@@ -238,4 +238,71 @@ public class MarkdownEditingTests
         Assert.Equal("Strikethrough off", parts[3]);
         Assert.Equal("Code off", parts[4]);
     }
+
+    // ── Quote and Normal text (#729) ──────────────────────────────────────────
+
+    [Fact]
+    public void ToggleQuote_AddsMarkerAndKeepsCaretInText()
+    {
+        var edit = MarkdownEditing.ToggleQuote("hello", 2, 0);
+        Assert.Equal("> hello", Apply("hello", edit));
+        Assert.Equal(4, edit.SelectionStart);
+        Assert.True(edit.TurnedOn);
+    }
+
+    [Fact]
+    public void ToggleQuote_OnQuotedLines_RemovesOneLevel()
+    {
+        var text = "> > a\n>\n> b";
+        var edit = MarkdownEditing.ToggleQuote(text, 0, text.Length);
+        Assert.Equal("> a\n\nb", Apply(text, edit));
+        Assert.False(edit.TurnedOn);
+    }
+
+    [Fact]
+    public void ToggleQuote_BlankLineInSelection_GetsBareMarker()
+    {
+        var text = "a\n\nb";
+        var edit = MarkdownEditing.ToggleQuote(text, 0, text.Length);
+        Assert.Equal("> a\n>\n> b", Apply(text, edit));
+    }
+
+    [Fact]
+    public void ToggleQuote_SelectionEndingAtLineBreak_LeavesNextLineAlone()
+    {
+        var text = "a\nb";
+        var edit = MarkdownEditing.ToggleQuote(text, 0, 2); // "a\n" selected, as Shift+Down does
+        Assert.Equal("> a\nb", Apply(text, edit));
+    }
+
+    [Fact]
+    public void SetNormalText_RemovesHeadingAndEveryQuoteLevel()
+    {
+        var text = "> > ## Title";
+        var edit = MarkdownEditing.SetNormalText(text, text.Length, 0);
+        Assert.Equal("Title", Apply(text, edit));
+        Assert.Equal(5, edit.SelectionStart);
+    }
+
+    [Fact]
+    public void SetNormalText_LeavesFencedCodeAlone()
+    {
+        var text = "# Title\n```\n# comment\n> redirect\n```";
+        var edit = MarkdownEditing.SetNormalText(text, 0, text.Length);
+        Assert.Equal("Title\n```\n# comment\n> redirect\n```", Apply(text, edit));
+    }
+
+    [Fact]
+    public void ToggleHeading_InsideQuote_GoesAfterTheMarker()
+    {
+        var edit = MarkdownEditing.ToggleHeading("> Title", 4, 4);
+        Assert.Equal("> #### Title", Apply("> Title", edit));
+    }
+
+    [Fact]
+    public void DescribeFormatting_ReportsQuoteLevelAndQuotedHeading()
+    {
+        Assert.Equal("Quote, level 2", MarkdownEditing.DescribeFormattingParts("> > deep", 5)[0]);
+        Assert.Equal("Heading 3, quote", MarkdownEditing.DescribeFormattingParts("> ### T", 7)[0]);
+    }
 }

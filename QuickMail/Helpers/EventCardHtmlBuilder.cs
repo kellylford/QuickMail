@@ -104,19 +104,27 @@ public static class EventCardHtmlBuilder
             }
 
             sb.Append("<div style=\"margin-top:8px;\">");
-            AppendButton("quickmail:ics-accept", "Accept invitation", "Accept",
+            AppendButton(QuickMailLinks.Build("ics-accept"), "Accept invitation", "Accept",
                 Color("success", "#2E6B3E"), Color("successBackground", "#E9F3EC"));
-            AppendButton("quickmail:ics-tentative", "Tentatively accept invitation", "Tentative",
+            AppendButton(QuickMailLinks.Build("ics-tentative"), "Tentatively accept invitation", "Tentative",
                 Color("warning", "#8A5A00"), Color("warningBackground", "#FBF3E2"));
-            AppendButton("quickmail:ics-decline", "Decline invitation", "Decline",
+            AppendButton(QuickMailLinks.Build("ics-decline"), "Decline invitation", "Decline",
                 Color("error", "#B3261E"), Color("errorBackground", "#FBEAE9"), last: true);
             sb.Append("</div>");
 
             // Live status region for RSVP feedback (issue #329), updated in place via
             // ExecuteScriptAsync so the result is announced from inside the document — a host-window
             // notification is dropped while focus is in the WebView2. Empty until the user responds.
+            // The visibility declarations are !important for the same reason the link menu's status
+            // region pins its own: this card is injected after sanitization, so the sender cannot
+            // remove it — but a sender stylesheet reaching [aria-live] could hide it, and a hidden
+            // live region announces nothing. Losing the RSVP result silently is worse than any
+            // rendering the sender could otherwise ruin, because it is indistinguishable from the
+            // response having been sent.
             sb.Append("<div id=\"qm-invite-status\" aria-live=\"assertive\" aria-atomic=\"true\" " +
-                      "style=\"margin-top:8px;font-weight:600;\"></div>");
+                      "style=\"margin-top:8px;font-weight:600;" +
+                      "display:block !important;visibility:visible !important;" +
+                      "content-visibility:visible !important;\"></div>");
         }
 
         sb.Append("</div>");

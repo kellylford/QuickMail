@@ -20,6 +20,14 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     private bool _readAsPlainText;
 
+    /// <summary>Show pictures sent inside a message (no server is contacted).</summary>
+    [ObservableProperty]
+    private bool _showEmbeddedPictures = true;
+
+    /// <summary>Load pictures from the web in every message, not only on request (#508).</summary>
+    [ObservableProperty]
+    private bool _loadWebPictures;
+
     [ObservableProperty]
     private string _viewMode = "messages";
 
@@ -35,6 +43,13 @@ public partial class SettingsViewModel : ObservableObject
 
     [ObservableProperty]
     private int _mailSyncPollMinutes;
+
+    /// <summary>Days of Inbox mail whose bodies sync downloads for offline reading; 0 = off (#637).</summary>
+    [ObservableProperty]
+    private int _offlineBodyDays;
+
+    [ObservableProperty]
+    private bool _offlineBodyAllFolders;
 
     [ObservableProperty]
     private bool _customAnnouncements;
@@ -115,6 +130,33 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     private bool _desktopShortcut;
 
+    // Start at Windows sign-in (#770): like the desktop shortcut, the source of truth is outside
+    // config — the Windows Run key, which Task Manager and Settings > Apps > Startup can also
+    // change. Loaded from the registry and applied on save only when it differs from what Windows
+    // will do at that moment. A "disabled in Windows" entry reads as off and is left alone unless
+    // the user checks the box, which is the one thing that turns it back on.
+    [ObservableProperty]
+    private bool _launchAtSignIn;
+
+    [ObservableProperty]
+    private bool _startMinimizedAtSignIn;
+
+    private readonly ILaunchAtSignInService? _launchAtSignInService;
+
+    /// <summary>False for portable copies and development builds — and when no service is wired —
+    /// in which case the dialog explains instead of offering the check box.</summary>
+    public bool IsLaunchAtSignInSupported => _launchAtSignInService?.IsSupported == true;
+
+    public bool IsLaunchAtSignInUnsupported => !IsLaunchAtSignInSupported;
+
+    /// <summary>Help text for the check box: says so when Windows' startup settings have QuickMail
+    /// turned off, since that is why the box reads unchecked despite an entry in Task Manager.</summary>
+    [ObservableProperty]
+    private string _launchAtSignInHelp = "";
+
+    // The box as loaded from Windows, so Save acts only on a change the user made.
+    private bool _launchAtSignInAsLoaded;
+
     [ObservableProperty]
     private bool _autoUpdate;
 
@@ -193,6 +235,9 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     private bool _autoSaveDrafts;
 
+    [ObservableProperty]
+    private bool _confirmBeforeSend;
+
     /// <summary>Bound to a ComboBox of fixed choices; values are seconds.</summary>
     [ObservableProperty]
     private int _autoSaveIntervalSeconds;
@@ -200,6 +245,10 @@ public partial class SettingsViewModel : ObservableObject
     /// <summary>Bound to the Settings ComboBox by tag: "plain", "markdown", or "html".</summary>
     [ObservableProperty]
     private string _defaultComposeMode = "plain";
+
+    /// <summary>Background spell checking in compose (#883). Bound to the Composing checkbox.</summary>
+    [ObservableProperty]
+    private bool _checkSpellingAsYouType = true;
 
     // ── Windowing ──────────────────────────────────────────────────────────────────
 
@@ -308,6 +357,17 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     private bool _connectionDiagnostics;
 
+    /// <summary>
+    /// Sends the space bar to screen readers as a typed character in every text field, so
+    /// typed-word echo works (issue #300). Off by default; applied immediately on save.
+    /// </summary>
+    [ObservableProperty]
+    private bool _nvdaTypingFix;
+
+    /// <summary>Offers Export Settings and Import Settings on the File menu (#507). Off by default.</summary>
+    [ObservableProperty]
+    private bool _allowSettingsTransfer;
+
     public bool IsLogFormatActionFirst
     {
         get => LogFormat == "actionFirst";
@@ -375,6 +435,42 @@ public partial class SettingsViewModel : ObservableObject
         StartupFolderLabel   = string.Empty;
     }
 
+    // ── Saving messages (#728) ────────────────────────────────────────────────
+
+    /// <summary>The formats Save (Ctrl+S) can write, for the Save format combo box.</summary>
+    public IReadOnlyList<MessageSaveFormatOption> SaveFormatOptions { get; } =
+        MessageSaveFormats.All
+            .Select(f => new MessageSaveFormatOption(f, $"{MessageSaveFormats.DisplayName(f)} ({MessageSaveFormats.Extension(f)})"))
+            .ToList();
+
+    [ObservableProperty]
+    private MessageSaveFormat _saveMessageFormat = MessageSaveFormat.Eml;
+
+    /// <summary>The folder Save writes into. Empty means Documents.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(SaveMessageFolderDisplay))]
+    private string _saveMessageFolder = string.Empty;
+
+    public string SaveMessageFolderDisplay =>
+        string.IsNullOrWhiteSpace(SaveMessageFolder) ? "Documents" : SaveMessageFolder;
+
+    /// <summary>
+    /// Asks the View for a folder (the Windows folder dialog), starting at the given one. Returns the
+    /// chosen path, or null when cancelled.
+    /// </summary>
+    public Func<string?, string?>? PickSaveFolderRequested { get; set; }
+
+    [RelayCommand]
+    private void ChooseSaveFolder()
+    {
+        var start = string.IsNullOrWhiteSpace(SaveMessageFolder) ? null : SaveMessageFolder;
+        if (PickSaveFolderRequested?.Invoke(start) is { Length: > 0 } folder)
+            SaveMessageFolder = folder;
+    }
+
+    [RelayCommand]
+    private void UseDocumentsFolder() => SaveMessageFolder = string.Empty;
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsStartupSyncScopeStartupFolder))]
     [NotifyPropertyChangedFor(nameof(IsStartupSyncScopeInboxes))]
@@ -409,11 +505,15 @@ public partial class SettingsViewModel : ObservableObject
         ICommandRegistry registry,
         IThemeService? themeService = null,
         System.Collections.Generic.IEnumerable<string>? fontFamilies = null,
-        IScreenshotCaptureService? screenshotCapture = null)
+        IScreenshotCaptureService? screenshotCapture = null,
+        ILaunchAtSignInService? launchAtSignIn = null,
+        ISoundService? sounds = null)
     {
         _configService = configService;
         _screenshotCapture = screenshotCapture;
+        _launchAtSignInService = launchAtSignIn;
         var cfg = configService.Load();
+        LoadSoundSettings(cfg, sounds);
 
         // Appearance: themes from the service; installed fonts from the View
         // (font enumeration is a presentation concern the caller supplies).
@@ -444,11 +544,15 @@ public partial class SettingsViewModel : ObservableObject
 
         PreviewLines = cfg.PreviewLines;
         ReadAsPlainText = cfg.ReadAsPlainText;
+        ShowEmbeddedPictures = cfg.ShowEmbeddedPictures;
+        LoadWebPictures = cfg.LoadWebPictures;
         ViewMode = cfg.ViewMode;
         RememberViewPerFolder = cfg.RememberViewPerFolder;
         SyncDays = cfg.SyncDays;
         InitialSyncCount = cfg.InitialSyncCount;
         MailSyncPollMinutes = cfg.MailSyncPollMinutes;
+        OfflineBodyDays = cfg.OfflineBodyDays;
+        OfflineBodyAllFolders = cfg.OfflineBodyAllFolders;
         CustomAnnouncements = cfg.CustomAnnouncements;
         AnnounceHints       = cfg.AnnounceHints;
         AnnounceStatus      = cfg.AnnounceStatus;
@@ -466,16 +570,26 @@ public partial class SettingsViewModel : ObservableObject
         CalendarReminders                = cfg.CalendarReminders;
         CalendarReminderMinutes          = cfg.CalendarReminderMinutes;
         ConfirmEmptyTrash                = cfg.ConfirmEmptyTrash;
+        SaveMessageFormat                = MessageSaveFormats.FromConfigValue(cfg.SaveMessageFormat);
+        SaveMessageFolder                = cfg.SaveMessageFolder;
         NotifyOnNewMail                  = cfg.NotifyOnNewMail;
         NotifyOnWatchedConversation      = cfg.NotifyOnWatchedConversation;
         CloseToTray                      = cfg.CloseToTray;
         DesktopShortcut                  = Helpers.DesktopShortcut.Exists();
+        StartMinimizedAtSignIn           = cfg.StartMinimizedAtSignIn;
+        RefreshLaunchAtSignIn();
         AutoUpdate                       = cfg.AutoUpdate;
         ShowUpdateInstalledAlerts        = cfg.ShowUpdateInstalledAlerts;
         GoogleSignIn                     = ReadFeature(cfg, FeatureFlag.GoogleAuth, false);
         OfferPop3                        = ReadFeature(cfg, FeatureFlag.Pop3Backend, false);
         AutoSaveDrafts                   = cfg.AutoSaveDrafts;
+        ConfirmBeforeSend                = cfg.ConfirmBeforeSend;
+        RememberRecipients               = cfg.RememberRecipients;
+        SuggestAddresses                 = cfg.SuggestAddresses;
+        SuggestFromAddressBook           = cfg.SuggestFromAddressBook;
+        SuggestPeopleEmailed             = cfg.SuggestPeopleEmailed;
         AutoSaveIntervalSeconds          = cfg.AutoSaveIntervalSeconds;
+        CheckSpellingAsYouType           = cfg.CheckSpellingAsYouType;
         DefaultComposeMode = cfg.DefaultComposeMode switch
         {
             Models.ComposeMode.Markdown => "markdown",
@@ -489,6 +603,8 @@ public partial class SettingsViewModel : ObservableObject
         StartupSyncScope                 = ConfigModel.ParseStartupSyncScope(cfg.StartupSyncScope);
         EnableLogging                    = cfg.EnableLogging;
         ConnectionDiagnostics            = cfg.ConnectionDiagnostics;
+        NvdaTypingFix                    = cfg.NvdaTypingFix;
+        AllowSettingsTransfer            = cfg.AllowSettingsTransfer;
         MessageOpenMode = cfg.Windowing.MessageOpenMode switch
         {
             Models.MessageOpenMode.Tab    => "tab",
@@ -527,11 +643,15 @@ public partial class SettingsViewModel : ObservableObject
 
         cfg.PreviewLines = PreviewLines;
         cfg.ReadAsPlainText = ReadAsPlainText;
+        cfg.ShowEmbeddedPictures = ShowEmbeddedPictures;
+        cfg.LoadWebPictures = LoadWebPictures;
         cfg.ViewMode = ViewMode;
         cfg.RememberViewPerFolder = RememberViewPerFolder;
         cfg.SyncDays = SyncDays;
         cfg.InitialSyncCount = InitialSyncCount;
         cfg.MailSyncPollMinutes = MailSyncPollMinutes;
+        cfg.OfflineBodyDays = OfflineBodyDays;
+        cfg.OfflineBodyAllFolders = OfflineBodyAllFolders;
         cfg.CustomAnnouncements = CustomAnnouncements;
         cfg.AnnounceHints       = AnnounceHints;
         cfg.AnnounceStatus      = AnnounceStatus;
@@ -549,9 +669,13 @@ public partial class SettingsViewModel : ObservableObject
         cfg.CalendarReminders                = CalendarReminders;
         cfg.CalendarReminderMinutes          = Math.Clamp(CalendarReminderMinutes, 1, 1440);
         cfg.ConfirmEmptyTrash                = ConfirmEmptyTrash;
+        cfg.SaveMessageFormat                = MessageSaveFormats.ToConfigValue(SaveMessageFormat);
+        cfg.SaveMessageFolder                = SaveMessageFolder.Trim();
         cfg.NotifyOnNewMail                  = NotifyOnNewMail;
         cfg.NotifyOnWatchedConversation      = NotifyOnWatchedConversation;
         cfg.CloseToTray                      = CloseToTray;
+        cfg.StartMinimizedAtSignIn           = StartMinimizedAtSignIn;
+        ApplyLaunchAtSignIn();
         cfg.AutoUpdate                       = AutoUpdate;
         cfg.ShowUpdateInstalledAlerts        = ShowUpdateInstalledAlerts;
         // Written both ways round, never removed when false: an explicit "false" in the file is how
@@ -581,7 +705,14 @@ public partial class SettingsViewModel : ObservableObject
             }
         }
         cfg.AutoSaveDrafts                   = AutoSaveDrafts;
+        cfg.ConfirmBeforeSend                = ConfirmBeforeSend;
+        cfg.RememberRecipients               = RememberRecipients;
+        cfg.SuggestAddresses                 = SuggestAddresses;
+        cfg.SuggestFromAddressBook           = SuggestFromAddressBook;
+        cfg.SuggestPeopleEmailed             = SuggestPeopleEmailed;
         cfg.AutoSaveIntervalSeconds          = AutoSaveIntervalSeconds;
+        cfg.CheckSpellingAsYouType           = CheckSpellingAsYouType;
+        SaveSoundSettings(cfg);
         cfg.DefaultComposeMode = DefaultComposeMode switch
         {
             "markdown" => Models.ComposeMode.Markdown,
@@ -595,6 +726,8 @@ public partial class SettingsViewModel : ObservableObject
         cfg.StartupSyncScope                 = StartupSyncScope;
         cfg.EnableLogging                    = EnableLogging;
         cfg.ConnectionDiagnostics            = ConnectionDiagnostics;
+        cfg.NvdaTypingFix                    = NvdaTypingFix;
+        cfg.AllowSettingsTransfer            = AllowSettingsTransfer;
         cfg.Windowing.MessageOpenMode = MessageOpenMode switch
         {
             "tab"    => Models.MessageOpenMode.Tab,
@@ -609,6 +742,7 @@ public partial class SettingsViewModel : ObservableObject
             .ToList();
 
         _configService.Save(cfg);
+        TidySchemeFoldersAfterSave(cfg);   // only once the schemes without them are saved (#948, #955)
     }
 
     [RelayCommand]
@@ -635,7 +769,7 @@ public partial class SettingsViewModel : ObservableObject
         public string Category  => _command.Category;
         public string Title     => _command.Title;
 
-        public string DefaultGesture => _command.GestureText;
+        public string DefaultGesture => _command.DefaultGestureText;
 
         [ObservableProperty]
         [NotifyPropertyChangedFor(nameof(ActiveGesture))]
@@ -693,5 +827,59 @@ public partial class SettingsViewModel : ObservableObject
 
         internal bool MatchesBinding(Key key, ModifierKeys modifiers)
             => _customKey == key && _customModifiers == modifiers;
+    }
+
+    // ── Start at Windows sign-in (#770) ────────────────────────────────────────
+
+    private LaunchAtSignInState ReadLaunchAtSignInState()
+    {
+        if (!IsLaunchAtSignInSupported) return LaunchAtSignInState.Off;
+        try { return _launchAtSignInService!.GetState(); }
+        catch (Exception ex) when (ex is System.Security.SecurityException or UnauthorizedAccessException or System.IO.IOException)
+        {
+            LogService.Log("Start at sign-in: could not read the Windows startup entry.", ex);
+            return LaunchAtSignInState.Off;
+        }
+    }
+
+    private void RefreshLaunchAtSignIn()
+    {
+        var state = ReadLaunchAtSignInState();
+        LaunchAtSignIn = state == LaunchAtSignInState.On;
+        _launchAtSignInAsLoaded = LaunchAtSignIn;
+        LaunchAtSignInHelp = state == LaunchAtSignInState.DisabledInWindows
+            ? "Turned off in Windows startup apps settings, so Windows will not start QuickMail. Checking this turns it back on."
+            : "";
+    }
+
+    private void ApplyLaunchAtSignIn()
+    {
+        if (!IsLaunchAtSignInSupported) return;
+
+        // Only a change the user made to the box is acted on. Saving some other setting must not
+        // undo a choice made in Task Manager while this dialog was open: the box still shows the
+        // state from when the dialog opened, and Windows' later "off" would be read as a request
+        // to turn it back on.
+        if (LaunchAtSignIn == _launchAtSignInAsLoaded) return;
+
+        // Then reconcile against Windows now, which may already be where the user asked to be.
+        var state = ReadLaunchAtSignInState();
+        if (LaunchAtSignIn ? state == LaunchAtSignInState.On : state == LaunchAtSignInState.Off)
+        {
+            RefreshLaunchAtSignIn();
+            return;
+        }
+        try
+        {
+            if (LaunchAtSignIn) _launchAtSignInService!.Enable();
+            else _launchAtSignInService!.Disable();
+            LogService.Log($"Start at sign-in turned {(LaunchAtSignIn ? "on" : "off")}.");
+        }
+        catch (Exception ex) when (ex is System.Security.SecurityException or UnauthorizedAccessException or System.IO.IOException)
+        {
+            LogService.Log("Start at sign-in: could not change the Windows startup entry.", ex);
+        }
+        // Show what Windows will actually do, not what was asked for.
+        RefreshLaunchAtSignIn();
     }
 }

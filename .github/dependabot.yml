@@ -1,30 +1,76 @@
 version: 2
 updates:
+  # NuGet, every project in the repo. Ungrouped, a week's routine bumps arrived as
+  # ten PRs whose CI all ran at once, and the parallel load made unrelated focus
+  # tests flake. Groups are matched in order, first match wins:
+  # - sqlite: Microsoft.Data.Sqlite pins SQLitePCLRaw to an exact version, so the
+  #   two must always move in one PR, majors included (moving the bundle alone
+  #   mixes 2.x and 3.x assemblies; see the comment in QuickMail.csproj).
+  # - ui-and-sound: the reading pane (WebView2), notifications and the sound
+  #   engine change what a user sees or hears, so a person tries them before
+  #   merge; they must not ride along with routine bumps.
+  # - routine: every other minor and patch update as one PR.
+  # Major versions outside those groups still arrive one per PR, since each needs
+  # its changelog read and often code changes (MailKit 5.0 did).
   - package-ecosystem: nuget
     directory: /
     schedule:
       interval: weekly
       day: monday
     open-pull-requests-limit: 10
+    commit-message:
+      prefix: deps
     reviewers:
       - kellylford
     assignees:
       - kellylford
     groups:
-      microsoft-identity:
+      sqlite:
         patterns:
-          - "Microsoft.Identity.*"
-      microsoft-data:
+          - "Microsoft.Data.Sqlite*"
+          - "SQLitePCLRaw.*"
+      ui-and-sound:
         patterns:
-          - "Microsoft.Data.*"
+          - "Microsoft.Web.WebView2"
+          - "Microsoft.Toolkit.Uwp.Notifications"
+          - "NAudio.*"
+      routine:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
 
+  # GitHub Actions: all workflow action bumps in one PR.
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
       day: monday
     open-pull-requests-limit: 5
+    commit-message:
+      prefix: ci
     reviewers:
       - kellylford
     assignees:
       - kellylford
+    groups:
+      actions:
+        patterns:
+          - "*"
+
+  # relay/package.json, the bug-report Worker. It has no dependencies on
+  # purpose (wrangler cannot install on Windows ARM64, so CI runs it through
+  # npx), so today this finds nothing. It is here so that anything added
+  # later is watched from the day it lands, grouped into one PR.
+  - package-ecosystem: npm
+    directory: "/relay"
+    schedule:
+      interval: weekly
+      day: monday
+    commit-message:
+      prefix: deps
+    groups:
+      relay:
+        patterns:
+          - "*"

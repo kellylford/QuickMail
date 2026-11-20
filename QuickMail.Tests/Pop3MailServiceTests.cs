@@ -354,7 +354,7 @@ public class Pop3MailServiceTests
     // ── Synthetic folders ────────────────────────────────────────────────────────
 
     [Fact]
-    public async Task Folders_AreTheFourSyntheticOnes_WithCountsFromTheStore()
+    public async Task Folders_WithNoneOfTheUsersOwn_AreTheFourBuiltInOnes_WithCountsFromTheStore()
     {
         var store   = NewStore();
         var account = Guid.NewGuid();
@@ -382,28 +382,6 @@ public class Pop3MailServiceTests
         // Everything but the Inbox is excluded from the All Mail aggregate, as on IMAP.
         Assert.False(folders[0].ExcludeFromAllMail);
         Assert.True(folders.Skip(1).All(f => f.ExcludeFromAllMail));
-    }
-
-    [Fact]
-    public async Task FolderCrud_IsRefused()
-    {
-        var pop = new Pop3MailService(NewStore());
-        var id  = Guid.NewGuid();
-
-        await Assert.ThrowsAsync<NotSupportedException>(() => pop.CreateFolderAsync(id, null, "New"));
-        await Assert.ThrowsAsync<NotSupportedException>(() => pop.DeleteFolderAsync(id, "Inbox"));
-        await Assert.ThrowsAsync<NotSupportedException>(() => pop.RenameFolderAsync(id, "Inbox", "X", null));
-        await Assert.ThrowsAsync<NotSupportedException>(() => pop.CopyFolderAsync(id, "Inbox", null));
-    }
-
-    [Fact]
-    public void FolderCrud_IsRefusedByCapability_NotByReachingTheBackendAndCatchingIt()
-    {
-        // What the UI asks before it opens a folder dialog. The throws above are the last line of
-        // defence; this is the one that keeps the user from being offered the action at all.
-        Assert.False(new AccountModel { BackendKind = BackendKind.Pop3Smtp }.SupportsFolderCrud);
-        Assert.True(new AccountModel { BackendKind = BackendKind.ImapSmtp }.SupportsFolderCrud);
-        Assert.True(new AccountModel { BackendKind = BackendKind.MicrosoftGraph }.SupportsFolderCrud);
     }
 
     [Fact]
@@ -702,8 +680,10 @@ public class Pop3MailServiceTests
         var summary = Pop3MailService.BuildSummary(account, "uidl-1", msg, "Inbox", isRead: false);
 
         Assert.Equal("uidl-1", summary.MessageId);
-        // Display name in the list, like ImapMailService.SummaryToModel.
+        // Display name in the list, like ImapMailService.SummaryToModel…
         Assert.Equal("Kelly Ford", summary.From);
+        // …and the bare address beside it, for rules and contact lookups to match (#803).
+        Assert.Equal("kelly@example.com", summary.FromEmail);
         Assert.Equal("Quarterly report", summary.Subject);
         // Carried so aggregate views can collapse duplicates and a reply can thread (#220).
         Assert.Equal("abc@example.com", summary.InternetMessageId);
@@ -988,5 +968,32 @@ public class Pop3MailServiceTests
 
         Assert.NotNull(loaded);
         Assert.Equal("original@example.com", loaded!.InternetMessageId);
+    }
+
+    // ── Taking messages from another account (#929) ──────────────────────────────
+
+    [Fact]
+    public async Task AppendMessage_StoresTheOriginalInTheFolder_ReadAndFlaggedAsGiven()
+    {
+        var store   = NewStore();
+        var account = Guid.NewGuid();
+        var pop     = new Pop3MailService(store);
+        var bytes   = System.Text.Encoding.ASCII.GetBytes(
+            "From: a@example.com\r\nSubject: From another account\r\nMessage-Id: <x929@example.com>\r\n\r\nHello\r\n");
+
+        Assert.True(pop.CanAppendMessages(account));
+        using (var original = new MemoryStream(bytes))
+            await pop.AppendMessageAsync(account, "Archive", original, isRead: true, isFlagged: true, default,
+                                         TestContext.Current.CancellationToken);
+
+        var summary = Assert.Single(await store.LoadFolderSummariesAsync(account, "Archive"));
+        Assert.Equal("From another account", summary.Subject);
+        Assert.True(summary.IsRead);
+        Assert.True(summary.IsFlagged);
+
+        // Its original is kept, so it saves, forwards and copies onward like any collected message.
+        using var copy = new MemoryStream();
+        await pop.CopyOriginalMessageToAsync(account, "Archive", summary.MessageId, copy, TestContext.Current.CancellationToken);
+        Assert.Equal(bytes, copy.ToArray());
     }
 }

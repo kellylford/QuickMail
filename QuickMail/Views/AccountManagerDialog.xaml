@@ -35,40 +35,50 @@
              in the MIDDLE of the form, between the password box and Advanced settings.
 
              The two columns share one flat run of indices and must not overlap: this column owns
-             0–5 (the list, then its buttons left to right), the edit form owns 6–15. A duplicate
+             0–6 (the list, then its buttons left to right), the edit form owns 7–16. A duplicate
              index across the columns does not fail loudly — WPF breaks the tie on tree order, which
              happens to give the right result here — so a collision reads as working and only bites
              when something later moves. Adding a button here means renumbering the form, not
              reusing an index the form already holds. -->
         <DockPanel Grid.Column="0" Grid.Row="0">
             <TextBlock DockPanel.Dock="Top" Text="Accounts" FontWeight="SemiBold" Margin="0,0,0,4"/>
-            <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,4,0,0">
-                <Button Content="Ne_w"
+            <!-- Wraps: the column is 180 wide, and New, Delete and Set Default already filled it before
+                 Import Settings (#507) joined them on a new install. Tab order is TabIndex, not layout. -->
+            <WrapPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,4,0,0">
+                <Button Content="_New"
                         x:Name="NewButton"
                         Click="NewButton_Click"
                         AutomationProperties.Name="New account"
                         MinWidth="60" Margin="0,0,4,0" TabIndex="1"/>
+                <!-- A new install only (#507): bring settings across from another computer instead of adding
+                     accounts by hand. Gone once the first account exists. -->
+                <Button Content="_Import Settings…"
+                        x:Name="ImportSettingsButton"
+                        Click="ImportSettingsButton_Click"
+                        AutomationProperties.Name="Import settings"
+                        Visibility="{Binding ShowImportSettings, Converter={StaticResource BoolToVisibility}}"
+                        MinWidth="90" Margin="0,0,4,0" TabIndex="2"/>
                 <Button Content="_Delete"
                         Command="{Binding DeleteAccountCommand}"
                         AutomationProperties.Name="Delete account"
-                        MinWidth="60" Margin="0,0,4,0" TabIndex="2"/>
-                <Button Content="Set _Default"
+                        MinWidth="60" Margin="0,0,4,0" TabIndex="3"/>
+                <Button Content="Set De_fault"
                         Command="{Binding SetDefaultCommand}"
                         CommandParameter="{Binding SelectedAccount}"
                         AutomationProperties.Name="Set as default"
-                        MinWidth="75" Margin="0,0,4,0" TabIndex="3"/>
-                <Button Content="Add _shared…"
+                        MinWidth="75" Margin="0,0,4,0" TabIndex="4"/>
+                <Button Content="Add shared mail_box…"
                         x:Name="AddSharedButton"
                         Click="AddSharedMailboxButton_Click"
                         AutomationProperties.Name="Add shared mailbox"
                         Visibility="{Binding IsSharedMailboxesEnabled, Converter={StaticResource BoolToVisibility}}"
-                        MinWidth="90" Margin="0,0,4,0" TabIndex="4"/>
-                <Button Content="Con_vert to Microsoft 365"
+                        MinWidth="90" Margin="0,0,4,0" TabIndex="5"/>
+                <Button Content="Convert to Microsoft _365"
                         Command="{Binding ConvertToGraphCommand}"
                         AutomationProperties.Name="Convert to Microsoft 365"
                         Visibility="{Binding CanConvertToGraph, Converter={StaticResource BoolToVisibility}}"
-                        MinWidth="90" TabIndex="5"/>
-            </StackPanel>
+                        MinWidth="90" TabIndex="6"/>
+            </WrapPanel>
             <ListBox x:Name="AccountListBox"
                      TabIndex="0"
                      ItemsSource="{Binding Accounts}"
@@ -77,8 +87,8 @@
                      TextSearch.TextPath="AccountLabelWithDefault"
                      BorderThickness="1">
                 <ListBox.ItemContainerStyle>
-                    <Style TargetType="ListBoxItem">
-                        <Setter Property="AutomationProperties.Name" Value="{Binding AccountLabelWithDefault}"/>
+                    <Style TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
+                        <Setter Property="AutomationProperties.Name" Value="{Binding ManagerListAccessibleName}"/>
                     </Style>
                 </ListBox.ItemContainerStyle>
                 <ListBox.ItemTemplate>
@@ -112,24 +122,24 @@
                          Text="{Binding SelectedProvider.DisplayName, Mode=OneWay}"
                          IsReadOnly="True"
                          AutomationProperties.LabeledBy="{Binding ElementName=LblProvider}"
-                         TabIndex="6"
+                         TabIndex="7"
                          Margin="0,0,0,4"/>
 
                 <!-- Account Name -->
-                <Label x:Name="LblAccountName" Content="Account _name:" Target="{Binding ElementName=AccountNameBox}" Padding="0" Margin="0,8,0,2"/>
+                <Label x:Name="LblAccountName" Content="Account na_me:" Target="{Binding ElementName=AccountNameBox}" Padding="0" Margin="0,8,0,2"/>
                 <TextBox x:Name="AccountNameBox"
                          Text="{Binding AccountName, UpdateSourceTrigger=PropertyChanged}"
                          AutomationProperties.LabeledBy="{Binding ElementName=LblAccountName}"
-                         TabIndex="7"/>
+                         TabIndex="8"/>
 
                 <!-- Sender Display Name — hidden for a shared mailbox (#31): its outgoing identity is the
                      mailbox's own directory display name on send, not a name set per-account here. -->
                 <StackPanel Visibility="{Binding ShowNormalAccountFields, Converter={StaticResource BoolToVisibility}}">
-                    <Label x:Name="LblDisplayName" Content="Sender _display name:" Target="{Binding ElementName=DisplayNameBox}" Padding="0" Margin="0,8,0,2"/>
+                    <Label x:Name="LblDisplayName" Content="Sender displa_y name:" Target="{Binding ElementName=DisplayNameBox}" Padding="0" Margin="0,8,0,2"/>
                     <TextBox x:Name="DisplayNameBox"
                              Text="{Binding DisplayName, UpdateSourceTrigger=PropertyChanged}"
                              AutomationProperties.LabeledBy="{Binding ElementName=LblDisplayName}"
-                             TabIndex="8"/>
+                             TabIndex="9"/>
                 </StackPanel>
 
                 <!-- The account's own email address. Since #396 it is only that: a server whose
@@ -139,7 +149,7 @@
                          Text="{Binding Username, UpdateSourceTrigger=PropertyChanged}"
                          IsReadOnly="{Binding IsSharedSelected}"
                          AutomationProperties.LabeledBy="{Binding ElementName=LblUsername}"
-                         TabIndex="9"/>
+                         TabIndex="10"/>
 
                 <!-- #31: a shared mailbox has no credentials or connection of its own — it reads through
                      its parent account and shows mail only. In place of the connection/auth/sync
@@ -154,6 +164,15 @@
                              IsReadOnlyCaretVisible="True"
                              TextWrapping="Wrap"
                              AutomationProperties.LabeledBy="{Binding ElementName=LblSharedParent}"/>
+
+                    <!-- #31 PR 5: a shared mailbox is excluded from new-mail toasts by default (it is often a
+                         high-volume role mailbox). This opt-in adds it back in; the global new-mail
+                         notification switch in Settings still governs. Applied immediately (no Save step). -->
+                    <CheckBox x:Name="SharedNotifyCheckBox"
+                              Content="Notify me of ne_w mail in this shared mailbox"
+                              IsChecked="{Binding NotifyOnNewMail}"
+                              Click="SharedNotifyCheckBox_Click"
+                              Margin="0,8,0,0"/>
                 </StackPanel>
 
                 <!-- #31: the whole editable connection surface (password, OAuth sign-in) is hidden for a
@@ -166,7 +185,7 @@
                     <Label x:Name="LblPassword" Content="Pass_word:" Target="{Binding ElementName=PasswordBox}" Padding="0" Margin="0,8,0,2"/>
                     <PasswordBox x:Name="PasswordBox"
                                  AutomationProperties.LabeledBy="{Binding ElementName=LblPassword}"
-                                 TabIndex="10"
+                                 TabIndex="11"
                                  PasswordChanged="PasswordBox_PasswordChanged"/>
 
                     <!-- App-specific password warning, driven by the account's provider (Gmail, Yahoo,
@@ -180,7 +199,7 @@
                         <StackPanel>
                             <TextBlock Text="{Binding AppPasswordHint}" TextWrapping="Wrap" FontWeight="SemiBold"/>
                             <TextBlock Margin="0,4,0,0" TextWrapping="Wrap">
-                                <Hyperlink NavigateUri="{Binding AppPasswordUrl}" KeyboardNavigation.TabIndex="11"
+                                <Hyperlink NavigateUri="{Binding AppPasswordUrl}" KeyboardNavigation.TabIndex="12"
                                            RequestNavigate="AppPasswordLink_RequestNavigate"
                                            AutomationProperties.Name="Create an app password">
                                     <Run Text="{Binding AppPasswordUrl, Mode=OneWay}"/>
@@ -203,7 +222,7 @@
                               IsChecked="{Binding SyncContacts}"
                               Click="SyncContactsCheckBox_Click"
                               AutomationProperties.Name="Sync contacts from this account"
-                              Margin="0,0,0,4" TabIndex="14"/>
+                              Margin="0,0,0,4" TabIndex="15"/>
                 </StackPanel>
 
                 <!-- Calendar sync (#282) — shown for Microsoft, Google, and iCloud accounts. -->
@@ -215,7 +234,7 @@
                               IsChecked="{Binding SyncCalendar}"
                               Click="SyncCalendarCheckBox_Click"
                               AutomationProperties.Name="Sync calendar from this account"
-                              Margin="0,0,0,4" TabIndex="15"/>
+                              Margin="0,0,0,4" TabIndex="16"/>
                 </StackPanel>
 
                 <!-- Server settings live behind the same expander as the Add Account dialog, so an
@@ -231,7 +250,7 @@
 
                         <!-- Authentication — hidden for Microsoft 365 (Graph), which is always OAuth. -->
                         <StackPanel Visibility="{Binding IsImapBackend, Converter={StaticResource BoolToVisibility}}">
-                            <Label x:Name="LblAuthType" Content="_Authentication:" Target="{Binding ElementName=AuthTypeCombo}" Padding="0" Margin="0,0,0,2"/>
+                            <Label x:Name="LblAuthType" Content="Authentication:" Target="{Binding ElementName=AuthTypeCombo}" Padding="0" Margin="0,0,0,2"/>
                             <ComboBox x:Name="AuthTypeCombo"
                                       SelectedIndex="{Binding AuthTypeIndex, Mode=TwoWay}"
                                       AutomationProperties.LabeledBy="{Binding ElementName=LblAuthType}"
@@ -271,13 +290,13 @@
                                          AutomationProperties.LabeledBy="{Binding ElementName=LblImapHost}"
                                         />
 
-                                <Label x:Name="LblImapPort" Content="IMAP _port:" Target="{Binding ElementName=ImapPortBox}" Padding="0" Margin="0,6,0,2"/>
+                                <Label x:Name="LblImapPort" Content="IMAP port:" Target="{Binding ElementName=ImapPortBox}" Padding="0" Margin="0,6,0,2"/>
                                 <TextBox x:Name="ImapPortBox"
                                          Text="{Binding ImapPort, UpdateSourceTrigger=PropertyChanged}"
                                          AutomationProperties.LabeledBy="{Binding ElementName=LblImapPort}"
                                         />
 
-                                <CheckBox Content="Use _SSL (port 993)"
+                                <CheckBox Content="Use SSL (port _993)"
                                           IsChecked="{Binding ImapUseSsl}"
                                           AutomationProperties.Name="IMAP use SSL"
                                           Margin="0,6"/>
@@ -297,13 +316,13 @@
                                          AutomationProperties.LabeledBy="{Binding ElementName=LblPop3Host}"
                                         />
 
-                                <Label x:Name="LblPop3Port" Content="POP3 _port:" Target="{Binding ElementName=Pop3PortBox}" Padding="0" Margin="0,6,0,2"/>
+                                <Label x:Name="LblPop3Port" Content="POP3 port:" Target="{Binding ElementName=Pop3PortBox}" Padding="0" Margin="0,6,0,2"/>
                                 <TextBox x:Name="Pop3PortBox"
                                          Text="{Binding Pop3Port, UpdateSourceTrigger=PropertyChanged}"
                                          AutomationProperties.LabeledBy="{Binding ElementName=LblPop3Port}"
                                         />
 
-                                <CheckBox Content="Use _SSL (port 995)"
+                                <CheckBox Content="Use SSL (port _995)"
                                           IsChecked="{Binding Pop3UseSsl}"
                                           AutomationProperties.Name="POP3 use SSL"
                                           Margin="0,6"/>
@@ -345,7 +364,7 @@
                                       AutomationProperties.Name="SMTP implicit SSL on connect"
                                       Margin="0,6"/>
 
-                            <CheckBox Content="Accept invalid certi_ficates"
+                            <CheckBox Content="Accept invalid certificates"
                                       IsChecked="{Binding SmtpAcceptInvalidCert}"
                                       AutomationProperties.Name="SMTP accept invalid SSL certificates"
                                       Margin="0,0,0,6"/>
@@ -394,26 +413,31 @@
         </ScrollViewer>
 
         <!-- Bottom buttons -->
+        <!-- Declared in the order they appear, so Tab meets them left to right: Save, Test Connection,
+             then Close as the last stop in the dialog (#834). They used to be DockPanel.Dock="Right"
+             buttons declared Close-first, which docking reversed on screen but not in the Tab order.
+             Close has no access key: Escape is its key, and Alt+C belongs to Sync contacts. -->
         <DockPanel Grid.Column="1" Grid.Row="1" Margin="10,8,0,0">
-            <Button x:Name="CloseButton"
-                    DockPanel.Dock="Right"
-                    Content="_Close"
-                    Click="CloseButton_Click"
-                    IsCancel="True"
-                    AutomationProperties.Name="Close"
-                    MinWidth="80" Margin="6,0,0,0"/>
-            <Button DockPanel.Dock="Right"
-                    Content="_Test Connection"
-                    Command="{Binding TestConnectionCommand}"
-                    AutomationProperties.Name="Test connection"
-                    Visibility="{Binding ShowTestConnection, Converter={StaticResource BoolToVisibility}}"
-                    MinWidth="120" Margin="6,0,0,0"/>
-            <Button DockPanel.Dock="Right"
-                    Content="_Save"
-                    Command="{Binding SaveAccountCommand}"
-                    AutomationProperties.Name="Save"
-                    IsDefault="True"
-                    MinWidth="80"/>
+            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                <Button x:Name="SaveButton"
+                        Content="_Save"
+                        Command="{Binding SaveAccountCommand}"
+                        AutomationProperties.Name="Save"
+                        IsDefault="True"
+                        MinWidth="80"/>
+                <Button x:Name="TestConnectionButton"
+                        Content="_Test Connection"
+                        Command="{Binding TestConnectionCommand}"
+                        AutomationProperties.Name="Test connection"
+                        Visibility="{Binding ShowTestConnection, Converter={StaticResource BoolToVisibility}}"
+                        MinWidth="120" Margin="6,0,0,0"/>
+                <Button x:Name="CloseButton"
+                        Content="Close"
+                        Click="CloseButton_Click"
+                        IsCancel="True"
+                        AutomationProperties.Name="Close"
+                        MinWidth="80" Margin="6,0,0,0"/>
+            </StackPanel>
             <TextBlock VerticalAlignment="Center"
                        Text="{Binding StatusText}"
                        AutomationProperties.Name="Status"

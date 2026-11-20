@@ -1,0 +1,430 @@
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Linq;
+using System.Net;
+using System.Threading;
+using System.Threading.Tasks;
+using CommunityToolkit.Mvvm.ComponentModel;
+using QuickMail.Helpers;
+using QuickMail.Models;
+using QuickMail.Services;
+
+namespace QuickMail.ViewModels;
+
+/// <summary>
+/// Offline detection (#637): the view model feeds <see cref="IConnectivityService"/> from every
+/// real outcome against a server (see <c>ApplyAccountStatus</c> and the fetch paths) and reacts to
+/// its verdict — reconnecting when the network returns, retrying on a backoff while it is not, and
+/// dropping an account from the connected set when it goes unreachable.
+/// </summary>
+public partial class MainViewModel
+{
+    private readonly IConnectivityService? _connectivity;
+    private Action<bool>? _onOnlineChanged;
+    private Action<Guid, bool>? _onAccountOnlineChanged;
+    private Action<bool>? _onNetworkAvailabilityChanged;
+    private CancellationTokenSource? _offlineRetryCts;
+    private volatile bool _offlineRetryRunning;
+
+    /// <summary>First wait of the offline retry loop; doubles to five minutes. Settable so tests do not wait.</summary>
+    internal TimeSpan OfflineRetryBaseDelay { get; set; } = TimeSpan.FromSeconds(30);
+
+    private void SubscribeConnectivity()
+    {
+        if (_connectivity == null) return;
+        // The service raises on ThreadPool and timer threads; everything here touches UI-owned state.
+        _onOnlineChanged              = online => _ui.Post(() => OnOnlineChanged(online));
+        _onAccountOnlineChanged       = (id, online) => _ui.Post(() => OnAccountOnlineChanged(id, online));
+        _onNetworkAvailabilityChanged = available => _ui.Post(() => OnNetworkAvailabilityChanged(available));
+        _connectivity.OnlineChanged              += _onOnlineChanged;
+        _connectivity.AccountOnlineChanged       += _onAccountOnlineChanged;
+        _connectivity.NetworkAvailabilityChanged += _onNetworkAvailabilityChanged;
+    }
+
+    private void UnsubscribeConnectivity()
+    {
+        if (_connectivity == null) return;
+        if (_onOnlineChanged != null)              _connectivity.OnlineChanged              -= _onOnlineChanged;
+        if (_onAccountOnlineChanged != null)       _connectivity.AccountOnlineChanged       -= _onAccountOnlineChanged;
+        if (_onNetworkAvailabilityChanged != null) _connectivity.NetworkAvailabilityChanged -= _onNetworkAvailabilityChanged;
+        _onOnlineChanged = null;
+        _onAccountOnlineChanged = null;
+        _onNetworkAvailabilityChanged = null;
+    }
+
+    /// <summary>True when the app is known to be offline; null service means "assume online".</summary>
+    private bool IsKnownOffline => _connectivity is { IsOnline: false };
+
+    // ── What a failed connect says about the network ────────────────────────────
+
+    public enum ConnectFailureKind
+    {
+        /// <summary>Nothing reached the server: no stored password, a sign-in the user must do. Says nothing about the network.</summary>
+        NotAttempted,
+        /// <summary>The server answered and refused. It is reachable.</summary>
+        ServerRefused,
+        /// <summary>The server could not be reached.</summary>
+        Transport,
+    }
+
+    // Written by ConnectOneAccountAsync on a background thread, read by ApplyAccountStatus on the UI
+    // thread, cleared on a successful connect.
+    private readonly ConcurrentDictionary<Guid, ConnectFailureKind> _lastConnectFailure = new();
+
+    internal static ConnectFailureKind ClassifyConnectFailure(Exception ex)
+        => ConnectionFailure.IsConnectionFailure(ex, CancellationToken.None)
+            ? ConnectFailureKind.Transport
+            : ConnectFailureKind.ServerRefused;
+
+    /// <summary>
+    /// Feeds the connectivity service from a disconnected outcome, using what the connect recorded.
+    /// Callers other than the connect paths (the IDLE watcher's reachability event, a folder load
+    /// that failed) record nothing and are transport failures by construction.
+    /// </summary>
+    private void NoteConnectOutcome(Guid accountId, string source)
+    {
+        if (_connectivity == null) return;
+        if (!_lastConnectFailure.TryRemove(accountId, out var kind))
+            kind = ConnectFailureKind.Transport;
+        switch (kind)
+        {
+            case ConnectFailureKind.Transport:     _connectivity.NoteAccountUnreachable(accountId, source); break;
+            case ConnectFailureKind.ServerRefused: _connectivity.NoteAccountReachable(accountId, source);   break;
+            default: break;   // NotAttempted: no verdict either way
+        }
+    }
+
+    /// <summary>A server on this machine needs no network; the no-network shortcut must not skip it.</summary>
+    internal static bool IsLoopbackHost(string? host)
+    {
+        if (string.IsNullOrWhiteSpace(host)) return false;
+        if (host.Equals("localhost", StringComparison.OrdinalIgnoreCase)) return true;
+        return IPAddress.TryParse(host, out var ip) && IPAddress.IsLoopback(ip);
+    }
+
+    // ── The connection status label ─────────────────────────────────────────────
+
+    public enum ConnectionPhase { Idle, Connecting, Syncing }
+
+    private ConnectionPhase _connectionPhase;
+    private bool _announcedOffline;
+
+    /// <summary>
+    /// Sets the phase and recomputes <see cref="ConnectionStatusText"/>. The label used to be
+    /// written from eight sites with eight different ideas of what it meant; now it is derived
+    /// from the phase, the connectivity verdict and the connected count (#637).
+    /// </summary>
+    private void SetConnectionPhase(ConnectionPhase phase)
+    {
+        _connectionPhase = phase;
+        UpdateConnectionStatusText();
+    }
+
+    private void UpdateConnectionStatusText() =>
+        ConnectionStatusText = ConnectionStatusFor(_connectionPhase, !IsKnownOffline, _connectedAccountIds.Count, Accounts.Count);
+
+    internal static string ConnectionStatusFor(ConnectionPhase phase, bool online, int connected, int accounts) => phase switch
+    {
+        ConnectionPhase.Connecting => "Connecting…",
+        ConnectionPhase.Syncing    => "Syncing…",
+        _ when accounts == 0       => "No accounts",
+        _ when !online             => "Offline",
+        _ when connected == 0      => "Offline",
+        _                          => $"{connected} account{(connected == 1 ? "" : "s")} connected",
+    };
+
+    private bool _connectionLostSounded;
+
+    /// <summary>"Offline. Showing cached messages." once per outage; "Back online." only after it was said.</summary>
+    /// <param name="atStartup">Starting up offline isn't a connection being lost: at sign-in, before
+    /// Wi-Fi is up, it would otherwise sound "lost" and then "restored" every time.</param>
+    private void AnnounceOfflineOnce(bool atStartup = false)
+    {
+        if (_announcedOffline) return;
+        _announcedOffline = true;
+        if (!atStartup)
+        {
+            _connectionLostSounded = true;
+            _sounds?.Play(SoundEvent.ConnectionLost);
+        }
+        Announce(OnlineMode ? "Offline." : "Offline. Showing cached messages.", AnnouncementCategory.Status);
+    }
+
+    // ── Offline bodies (#637) ───────────────────────────────────────────────────
+
+    private int _offlineBodyDays;
+    private bool _offlineBodyAllFolders;
+    private CancellationTokenSource? _offlineBodyStatusCts;
+
+    /// <summary>
+    /// The status bar's word on offline reading (#717): how many of the messages in the window have their full
+    /// text, and whether more are coming down right now. Empty when the setting is off — the status bar then
+    /// shows nothing rather than a region that says nothing.
+    /// </summary>
+    [ObservableProperty]
+    private string _offlineBodyStatusText = string.Empty;
+
+    /// <summary>
+    /// Says what the status bar says. A pure function so the wording is testable without a store:
+    /// <paramref name="downloading"/> uses the running pass's own numbers, and otherwise the totals are
+    /// everything the window covers.
+    /// </summary>
+    internal static string DescribeOfflineBodies(int downloaded, int total, bool downloading)
+    {
+        if (downloading)
+            return $"Messages: downloading {downloaded:N0} of {total:N0}";
+        if (total == 0) return "Messages: none to download yet";
+        if (downloaded >= total)
+            return total == 1 ? "Messages: 1 of 1 downloaded" : $"Messages: all {total:N0} downloaded";
+        return $"Messages: {downloaded:N0} of {total:N0} downloaded";
+    }
+
+    private void OnOfflineBodyProgress(int done, int total)
+        => OfflineBodyStatusText = DescribeOfflineBodies(done, total, downloading: true);
+
+    /// <summary>
+    /// Recounts what is downloaded and puts it in the status bar. Call on the UI thread only — it replaces
+    /// <see cref="_offlineBodyStatusCts"/> — and the count itself runs off it. Called when the pass ends, when
+    /// the setting changes, and after each background pass. A count superseded by a newer one is dropped.
+    /// </summary>
+    private async Task RefreshOfflineBodyStatusAsync()
+    {
+        DrainCts(ref _offlineBodyStatusCts);
+        if (OnlineMode || _offlineBodyDays <= 0)
+        {
+            _ui.Post(() => OfflineBodyStatusText = string.Empty);
+            return;
+        }
+
+        var cts = new CancellationTokenSource();
+        _offlineBodyStatusCts = cts;
+        var ct = cts.Token;
+        var since = ConfigModel.OfflineBodyWindowStart(_offlineBodyDays, DateTimeOffset.UtcNow);
+        // The account list and the folder cache belong to the UI thread; every caller is on it now, and Invoke
+        // there simply runs the delegate.
+        List<(Guid AccountId, string FolderName)> folders = [];
+        _ui.Invoke(() => folders = OfflineBodyFolders());
+        if (folders.Count == 0)
+        {
+            _ui.Post(() => OfflineBodyStatusText = DescribeOfflineBodies(0, 0, downloading: false));
+            return;
+        }
+
+        try
+        {
+            // The store's async calls run synchronously, so this would otherwise count on the UI thread.
+            var (total, downloaded) = await Task.Run(() => _localStore.CountOfflineBodiesAsync(folders, since, ct), ct);
+            if (ct.IsCancellationRequested) return;
+            _ui.Post(() => OfflineBodyStatusText = DescribeOfflineBodies(downloaded, total, downloading: false));
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            LogService.Log("Offline bodies status", ex);
+            _ui.Post(() => OfflineBodyStatusText = string.Empty);
+        }
+    }
+
+    /// <summary>The folders the offline-bodies pass covers, for counting what it has done.</summary>
+    private List<(Guid AccountId, string FolderName)> OfflineBodyFolders()
+    {
+        var folders = new List<(Guid, string)>();
+        foreach (var account in Accounts)
+        {
+            if (account.IsShared || account.BackendKind == BackendKind.Pop3Smtp) continue;
+            if (!_cachedFolders.TryGetValue(account.Id, out var cached)) continue;
+            folders.AddRange(SyncService.FoldersForBodies(cached, _offlineBodyAllFolders)
+                .Select(f => (account.Id, f.FullName)));
+        }
+        return folders;
+    }
+
+    /// <summary>
+    /// One announcement when a pass finishes, never one per batch — the pass runs behind the
+    /// previews and after every sweep and would otherwise chatter every ten messages. Says what
+    /// was actually cached; a pass that cached nothing (the server went away) says nothing, the
+    /// offline announcement covers that.
+    /// </summary>
+    private void OnOfflineBodyPassCompleted(int downloaded, int planned)
+    {
+        RefreshOfflineBodyStatusAsync().LogFaults("offline bodies status");
+        if (downloaded <= 0) return;
+        var noun = downloaded == 1 ? "message" : "messages";
+        Announce(downloaded >= planned
+            ? $"Downloaded {downloaded} {noun} for offline reading."
+            : $"Downloaded {downloaded} of {planned} messages for offline reading.",
+            AnnouncementCategory.Status);
+    }
+
+    /// <summary>
+    /// A widened window is backfilled now rather than at the next sweep; a narrowed one just stops
+    /// fetching. Compares the effective window, so widening SyncDays under a capped setting counts.
+    /// </summary>
+    private void ApplyOfflineBodySetting(ConfigModel cfg)
+    {
+        var was = _offlineBodyDays;
+        var wasAllFolders = _offlineBodyAllFolders;
+        _offlineBodyDays = cfg.EffectiveOfflineBodyDays;
+        _offlineBodyAllFolders = cfg.OfflineBodyAllFolders;
+        RefreshOfflineBodyStatusAsync().LogFaults("offline bodies status");
+        var widened = _offlineBodyDays > was
+            || (_offlineBodyDays > 0 && _offlineBodyAllFolders && !wasAllFolders);
+        if (OnlineMode || !widened) return;
+        var connected = Accounts.Where(a => _connectedAccountIds.Contains(a.Id)).ToList();
+        if (connected.Count == 0) return;
+        BackfillOfflineBodiesQuietlyAsync(connected, _bgSyncCts?.Token ?? CancellationToken.None)
+            .LogFaults("offline bodies backfill");
+    }
+
+    /// <summary>
+    /// Runs the offline-bodies pass for the given accounts with a UI-thread snapshot of their
+    /// folder lists, and never lets a failure escape — the periodic sweep and a Settings save both
+    /// call this and neither should die for it.
+    /// </summary>
+    private async Task BackfillOfflineBodiesQuietlyAsync(List<AccountModel> accounts, CancellationToken ct)
+    {
+        if (OnlineMode || accounts.Count == 0) return;
+        var folders = new Dictionary<Guid, List<MailFolderModel>>();
+        _ui.Invoke(() =>
+        {
+            foreach (var a in accounts)
+                if (_cachedFolders.TryGetValue(a.Id, out var f)) folders[a.Id] = f;
+        });
+        try
+        {
+            await _syncService.BackfillOfflineBodiesAsync(accounts, folders, ct).ConfigureAwait(false);
+            // The status bar's count, whether or not the pass had anything to do (it reports only what it
+            // downloaded, and the first pass after launch usually has nothing left). Posted: the recount owns a
+            // cancellation source that only the UI thread may replace, and this continuation is not on it.
+            _ui.Post(() => RefreshOfflineBodyStatusAsync().LogFaults("offline bodies status"));
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex) { LogService.Log("Offline bodies pass", ex); }
+    }
+
+    /// <summary>Chooses the status-bar wording for a failed server call: offline wording for a transport failure, the raw error otherwise.</summary>
+    private static string OfflineOrErrorStatus(Exception ex, Func<string> offline, Func<string> error, CancellationToken ct = default)
+        => ConnectionFailure.IsConnectionFailure(ex, ct) ? offline() : error();
+
+    private static string CachedCountText(int count)
+        => $"Offline — showing {count} cached {(count == 1 ? "message" : "messages")}.";
+
+    // ── Reacting to the verdict ─────────────────────────────────────────────────
+
+    private void OnNetworkAvailabilityChanged(bool available)
+    {
+        // Nothing to do on loss: in-flight operations fail on their own and feed the service, and
+        // the debounced OnlineChanged(false) is what the user hears. On return, reconnect at once.
+        if (available)
+            ReconnectOfflineAccountsAsync("network-returned").LogFaults("reconnect after network returned");
+    }
+
+    private void OnOnlineChanged(bool online)
+    {
+        UpdateConnectionStatusText();
+        if (online)
+        {
+            StopOfflineRetryLoop();
+            if (_announcedOffline)
+            {
+                _announcedOffline = false;
+                if (_connectionLostSounded) _sounds?.Play(SoundEvent.ConnectionRestored);
+                _connectionLostSounded = false;
+                Announce("Back online.", AnnouncementCategory.Status);
+            }
+        }
+        else
+        {
+            AnnounceOfflineOnce();
+            StartOfflineRetryLoop();
+        }
+    }
+
+    private void OnAccountOnlineChanged(Guid accountId, bool online)
+    {
+        UpdateConnectionStatusText();
+        var account = Accounts.FirstOrDefault(a => a.Id == accountId);
+        if (account == null) return;
+
+        if (online)
+        {
+            // Back: a folder listing or a message fetch just succeeded, so the backend session is
+            // live. Put the account back in the connected set and on its row — the mirror of the
+            // removal below, which used to have no counterpart.
+            if (!_connectedAccountIds.Contains(accountId)
+                && _imap.IsConnected(accountId)
+                && _cachedFolders.TryGetValue(accountId, out var folders))
+            {
+                _connectedAccountIds.Add(accountId);
+                ApplyAccountStatus(account, folders, "connectivity-online");
+                UpdateConnectionStatusText();
+            }
+            return;
+        }
+
+        // This is the one place an id leaves the connected set other than account removal: every
+        // reader of _connectedAccountIds wants "currently reachable", and a sweep or a watcher
+        // started against a dead account is wasted work at best.
+        _connectedAccountIds.Remove(accountId);
+        if (account.IsConnected)
+            ApplyAccountStatus(account, null, "connectivity-offline");
+        UpdateConnectionStatusText();
+    }
+
+    /// <summary>
+    /// While the app is offline with the network up (a captive portal, a server outage), retries the
+    /// connect on a jittered backoff — 30 s, 60 s, 120 s, then every 5 minutes — until something
+    /// answers. Attempts are skipped while the NIC is down; the network-returned handler covers that.
+    /// The loop waits first and asks the service second: at the moment it is started the offline
+    /// verdict may still be inside its debounce.
+    /// </summary>
+    private void StartOfflineRetryLoop()
+    {
+        if (_connectivity == null) return;
+        if (_offlineRetryRunning) return;
+        _offlineRetryRunning = true;
+        ReplaceCts(ref _offlineRetryCts, out var ct);
+        _ = RunOfflineRetryLoopAsync(ct);
+    }
+
+    private void StopOfflineRetryLoop()
+    {
+        DrainCts(ref _offlineRetryCts);
+        _offlineRetryRunning = false;
+    }
+
+    private async Task RunOfflineRetryLoopAsync(CancellationToken ct)
+    {
+        var delay = OfflineRetryBaseDelay;
+        var cap = TimeSpan.FromMinutes(5);
+        try
+        {
+            while (!ct.IsCancellationRequested)
+            {
+                var jittered = TimeSpan.FromSeconds(JitteredBackoffSeconds((int)Math.Max(1, delay.TotalSeconds)));
+                await Task.Delay(delay < TimeSpan.FromSeconds(2) ? delay : jittered, ct).ConfigureAwait(false);
+                delay = delay * 2 > cap ? cap : delay * 2;
+
+                if (ct.IsCancellationRequested) break;
+                if (_connectivity is not { IsOnline: false }) break;      // online again (or was never offline)
+                if (!_connectivity.IsNetworkAvailable) continue;          // the network handler covers this case
+
+                var connected = await ReconnectOfflineAccountsAsync("offline-retry").ConfigureAwait(false);
+                if (connected > 0)
+                {
+                    // Something answered: the reconnect already rewired watchers; refresh what the
+                    // user is looking at so the "Offline — cached" status gives way to server truth.
+                    _ui.Post(() => RefreshCommand.Execute(null));
+                    break;
+                }
+            }
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex) { LogService.Log("Offline retry loop", ex); }
+        finally
+        {
+            _offlineRetryRunning = false;
+        }
+    }
+}

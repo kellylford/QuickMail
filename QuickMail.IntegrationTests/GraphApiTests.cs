@@ -144,6 +144,8 @@ internal sealed class FakeMicrosoftOAuthService : IOAuthService
         throw new NotSupportedException("Consent flows are not available in tests.");
     public Task RequestCalendarConsentAsync(AccountModel account, CancellationToken ct = default) =>
         throw new NotSupportedException("Consent flows are not available in tests.");
+    public Task RequestSharedMailboxConsentAsync(AccountModel parent, CancellationToken ct = default) =>
+        throw new NotSupportedException("Consent flows are not available in tests.");
     public Task SignOutAsync(AccountModel account) =>
         throw new NotSupportedException("Sign-out is not available in tests.");
 }

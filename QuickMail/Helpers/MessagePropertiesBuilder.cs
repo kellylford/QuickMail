@@ -14,7 +14,12 @@ public static class MessagePropertiesBuilder
     {
         var headers = new List<PropertyItem>
         {
-            new("From",       NoneIfBlank(summary.From)),
+            // Detail first: the summary's From is the display name alone, which is what the message
+            // list's From column wants but leaves Properties with no address to show (issue #636).
+            // For a message whose body is not cached, the summary's name and address together (#803) —
+            // the address stopped riding in a Microsoft row's From with #801, and an IMAP row never had it.
+            new("From",       NoneIfBlank(detail is not null && !string.IsNullOrWhiteSpace(detail.From)
+                                              ? detail.From : summary.FromWithAddress)),
             new("To",         NoneIfBlank(summary.To)),
             new("Cc",         detail is not null ? NoneIfBlank(detail.Cc) : "(not loaded)"),
             new("Reply-To",   detail is not null ? NoneIfBlank(detail.ReplyTo) : "(not loaded)"),

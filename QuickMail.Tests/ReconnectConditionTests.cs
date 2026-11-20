@@ -42,4 +42,26 @@ public class ReconnectConditionTests
         var result = MainViewModel.AccountsNeedingConnect([Acct(id)], _ => true, _ => false);
         Assert.Contains(result, a => a.Id == id);
     }
+
+    [Fact]
+    public void GraphParentSharedMailbox_IsConnected() // #31 PR 2
+    {
+        // A Graph-parent shared mailbox borrows the parent's token and reads /users/{SharedAddress}, so
+        // it now connects like any account (it was skipped in PR 1).
+        var id = Guid.NewGuid();
+        var shared = new AccountModel { Id = id, IsShared = true, BackendKind = BackendKind.MicrosoftGraph };
+        var result = MainViewModel.AccountsNeedingConnect([shared], _ => false, _ => false);
+        Assert.Contains(result, a => a.Id == id);
+    }
+
+    [Fact]
+    public void ImapParentSharedMailbox_IsNotConnected() // #31 — shared is Graph-only (IMAP PR 3 dropped)
+    {
+        // Shared mailboxes are Graph-only for v1; an IMAP-backed shared account should never be created
+        // (parent eligibility is Graph-only), and if one somehow exists it must not connect.
+        var id = Guid.NewGuid();
+        var shared = new AccountModel { Id = id, IsShared = true, BackendKind = BackendKind.ImapSmtp };
+        var result = MainViewModel.AccountsNeedingConnect([shared], _ => false, _ => false);
+        Assert.DoesNotContain(result, a => a.Id == id);
+    }
 }

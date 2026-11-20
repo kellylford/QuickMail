@@ -89,6 +89,15 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
     // SyncContacts / SyncCalendar are inherited from AccountEditorViewModel (shared with Add Account).
 
     /// <summary>
+    /// #31 PR 5: per-account new-mail notification opt-in for a shared mailbox. Bound to the checkbox in
+    /// the shared-only editor block; mirrors <see cref="AccountModel.NotifyOnNewMail"/> for the selected
+    /// account. Assigned (not toggled) in <see cref="OnSelectedAccountChanged"/>; the checkbox's Click
+    /// handler calls <see cref="SetNotifyOnNewMail"/> to apply and persist on real user interaction only.
+    /// </summary>
+    [ObservableProperty]
+    private bool _notifyOnNewMail;
+
+    /// <summary>
     /// Calendar sync (#282) is offered for a superset of contact sync: Microsoft and Google (calendar
     /// API), plus iCloud accounts (CalDAV via the account's app-specific password). Other password/IMAP
     /// accounts show no checkbox.
@@ -113,7 +122,7 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
         && _featureGate.IsEnabled(FeatureFlag.MicrosoftGraphMigration);
 
     /// <summary>#31: gates the "Add shared…" button — the sole path that can create a shared mailbox.
-    /// Off by default while the multi-PR feature is built (see <see cref="FeatureFlag.SharedMailboxes"/>).</summary>
+    /// On by default as of 0.8.42 (see <see cref="FeatureFlag.SharedMailboxes"/>).</summary>
     public bool IsSharedMailboxesEnabled => _featureGate.IsEnabled(FeatureFlag.SharedMailboxes);
 
     public AccountManagerViewModel(
@@ -171,6 +180,7 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
         Signature = value.Signature;
         SyncContacts = value.SyncContacts;
         SyncCalendar = value.SyncCalendar;
+        NotifyOnNewMail = value.NotifyOnNewMail;   // #31 PR 5: shared-mailbox notify opt-in for the checkbox
         // Restore the persisted personal-account flag (#233) so a re-auth resolves personal-vs-work from
         // the tenant-derived truth, not the domain guess — the vanity-domain personal case the
         // single-consent fold (#544) most needs.
@@ -293,8 +303,52 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
         }
     }
 
+    /// <summary>
+    /// #31 PR 5: applies the shared-mailbox new-mail notification opt-in immediately and persists it —
+    /// no Save step, mirroring the contact/calendar-sync toggles. Called from the checkbox's Click handler
+    /// (real user interaction only, never the programmatic assignment in <see cref="OnSelectedAccountChanged"/>).
+    /// Returns without side effects if the selection isn't a shared account. <paramref name="enabled"/> is
+    /// the new checkbox state.
+    /// </summary>
+    public void SetNotifyOnNewMail(bool enabled)
+    {
+        if (SelectedAccount is not { IsShared: true } account) return;   // box shows only for shared; defensive
+        account.NotifyOnNewMail = enabled;
+        SaveAccountsPreservingConversionMarkers();
+        StatusText = enabled
+            ? "New-mail notifications enabled for this shared mailbox."
+            : "New-mail notifications disabled for this shared mailbox.";
+    }
+
     public AddAccountViewModel CreateAddAccountViewModel() =>
         new(_featureGate, MailService, OAuthService, Catalog, _autoDiscover, _sendMail);
+
+    /// <summary>The account most recently added in this session of the dialog, if any.</summary>
+    public Guid? LastAddedAccountId { get; private set; }
+
+    // The contact and calendar consent started for a new account (#256, #282) can outlive this
+    // dialog: since #834 the usual way out is Done, which closes it at once, often while a consent
+    // request is still running. The window that opened the dialog awaits these and reports what
+    // failed, so a failure is not announced from a window that has gone. UI-thread only.
+    private readonly List<Task> _newAccountFollowUps = [];
+    private readonly List<string> _newAccountFailures = [];
+
+    /// <summary>Completes when every contact/calendar follow-up started for a new account has finished.</summary>
+    public Task NewAccountFollowUpsCompletion => Task.WhenAll(_newAccountFollowUps);
+
+    /// <summary>Returns the follow-up failures not yet reported, and forgets them, so each is said once.</summary>
+    public IReadOnlyList<string> TakeNewAccountFailures()
+    {
+        var failures = _newAccountFailures.ToList();
+        _newAccountFailures.Clear();
+        return failures;
+    }
+
+    /// <summary>
+    /// Set when the user finished adding with Done (#834): the dialog closes, and the window that
+    /// opened it puts focus on <see cref="LastAddedAccountId"/> instead of wherever focus was.
+    /// </summary>
+    public bool ShowAddedAccountAfterClose { get; set; }
 
     public void CommitNewAccount(AccountModel account, string password)
     {
@@ -303,18 +357,19 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
         Accounts.Add(account);
         SaveAccountsPreservingConversionMarkers();
         SelectedAccount = account;
+        LastAddedAccountId = account.Id;
         StatusText = "Account added.";
 
         // If the user checked "sync contacts" while adding the account (issue #256), finish enabling
         // it: Google already granted contacts during sign-in, Microsoft needs the read-only contact
         // scope granted now (silent when the app registration declares it). Then pull the first batch.
         if (account.SyncContacts && _contactSync != null && _contactSync.CanSync(account))
-            _ = FinishNewAccountContactSyncAsync(account);
+            _newAccountFollowUps.Add(FinishNewAccountContactSyncAsync(account));
 
         // Same for calendar (#282): Microsoft needs a calendar-scope grant now; Google already has it
         // from sign-in; iCloud uses the app-specific password just saved above. Then pull the first batch.
         if (account.SyncCalendar && _graphCalendarSync != null)
-            _ = FinishNewAccountCalendarSyncAsync(account);
+            _newAccountFollowUps.Add(FinishNewAccountCalendarSyncAsync(account));
     }
 
     private async Task FinishNewAccountContactSyncAsync(AccountModel account)
@@ -329,8 +384,9 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
         catch (Exception ex)
         {
             account.SyncContacts = false;
-            SaveAccountsPreservingConversionMarkers();
+            PersistOneAccount(account.Id, a => a.SyncContacts = false);
             StatusText = $"Account added, but contact sync couldn't be enabled: {ex.Message}";
+            _newAccountFailures.Add($"{account.AccountLabel} was added, but contact sync couldn't be enabled: {ex.Message}");
             LogService.Log($"AccountManager: new-account contact sync failed for {account.AccountLabel} — {ex.Message}");
         }
     }
@@ -347,8 +403,9 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
         catch (Exception ex)
         {
             account.SyncCalendar = false;
-            SaveAccountsPreservingConversionMarkers();
+            PersistOneAccount(account.Id, a => a.SyncCalendar = false);
             StatusText = $"Account added, but calendar sync couldn't be enabled: {ex.Message}";
+            _newAccountFailures.Add($"{account.AccountLabel} was added, but calendar sync couldn't be enabled: {ex.Message}");
             LogService.Log($"AccountManager: new-account calendar sync failed for {account.AccountLabel} — {ex.Message}");
         }
     }
@@ -429,6 +486,20 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
     /// full re-download on the next launch. ConvertToGraphAsync is the one place that legitimately
     /// RAISES the marker, so it saves directly instead of calling this.
     /// </summary>
+    /// <summary>
+    /// Changes one account on disk and nothing else. A follow-up that fails after this dialog has
+    /// closed must not save the dialog's whole snapshot of the account list over whatever the main
+    /// window has saved since — a reordered list, say.
+    /// </summary>
+    private void PersistOneAccount(Guid id, Action<AccountModel> change)
+    {
+        var stored = _accountService.LoadAccounts();
+        var match = stored.FirstOrDefault(a => a.Id == id);
+        if (match == null) return;
+        change(match);
+        _accountService.SaveAccounts(stored);
+    }
+
     private void SaveAccountsPreservingConversionMarkers()
     {
         // Not ToDictionary: a duplicated id in accounts.json must not turn a tolerable data oddity into
@@ -545,37 +616,50 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
         }
     }
 
-    /// <summary>Set by the View to confirm removing a parent that has shared mailboxes (#31): message →
-    /// user's yes/no. With no children, delete proceeds as before. When there ARE children this is the
-    /// only way to get the required yes, so an unset callback fails closed — the cascade is treated as
-    /// declined and nothing is removed, never removed unconfirmed. The shipped View always wires it.</summary>
-    public Func<string, bool>? ConfirmCascadeRemoval { get; set; }
+    /// <summary>Set by the View to confirm removing an account: message → user's yes/no. Every delete
+    /// asks, as the main window's account delete does. It used to ask only when the account had shared
+    /// mailboxes (#31), which was survivable while Delete's access key D was shared with Set Default and
+    /// Sender display name, so Alt+D only moved focus. With D now Delete's alone (#834), Alt+D, or a
+    /// bare "d" typed with focus on a button or checkbox, pressed it, and the account, its password and
+    /// its stored mail went at once. An unset callback fails closed: nothing is removed unconfirmed.
+    /// The shipped View always wires it.</summary>
+    public Func<string, bool>? ConfirmAccountRemoval { get; set; }
 
     [RelayCommand]
     private async Task DeleteAccountAsync()
     {
-        if (SelectedAccount == null) return;
+        if (SelectedAccount == null)
+        {
+            // The button is always enabled; pressing it to no effect, in silence, is the bug (#834).
+            SetStatusOutcome(Accounts.Count == 0 ? "There are no accounts to delete." : "Select an account in the list first.");
+            return;
+        }
         var account = SelectedAccount;
+        var index = Accounts.IndexOf(account);
 
         // #31: a shared mailbox has no independent existence — it lives entirely through its parent's
         // token and backend — so removing the parent removes its shared mailboxes too. Confirm and name
         // them first. Removing a shared mailbox on its own is an ordinary single-account delete.
         var sharedChildren = AccountModel.SharedChildrenOf(account, Accounts);
-        if (sharedChildren.Count > 0)
-        {
-            // The cascade needs an explicit yes. With no confirmation mechanism wired we cannot get one,
-            // so fail closed (?? false) — never remove a parent's shared mailboxes unconfirmed.
-            var names = string.Join(", ", sharedChildren.Select(c => c.AccountLabel));
-            var one = sharedChildren.Count == 1;
-            var confirmed = ConfirmCascadeRemoval?.Invoke(
-                $"Removing {account.AccountLabel} will also remove its shared mailbox{(one ? "" : "es")}: {names}. Continue?") ?? false;
-            if (!confirmed) return;
-        }
+
+        // Every removal needs an explicit yes. With no confirmation mechanism wired we cannot get one,
+        // so fail closed (?? false). Same wording as the main window's account delete.
+        var prompt = sharedChildren.Count == 0
+            ? $"Remove the account '{account.AccountLabel}'? This only removes it from QuickMail — your mail on the server is not affected."
+            : $"Removing '{account.AccountLabel}' will also remove its shared mailbox{(sharedChildren.Count == 1 ? "" : "es")}: "
+              + $"{string.Join(", ", sharedChildren.Select(c => c.AccountLabel))}. This only removes them from QuickMail — your mail on the server is not affected.";
+        if (ConfirmAccountRemoval?.Invoke(prompt) != true) return;
+
+        // Where the next account will be once this one and its shared mailboxes are gone: a shared
+        // mailbox moved above its parent shifts everything below it up by one.
+        index -= sharedChildren.Count(c => Accounts.IndexOf(c) < index);
 
         _credentials.DeletePassword(account.Id);
         Accounts.Remove(account);
         foreach (var child in sharedChildren) Accounts.Remove(child);
-        SelectedAccount = null;
+        // The next account takes its place (the one before, if it was last), so the list and the
+        // buttons go on acting on something rather than on nothing (#834).
+        SelectedAccount = Accounts.Count == 0 ? null : Accounts[Math.Clamp(index, 0, Accounts.Count - 1)];
         SaveAccountsPreservingConversionMarkers();
 
         var config = _configService.Load();
@@ -616,9 +700,10 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
         new(Accounts, SelectedAccount?.Id);
 
     /// <summary>Adds a created shared mailbox to the list and persists it — no credentials to save (it
-    /// reads through its parent). The dialog closes on success; the manager's close refreshes the main
-    /// window, which registers the backend and shows the new top-level node.</summary>
-    public void CommitNewSharedMailbox(AccountModel sharedMailbox)
+    /// reads through its parent) — then drives the one-time shared-mailbox consent on the parent. The
+    /// manager's close refreshes the main window, which registers the backend and connects the mailbox
+    /// (silently, using the consent obtained here). Consent failure never rolls back the add.</summary>
+    public async Task CommitNewSharedMailboxAsync(AccountModel sharedMailbox)
     {
         Accounts.Add(sharedMailbox);
         SaveAccountsPreservingConversionMarkers();
@@ -626,6 +711,32 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
         // Result, not Status: the add succeeded and the add window has already closed, so this is the
         // only feedback — it must be spoken even for a user who has AnnounceStatus off (#396 pattern).
         SetStatusOutcome("Shared mailbox added.");
+
+        // #31: drive the one-time shared-mailbox consent on the PARENT now — silent if already granted
+        // (e.g. admin-consented), otherwise the real Microsoft consent window, where the user consents,
+        // an admin grants for the org, or it is declined / pending admin approval. On success the grant
+        // lands in the shared MSAL cache, so the mailbox connects when the manager closes and the main
+        // window reconnects. On failure it stays added but DISCONNECTED (surfaced by its accessible
+        // name, per PR 1), self-healing on a later connect once consent lands. Consent is never allowed
+        // to roll back the add, and never a silent data loss.
+        // Shared-mailbox consent is a Microsoft Graph flow. An IMAP-parent shared mailbox (PR 3, XOAUTH2)
+        // must NOT trigger a Graph consent — that would pop a spurious Microsoft sign-in window at a
+        // non-Microsoft account. It is added here and stays disconnected until PR 3 wires its access.
+        var parent = Accounts.FirstOrDefault(a => a.Id == sharedMailbox.ParentAccountId);
+        if (parent is null || parent.BackendKind != BackendKind.MicrosoftGraph) return;
+        try
+        {
+            await _oauth.RequestSharedMailboxConsentAsync(parent);
+        }
+        catch (Exception ex)
+        {
+            // Declined / admin-approval pending / offline: the interactive window already showed the
+            // user what was needed; the disconnected state carries it from here. Log the message too —
+            // for a pending-approval case it is the actionable detail.
+            LogService.Log($"Shared mailbox '{sharedMailbox.SharedAddress}': consent not granted on parent " +
+                           $"'{parent.AccountLabel}' ({ex.GetType().Name}: {ex.Message}); it will stay " +
+                           "disconnected until access is granted.");
+        }
     }
 
     /// <summary>A shared mailbox cannot be the default account (#31, spec §4: default-account semantics

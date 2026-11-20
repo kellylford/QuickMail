@@ -17,10 +17,34 @@ public sealed class CommandRegistry : ICommandRegistry
 
     private readonly record struct ParsedOverride(string CommandId, Key Key, ModifierKeys Modifiers);
 
-    public void Register(CommandDefinition command) =>
-        _byId[command.Id] = command;
+    public event EventHandler? BindingsChanged;
 
-    public void Unregister(string id) => _byId.Remove(id);
+    public void Register(CommandDefinition command)
+    {
+        _byId[command.Id] = command;
+        command.GestureText = EffectiveGestureText(command);
+        BindingsChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    public void Unregister(string id)
+    {
+        if (_byId.Remove(id))
+            BindingsChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    public string GetGestureText(string id) => FindById(id)?.GestureText ?? string.Empty;
+
+    // The user's binding when there is one, else the default. The first binding wins when a
+    // command has several, matching the one the Settings Keyboard tab shows.
+    private string EffectiveGestureText(CommandDefinition command)
+    {
+        foreach (var o in _userOverrides)
+        {
+            if (string.Equals(o.CommandId, command.Id, StringComparison.OrdinalIgnoreCase))
+                return GestureHelper.Format(o.Key, o.Modifiers);
+        }
+        return command.DefaultGestureText;
+    }
 
     public IReadOnlyList<CommandDefinition> GetAll() =>
         _byId.Values.OrderBy(c => c.Category).ThenBy(c => c.Title).ToList();
@@ -47,10 +71,21 @@ public sealed class CommandRegistry : ICommandRegistry
             if (cmd == null) continue;            // orphan binding — ignore entirely
             suppressed.Add(binding.CommandId);    // live override — suppress this command's default
 
-            if (overrideHit == null && binding.Key == key && binding.Modifiers == modifiers)
-                overrideHit = cmd;
+            if (binding.Key != key || binding.Modifiers != modifiers) continue;
+            overrideHit ??= cmd;
+
+            // An override that is available for the current focus wins outright, as it always has.
+            // One that is NOT available must fall through to the defaults below instead of being
+            // returned: the dispatcher does a single lookup and does nothing when what it gets back
+            // is unavailable, so returning it here swallows the keystroke. That matters wherever two
+            // commands share a gesture and are told apart by focus — Delete for mail.delete and
+            // folder.delete, Alt+Up/Alt+Down for the unread jumps and the account moves. Recording
+            // one of the pair's own default as a custom binding is a natural thing to do, and it
+            // used to make the other one unreachable by keyboard while its menu still advertised
+            // the key. overrideHit is kept as the last resort so a lone unavailable override still
+            // beats an unrelated default, exactly as before.
+            if (cmd.IsAvailable?.Invoke() ?? true) return cmd;
         }
-        if (overrideHit != null) return overrideHit;
 
         // Fall back to default gestures (skipping any command that has a live override).
         // When several commands share a default gesture (e.g. Delete → mail.delete and
@@ -68,7 +103,9 @@ public sealed class CommandRegistry : ICommandRegistry
             }
         }
 
-        return firstMatch;
+        // An unavailable override still outranks an unavailable default: it is the binding the user
+        // made, and either way the dispatcher will decline to run it.
+        return overrideHit ?? firstMatch;
     }
 
     /// <summary>
@@ -102,5 +139,9 @@ public sealed class CommandRegistry : ICommandRegistry
             if (b.Key != 0)
                 _userOverrides.Add(new ParsedOverride(b.CommandId, (Key)b.Key, (ModifierKeys)b.Modifiers));
         }
+
+        foreach (var cmd in _byId.Values)
+            cmd.GestureText = EffectiveGestureText(cmd);
+        BindingsChanged?.Invoke(this, EventArgs.Empty);
     }
 }

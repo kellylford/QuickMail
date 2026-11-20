@@ -7,11 +7,12 @@ using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
 using Microsoft.Data.Sqlite;
+using QuickMail.Helpers;
 using QuickMail.Models;
 
 namespace QuickMail.Services;
 
-public class LocalStoreService : ILocalStoreService
+public partial class LocalStoreService : ILocalStoreService
 {
     private readonly string _connectionString;
     private readonly string _dbPath;
@@ -143,6 +144,42 @@ public class LocalStoreService : ILocalStoreService
         // invite rows. Unversioned idempotent ALTER, like calendar_id/calendar_name above.
         RunMigration(conn, "ALTER TABLE CalendarEvent ADD COLUMN resource_url TEXT NOT NULL DEFAULT '';");
 
+        // The provider's own kind for a server-synced event (Google's eventType: birthday,
+        // outOfOffice, ...), kept so a refused edit or delete can name the reason (#326). Empty for
+        // ordinary events and every non-Google row. Unversioned idempotent ALTER, like resource_url.
+        RunMigration(conn, "ALTER TABLE CalendarEvent ADD COLUMN event_type TEXT NOT NULL DEFAULT '';");
+
+        // The people invited to an appointment (#866), as JSON (EventAttendees.ToJson). Empty when
+        // nobody is invited. Unversioned idempotent ALTER, like event_type.
+        RunMigration(conn, "ALTER TABLE CalendarEvent ADD COLUMN attendees_json TEXT NOT NULL DEFAULT '';");
+
+        // Whether the provider says the user organizes the meeting (CalendarEvent.UserIsOrganizer):
+        // 1, 0, or NULL for "not said". Unversioned idempotent ALTER, like attendees_json.
+        RunMigration(conn, "ALTER TABLE CalendarEvent ADD COLUMN user_organizes INTEGER NULL;");
+
+        // CalendarSource table: an account's real calendar list, as the provider reports it.
+        //
+        // The calendar list used to be derived with SELECT DISTINCT over CalendarEvent — the
+        // calendars that happened to have synced rows. That is not the same set: a calendar with no
+        // events in the sync window was invisible, so it had no tree node and could not be picked
+        // as a save target, which made filing the FIRST appointment into a calendar impossible. And
+        // an events-derived list has nowhere to record whether a calendar can be written to, so a
+        // holidays feed looked exactly like the user's own calendar.
+        //
+        // Additive, no existing table touched, so no user_version bump — same reasoning as
+        // CalendarEvent above. LoadCalendarSourcesAsync still falls back to the old derivation for
+        // an account with no rows here, so an upgraded profile keeps its tree until the first sync.
+        cmd.CommandText = """
+            CREATE TABLE IF NOT EXISTS CalendarSource (
+                account_id    TEXT    NOT NULL,
+                calendar_id   TEXT    NOT NULL,
+                calendar_name TEXT    NOT NULL DEFAULT '',
+                can_write     INTEGER NOT NULL DEFAULT 1,
+                PRIMARY KEY (account_id, calendar_id)
+            );
+            """;
+        cmd.ExecuteNonQuery();
+
         // Folder table (#516). The folder list used to live only in MainViewModel._cachedFolders,
         // filled by GetFoldersAsync after connect — so at launch nothing knew which folders existed,
         // let alone which were Inboxes. That made a startup folder impossible to honour before the
@@ -171,12 +208,70 @@ public class LocalStoreService : ILocalStoreService
                 uidl       TEXT NOT NULL,
                 PRIMARY KEY (account_id, uidl)
             );
+
+            -- Folders the user made on a POP3 account (#794). User-authored, not cache: the Folder
+            -- table above is rewritten from each backend's listing, and for a POP3 account this
+            -- table is where that listing comes from. parent_id is NULL at the top level, else a
+            -- built-in folder's name or another row's id.
+            CREATE TABLE IF NOT EXISTS Pop3LocalFolder (
+                account_id   TEXT NOT NULL,
+                id           TEXT NOT NULL,
+                display_name TEXT NOT NULL,
+                parent_id    TEXT DEFAULT NULL,
+                PRIMARY KEY (account_id, id)
+            );
             """;
         cmd.ExecuteNonQuery();
 
+        // Outbox (#637): mail written on this computer while the server could not be reached — drafts
+        // waiting to upload and messages waiting to send. The compose model is kept as JSON so a row
+        // reopens in the compose window losslessly (Bcc, Markdown source, mode, reply linkage all
+        // survive, which a MIME round-trip loses); attachment bytes sit in their own rows so listing
+        // the Outbox never reads them. User-authored, not cache: ClearCachedMailAsync leaves these
+        // alone and only DeleteAccountDataAsync removes them. Additive, so no user_version bump.
+        cmd.CommandText = """
+            CREATE TABLE IF NOT EXISTS Outbox (
+                id                 TEXT    NOT NULL PRIMARY KEY,
+                account_id         TEXT    NOT NULL,
+                kind               INTEGER NOT NULL,
+                state              INTEGER NOT NULL DEFAULT 0,
+                created_ticks      INTEGER NOT NULL,
+                updated_ticks      INTEGER NOT NULL,
+                attempts           INTEGER NOT NULL DEFAULT 0,
+                last_error         TEXT    DEFAULT NULL,
+                next_attempt_ticks INTEGER DEFAULT NULL,
+                replace_draft_id   TEXT    DEFAULT NULL,
+                draft_folder_name  TEXT    DEFAULT NULL,
+                subject            TEXT    NOT NULL DEFAULT '',
+                to_addr            TEXT    NOT NULL DEFAULT '',
+                cc                 TEXT    NOT NULL DEFAULT '',
+                bcc                TEXT    NOT NULL DEFAULT '',
+                has_attachments    INTEGER NOT NULL DEFAULT 0,
+                compose_json       TEXT    NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_outbox_created ON Outbox(created_ticks DESC);
+
+            CREATE TABLE IF NOT EXISTS OutboxAttachment (
+                outbox_id    TEXT    NOT NULL,
+                ordinal      INTEGER NOT NULL,
+                file_name    TEXT    NOT NULL DEFAULT '',
+                content_type TEXT    NOT NULL DEFAULT 'application/octet-stream',
+                size         INTEGER NOT NULL DEFAULT 0,
+                content      BLOB    NOT NULL,
+                content_id   TEXT    DEFAULT NULL,
+                PRIMARY KEY (outbox_id, ordinal)
+            );
+            """;
+        cmd.ExecuteNonQuery();
+
+        // A picture in the body (#729) is a row with its Content-ID; an attachment has none.
+        // After the CREATE so a fresh database is not asked to alter a table it lacks.
+        RunMigration(conn, "ALTER TABLE OutboxAttachment ADD COLUMN content_id TEXT DEFAULT NULL;");
+
         RunDataMigrations(conn);
 
-        // Raw RFC 5322 bytes of a POP3 message, stored only when the message has attachments (#128).
+        // Raw RFC 5322 bytes of a POP3 message. Stored only when the message had attachments (#128)
+        // until 0.8.47; stored for every POP3 message since, as the original Save writes (#728).
         // POP3 has no equivalent of IMAP's fetch-one-body-part, so an attachment has to come back out
         // of the message we already downloaded; keeping the bytes is what makes it openable later
         // without a second full download. NULL for every IMAP and Graph row, and for POP3 messages
@@ -188,6 +283,80 @@ public class LocalStoreService : ILocalStoreService
         // MessageDetail by CREATE/INSERT/DROP/RENAME against a fixed column list, so a column added
         // before it would be dropped again and stay missing for the rest of the session.
         RunMigration(conn, "ALTER TABLE MessageDetail ADD COLUMN mime_bytes BLOB DEFAULT NULL;");
+
+        // The sender's full address ("Kelly Ford <kelly@example.com>"), issue #636. The detail row
+        // used to have no From column at all: LoadDetailAsync read it from MessageSummary.from_disp,
+        // which holds the display name alone because that is what the message list's From column
+        // wants. So the same message showed a full address when opened straight from IMAP and a bare
+        // name when served from cache, and a reply composed from the cached copy addressed a name
+        // with no mailbox behind it.
+        //
+        // Rows written before this column keep an empty string; LoadDetailAsync falls back to the
+        // summary's from_disp and from_email for them (#803), and where the summary has no address
+        // either, MainViewModel re-fetches from the server on open so the row repairs itself. AFTER RunDataMigrations for the same reason as mime_bytes above.
+        RunMigration(conn, "ALTER TABLE MessageDetail ADD COLUMN from_addr TEXT NOT NULL DEFAULT '';");
+
+        // Whether client rules have run on a cached message (#712). Being cached used to stand in for it: the
+        // rules step treated any message the store already held as already processed. But several paths cache
+        // mail without running rules — opening a folder, All Mail, All Inboxes, saved views — so a message one of
+        // those cached first never had a rule run on it. UpsertSummariesAsync writes 0, waiting, for every message
+        // it adds, and the rules step records 1 as it runs them. The default of 1 is what rows already here get
+        // when the column is added, so upgrading never runs rules over mail that was already in the mailbox.
+        //
+        // AFTER RunDataMigrations for the same reason as mime_bytes above: the 1→2 migration rebuilds
+        // MessageSummary against a fixed column list, which would drop a column added before it.
+        RunMigration(conn, "ALTER TABLE MessageSummary ADD COLUMN rules_applied INTEGER NOT NULL DEFAULT 1;");
+        // Covers only the waiting rows, which settle within a sync or two, so it stays tiny while keeping the
+        // "anything waiting in this folder?" check that every sync pass makes cheap on a folder of any size.
+        RunMigration(conn, "CREATE INDEX IF NOT EXISTS idx_summary_rules_waiting ON MessageSummary(account_id, folder_name) WHERE rules_applied = 0;");
+
+        // The sender's bare address (#803). from_disp holds the display name alone, which is what the list
+        // shows, so rules, Find Mail From Contact, and search had no address to match on IMAP and POP3 rows. Rows
+        // written before this column keep an empty string and are matched on from_disp, as before, until the
+        // one-time backfill fills them in. AFTER RunDataMigrations for the same reason as mime_bytes above.
+        RunMigration(conn, "ALTER TABLE MessageSummary ADD COLUMN from_email TEXT NOT NULL DEFAULT '';");
+
+        // Whether has_attachments has been decided (#931). IMAP summaries carried no attachment flag before then, so
+        // the rows already here are unchecked (the default) until the one-time pass asks the server; every row a
+        // summary writes from now on is checked. AFTER RunDataMigrations for the same reason as mime_bytes above.
+        RunMigration(conn, "ALTER TABLE MessageSummary ADD COLUMN att_checked INTEGER NOT NULL DEFAULT 0;");
+        RunMigration(conn, "CREATE INDEX IF NOT EXISTS idx_summary_att_unchecked ON MessageSummary(account_id, folder_name) WHERE att_checked = 0;");
+
+        // Where arriving mail begins, per folder (#712): the highest id and the newest date client rules have settled.
+        // Kept apart from MessageSummary so it can't go backwards. A rule that moves mail out deletes those rows, and a
+        // line worked out from the rows left would drop with them — for someone who files everything by rule, to
+        // nothing — after which a message a view caches would read as older mail and its rules would never run.
+        using (var watermark = conn.CreateCommand())
+        {
+            watermark.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='RulesWatermark';";
+            var existed = Convert.ToInt64(watermark.ExecuteScalar()) > 0;
+            watermark.CommandText = """
+                CREATE TABLE IF NOT EXISTS RulesWatermark (
+                    account_id     TEXT    NOT NULL,
+                    folder_name    TEXT    NOT NULL,
+                    max_numeric_id INTEGER NOT NULL,
+                    max_date_ticks INTEGER NOT NULL,
+                    PRIMARY KEY (account_id, folder_name)
+                );
+                """;
+            watermark.ExecuteNonQuery();
+            if (!existed)
+            {
+                // Everything cached before this version counts as done (rules_applied defaults to 1), so each folder's
+                // line starts at the newest of it.
+                watermark.CommandText = """
+                    INSERT OR IGNORE INTO RulesWatermark(account_id, folder_name, max_numeric_id, max_date_ticks)
+                    SELECT account_id, folder_name, MAX(CAST(unique_id AS INTEGER)), MAX(date_ticks)
+                    FROM MessageSummary WHERE rules_applied = 1
+                    GROUP BY account_id, folder_name;
+                    """;
+                watermark.ExecuteNonQuery();
+            }
+        }
+
+        // Full-text search (#717). Last, after every table it indexes has its final shape: the 1→2 rebuild
+        // above drops and recreates the message tables, which would take the index's triggers with them.
+        InitializeSearchIndex(conn);
     }
 
     // SQLite's PRAGMA user_version stores a single integer per database. We use it as a
@@ -367,11 +536,17 @@ public class LocalStoreService : ILocalStoreService
         await using var conn = await OpenAsync();
         await using var tx = await conn.BeginTransactionAsync();
         await using var cmd = conn.CreateCommand();
+        // rules_applied: a message this adds waits for client rules (#712), whichever path is caching it; the
+        // DO UPDATE below deliberately leaves it alone, so re-caching a message never makes it wait again.
+        // has_attachments: written from the summary (every backend sets it; IMAP from BODYSTRUCTURE since #931) and never
+        // cleared by a later summary once true, since the detail may have found attachments the summary didn't know
+        // of. Rules test it on waiting mail read back from here, not only on mail a sync has in hand.
         cmd.CommandText = """
-            INSERT INTO MessageSummary(unique_id, account_id, folder_name, from_disp, to_addr, subject, date_ticks, is_read, preview_text, is_replied, is_forwarded, is_mailing_list, flag_id, internet_message_id)
-            VALUES($uid, $aid, $fn, $from, $to, $subj, $dt, $read, $preview, $replied, $forwarded, $ml, $flag_id, $imid)
+            INSERT INTO MessageSummary(unique_id, account_id, folder_name, from_disp, from_email, to_addr, subject, date_ticks, is_read, preview_text, is_replied, is_forwarded, is_mailing_list, flag_id, internet_message_id, has_attachments, rules_applied, att_checked)
+            VALUES($uid, $aid, $fn, $from, $fromEmail, $to, $subj, $dt, $read, $preview, $replied, $forwarded, $ml, $flag_id, $imid, $att, 0, $attKnown)
             ON CONFLICT(unique_id, account_id, folder_name) DO UPDATE SET
                 from_disp       = excluded.from_disp,
+                from_email      = CASE WHEN excluded.from_email = '' THEN from_email ELSE excluded.from_email END,
                 to_addr         = excluded.to_addr,
                 subject         = excluded.subject,
                 date_ticks      = excluded.date_ticks,
@@ -379,6 +554,8 @@ public class LocalStoreService : ILocalStoreService
                 is_replied      = excluded.is_replied,
                 is_forwarded    = excluded.is_forwarded,
                 is_mailing_list = excluded.is_mailing_list,
+                has_attachments = MAX(has_attachments, excluded.has_attachments),
+                att_checked     = MAX(att_checked, excluded.att_checked),
                 internet_message_id = CASE WHEN excluded.internet_message_id = '' THEN internet_message_id ELSE excluded.internet_message_id END,
                 preview_text    = CASE WHEN excluded.preview_text = '' THEN preview_text ELSE excluded.preview_text END,
                 flag_id         = CASE
@@ -395,6 +572,7 @@ public class LocalStoreService : ILocalStoreService
         var pAid       = cmd.Parameters.Add("$aid",       SqliteType.Text);
         var pFn        = cmd.Parameters.Add("$fn",        SqliteType.Text);
         var pFrom      = cmd.Parameters.Add("$from",      SqliteType.Text);
+        var pFromEmail = cmd.Parameters.Add("$fromEmail", SqliteType.Text);
         var pTo        = cmd.Parameters.Add("$to",        SqliteType.Text);
         var pSubj      = cmd.Parameters.Add("$subj",      SqliteType.Text);
         var pDt        = cmd.Parameters.Add("$dt",        SqliteType.Integer);
@@ -405,6 +583,8 @@ public class LocalStoreService : ILocalStoreService
         var pMl        = cmd.Parameters.Add("$ml",        SqliteType.Integer);
         var pFlagId    = cmd.Parameters.Add("$flag_id",   SqliteType.Text);
         var pImid      = cmd.Parameters.Add("$imid",      SqliteType.Text);
+        var pAtt       = cmd.Parameters.Add("$att",       SqliteType.Integer);
+        var pAttKnown  = cmd.Parameters.Add("$attKnown",  SqliteType.Integer);
 
         foreach (var s in summaries)
         {
@@ -412,6 +592,7 @@ public class LocalStoreService : ILocalStoreService
             pAid.Value       = s.AccountId.ToString();
             pFn.Value        = s.FolderName;
             pFrom.Value      = s.From;
+            pFromEmail.Value = s.FromEmail ?? string.Empty;
             pTo.Value        = s.To;
             pSubj.Value      = s.Subject;
             pDt.Value        = s.Date.UtcTicks;
@@ -424,9 +605,12 @@ public class LocalStoreService : ILocalStoreService
                 ? (object)FlagDefinition.BuiltInFlagId.ToString()
                 : DBNull.Value;
             pImid.Value      = s.InternetMessageId ?? string.Empty;
+            pAtt.Value       = s.HasAttachments   ? 1 : 0;
+            pAttKnown.Value  = s.AttachmentsKnown ? 1 : 0;
             await cmd.ExecuteNonQueryAsync();
         }
         await tx.CommitAsync();
+        KickSearchIndexer();
     }
 
     public async Task<List<MailMessageSummary>> LoadAllSummariesAsync()
@@ -434,7 +618,7 @@ public class LocalStoreService : ILocalStoreService
         await using var conn = await OpenAsync();
         await using var cmd = conn.CreateCommand();
         cmd.CommandText =
-            "SELECT unique_id, account_id, folder_name, from_disp, to_addr, subject, date_ticks, is_read, preview_text, is_replied, is_forwarded, has_attachments, is_mailing_list, flag_id, internet_message_id " +
+            "SELECT unique_id, account_id, folder_name, from_disp, to_addr, subject, date_ticks, is_read, preview_text, is_replied, is_forwarded, has_attachments, is_mailing_list, flag_id, internet_message_id, from_email " +
             "FROM MessageSummary ORDER BY date_ticks DESC;";
         return await ReadSummariesAsync(cmd);
     }
@@ -444,7 +628,7 @@ public class LocalStoreService : ILocalStoreService
         await using var conn = await OpenAsync();
         await using var cmd = conn.CreateCommand();
         cmd.CommandText =
-            "SELECT unique_id, account_id, folder_name, from_disp, to_addr, subject, date_ticks, is_read, preview_text, is_replied, is_forwarded, has_attachments, is_mailing_list, flag_id, internet_message_id " +
+            "SELECT unique_id, account_id, folder_name, from_disp, to_addr, subject, date_ticks, is_read, preview_text, is_replied, is_forwarded, has_attachments, is_mailing_list, flag_id, internet_message_id, from_email " +
             "FROM MessageSummary WHERE account_id=$aid ORDER BY date_ticks DESC;";
         cmd.Parameters.AddWithValue("$aid", accountId.ToString());
         return await ReadSummariesAsync(cmd);
@@ -455,7 +639,7 @@ public class LocalStoreService : ILocalStoreService
         await using var conn = await OpenAsync();
         await using var cmd = conn.CreateCommand();
         cmd.CommandText =
-            "SELECT unique_id, account_id, folder_name, from_disp, to_addr, subject, date_ticks, is_read, preview_text, is_replied, is_forwarded, has_attachments, is_mailing_list, flag_id, internet_message_id " +
+            "SELECT unique_id, account_id, folder_name, from_disp, to_addr, subject, date_ticks, is_read, preview_text, is_replied, is_forwarded, has_attachments, is_mailing_list, flag_id, internet_message_id, from_email " +
             "FROM MessageSummary WHERE account_id=$aid AND folder_name=$fn ORDER BY date_ticks DESC" +
             (limit.HasValue ? " LIMIT $limit;" : ";");
         cmd.Parameters.AddWithValue("$aid", accountId.ToString());
@@ -471,7 +655,7 @@ public class LocalStoreService : ILocalStoreService
         await using var conn = await OpenAsync();
         await using var cmd = conn.CreateCommand();
         cmd.CommandText =
-            "SELECT unique_id, account_id, folder_name, from_disp, to_addr, subject, date_ticks, is_read, preview_text, is_replied, is_forwarded, has_attachments, is_mailing_list, flag_id, internet_message_id " +
+            "SELECT unique_id, account_id, folder_name, from_disp, to_addr, subject, date_ticks, is_read, preview_text, is_replied, is_forwarded, has_attachments, is_mailing_list, flag_id, internet_message_id, from_email " +
             "FROM MessageSummary WHERE account_id=$aid AND folder_name=$fn AND date_ticks>=$since ORDER BY date_ticks DESC;";
         cmd.Parameters.AddWithValue("$aid", accountId.ToString());
         cmd.Parameters.AddWithValue("$fn",  folderName);
@@ -531,11 +715,17 @@ public class LocalStoreService : ILocalStoreService
         await using var tx   = await conn.BeginTransactionAsync();
         await using var cmd  = conn.CreateCommand();
         cmd.CommandText =
+            SearchIndexAccountPurgeSql +
             "DELETE FROM MessageDetail     WHERE account_id = $aid;" +
             "DELETE FROM MessageSummary    WHERE account_id = $aid;" +
             "DELETE FROM CalendarEvent     WHERE account_id = $aid;" +
             "DELETE FROM Folder            WHERE account_id = $aid;" +
-            "DELETE FROM Pop3CollectedUidl WHERE account_id = $aid;";
+            "DELETE FROM Pop3CollectedUidl WHERE account_id = $aid;" +
+            "DELETE FROM Pop3LocalFolder   WHERE account_id = $aid;" +
+            "DELETE FROM RulesWatermark    WHERE account_id = $aid;" +
+            "DELETE FROM CalendarSource    WHERE account_id = $aid;" +
+            "DELETE FROM OutboxAttachment WHERE outbox_id IN (SELECT id FROM Outbox WHERE account_id = $aid);" +
+            "DELETE FROM Outbox            WHERE account_id = $aid;";
         cmd.Parameters.AddWithValue("$aid", accountId.ToString());
         await cmd.ExecuteNonQueryAsync();
         await tx.CommitAsync();
@@ -546,6 +736,10 @@ public class LocalStoreService : ILocalStoreService
     /// the one-time Graph immutable-id rebuild (#366). Scoped to Graph accounts by the caller so IMAP
     /// bodies (and the IMAP calendar-invite source links that depend on them) are left intact.
     /// Calendar events are NOT touched. No-op for an empty set.
+    /// <para>The accounts' rules arrival lines go too (#712). Every caller also seeds a rebuild baseline, which keeps rules
+    /// off the re-fetched mail until the full sync has settled it and drawn the line again from the mail the account now
+    /// has. A line kept across the wipe could be wrong for good: an IMAP account's dates come from Date headers, which
+    /// can be set in the future, and after a conversion to Microsoft 365 no arrival would reach such a line.</para>
     /// </summary>
     public async Task ClearCachedMailAsync(IEnumerable<Guid> accountIds)
     {
@@ -558,9 +752,11 @@ public class LocalStoreService : ILocalStoreService
         {
             await using var cmd = conn.CreateCommand();
             cmd.CommandText =
+                SearchIndexAccountPurgeSql +
                 "DELETE FROM MessageDetail  WHERE account_id = $aid;" +
                 "DELETE FROM MessageSummary WHERE account_id = $aid;" +
-                "DELETE FROM DeltaToken     WHERE account_id = $aid;";
+                "DELETE FROM DeltaToken     WHERE account_id = $aid;" +
+                "DELETE FROM RulesWatermark WHERE account_id = $aid;";
             cmd.Parameters.AddWithValue("$aid", id.ToString());
             await cmd.ExecuteNonQueryAsync();
         }
@@ -858,9 +1054,10 @@ public class LocalStoreService : ILocalStoreService
         await using var tx = await conn.BeginTransactionAsync();
         await using var cmd = conn.CreateCommand();
         cmd.CommandText = """
-            INSERT INTO MessageDetail(unique_id, account_id, folder_name, to_addr, cc, reply_to, plain_body, html_body, attachments_json, calendar_ics)
-            VALUES($uid, $aid, $fn, $to, $cc, $rt, $plain, $html, $attjson, $ics)
+            INSERT INTO MessageDetail(unique_id, account_id, folder_name, from_addr, to_addr, cc, reply_to, plain_body, html_body, attachments_json, calendar_ics)
+            VALUES($uid, $aid, $fn, $from, $to, $cc, $rt, $plain, $html, $attjson, $ics)
             ON CONFLICT(unique_id, account_id, folder_name) DO UPDATE SET
+                from_addr        = excluded.from_addr,
                 to_addr          = excluded.to_addr,
                 cc               = excluded.cc,
                 reply_to         = excluded.reply_to,
@@ -872,6 +1069,7 @@ public class LocalStoreService : ILocalStoreService
         cmd.Parameters.AddWithValue("$uid",    detail.MessageId);
         cmd.Parameters.AddWithValue("$aid",    detail.AccountId.ToString());
         cmd.Parameters.AddWithValue("$fn",     detail.FolderName);
+        cmd.Parameters.AddWithValue("$from",   detail.From);
         cmd.Parameters.AddWithValue("$to",     detail.To);
         cmd.Parameters.AddWithValue("$cc",     detail.Cc);
         cmd.Parameters.AddWithValue("$rt",     detail.ReplyTo);
@@ -893,6 +1091,7 @@ public class LocalStoreService : ILocalStoreService
         await cmd2.ExecuteNonQueryAsync();
 
         await tx.CommitAsync();
+        KickSearchIndexer();
     }
 
     public async Task<MailMessageDetail?> LoadDetailAsync(Guid accountId, string folderName, string messageId)
@@ -907,7 +1106,7 @@ public class LocalStoreService : ILocalStoreService
         cmd.CommandText = """
             SELECT d.to_addr, d.cc, d.reply_to, d.plain_body, d.html_body,
                    s.from_disp, s.subject, s.date_ticks, s.is_read, d.attachments_json, d.calendar_ics,
-                   s.internet_message_id
+                   s.internet_message_id, d.from_addr, s.from_email
             FROM MessageDetail d
             LEFT JOIN MessageSummary s USING (unique_id, account_id, folder_name)
             WHERE d.unique_id=$uid AND d.account_id=$aid AND d.folder_name=$fn;
@@ -950,7 +1149,17 @@ public class LocalStoreService : ILocalStoreService
             ReplyTo       = r.GetString(2),
             PlainTextBody = r.GetString(3),
             HtmlBody      = r.GetString(4),
-            From          = r.IsDBNull(5) ? string.Empty : r.GetString(5),
+            // The detail's own full address where the row has one. A detail written before from_addr existed
+            // (issue #636) has none, so it takes the summary's name and address together (#803): from_disp alone
+            // is the display name, and since the backfill splits an older Graph row's "Name <address>" into
+            // from_disp and from_email, reading from_disp alone would lose an address that row used to give —
+            // and offline, a reply would be addressed to a bare name (review of #806). Built as a header, so a
+            // "Last, First" name is quoted rather than read as two addresses. With no address on the summary
+            // either, the name alone; MainViewModel then re-fetches on open, so the row repairs itself.
+            From          = FirstNonEmpty(r.IsDBNull(12) ? null : r.GetString(12),
+                                          AddressListFormat.Mailbox(
+                                              r.IsDBNull(5)  ? null : r.GetString(5),
+                                              r.IsDBNull(13) ? null : r.GetString(13))),
             Subject       = r.IsDBNull(6) ? "(no subject)" : r.GetString(6),
             Date          = r.IsDBNull(7) ? DateTimeOffset.MinValue : new DateTimeOffset(r.GetInt64(7), TimeSpan.Zero),
             IsRead        = !r.IsDBNull(8) && r.GetInt64(8) != 0,
@@ -964,6 +1173,11 @@ public class LocalStoreService : ILocalStoreService
             CalendarInvite = string.IsNullOrWhiteSpace(calendarIcs) ? null : IcsModel.Parse(calendarIcs),
         };
     }
+
+    private static string FirstNonEmpty(string? preferred, string? fallback) =>
+        !string.IsNullOrWhiteSpace(preferred) ? preferred
+        : !string.IsNullOrWhiteSpace(fallback) ? fallback
+        : string.Empty;
 
     /// <summary>
     /// Stores (or clears, when <paramref name="mimeBytes"/> is null) the raw message bytes on an
@@ -987,7 +1201,8 @@ public class LocalStoreService : ILocalStoreService
 
     /// <summary>
     /// Returns the raw message bytes previously stored by <see cref="StoreMimeBytesAsync"/>, or null
-    /// when none were stored (every IMAP/Graph message, and POP3 messages with no attachments).
+    /// when none were stored (every IMAP/Graph message, and POP3 messages collected before 0.8.47
+    /// that had no attachments).
     /// </summary>
     public async Task<byte[]?> LoadMimeBytesAsync(Guid accountId, string folderName, string messageId)
     {
@@ -1029,6 +1244,65 @@ public class LocalStoreService : ILocalStoreService
         while (await r.ReadAsync())
             result.Add(r.GetString(0));
         return result;
+    }
+
+    public async Task<List<Pop3LocalFolder>> LoadPop3LocalFoldersAsync(Guid accountId)
+    {
+        await using var conn = await OpenAsync();
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT id, display_name, parent_id FROM Pop3LocalFolder WHERE account_id=$aid;";
+        cmd.Parameters.AddWithValue("$aid", accountId.ToString());
+        var result = new List<Pop3LocalFolder>();
+        await using var r = await cmd.ExecuteReaderAsync();
+        while (await r.ReadAsync())
+            result.Add(new Pop3LocalFolder(r.GetString(0), r.GetString(1), r.IsDBNull(2) ? null : r.GetString(2)));
+        return result;
+    }
+
+    public async Task SavePop3LocalFolderAsync(Guid accountId, Pop3LocalFolder folder)
+    {
+        await using var conn = await OpenAsync();
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText =
+            "INSERT OR REPLACE INTO Pop3LocalFolder (account_id, id, display_name, parent_id) " +
+            "VALUES ($aid, $id, $name, $pid);";
+        cmd.Parameters.AddWithValue("$aid",  accountId.ToString());
+        cmd.Parameters.AddWithValue("$id",   folder.Id);
+        cmd.Parameters.AddWithValue("$name", folder.DisplayName);
+        cmd.Parameters.AddWithValue("$pid",  (object?)folder.ParentId ?? DBNull.Value);
+        await cmd.ExecuteNonQueryAsync();
+    }
+
+    public async Task DeletePop3LocalFoldersAsync(Guid accountId, IEnumerable<string> folderIds, string refileTo)
+    {
+        var list = folderIds as IReadOnlyList<string> ?? folderIds.ToList();
+        if (list.Count == 0) return;
+
+        // One transaction, and refiled by folder rather than by a list of ids read beforehand: a
+        // message filed into one of these folders at any moment up to the commit goes with the rest,
+        // so nothing can end up filed under a folder that no longer exists. The statements are
+        // RefileMessagesAsync's, for the same reasons — UPDATE OR REPLACE for an id already in the
+        // destination, and the CalendarEvent leg so an invite's back-link follows its message.
+        await using var conn = await OpenAsync();
+        await using var tx = (SqliteTransaction)await conn.BeginTransactionAsync();
+        await using var cmd = conn.CreateCommand();
+        cmd.Transaction = tx;
+        cmd.CommandText = """
+            UPDATE OR REPLACE MessageSummary SET folder_name=$to WHERE account_id=$aid AND folder_name=$id;
+            UPDATE OR REPLACE MessageDetail  SET folder_name=$to WHERE account_id=$aid AND folder_name=$id;
+            UPDATE CalendarEvent SET source_folder=$to WHERE account_id=$aid AND source_folder=$id;
+            DELETE FROM Pop3LocalFolder WHERE account_id=$aid AND id=$id;
+            """;
+        cmd.Parameters.AddWithValue("$aid", accountId.ToString());
+        cmd.Parameters.AddWithValue("$to",  refileTo);
+        var id = cmd.Parameters.AddWithValue("$id", string.Empty);
+        foreach (var f in list)
+        {
+            id.Value = f;
+            await cmd.ExecuteNonQueryAsync();
+        }
+        await tx.CommitAsync();
+        KickSearchIndexer();
     }
 
     public async Task AddPop3CollectedUidlsAsync(Guid accountId, IEnumerable<string> uidls)
@@ -1103,31 +1377,163 @@ public class LocalStoreService : ILocalStoreService
         return result;
     }
 
-    /// <summary>
-    /// Which of <paramref name="messageIds"/> already exist in the folder — a bounded
-    /// <c>WHERE unique_id IN (…)</c> so a live sync can dedupe its small fetched batch without
-    /// scanning (and materialising a HashSet of) every id in a large cached folder.
-    /// </summary>
-    public async Task<HashSet<string>> GetExistingMessageIdsAsync(
-        Guid accountId, string folderName, IEnumerable<string> messageIds)
+    public async Task<List<MailMessageSummary>> LoadRulesPendingSummariesAsync(Guid accountId, string folderName)
     {
-        var ids = messageIds as IReadOnlyList<string> ?? messageIds.ToList();
-        var result = new HashSet<string>();
-        if (ids.Count == 0) return result;
-
         await using var conn = await OpenAsync();
         await using var cmd = conn.CreateCommand();
-        var placeholders = string.Join(",", ids.Select((_, i) => "$id" + i));
         cmd.CommandText =
-            $"SELECT unique_id FROM MessageSummary WHERE account_id=$aid AND folder_name=$fn AND unique_id IN ({placeholders});";
+            "SELECT unique_id, account_id, folder_name, from_disp, to_addr, subject, date_ticks, is_read, preview_text, is_replied, is_forwarded, has_attachments, is_mailing_list, flag_id, internet_message_id, from_email " +
+            "FROM MessageSummary WHERE account_id=$aid AND folder_name=$fn AND rules_applied=0 ORDER BY date_ticks ASC;";
         cmd.Parameters.AddWithValue("$aid", accountId.ToString());
         cmd.Parameters.AddWithValue("$fn",  folderName);
-        for (var i = 0; i < ids.Count; i++)
-            cmd.Parameters.AddWithValue("$id" + i, ids[i]);
+        return await ReadSummariesAsync(cmd);
+    }
+
+    public async Task MarkRulesAppliedAsync(Guid accountId, string folderName, IEnumerable<string> messageIds)
+    {
+        var ids = messageIds as IReadOnlyList<string> ?? messageIds.ToList();
+        if (ids.Count == 0) return;
+
+        await using var conn = await OpenAsync();
+        await using var tx = await conn.BeginTransactionAsync();
+        var sqlTx = (Microsoft.Data.Sqlite.SqliteTransaction)tx;
+        await using var mark = conn.CreateCommand();
+        mark.Transaction = sqlTx;
+        mark.CommandText =
+            "UPDATE MessageSummary SET rules_applied=1 WHERE account_id=$aid AND folder_name=$fn AND unique_id=$uid AND rules_applied=0;";
+        mark.Parameters.AddWithValue("$aid", accountId.ToString());
+        mark.Parameters.AddWithValue("$fn",  folderName);
+        var markUid = mark.Parameters.Add("$uid", SqliteType.Text);
+
+        // The line only needs the newest of what is recorded here, so read just those rows back (a key lookup each)
+        // rather than working it out again over the whole table.
+        await using var read = conn.CreateCommand();
+        read.Transaction = sqlTx;
+        read.CommandText =
+            "SELECT CAST(unique_id AS INTEGER), date_ticks FROM MessageSummary WHERE account_id=$aid AND folder_name=$fn AND unique_id=$uid;";
+        read.Parameters.AddWithValue("$aid", accountId.ToString());
+        read.Parameters.AddWithValue("$fn",  folderName);
+        var readUid = read.Parameters.Add("$uid", SqliteType.Text);
+
+        long? maxNumeric = null, maxTicks = null;
+        foreach (var id in ids)
+        {
+            markUid.Value = id;
+            if (await mark.ExecuteNonQueryAsync() == 0) continue;
+            readUid.Value = id;
+            await using var r = await read.ExecuteReaderAsync();
+            if (!await r.ReadAsync()) continue;
+            maxNumeric = Math.Max(maxNumeric ?? 0, r.GetInt64(0));
+            maxTicks = Math.Max(maxTicks ?? 0, r.GetInt64(1));
+        }
+        if (maxTicks is long ticks)
+            await RaiseRulesWatermarkAsync(conn, sqlTx, accountId, folderName, maxNumeric ?? 0, ticks);
+        await tx.CommitAsync();
+    }
+
+    public async Task MarkFolderRulesAppliedAsync(Guid accountId, string folderName)
+    {
+        await using var conn = await OpenAsync();
+        // This runs on every sweep of every folder and almost always finds nothing waiting, so ask the waiting-rows index
+        // before taking the write lock. What it does find sets the line, in the same transaction as recording it done.
+        await using (var probe = conn.CreateCommand())
+        {
+            probe.CommandText =
+                "SELECT EXISTS(SELECT 1 FROM MessageSummary WHERE account_id=$aid AND folder_name=$fn AND rules_applied=0);";
+            probe.Parameters.AddWithValue("$aid", accountId.ToString());
+            probe.Parameters.AddWithValue("$fn",  folderName);
+            if (Convert.ToInt64(await probe.ExecuteScalarAsync(), CultureInfo.InvariantCulture) == 0) return;
+        }
+
+        await using var tx = await conn.BeginTransactionAsync();
+        var sqlTx = (Microsoft.Data.Sqlite.SqliteTransaction)tx;
+        await using var cmd = conn.CreateCommand();
+        cmd.Transaction = sqlTx;
+        cmd.CommandText =
+            "SELECT COUNT(*), MAX(CAST(unique_id AS INTEGER)), MAX(date_ticks) FROM MessageSummary " +
+            "WHERE account_id=$aid AND folder_name=$fn AND rules_applied=0;";
+        cmd.Parameters.AddWithValue("$aid", accountId.ToString());
+        cmd.Parameters.AddWithValue("$fn",  folderName);
+        long waiting, maxNumeric = 0, maxTicks = 0;
+        await using (var r = await cmd.ExecuteReaderAsync())
+        {
+            await r.ReadAsync();
+            waiting = r.GetInt64(0);
+            if (waiting > 0)
+            {
+                maxNumeric = r.GetInt64(1);
+                maxTicks = r.GetInt64(2);
+            }
+        }
+        if (waiting == 0) return;
+
+        cmd.CommandText =
+            "UPDATE MessageSummary SET rules_applied=1 WHERE account_id=$aid AND folder_name=$fn AND rules_applied=0;";
+        await cmd.ExecuteNonQueryAsync();
+        await RaiseRulesWatermarkAsync(conn, sqlTx, accountId, folderName, maxNumeric, maxTicks);
+        await tx.CommitAsync();
+    }
+
+    /// <summary>
+    /// Raises the folder's arrival line to at least the given id and date — never lowers it, so mail a rule has since moved
+    /// out still counts (#712).
+    /// </summary>
+    private static async Task RaiseRulesWatermarkAsync(
+        SqliteConnection conn, Microsoft.Data.Sqlite.SqliteTransaction tx, Guid accountId, string folderName,
+        long maxNumericId, long maxDateTicks)
+    {
+        await using var cmd = conn.CreateCommand();
+        cmd.Transaction = tx;
+        cmd.CommandText = """
+            INSERT INTO RulesWatermark(account_id, folder_name, max_numeric_id, max_date_ticks)
+            VALUES($aid, $fn, $num, $ticks)
+            ON CONFLICT(account_id, folder_name) DO UPDATE SET
+                max_numeric_id = MAX(max_numeric_id, excluded.max_numeric_id),
+                max_date_ticks = MAX(max_date_ticks, excluded.max_date_ticks);
+            """;
+        cmd.Parameters.AddWithValue("$aid", accountId.ToString());
+        cmd.Parameters.AddWithValue("$fn",  folderName);
+        cmd.Parameters.AddWithValue("$num", maxNumericId);
+        cmd.Parameters.AddWithValue("$ticks", maxDateTicks);
+        await cmd.ExecuteNonQueryAsync();
+    }
+
+    public async Task<bool> AccountHasRulesSettledMailAsync(Guid accountId, string exceptIdsStartingWith)
+    {
+        await using var conn = await OpenAsync();
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText =
+            "SELECT EXISTS(SELECT 1 FROM MessageSummary WHERE account_id=$aid AND rules_applied=1 " +
+            "AND substr(unique_id, 1, length($prefix)) <> $prefix);";
+        cmd.Parameters.AddWithValue("$aid", accountId.ToString());
+        cmd.Parameters.AddWithValue("$prefix", exceptIdsStartingWith);
+        return Convert.ToInt64(await cmd.ExecuteScalarAsync(), CultureInfo.InvariantCulture) != 0;
+    }
+
+    public async Task EnsureRulesWatermarkAsync(Guid accountId, string folderName, long maxNumericId, long maxDateTicks)
+    {
+        await using var conn = await OpenAsync();
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText =
+            "INSERT OR IGNORE INTO RulesWatermark(account_id, folder_name, max_numeric_id, max_date_ticks) VALUES($aid, $fn, $num, $ticks);";
+        cmd.Parameters.AddWithValue("$aid", accountId.ToString());
+        cmd.Parameters.AddWithValue("$fn",  folderName);
+        cmd.Parameters.AddWithValue("$num", maxNumericId);
+        cmd.Parameters.AddWithValue("$ticks", maxDateTicks);
+        await cmd.ExecuteNonQueryAsync();
+    }
+
+    public async Task<(long? MaxNumericId, long? MaxDateTicks)> GetRulesSettledBoundaryAsync(Guid accountId, string folderName)
+    {
+        await using var conn = await OpenAsync();
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText =
+            "SELECT max_numeric_id, max_date_ticks FROM RulesWatermark WHERE account_id=$aid AND folder_name=$fn;";
+        cmd.Parameters.AddWithValue("$aid", accountId.ToString());
+        cmd.Parameters.AddWithValue("$fn",  folderName);
         await using var r = await cmd.ExecuteReaderAsync();
-        while (await r.ReadAsync())
-            result.Add(r.GetString(0));
-        return result;
+        if (!await r.ReadAsync()) return (null, null);
+        return (r.GetInt64(0), r.GetInt64(1));
     }
 
     public async Task<string> GetMaxMessageKeyAsync(Guid accountId, string folderName)
@@ -1172,6 +1578,7 @@ public class LocalStoreService : ILocalStoreService
                 IsMailingList  = r.GetInt64(12) != 0,
                 FlagId         = r.IsDBNull(13) ? null : r.GetString(13),
                 InternetMessageId = r.IsDBNull(14) ? string.Empty : r.GetString(14),
+                FromEmail         = r.IsDBNull(15) ? string.Empty : r.GetString(15),
             });
         }
         return list;
@@ -1279,6 +1686,7 @@ public class LocalStoreService : ILocalStoreService
         }
 
         await tx.CommitAsync();
+        KickSearchIndexer();
         return refiled;
     }
 
@@ -1359,8 +1767,8 @@ public class LocalStoreService : ILocalStoreService
                                       organizer, organizer_name, start_time_ticks, end_time_ticks,
                                       sequence, method, source_message_id, source_folder, response_status,
                                       is_all_day, recurrence_rule, exdates, is_graph, calendar_id, calendar_name,
-                                      resource_url)
-            VALUES($uid, $aid, $sum, $desc, $loc, $org, $orgn, $st, $et, $seq, $meth, $smid, $sf, $rs, $allday, $rrule, $exd, $graph, $calid, $calname, $resurl)
+                                      resource_url, event_type, attendees_json, user_organizes)
+            VALUES($uid, $aid, $sum, $desc, $loc, $org, $orgn, $st, $et, $seq, $meth, $smid, $sf, $rs, $allday, $rrule, $exd, $graph, $calid, $calname, $resurl, $etype, $attn, $uorg)
             ON CONFLICT(uid, account_id) DO UPDATE SET
                 summary           = excluded.summary,
                 description       = excluded.description,
@@ -1383,7 +1791,11 @@ public class LocalStoreService : ILocalStoreService
                 calendar_name     = CASE WHEN excluded.calendar_name = '' THEN calendar_name ELSE excluded.calendar_name END,
                 -- Preserve a stored CalDAV resource href when the incoming row carries none (a local
                 -- create/edit write-back has no href until the next read-sync captures the real one).
-                resource_url      = CASE WHEN excluded.resource_url  = '' THEN resource_url  ELSE excluded.resource_url  END
+                resource_url      = CASE WHEN excluded.resource_url  = '' THEN resource_url  ELSE excluded.resource_url  END,
+                -- The server's copy always carries the event's current kind (empty = ordinary).
+                event_type        = excluded.event_type,
+                attendees_json    = excluded.attendees_json,
+                user_organizes    = excluded.user_organizes
             WHERE CalendarEvent.is_graph = 0 OR excluded.is_graph = 1;
             """;
         // The DO UPDATE ... WHERE guard: server-synced rows (is_graph=1) are owned by the calendar
@@ -1413,6 +1825,9 @@ public class LocalStoreService : ILocalStoreService
         cmd.Parameters.AddWithValue("$calid", evt.CalendarId);
         cmd.Parameters.AddWithValue("$calname", evt.CalendarName);
         cmd.Parameters.AddWithValue("$resurl", evt.ResourceUrl);
+        cmd.Parameters.AddWithValue("$etype", evt.ProviderEventType);
+        cmd.Parameters.AddWithValue("$attn", EventAttendees.ToJson(evt.Attendees));
+        cmd.Parameters.AddWithValue("$uorg", evt.UserIsOrganizer is { } uorg ? (uorg ? 1 : 0) : DBNull.Value);
         await cmd.ExecuteNonQueryAsync();
         await tx.CommitAsync();
     }
@@ -1443,8 +1858,8 @@ public class LocalStoreService : ILocalStoreService
                                           organizer, organizer_name, start_time_ticks, end_time_ticks,
                                           sequence, method, source_message_id, source_folder, response_status,
                                           is_all_day, recurrence_rule, exdates, is_graph, calendar_id, calendar_name,
-                                          resource_url)
-                VALUES($uid, $aid, $sum, $desc, $loc, $org, $orgn, $st, $et, $seq, $meth, $smid, $sf, $rs, $allday, $rrule, $exd, 1, $calid, $calname, $resurl);
+                                          resource_url, event_type, attendees_json, user_organizes)
+                VALUES($uid, $aid, $sum, $desc, $loc, $org, $orgn, $st, $et, $seq, $meth, $smid, $sf, $rs, $allday, $rrule, $exd, 1, $calid, $calname, $resurl, $etype, $attn, $uorg);
                 """;
             var pUid  = ins.Parameters.Add("$uid",  Microsoft.Data.Sqlite.SqliteType.Text);
             var pAid  = ins.Parameters.Add("$aid",  Microsoft.Data.Sqlite.SqliteType.Text);
@@ -1466,6 +1881,9 @@ public class LocalStoreService : ILocalStoreService
             var pCid  = ins.Parameters.Add("$calid",   Microsoft.Data.Sqlite.SqliteType.Text);
             var pCn   = ins.Parameters.Add("$calname", Microsoft.Data.Sqlite.SqliteType.Text);
             var pRes  = ins.Parameters.Add("$resurl",  Microsoft.Data.Sqlite.SqliteType.Text);
+            var pEtp  = ins.Parameters.Add("$etype",   Microsoft.Data.Sqlite.SqliteType.Text);
+            var pAttn = ins.Parameters.Add("$attn",    Microsoft.Data.Sqlite.SqliteType.Text);
+            var pUorg = ins.Parameters.Add("$uorg",    Microsoft.Data.Sqlite.SqliteType.Integer);
 
             foreach (var evt in events)
             {
@@ -1489,6 +1907,9 @@ public class LocalStoreService : ILocalStoreService
                 pCid.Value  = evt.CalendarId;
                 pCn.Value   = evt.CalendarName;
                 pRes.Value  = evt.ResourceUrl;
+                pEtp.Value  = evt.ProviderEventType;
+                pAttn.Value = EventAttendees.ToJson(evt.Attendees);
+                pUorg.Value = evt.UserIsOrganizer is { } uorg ? (uorg ? 1 : 0) : DBNull.Value;
                 await ins.ExecuteNonQueryAsync();
             }
         }
@@ -1505,7 +1926,7 @@ public class LocalStoreService : ILocalStoreService
             SELECT uid, account_id, summary, description, location, organizer, organizer_name,
                    start_time_ticks, end_time_ticks, sequence, method, source_message_id,
                    source_folder, response_status, is_all_day, recurrence_rule, exdates, is_graph,
-                   calendar_id, calendar_name, resource_url
+                   calendar_id, calendar_name, resource_url, event_type, attendees_json, user_organizes
             FROM CalendarEvent
             ORDER BY start_time_ticks IS NULL, start_time_ticks ASC;
             """;
@@ -1535,28 +1956,133 @@ public class LocalStoreService : ILocalStoreService
                 CalendarId       = r.IsDBNull(18) ? string.Empty : r.GetString(18),
                 CalendarName     = r.IsDBNull(19) ? string.Empty : r.GetString(19),
                 ResourceUrl      = r.IsDBNull(20) ? string.Empty : r.GetString(20),
+                ProviderEventType = r.IsDBNull(21) ? string.Empty : r.GetString(21),
+                Attendees        = EventAttendees.FromJson(r.IsDBNull(22) ? null : r.GetString(22)),
+                UserIsOrganizer  = r.IsDBNull(23) ? null : r.GetInt32(23) != 0,
             });
         }
         return list;
     }
 
-    public async Task<IReadOnlyList<(Guid AccountId, string CalendarId, string CalendarName)>> LoadCalendarSourcesAsync()
+    public async Task<IReadOnlyList<CalendarSourceInfo>> LoadCalendarSourcesAsync()
     {
-        var list = new List<(Guid, string, string)>();
+        var list = new List<CalendarSourceInfo>();
+        var recorded = new HashSet<Guid>();
+        await using var conn = await OpenAsync();
+
+        // What the providers actually reported, written by the sync when it enumerates calendars.
+        await using (var cmd = conn.CreateCommand())
+        {
+            cmd.CommandText = """
+                SELECT account_id, calendar_id, calendar_name, can_write
+                FROM CalendarSource
+                ORDER BY calendar_name COLLATE NOCASE;
+                """;
+            await using var r = await cmd.ExecuteReaderAsync();
+            while (await r.ReadAsync())
+            {
+                var accountId = Guid.Parse(r.GetString(0));
+                recorded.Add(accountId);
+                // The empty-id row records the enumeration itself, not a calendar — see
+                // ReplaceCalendarSourcesAsync.
+                var calendarId = r.GetString(1);
+                if (calendarId.Length == 0) continue;
+                list.Add(new CalendarSourceInfo(accountId, calendarId, r.GetString(2), r.GetInt32(3) != 0));
+            }
+        }
+
+        // Accounts the sync has not enumerated yet — a profile upgraded between releases, or one
+        // whose first sync of the session has not landed. Fall back to the calendars its synced rows
+        // are tagged with, which is the whole list this used to return, so the folder tree does not
+        // empty out while waiting. Assumed writable: that is what they were treated as before.
+        await using (var cmd = conn.CreateCommand())
+        {
+            cmd.CommandText = """
+                SELECT DISTINCT account_id, calendar_id, calendar_name
+                FROM CalendarEvent
+                WHERE is_graph = 1 AND calendar_id <> ''
+                ORDER BY calendar_name COLLATE NOCASE;
+                """;
+            await using var r = await cmd.ExecuteReaderAsync();
+            while (await r.ReadAsync())
+            {
+                var accountId = Guid.Parse(r.GetString(0));
+                if (recorded.Contains(accountId)) continue;
+                list.Add(new CalendarSourceInfo(accountId, r.GetString(1), r.GetString(2), CanWrite: true));
+            }
+        }
+
+        // Ordered here rather than left to SQL. SQLite's NOCASE folds ASCII A-Z and nothing else, so
+        // it fixes "apple after Zulu" but strands every accented name — Ärger and Ábel sort after
+        // every unaccented calendar, and not even against each other. Both the picker and the folder
+        // tree show this order and are read down by ear, so it has to be the order a person would
+        // put them in. Sorting the combined list also stops the recorded accounts from bunching
+        // ahead of the un-enumerated ones.
+#pragma warning disable CA1309 // Ordinal is what this must NOT be: see the paragraph above — the
+        // order is read aloud, so it has to be the one the user's own language puts names in, not
+        // the one their code points fall in. This is display order, never a lookup key.
+        list.Sort((a, b) => string.Compare(a.CalendarName, b.CalendarName, StringComparison.CurrentCultureIgnoreCase));
+#pragma warning restore CA1309
+        return list;
+    }
+
+    /// <summary>
+    /// Replaces one account's recorded calendar list. Called by the sync each time it enumerates,
+    /// so a calendar the user has deleted or unsubscribed from stops being offered.
+    /// </summary>
+    public async Task ReplaceCalendarSourcesAsync(Guid accountId, IReadOnlyList<CalendarSourceInfo> sources)
+    {
+        await using var conn = await OpenAsync();
+        await using var tx = await conn.BeginTransactionAsync();
+
+        await using (var del = conn.CreateCommand())
+        {
+            del.CommandText = "DELETE FROM CalendarSource WHERE account_id=$aid;";
+            del.Parameters.AddWithValue("$aid", accountId.ToString());
+            await del.ExecuteNonQueryAsync();
+        }
+
+        // A row with an empty calendar_id records the FACT of the enumeration, separately from
+        // what it found. Without it an account whose calendar list legitimately came back empty
+        // would look un-enumerated forever, and LoadCalendarSourcesAsync would fall back to the
+        // calendars its stale rows are tagged with — resurrecting exactly the unsubscribed
+        // calendar the per-account fallback exists to keep out, and marking it writable too.
+        await using (var marker = conn.CreateCommand())
+        {
+            marker.CommandText = """
+                INSERT OR REPLACE INTO CalendarSource (account_id, calendar_id, calendar_name, can_write)
+                VALUES ($aid, '', '', 0);
+                """;
+            marker.Parameters.AddWithValue("$aid", accountId.ToString());
+            await marker.ExecuteNonQueryAsync();
+        }
+
+        foreach (var src in sources)
+        {
+            if (string.IsNullOrEmpty(src.CalendarId)) continue;
+            await using var ins = conn.CreateCommand();
+            ins.CommandText = """
+                INSERT OR REPLACE INTO CalendarSource (account_id, calendar_id, calendar_name, can_write)
+                VALUES ($aid, $cid, $name, $write);
+                """;
+            ins.Parameters.AddWithValue("$aid", accountId.ToString());
+            ins.Parameters.AddWithValue("$cid", src.CalendarId);
+            ins.Parameters.AddWithValue("$name", src.CalendarName ?? string.Empty);
+            ins.Parameters.AddWithValue("$write", src.CanWrite ? 1 : 0);
+            await ins.ExecuteNonQueryAsync();
+        }
+
+        await tx.CommitAsync();
+    }
+
+    /// <summary>Forgets an account's calendar list (its calendar sync was switched off, or it was removed).</summary>
+    public async Task DeleteCalendarSourcesAsync(Guid accountId)
+    {
         await using var conn = await OpenAsync();
         await using var cmd = conn.CreateCommand();
-        // Distinct server calendars across all synced rows — one row per (account, calendar), used to
-        // build the per-calendar grandchild nodes under each account in the folder tree.
-        cmd.CommandText = """
-            SELECT DISTINCT account_id, calendar_id, calendar_name
-            FROM CalendarEvent
-            WHERE is_graph = 1 AND calendar_id <> ''
-            ORDER BY calendar_name;
-            """;
-        await using var r = await cmd.ExecuteReaderAsync();
-        while (await r.ReadAsync())
-            list.Add((Guid.Parse(r.GetString(0)), r.GetString(1), r.GetString(2)));
-        return list;
+        cmd.CommandText = "DELETE FROM CalendarSource WHERE account_id=$aid;";
+        cmd.Parameters.AddWithValue("$aid", accountId.ToString());
+        await cmd.ExecuteNonQueryAsync();
     }
 
     public async Task UpdateCalendarResponseStatusAsync(string uid, Guid accountId, CalendarResponseStatus status)

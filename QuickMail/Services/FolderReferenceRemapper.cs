@@ -20,14 +20,17 @@ public static class FolderReferenceRemapper
 {
     public sealed class Report
     {
-        /// <summary>Move-to-folder rules whose target was rewritten to the matching Graph folder.</summary>
+        /// <summary>Rules whose move-to or copy-to folder was rewritten to the matching Graph folder.</summary>
         public List<string> RemappedRules { get; } = [];
-        /// <summary>Move-to-folder rules disabled because their target could not be matched.</summary>
+        /// <summary>Rules disabled because a folder they move or copy to could not be matched.</summary>
         public List<string> DisabledRules { get; } = [];
         /// <summary>Saved views a real-folder entry was remapped or dropped from.</summary>
         public List<string> AffectedViews { get; } = [];
         /// <summary>True when the startup folder was remapped or fell back to All Mail.</summary>
         public bool StartupFolderChanged { get; set; }
+        /// <summary>True when the account's hidden-folder list was rewritten or pruned (#963). Not part of
+        /// <see cref="AnythingChanged"/>: the list is on the account, which the caller saves separately.</summary>
+        public bool HiddenFoldersChanged { get; set; }
 
         public bool AnythingChanged =>
             RemappedRules.Count > 0 || DisabledRules.Count > 0 || AffectedViews.Count > 0 || StartupFolderChanged;
@@ -59,7 +62,8 @@ public static class FolderReferenceRemapper
         IReadOnlyList<MailFolderModel> graphFolders,
         List<MailRule> allRules,
         List<SavedView> allViews,
-        ConfigModel config)
+        ConfigModel config,
+        List<string>? hiddenFolders = null)
     {
         var report = new Report();
 
@@ -89,20 +93,35 @@ public static class FolderReferenceRemapper
             return byLeaf.Count == 1 ? byLeaf[0].FullName : null;
         }
 
-        // Move-to-folder rules for this account.
-        foreach (var rule in allRules.Where(r =>
-                     r.AccountId == accountId && r.Action == RuleAction.MoveToFolder && !string.IsNullOrEmpty(r.TargetFolder)))
+        // Rules for this account that name a folder: the one they move to, the one they copy to, or both (#682).
+        foreach (var rule in allRules.Where(r => r.AccountId == accountId))
         {
-            var match = Match(rule.TargetFolder);
-            if (match == null)
+            var unmatched = false;
+            var rewritten = false;
+
+            string? Remapped(string? reference)
             {
+                var match = Match(reference);
+                if (match == null) { unmatched = true; return reference; }
+                // Already equal to the match is an idempotent re-run, not a rewrite — do not report one.
+                if (!string.Equals(reference, match, StringComparison.Ordinal)) rewritten = true;
+                return match;
+            }
+
+            if (rule.Does(RuleAction.MoveToFolder) && !string.IsNullOrEmpty(rule.TargetFolder))
+                rule.TargetFolder = Remapped(rule.TargetFolder);
+            if (rule.Does(RuleAction.CopyToFolder) && !string.IsNullOrEmpty(rule.CopyTargetFolder))
+                rule.CopyTargetFolder = Remapped(rule.CopyTargetFolder);
+
+            if (unmatched)
+            {
+                // A rule whose move folder matched but whose copy folder didn't keeps the rewrite and is still turned
+                // off, and is reported only as disabled: that is the part the user has to act on.
                 rule.IsEnabled = false;   // disabled, not deleted — the user can set a folder to re-enable
                 report.DisabledRules.Add(rule.Name);
             }
-            // Already equal to the match is an idempotent re-run, not a rewrite — do not report one.
-            else if (!string.Equals(rule.TargetFolder, match, StringComparison.Ordinal))
+            else if (rewritten)
             {
-                rule.TargetFolder = match;
                 report.RemappedRules.Add(rule.Name);
             }
         }
@@ -146,6 +165,24 @@ public static class FolderReferenceRemapper
             {
                 config.StartupFolder = match;   // StartupFolderLabel stays; it is display text
                 report.StartupFolderChanged = true;
+            }
+        }
+
+        // Hidden folders (#963) live on the account, which the caller saves itself, so this is reported
+        // apart from AnythingChanged and left out of the spoken summary: a folder that stays hidden is not
+        // news. An entry that cannot be matched is dropped rather than kept — it would hide nothing and
+        // only make Show All Hidden Folders report folders that never come back.
+        if (hiddenFolders is { Count: > 0 })
+        {
+            var remapped = new List<string>();
+            foreach (var entry in hiddenFolders)
+                if (Match(entry) is { } match && !remapped.Contains(match, StringComparer.Ordinal))
+                    remapped.Add(match);
+            if (!remapped.SequenceEqual(hiddenFolders, StringComparer.Ordinal))
+            {
+                hiddenFolders.Clear();
+                hiddenFolders.AddRange(remapped);
+                report.HiddenFoldersChanged = true;
             }
         }
 

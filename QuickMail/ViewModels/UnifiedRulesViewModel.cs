@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Globalization;
+using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -28,13 +30,42 @@ public partial class UnifiedRulesViewModel : ObservableObject
     private readonly IReadOnlyDictionary<Guid, List<MailFolderModel>>? _foldersByAccount;
     private readonly List<AccountModel> _allAccounts;
 
-    // Messages selected in the main window, for Test Rule (parity with RulesManagerViewModel). Null when
-    // the manager was opened without a message-list selection.
+    // The main window's whole message list as it was when the Rules Manager opened, for Test Rule —
+    // not the selection. Null when there was no list.
     private readonly IReadOnlyList<MailMessageSummary>? _selectedMessagesForTest;
 
-    // "Show field labels in the rules list" — read once at open (matches RulesManagerViewModel); a
+    // "Show field labels in the rules list" — read once at open; a
     // Settings change is picked up next time the manager opens.
     private readonly bool _showFieldLabels;
+
+    // Set when the Rules Manager was opened from a shared mailbox, which the account list leaves out
+    // (#678). The status line says so until the user chooses an account themselves.
+    private string? _sharedMailboxLabel;
+
+    // Set when a save put the Account list back on the rule's own account (#683), so the status line can say
+    // where the rule went: nothing else does, and the list moved without the user choosing it. Shown by that
+    // save's reload only.
+    private string? _savedToAccountLabel;
+
+    // Set when the user moves the Account list, so the load that follows says how many rules the account
+    // has (#734). Cleared by the load that says it; a load superseded by a newer switch leaves it for that one.
+    private bool _announceCountOnLoad;
+
+    // Set while the view model moves the Account list itself (a save returning to its rule's account, or a
+    // rule made from a message), which is not the user arrowing and says what it has to say its own way.
+    private bool _movingAccountForAction;
+
+    // Opened from a shared mailbox, the title names the account shown for the life of the window.
+    private readonly bool _openedFromSharedMailbox;
+
+    // Every shared mailbox's label, so a rule template for one can say why it gets no rule.
+    private readonly Dictionary<Guid, string> _sharedAccountLabels;
+
+    // The account whose rules the list is showing. It lags the Account list while a switch loads (a
+    // Microsoft 365 account's rules come from the server), so an action on a listed rule uses this rather
+    // than the selection: a rule acted on in that moment belongs to the account it is listed under.
+    private Guid? _rulesAccountId;
+    private readonly ISoundService? _sounds;
 
     public UnifiedRulesViewModel(
         IRuleService clientRules,
@@ -43,22 +74,40 @@ public partial class UnifiedRulesViewModel : ObservableObject
         IReadOnlyDictionary<Guid, List<MailFolderModel>>? foldersByAccount = null,
         Guid? preferredAccountId = null,
         IEnumerable<MailMessageSummary>? selectedMessagesForTest = null,
-        IConfigService? configService = null)
+        IConfigService? configService = null,
+        ISoundService? sounds = null)
     {
+        _sounds = sounds;
         _clientRules = clientRules;
         _serverRules = serverRules;
         _selectedMessagesForTest = selectedMessagesForTest?.ToList();
         _showFieldLabels = configService?.Load().RuleListShowFieldLabels ?? false;
         _foldersByAccount = foldersByAccount;
-        _allAccounts = accounts.ToList();
+        // Shared mailboxes are left out (#678). QuickMail cannot reach a shared mailbox's server-side
+        // rules, and a client-side rule there would act, from one person's machine, on mail everyone
+        // else reads; its rules belong in Outlook.
+        var everyAccount = accounts.ToList();
+        _allAccounts = everyAccount.Where(a => !a.IsShared).ToList();
+        _sharedAccountLabels = everyAccount.Where(a => a.IsShared)
+            .GroupBy(a => a.Id).ToDictionary(g => g.Key, g => g.First().AccountLabel);
+        if (preferredAccountId is Guid opened
+            && everyAccount.FirstOrDefault(a => a.Id == opened) is { IsShared: true } shared)
+        {
+            _sharedMailboxLabel = shared.AccountLabel;
+            _openedFromSharedMailbox = true;
+        }
 
         AccountOptions = _allAccounts
             .Select(a => new AccountOption { Id = a.Id, DisplayName = a.AccountLabel })
             .ToList();
 
-        // Land on the account the user is currently in; fall back to the first account when there's
-        // no current-account context (an aggregate view at the tree top).
+        // Land on the account the user is currently in. With no current-account context (a view that
+        // spans accounts, such as All Inboxes) fall back to the account marked default in Account
+        // Manager — the one new rules were created for before the rules windows were unified — and
+        // only then to the first. The picker decides the account a new rule belongs to.
+        var defaultAccountId = _allAccounts.FirstOrDefault(a => a.IsDefault)?.Id;
         _selectedAccount = AccountOptions.FirstOrDefault(o => o.Id == preferredAccountId)
+                           ?? AccountOptions.FirstOrDefault(o => o.Id == defaultAccountId)
                            ?? AccountOptions.FirstOrDefault();
     }
 
@@ -69,6 +118,7 @@ public partial class UnifiedRulesViewModel : ObservableObject
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(AccountSupportsServerRules))]
+    [NotifyPropertyChangedFor(nameof(WindowTitle))]
     private AccountOption? _selectedAccount;
 
     public ObservableCollection<UnifiedRuleRow> Rules { get; } = [];
@@ -104,11 +154,7 @@ public partial class UnifiedRulesViewModel : ObservableObject
     /// <summary>Ask the View to confirm a delete (message, title) → user's yes/no.</summary>
     public event Func<string, string, bool>? ConfirmDeleteRequested;
 
-    /// <summary>Ask the View to show the "saved as a QuickMail rule" dialog (spec §20.3).</summary>
-    public event Action<string>? ClientRuleNoticeRequested;
-
     public event Action<string, AnnouncementCategory>? AnnouncementRequested;
-    public event Action<string>? WriteBlockedByPermission;
     public event Action? FocusSelectedRuleRequested;
 
     // ── Gating ──────────────────────────────────────────────────────────────
@@ -141,25 +187,53 @@ public partial class UnifiedRulesViewModel : ObservableObject
     public void NewRuleFromTemplate(MailRule template)
     {
         // Land on the message's account so the rule is scoped to it (the picker may be on another).
-        if (template.AccountId is Guid tid && AccountOptions.FirstOrDefault(o => o.Id == tid) is { } opt)
-            SelectedAccount = opt;
+        if (template.AccountId is Guid tid)
+        {
+            // An account the list does not hold, such as a shared mailbox (#678), gets no rule. Opening the
+            // editor anyway would scope the rule to whichever account the picker happens to show.
+            if (AccountOptions.FirstOrDefault(o => o.Id == tid) is not { } opt)
+            {
+                // Say why, on the status line (read on demand, and there whether announcements are on or
+                // off), rather than coming forward with nothing. The window's account list is taken when
+                // it opens, so an account added since is the other way to get here.
+                StatusText = _sharedAccountLabels.TryGetValue(tid, out var shared)
+                    ? $"Rules for the shared mailbox {shared} are managed in Outlook."
+                    : "The Rules Manager does not list that message's account. Close it and open it again to make a rule there.";
+                // Paired with a result announcement, as Test and Run on Existing are: the window comes forward
+                // with focus where it was, so nothing else would tell anyone who hears results.
+                Announce(StatusText, AnnouncementCategory.Result);
+                return;
+            }
+            MoveAccountForAction(opt);
+        }
         OpenNewEditor(ServerRuleEditorViewModel.ForNewFromTemplate(template));
     }
 
     private void OpenNewEditor(ServerRuleEditorViewModel editor)
     {
         if (SelectedAccount?.Id is not Guid accountId) return;
-        editor.Saved += _ => SaveNewAsync(accountId, editor);
-        editor.AnnouncementRequested += (t, c) => AnnouncementRequested?.Invoke(t, c);
+        // Everything the save depends on comes from the account the editor opened on (#683). The editor is
+        // modeless, so the Account list stays usable while it is open; classifying by whatever the list
+        // showed at save time saved a rule to one account as the other account's kind.
+        // One capture, used for both: what the save classifies by, and what the editor gates on. Asked
+        // about the account the editor opened ON — two expressions of the same fact are how the Edit
+        // path came to gate on the wrong account in the first place (#682, #683).
+        var supportsServerRules = SupportsServerRulesForAccount(accountId);
+        editor.AccountId = accountId;
+        editor.AttachSounds(_sounds);
+        editor.AccountSupportsServerRules = supportsServerRules;
+        editor.Saved += _ => SaveNewAsync(accountId, supportsServerRules, editor);
+        // The editor's messages (a validation error, a refused save) are announced by the editor window, the one
+        // the user is in. Passing them on here as well had the Rules Manager behind it say each one again (#701).
         EditorRequested?.Invoke(editor);
     }
 
     /// <summary>Ask the owner to run client rules over already-cached mail (it owns the local store),
-    /// returning how many messages were moved/deleted. The Guid is the account to scope the run to —
-    /// this window is one account at a time, so it runs only the account in the picker, not every
-    /// account (#493). Server rules run server-side, so this is client-only — same as the standalone
-    /// manager (#346).</summary>
-    public event Func<Guid?, Task<int>>? RunOnExistingRequested;
+    /// returning what the run looked at and what each rule moved or deleted (#949). The Guid is the account
+    /// to scope the run to — this window is one account at a time, so it runs only the account in the
+    /// picker, not every account (#493). Server rules run server-side, so this is client-only — same as the
+    /// standalone manager (#346).</summary>
+    public event Func<Guid?, Task<ExistingMailRunReport>>? RunOnExistingRequested;
 
     /// <summary>Run on Existing applies the selected account's ENABLED client rules to its Inbox. Disabled
     /// when that account has none — a Graph account whose rules are all server-side has nothing for this
@@ -171,16 +245,19 @@ public partial class UnifiedRulesViewModel : ObservableObject
     [RelayCommand(CanExecute = nameof(CanRunOnExisting))]
     private async Task RunOnExistingAsync()
     {
-        if (RunOnExistingRequested is null || SelectedAccount is not { } account) return;
-        // Set StatusText as well as announcing (parity with RulesManagerViewModel): the status line is a
-        // visible, F6-reachable surface, so a user running with announcements off still sees the outcome —
-        // otherwise this newly-surfaced button would be imperceptible to them, error included.
+        // The account whose rules are listed, which is what CanRunOnExisting judged; the selected account
+        // until a list has loaded.
+        if (RunOnExistingRequested is null || (_rulesAccountId ?? SelectedAccount?.Id) is not Guid listed
+            || AccountOptions.FirstOrDefault(o => o.Id == listed) is not { } account) return;
+        // Set StatusText as well as announcing: the status line is a visible, F6-reachable surface, so a
+        // user running with announcements off still gets the outcome — error included — rather than a
+        // button that appears to do nothing.
         StatusText = $"Running {account.DisplayName}'s rules on existing mail…";
         Announce(StatusText, AnnouncementCategory.Status);
-        int affected;
+        ExistingMailRunReport report;
         try
         {
-            affected = await RunOnExistingRequested.Invoke(account.Id);
+            report = await RunOnExistingRequested.Invoke(account.Id);
         }
         catch (Exception ex)
         {
@@ -188,21 +265,144 @@ public partial class UnifiedRulesViewModel : ObservableObject
             Announce(StatusText, AnnouncementCategory.Result);
             return;
         }
-        StatusText = affected > 0
-            ? $"Applied {account.DisplayName}'s rules to existing mail: {affected} message{(affected == 1 ? "" : "s")} moved or deleted."
-            : $"Applied {account.DisplayName}'s rules to existing mail.";
+        StatusText = DescribeRunOnExisting(AccountPhrase(account.DisplayName), report);
         Announce(StatusText, AnnouncementCategory.Result);
     }
+
+    /// <summary>How many rules Run on Existing lists by name before summing up the rest, so a long list of rules
+    /// still reads as one status line.</summary>
+    internal const int MaxRulesNamedInRunReport = 5;
+
+    /// <summary>Run on Existing's result (#949): what it looked at (every enabled client rule for the account, on its
+    /// stored Inbox mail, which can be more than the message list shows) and what each rule did, so it is never
+    /// mistaken for Test's count. Only rules that moved, deleted or failed on something are named; the rest are in
+    /// the rule count. Numbers are grouped for the current culture.</summary>
+    internal static string DescribeRunOnExisting(string account, ExistingMailRunReport report)
+    {
+        if (report.InboxUnavailable)
+            return $"The rules didn't run: QuickMail hasn't read the Inbox for {account} yet. Try again once the account has connected.";
+        var ruleCount = report.Rules.Count;
+        if (ruleCount == 0)
+            return $"There are no enabled rules to run for {account}.";
+        if (report.InspectedCount == 0)
+            return $"There are no stored Inbox messages for {account}, so there was nothing to run "
+                   + (ruleCount == 1 ? "the rule on." : "the rules on.");
+
+        var scope = $"{N(report.InspectedCount)} stored Inbox {Plural(report.InspectedCount, "message")} for {account}";
+        var acted = report.Rules.Where(r => r.HasNews).ToList();
+        // Said once, at the end, wherever a failure is reported.
+        var logNote = report.TotalFailed > 0 ? " The log says why." : "";
+
+        if (ruleCount == 1)
+        {
+            var only = report.Rules[0];
+            var opening = $"Ran {RuleLabel(only.RuleName)} on {scope}.";
+            return only.HasNews
+                ? $"{opening} It {Did(only.Moved, only.Deleted, only.Failed, withNoun: true)}.{logNote}"
+                : $"{opening} It didn't move or delete any of them.";
+        }
+
+        var start = $"Ran {N(ruleCount)} rules on {scope}.";
+        if (acted.Count == 0)
+            return $"{start} None of them moved or deleted any messages.";
+        if (acted.Count == 1)
+            return $"{start} One of them, {Name(acted[0].RuleName)}, "
+                   + $"{Did(acted[0].Moved, acted[0].Deleted, acted[0].Failed, withNoun: true)}.{logNote}";
+
+        var named = acted.Take(MaxRulesNamedInRunReport)
+            .Select(r => $"{Name(r.RuleName)} {Did(r.Moved, r.Deleted, r.Failed, withNoun: false)}")
+            .ToList();
+        var rest = acted.Skip(MaxRulesNamedInRunReport).ToList();
+        if (rest.Count > 0)
+            named.Add($"{N(rest.Count)} other {Plural(rest.Count, "rule")} "
+                      + Did(rest.Sum(r => r.Moved), rest.Sum(r => r.Deleted), rest.Sum(r => r.Failed), withNoun: false));
+        var total = report.TotalMoved + report.TotalDeleted > 0
+            ? $"They {Did(report.TotalMoved, report.TotalDeleted, 0, withNoun: true)}"
+            : "None of them moved or deleted any messages";
+        return $"{start} {total}: {string.Join("; ", named)}.{logNote}";
+
+        // "moved 1,886 messages and deleted 6", "moved 5 messages, deleted 2 and failed on 1", or without the noun
+        // "moved 1,886 and deleted 6". The noun goes on the first number only.
+        static string Did(int moved, int deleted, int failed, bool withNoun)
+        {
+            var parts = new List<string>(3);
+            void Add(string verb, int count)
+            {
+                if (count <= 0) return;
+                var noun = withNoun && parts.Count == 0 ? " " + Plural(count, "message") : "";
+                parts.Add($"{verb} {N(count)}{noun}");
+            }
+            Add("moved", moved);
+            Add("deleted", deleted);
+            Add("failed on", failed);
+            return parts.Count == 1 ? parts[0] : $"{string.Join(", ", parts.Take(parts.Count - 1))} and {parts[^1]}";
+        }
+
+        // "the techtalk rule"; a name that already ends in "rule" doesn't get a second one, as AccountPhrase does
+        // for "account", and a rule with no name is just "1 rule".
+        static string RuleLabel(string? name)
+        {
+            var trimmed = name?.Trim();
+            if (string.IsNullOrEmpty(trimmed)) return "1 rule";
+            return trimmed.EndsWith(" rule", StringComparison.OrdinalIgnoreCase)
+                ? $"the {QuoteIfAmbiguous(trimmed)}"
+                : $"the {QuoteIfAmbiguous(trimmed)} rule";
+        }
+
+        static string Name(string? name) => string.IsNullOrWhiteSpace(name) ? "an unnamed rule" : QuoteIfAmbiguous(name.Trim());
+    }
+
+    /// <summary>
+    /// A rule name as Run on Existing's report writes it: as is, unless it could be read as part of the
+    /// report around it, and then in quotation marks. The report joins rules with semicolons and follows each
+    /// name with a verb and a count ("techtalk moved 1,886; Newsletters moved 50"), so a name holding one of
+    /// those — punctuation that separates clauses, a digit, or the report's own verbs — blurs into it:
+    /// "Top 10 moved 5", "Lists; work moved 3". Most rule names are plain words, and quoting every one would
+    /// put a pair of marks round each, spoken aloud at some punctuation settings, to fix a problem only these
+    /// names have. Curly marks, so a name with a straight quote of its own still reads as one name.
+    /// </summary>
+    internal static string QuoteIfAmbiguous(string name)
+    {
+        var ambiguous = name.IndexOfAny(['.', ',', ';', ':']) >= 0
+                        || name.Any(char.IsDigit)
+                        || ReportWords.IsMatch(name);
+        return ambiguous ? $"“{name}”" : name;
+    }
+
+    // The verbs the report puts after a name, as whole words.
+    private static readonly System.Text.RegularExpressions.Regex ReportWords = new(
+        @"\b(moved|deleted|failed)\b",
+        System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+
+    /// <summary>A count grouped for the reader's culture: 1,942 rather than 1942 (#949).</summary>
+    private static string N(int value) => value.ToString("N0", CultureInfo.CurrentCulture);
+
+    private static string Plural(int count, string noun) => count == 1 ? noun : noun + "s";
 
     [RelayCommand(CanExecute = nameof(CanEditSelected))]
     private void EditRule()
     {
-        if (SelectedAccount?.Id is not Guid accountId || SelectedRule is not { } row) return;
+        if (_rulesAccountId is not Guid accountId || SelectedRule is not { } row) return;
 
         var editor = row.RunsWhere == RuleRunsWhere.Server
             ? ServerRuleEditorViewModel.ForEdit(row.Server!)
             : ServerRuleEditorViewModel.ForEditClient(row.Client!);
-        editor.AnnouncementRequested += (t, c) => AnnouncementRequested?.Invoke(t, c);
+        if (row.RunsWhere == RuleRunsWhere.Client && NamesFoldersById(accountId))
+        {
+            // A Graph or POP3 client rule keeps folder ids, and the editor's folder buttons show the name. Before #682
+            // no such rule could move or copy, so nothing needed it. (An IMAP rule's folder is already its readable
+            // path; see the client-row builder for why it isn't looked up.)
+            editor.MoveToFolderName = FolderButtonName(accountId, editor.MoveToFolderId);
+            editor.CopyToFolderName = FolderButtonName(accountId, editor.CopyToFolderId);
+        }
+        editor.AccountId = accountId;
+        editor.AttachSounds(_sounds);
+        // The rule's OWN account, not whichever one the picker is showing (#683). The editor is modeless
+        // and the Account list stays usable behind it, so a row can still be edited a moment after the
+        // list moved on — and asking the picker would open a work account's server rule with its Forward
+        // and Importance fields greyed out, unchangeable, over a line blaming "this account".
+        editor.AccountSupportsServerRules = SupportsServerRulesForAccount(accountId);
+        // Not passed on: the editor window announces its own messages (#701, see OpenNewEditor).
         editor.Saved += _ => row.RunsWhere == RuleRunsWhere.Server
             ? SaveEditedServerAsync(accountId, row.Server!, editor)
             : SaveEditedClientAsync(accountId, row.Client!, editor);
@@ -212,7 +412,7 @@ public partial class UnifiedRulesViewModel : ObservableObject
     [RelayCommand(CanExecute = nameof(CanModifySelected))]
     private async Task ToggleEnabledAsync(CancellationToken ct)
     {
-        if (SelectedAccount?.Id is not Guid accountId || SelectedRule is not { } row) return;
+        if (_rulesAccountId is not Guid accountId || SelectedRule is not { } row) return;
 
         bool newState;
         string? error = null;
@@ -230,8 +430,15 @@ public partial class UnifiedRulesViewModel : ObservableObject
         {
             var rule = row.Client!;
             newState = !rule.IsEnabled;
-            SetClientEnabled(rule.Id, newState);
-            await ReloadAndReselectAsync(clientId: rule.Id, ct: ct);
+            error = ChangeClientRules(all =>
+            {
+                if (all.FirstOrDefault(r => r.Id == rule.Id) is { } stored) stored.IsEnabled = newState;
+            });
+            if (error is null) await ReloadAndReselectAsync(clientId: rule.Id, ct: ct);
+            // The row holds the cached rule itself, so a write that failed after the change ran left it showing
+            // the new state, and pressing Space again would have "retried" the opposite way. Put it back. (When
+            // the load failed the change never ran, and this sets what was already there.)
+            else rule.IsEnabled = !newState;
         }
         // A failed Graph write returns its message; don't announce success over it.
         Announce(error ?? (newState ? "Rule enabled." : "Rule disabled."), AnnouncementCategory.Result);
@@ -240,7 +447,7 @@ public partial class UnifiedRulesViewModel : ObservableObject
     [RelayCommand(CanExecute = nameof(CanModifySelected))]
     private async Task DeleteRuleAsync(CancellationToken ct)
     {
-        if (SelectedAccount?.Id is not Guid accountId || SelectedRule is not { } row) return;
+        if (_rulesAccountId is not Guid accountId || SelectedRule is not { } row) return;
 
         var confirmed = ConfirmDeleteRequested?.Invoke(
             $"Delete rule '{row.Name}'? It will stop running.", "Delete Rule") ?? false;
@@ -256,7 +463,7 @@ public partial class UnifiedRulesViewModel : ObservableObject
             error = await RunServerWriteAsync(
                 () => _serverRules!.DeleteAsync(accountId, row.Server!.Id, ct), reloadOnSuccess: false);
         else
-            DeleteClientRule(row.Client!.Id);
+            error = ChangeClientRules(all => all.RemoveAll(r => r.Id == row.Client!.Id));
 
         if (error is null) await ReloadAndReselectAsync(fallbackIndex: index, ct: ct);
         Announce(error ?? "Rule deleted.", AnnouncementCategory.Result);
@@ -274,78 +481,159 @@ public partial class UnifiedRulesViewModel : ObservableObject
     /// for a user running with announcements off, does nothing perceptible when pressed.</summary>
     public bool CanTestSelected => SelectedRule is { RunsWhere: RuleRunsWhere.Client };
 
-    // Parity with RulesManagerViewModel.TestRule: run the selected client rule against the messages
-    // currently in the main window and report the match count.
+    // Run the selected client rule against the messages currently in the main window and report the
+    // match count.
     [RelayCommand(CanExecute = nameof(CanTestSelected))]
     private void TestRule()
     {
         if (SelectedRule is not { RunsWhere: RuleRunsWhere.Client } row) return;   // defensive; CanExecute gates it
 
-        var messages = _selectedMessagesForTest?.ToList() ?? [];
-        if (messages.Count == 0)
+        var list = _selectedMessagesForTest?.ToList() ?? [];
+        if (list.Count == 0)
         {
-            StatusText = "No messages selected in the main window.";
+            StatusText = "The message list is empty, so there is nothing to test the rule against.";
             Announce(StatusText, AnnouncementCategory.Result);
             return;
         }
 
-        var matched = _clientRules.TestRule(row.Client!, messages);
-        StatusText = $"Rule would match {matched.Count} of {messages.Count} selected messages.";
+        // A client rule acts only on its own account's mail, so it is tested only against that (#687). The
+        // list can hold several accounts' messages: All Inboxes, or a shared mailbox's folder, which opens
+        // this window on another account (#678).
+        var accountId = row.Client!.AccountId ?? SelectedAccount?.Id;
+        // Named from the account being tested, not the list's selection, which can already be moving to
+        // another account. "for the … account" rather than "from …": an account with no name of its own is
+        // labelled by its address, and "messages from me@example.com" would read as a sender.
+        var account = AccountPhrase(AccountOptions.FirstOrDefault(o => o.Id == accountId)?.DisplayName ?? SelectedAccount?.DisplayName);
+        var messages = list.Where(m => m.AccountId == accountId).ToList();
+        if (messages.Count == 0)
+        {
+            StatusText = $"The message list has no messages for {account}, so there is nothing to test the rule against.";
+            Announce(StatusText, AnnouncementCategory.Result);
+            return;
+        }
+
+        var matched = _clientRules.TestRule(row.Client!, messages).Count;
+        StatusText = DescribeTest(account, matched, messages.Count);
         Announce(StatusText, AnnouncementCategory.Result);
+    }
+
+    /// <summary>Test's result (#949). "This rule" and "the message list" say what it measured: the one selected rule,
+    /// against the messages the main window's list shows for the account — not the stored Inbox, and not every rule,
+    /// which is what Run on Existing uses. Numbers are grouped for the current culture.</summary>
+    internal static string DescribeTest(string account, int matched, int total) => total == 1
+        ? $"This rule would {(matched == 1 ? "" : "not ")}match the only message in the message list for {account}."
+        : $"This rule would match {N(matched)} of the {N(total)} messages in the message list for {account}.";
+
+    /// <summary>"the Work account", for Test's result. A label that already ends in "account" does not get a
+    /// second one: "the Work Account", not "the Work Account account".</summary>
+    internal static string AccountPhrase(string? label)
+    {
+        var name = label?.Trim();
+        if (string.IsNullOrEmpty(name)) return "this account";
+        return name.EndsWith("account", StringComparison.OrdinalIgnoreCase) ? $"the {name}" : $"the {name} account";
     }
 
     // ── Save routing ────────────────────────────────────────────────────────
 
-    private async Task<string?> SaveNewAsync(Guid accountId, ServerRuleEditorViewModel editor)
+    private async Task<string?> SaveNewAsync(Guid accountId, bool supportsServerRules, ServerRuleEditorViewModel editor)
     {
-        var kind = editor.Classify(AccountSupportsServerRules);
+        var kind = editor.Classify(supportsServerRules);
         if (kind.IsConflict) return kind.ConflictError;   // editor shows it and stays open
 
         if (kind.Kind == RuleRunsWhere.Server)
         {
             var model = editor.ToModel();
-            model.Sequence = ServerRows().Count + 1;       // Graph rejects sequence 0
             // Re-select the created rule — its id only exists on CreateAsync's return, so route
             // through the value-returning overload (otherwise nothing is selected and focus strands).
             return await RunServerWriteAsync(
-                () => _serverRules!.CreateAsync(accountId, model),
+                async () =>
+                {
+                    // After every rule already on the account it is created for (#683). Once the Account list
+                    // has moved on, the rows on screen are another account's, and a count of those could put the
+                    // rule ahead of ones that stop processing. Graph rejects sequence 0.
+                    var existing = SelectedAccount?.Id == accountId
+                        ? ServerRows().Select(r => r.Server!).ToList()
+                        : (await _serverRules!.ListAsync(accountId)).ToList();
+                    model.Sequence = existing.Select(r => r.Sequence).DefaultIfEmpty(0).Max() + 1;
+                    var created = await _serverRules!.CreateAsync(accountId, model);
+                    ReturnToAccount(accountId);
+                    return created;
+                },
                 created => created.Id, reloadOnSuccess: true);
         }
 
-        // Client rule — persist and tell the user it runs in QuickMail (spec §20.3).
+        // Client rule — persist. Whether we say so depends on the account (#550):
+        //  • On an account that supports server rules, a rule landing client-side is a surprise — the
+        //    status line says this account *also* runs rules in the cloud, yet this one won't (it uses a
+        //    client-only action like Mark as unread). So announce it. A non-blocking Announce (Result —
+        //    honors AnnounceResults), not the old modal: the rules window is now the one every account
+        //    uses, and a focus-stealing dialog on each such save doesn't belong there.
+        //  • On a client-only account (IMAP / personal Graph) every rule is a client-side rule, and the
+        //    status line says so on every load — "N rules, client-side only", or the mode outright when
+        //    there are none — so a per-save notice would just be chatter. Stay silent.
         var rule = editor.ToClientRule(accountId);
-        AddClientRule(rule);
-        // Show the notice BEFORE re-selecting: ReloadAndReselect posts a focus move to the new row,
-        // and if that's pending when the modal notice opens, focus jumps into the background window
-        // while the notice is up. Raising the (modal) notice first means the reselect + focus request
-        // run only once it's dismissed.
-        ClientRuleNoticeRequested?.Invoke(
-            $"Saved as a QuickMail rule (it runs while QuickMail is open) — {kind.ClientReason}.");
+        if (CopyingIntoTheInbox(accountId, rule) is { } loop) return loop;        // editor shows it and stays open
+        if (ChangeClientRules(all => all.Add(rule)) is { } error) return error;   // editor shows it and stays open
+        if (supportsServerRules)
+            Announce("Saving as a client-side rule.", AnnouncementCategory.Result);
+        ReturnToAccount(accountId);
         await ReloadAndReselectAsync(clientId: rule.Id);
         return null;
     }
 
     private async Task<string?> SaveEditedServerAsync(Guid accountId, ServerRuleModel original, ServerRuleEditorViewModel editor)
-        => await RunServerWriteAsync(
-            () => _serverRules!.UpdateAsync(accountId, editor.ToModel()), reloadOnSuccess: true, selectServerId: original.Id);
+    {
+        // Editing preserves the kind: a server rule stays a server rule (spec §20.6). The server has no way
+        // to express a client-only action, and sending the rule anyway dropped it without a word (#684), so
+        // refuse the save and name what to remove — the mirror of the client-side check below.
+        if (editor.ServerEditError is { } error) return error;
+        return await RunServerWriteAsync(
+            async () =>
+            {
+                await _serverRules!.UpdateAsync(accountId, editor.ToModel());
+                ReturnToAccount(accountId);
+            },
+            reloadOnSuccess: true, selectServerId: original.Id);
+    }
+
+    /// <summary>
+    /// Puts the Account list back on the account a saved rule belongs to, so the reload that follows shows
+    /// it and selects it. The editor is modeless and the list stays usable while it is open; without this, a
+    /// rule saved after the list moved on appeared nowhere and left nothing selected (#683).
+    /// </summary>
+    private void ReturnToAccount(Guid accountId)
+    {
+        if (SelectedAccount?.Id != accountId && AccountOptions.FirstOrDefault(o => o.Id == accountId) is { } option)
+        {
+            MoveAccountForAction(option);
+            // After the switch, whose change handler clears it: this change is the save's, not the user's.
+            _savedToAccountLabel = option.DisplayName;
+        }
+    }
 
     private async Task<string?> SaveEditedClientAsync(Guid accountId, MailRule original, ServerRuleEditorViewModel editor)
     {
         // Editing preserves the kind: a client rule stays a client rule (spec §20.6). If the edits made
         // it un-representable as a client rule, block rather than silently convert.
-        if (!editor.IsClientRepresentable)
-            return "This rule can no longer run in QuickMail. Remove the conditions or actions QuickMail rules don't support.";
+        if (editor.ClientEditError is { } clientError) return clientError;
 
         var updated = editor.ToClientRule(accountId);
         updated.Id = original.Id;                          // preserve identity
-        UpdateClientRule(updated);
+        if (CopyingIntoTheInbox(accountId, updated) is { } loop) return loop;
+        var error = ChangeClientRules(all =>
+        {
+            var i = all.FindIndex(r => r.Id == updated.Id);
+            if (i >= 0) all[i] = updated; else all.Add(updated);
+        });
+        if (error is not null) return error;               // editor shows it and stays open
+        ReturnToAccount(accountId);
         await ReloadAndReselectAsync(clientId: updated.Id);
         return null;
     }
 
     private async Task MoveServerAsync(int delta, CancellationToken ct)
     {
-        if (SelectedAccount?.Id is not Guid accountId || SelectedRule?.Server is not { } rule) return;
+        if (_rulesAccountId is not Guid accountId || SelectedRule?.Server is not { } rule) return;
 
         var order = ServerRows().Select(r => r.Server!).ToList();
         var from = order.FindIndex(r => ReferenceEquals(r, rule));
@@ -361,35 +649,30 @@ public partial class UnifiedRulesViewModel : ObservableObject
 
     // ── Client-rule persistence (rules.json via IRuleService) ────────────────
 
-    private void AddClientRule(MailRule rule)
+    /// <summary>
+    /// Loads every client-side rule, applies <paramref name="change"/> and saves them back. Returns null on
+    /// success, or why it couldn't — also put on the status line, for anyone who doesn't hear results.
+    /// <para>
+    /// A rules file that can't be read is left as it is (#700). The save is refused rather than made over
+    /// an empty list, which would have replaced every rule in the file with this one change.
+    /// </para>
+    /// </summary>
+    private string? ChangeClientRules(Action<List<MailRule>> change)
     {
-        var all = _clientRules.LoadRules();
-        all.Add(rule);
-        _clientRules.SaveRules(all);
-    }
-
-    private void UpdateClientRule(MailRule rule)
-    {
-        var all = _clientRules.LoadRules();
-        var i = all.FindIndex(r => r.Id == rule.Id);
-        if (i >= 0) all[i] = rule; else all.Add(rule);
-        _clientRules.SaveRules(all);
-    }
-
-    private void DeleteClientRule(Guid id)
-    {
-        var all = _clientRules.LoadRules();
-        all.RemoveAll(r => r.Id == id);
-        _clientRules.SaveRules(all);
-    }
-
-    private void SetClientEnabled(Guid id, bool enabled)
-    {
-        var all = _clientRules.LoadRules();
-        var rule = all.FirstOrDefault(r => r.Id == id);
-        if (rule is null) return;
-        rule.IsEnabled = enabled;
-        _clientRules.SaveRules(all);
+        try
+        {
+            var all = _clientRules.LoadRules();
+            change(all);
+            _clientRules.SaveRules(all);
+            return null;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            LogService.Log("UnifiedRules: client rule write failed", ex);
+            StatusText = $"Couldn't save client-side rules: {Terminated(ex.Message)}"
+                         + (ex is RulesFileUnreadableException ? " The file has been left as it is." : string.Empty);
+            return StatusText;
+        }
     }
 
     // ── Server-write plumbing ───────────────────────────────────────────────
@@ -422,8 +705,9 @@ public partial class UnifiedRulesViewModel : ObservableObject
         }
         catch (ServerRuleConsentRequiredException ex)
         {
+            // Returned, so the caller says it as a Result — the action's outcome. It was also raised for the window to
+            // speak as a Hint, so every refusal was heard twice (#701).
             StatusText = ex.Message;
-            WriteBlockedByPermission?.Invoke(ex.Message);
             LogService.Log("UnifiedRules: blocked by missing permission");
             return ex.Message;
         }
@@ -443,9 +727,8 @@ public partial class UnifiedRulesViewModel : ObservableObject
     private async Task ReloadAndReselectAsync(
         string? serverId = null, Guid? clientId = null, int? fallbackIndex = null, CancellationToken ct = default)
     {
-        // A write-triggered reload, NOT an account switch — so it must not re-speak the rule-mode hint
-        // (the account hasn't changed; only its rules did).
-        await RefreshCoreAsync(announceMode: false, ct);
+        await RefreshCoreAsync(ct);
+        _savedToAccountLabel = null;   // said once, by the save's own reload; a later reload has nothing to add
         SelectedRule = Rules.FirstOrDefault(r =>
             (serverId != null && r.Server?.Id == serverId) ||
             (clientId != null && r.Client?.Id == clientId));
@@ -473,14 +756,53 @@ public partial class UnifiedRulesViewModel : ObservableObject
     /// </summary>
     public bool AccountSupportsServerRules
         => _serverRules != null
-           && SelectedAccountModel is { BackendKind: BackendKind.MicrosoftGraph } acct
-           && !OAuthService.ResolveIsPersonalMicrosoftAccount(acct);
+           && SelectedAccountModel is { } acct
+           && SupportsServerRules(acct);
+
+    /// <summary>
+    /// The same question as <see cref="AccountSupportsServerRules"/>, asked about a named account rather
+    /// than the one the picker is showing. What the editor is gated on, because a rule belongs to the
+    /// account it was listed under and the list can move on while the modeless editor is open (#683).
+    /// </summary>
+    private bool SupportsServerRulesForAccount(Guid accountId)
+        => _serverRules != null
+           && _allAccounts.FirstOrDefault(a => a.Id == accountId) is { } acct
+           && SupportsServerRules(acct);
+
+    /// <summary>
+    /// Whether <paramref name="account"/> is the kind that can carry server-side rules: a
+    /// <em>work or school</em> Microsoft 365 (Graph) account. Personal Graph accounts are excluded
+    /// for the reason spelt out on <see cref="AccountSupportsServerRules"/>.
+    /// <para>
+    /// The pure per-account capability test, factored out so it reads the same everywhere and
+    /// <see cref="AccountSupportsServerRules"/> (which also requires a live server-rule service) is its
+    /// one caller today. Since #550 there is a single rules window for every account, so the old
+    /// window-chooser that this once had to agree with is gone — but keeping the capability question in
+    /// one named place is still the right shape.
+    /// </para>
+    /// </summary>
+    public static bool SupportsServerRules(AccountModel account)
+        => account.BackendKind == BackendKind.MicrosoftGraph
+           && !OAuthService.ResolveIsPersonalMicrosoftAccount(account);
 
     private AccountModel? SelectedAccountModel
         => _allAccounts.FirstOrDefault(a => a.Id == SelectedAccount?.Id);
 
     partial void OnSelectedAccountChanged(AccountOption? value)
-        => RefreshCommand.ExecuteAsync(null).LogFaults("UnifiedRules: account-change refresh");
+    {
+        // Choosing an account answers the shared-mailbox notice: it was about where the window opened.
+        _sharedMailboxLabel = null;
+        _savedToAccountLabel = null;
+        _announceCountOnLoad = !_movingAccountForAction;
+        RefreshCommand.ExecuteAsync(null).LogFaults("UnifiedRules: account-change refresh");
+    }
+
+    private void MoveAccountForAction(AccountOption option)
+    {
+        _movingAccountForAction = true;
+        try { SelectedAccount = option; }
+        finally { _movingAccountForAction = false; }
+    }
 
     /// <summary>
     /// Loads the selected account's rules into one list: server rules first (in execution order),
@@ -489,17 +811,16 @@ public partial class UnifiedRulesViewModel : ObservableObject
     /// </summary>
     private CancellationTokenSource? _refreshCts;
 
-    // The account-context refresh (initial open + every account switch, via RefreshCommand). Speaks the
-    // rule-mode hint once the load settles, so a screen-reader user hears whether the account they landed
-    // on runs rules on the server or only in QuickMail — the one thing the empty list can't convey.
+    // The account-context refresh (initial open + every account switch, via RefreshCommand).
     [RelayCommand]
-    private Task RefreshAsync(CancellationToken ct) => RefreshCoreAsync(announceMode: true, ct);
+    private Task RefreshAsync(CancellationToken ct) => RefreshCoreAsync(ct);
 
-    private async Task RefreshCoreAsync(bool announceMode, CancellationToken ct)
+    private async Task RefreshCoreAsync(CancellationToken ct)
     {
         if (SelectedAccount?.Id is not Guid accountId)
         {
             Rules.Clear();
+            _rulesAccountId = null;
             StatusText = string.Empty;
             OnPropertyChanged(nameof(CanRunOnExisting));
             RunOnExistingCommand.NotifyCanExecuteChanged();
@@ -520,6 +841,9 @@ public partial class UnifiedRulesViewModel : ObservableObject
         {
             var rows = new List<UnifiedRuleRow>();
             var failures = new List<string>();
+            // Which half failed, so the status line counts only what actually loaded (#679).
+            var serverFailed = false;
+            var clientFailed = false;
 
             // Server rules — Graph accounts only. Isolated so a Graph/network failure still lets the
             // client rules below load.
@@ -528,12 +852,23 @@ public partial class UnifiedRulesViewModel : ObservableObject
                 try
                 {
                     var server = await _serverRules.ListAsync(accountId, token);
+                    // Graph returns folder ids, not names; resolve them from the folder cache so the
+                    // prose reads "move to Deleted Items" rather than "another folder". Only fill an
+                    // empty name — a name the editor already set is left as-is.
+                    foreach (var r in server)
+                    {
+                        if (string.IsNullOrWhiteSpace(r.MoveToFolderName))
+                            r.MoveToFolderName = ResolveFolderName(accountId, r.MoveToFolderId);
+                        if (string.IsNullOrWhiteSpace(r.CopyToFolderName))
+                            r.CopyToFolderName = ResolveFolderName(accountId, r.CopyToFolderId);
+                    }
                     rows.AddRange(server.Select(r => UnifiedRuleRow.ForServer(r, _showFieldLabels)));
                 }
                 catch (OperationCanceledException) { return; }   // superseded — leave state untouched
                 catch (Exception ex)
                 {
-                    failures.Add($"Couldn't load server rules: {ex.Message}");
+                    serverFailed = true;
+                    failures.Add($"Couldn't load server-side rules: {ex.Message}");
                     LogService.Log("UnifiedRules: server load failed", ex);
                 }
             }
@@ -542,11 +877,22 @@ public partial class UnifiedRulesViewModel : ObservableObject
             try
             {
                 var client = _clientRules.LoadRules().Where(r => r.AccountId == accountId);
-                rows.AddRange(client.Select(r => UnifiedRuleRow.ForClient(r, _showFieldLabels)));
+                // Resolve a folder name only for an account whose TargetFolder is an opaque id (Graph, POP3).
+                // An IMAP TargetFolder is already the readable folder path, and resolving it would return
+                // the leaf DisplayName — collapsing "Work/Archive" and "Personal/Archive" to the same
+                // "Archive" — so leave IMAP rules to render their raw path (the ForClient fallback).
+                var byId = NamesFoldersById(accountId);
+                rows.AddRange(client.Select(r => UnifiedRuleRow.ForClient(r, _showFieldLabels,
+                    byId && r.Does(RuleAction.MoveToFolder)
+                        ? ResolveFolderName(accountId, r.TargetFolder) : null,
+                    folderIsOpaque: IsOpaqueFolderId(accountId, r.TargetFolder) || IsOpaqueFolderId(accountId, r.CopyTargetFolder),
+                    copyFolderDisplay: byId && r.Does(RuleAction.CopyToFolder)
+                        ? ResolveFolderName(accountId, r.CopyTargetFolder) : null)));
             }
             catch (Exception ex)
             {
-                failures.Add($"Couldn't load QuickMail rules: {ex.Message}");
+                clientFailed = true;
+                failures.Add($"Couldn't load client-side rules: {ex.Message}");
                 LogService.Log("UnifiedRules: client load failed", ex);
             }
 
@@ -554,6 +900,7 @@ public partial class UnifiedRulesViewModel : ObservableObject
 
             Rules.Clear();
             foreach (var row in rows) Rules.Add(row);
+            _rulesAccountId = accountId;
 
             // Run on Existing enables/disables with the account's enabled client-rule set, which just
             // changed. (Every write path — toggle, add, delete, account switch — routes through here.)
@@ -567,12 +914,20 @@ public partial class UnifiedRulesViewModel : ObservableObject
 
             // A load failure must survive to the status line — otherwise "couldn't reach Graph" reads
             // as "this account has no server rules", which invites the wrong next action.
-            StatusText = BuildStatus(rows, failures);
+            StatusText = (_savedToAccountLabel is { } savedTo ? $"Rule saved to {savedTo}. " : string.Empty)
+                         + SharedMailboxPreamble()
+                         + BuildStatus(rows, failures, AccountSupportsServerRules, serverFailed, clientFailed);
 
-            // Only the account-context load (open/switch) speaks the mode; a write-reload does not. This
-            // sits past every early return above, so a superseded refresh never announces a stale account.
-            if (announceMode)
-                Announce(RuleModeHint(AccountSupportsServerRules), AnnouncementCategory.Hint);
+            // Moving through the Account list says each account's rule count (#734), which used to be heard
+            // only by moving on to the list. The count, not the whole status line: the mode clause spoken on
+            // every account read as a contradiction when passing between kinds (#550), and it is still on
+            // the status line. A failed load is said whole, so it can't pass for "no rules".
+            if (_announceCountOnLoad)
+            {
+                _announceCountOnLoad = false;
+                Announce(failures.Count > 0 ? StatusText : CountSentence(rows, AccountSupportsServerRules),
+                    AnnouncementCategory.Status);
+            }
         }
         finally
         {
@@ -580,34 +935,196 @@ public partial class UnifiedRulesViewModel : ObservableObject
         }
     }
 
-    // The spoken rule-mode cue for the account just landed on — an AnnouncementCategory.Hint, so it
-    // honors the user's AnnounceHints preference. Both modes are announced (not just the client-only
-    // case) so that, in a multi-account manager, switching accounts always states the new account's mode
-    // rather than leaving silence to be interpreted. Pure so the wording is pinned by a test.
-    internal static string RuleModeHint(bool supportsServerRules)
-        => supportsServerRules
-            ? "This account also supports server-side rules that run in the cloud."
-            : "Rules for this account run in QuickMail while it's open.";
-
     /// <summary>Cancels any in-flight load. The View calls this on close so a slow Graph fetch can't
     /// complete and write into a window that's gone.</summary>
     public void CancelPendingLoad() => _refreshCts?.Cancel();
 
-    private static string BuildStatus(List<UnifiedRuleRow> rows, List<string> failures)
+    /// <summary>
+    /// The human-readable name for a folder id in <paramref name="accountId"/>'s folder cache, or null
+    /// when it can't be resolved (no cache for the account, or the id isn't in it). Both a Graph server
+    /// rule (<see cref="ServerRuleModel.MoveToFolderId"/>) and a Graph client rule
+    /// (<see cref="MailRule.TargetFolder"/>) store an opaque id (e.g. "AQMkAD…"); looking it up here lets
+    /// the rule prose read "move to Deleted Items" rather than the id. Null lets the caller keep whatever
+    /// fallback prose it has. Callers pass only Graph and POP3 folder ids: an IMAP TargetFolder is already
+    /// the readable path and the client-row builder deliberately does not resolve it (see there).
+    /// <para>A POP3 folder of the user's own reads as its path ("Inbox/Lists"), since two can share a name
+    /// under different parents (#794) — the same collapse the IMAP note above refuses. Graph keeps its leaf
+    /// name, as it always has.</para>
+    /// </summary>
+    private string? ResolveFolderName(Guid accountId, string? folderId)
+    {
+        if (string.IsNullOrWhiteSpace(folderId)
+            || _foldersByAccount is null
+            || !_foldersByAccount.TryGetValue(accountId, out var folders))
+            return null;
+        var match = folders.FirstOrDefault(f => f.FullName == folderId);
+        if (string.IsNullOrWhiteSpace(match?.DisplayName)) return null;
+        if (!IsLocalFolderId(folderId)) return match.DisplayName;
+
+        var byId = folders.GroupBy(f => f.FullName, StringComparer.Ordinal)
+                          .ToDictionary(g => g.Key, g => g.First(), StringComparer.Ordinal);
+        return FolderPaths.Build(match, byId);
+    }
+
+    /// <summary>
+    /// What a Graph or POP3 client rule's folder button says: the folder's name; "another folder" when an opaque
+    /// id can't be resolved — not synced yet, or drifted (#366) — which is what the rules list says for the same
+    /// folder, and never the raw "AQMkAD…" or "folder-…"; a POP3 built-in name ("Trash") as itself; and null, so
+    /// the button reads "Choose folder…", when the rule names no folder.
+    /// </summary>
+    private string? FolderButtonName(Guid accountId, string? folderId)
+        => string.IsNullOrWhiteSpace(folderId) ? null
+         : ResolveFolderName(accountId, folderId)
+           ?? (IsOpaqueFolderId(accountId, folderId) ? "another folder" : folderId);
+
+    /// <summary>A POP3 folder the user made (#794): filed under a generated id, never a readable name.</summary>
+    private static bool IsLocalFolderId(string? folderId)
+        => folderId?.StartsWith(Pop3MailService.LocalFolderPrefix, StringComparison.Ordinal) == true;
+
+    /// <summary>Whether <paramref name="folderId"/> is an id no one should be shown: any Graph folder, or a
+    /// POP3 folder of the user's own. A POP3 built-in target ("Inbox", "Trash") is its own readable name.</summary>
+    private bool IsOpaqueFolderId(Guid accountId, string? folderId)
+        => (_allAccounts.FirstOrDefault(a => a.Id == accountId)?.BackendKind == BackendKind.MicrosoftGraph
+            && !string.IsNullOrWhiteSpace(folderId))
+           || IsLocalFolderId(folderId);
+
+    /// <summary>
+    /// Why a client-side rule that copies into the account's own Inbox can't be saved, or null when it doesn't do
+    /// that. Client rules run on the Inbox, so the copy lands exactly where the rule looks: the next sync reads it as
+    /// new mail, the same rule matches it and copies it again, and the mailbox fills (#682). A server-side rule is
+    /// unaffected — the server doesn't re-run its rules over what they produce — which is why this is checked here,
+    /// where the rule is known to be a client one, rather than in the shared editor. The rule engine skips such a copy
+    /// as well, for a rule that acquires the target afterwards.
+    /// </summary>
+    private string? CopyingIntoTheInbox(Guid accountId, MailRule rule)
+    {
+        if (!rule.Does(RuleAction.CopyToFolder) || string.IsNullOrWhiteSpace(rule.CopyTargetFolder)) return null;
+        if (_foldersByAccount is null || !_foldersByAccount.TryGetValue(accountId, out var folders)) return null;
+
+        var inbox = folders.FirstOrDefault(f => f.Kind == SpecialFolderKind.Inbox
+                                                || f.FullName.Equals("INBOX", StringComparison.OrdinalIgnoreCase));
+        if (inbox is null || !string.Equals(inbox.FullName, rule.CopyTargetFolder, StringComparison.Ordinal)) return null;
+
+        return "A client-side rule can't copy to the Inbox: it runs on the Inbox, so each copy would be copied again. Choose another folder.";
+    }
+
+    /// <summary>
+    /// Whether the account's client rules name folders by an opaque id rather than a readable path: a
+    /// Microsoft 365 (Graph) account, and a POP3 account, whose own folders are filed under ids too
+    /// (#794). Without the lookup the rules list read "move to folder-dcd5c1a2…" aloud.
+    /// </summary>
+    private bool NamesFoldersById(Guid accountId)
+        => _allAccounts.FirstOrDefault(a => a.Id == accountId)?.BackendKind
+               is BackendKind.MicrosoftGraph or BackendKind.Pop3Smtp;
+
+    /// <summary>
+    /// What kinds of rule this account can hold, said outright.
+    /// <para>
+    /// This used to be an <see cref="AnnouncementCategory.Hint"/> spoken on every account-context load,
+    /// which meant arrowing down the account picker spoke a sentence per account it passed through
+    /// (#550). The status line is an F6 stop, deliberately read on demand rather than made a live
+    /// region, so putting it here keeps the information available without pushing it at anyone.
+    /// </para>
+    /// </summary>
+    /// <remarks>Names its subject rather than opening with "It": the clause is appended to a count and
+    /// to a load failure, and after "Couldn't load server-side rules: …" the nearest noun an "It" could attach
+    /// to is <em>server rules</em>.</remarks>
+    internal static string ModeClause(bool supportsServerRules)
+        => supportsServerRules
+            ? "This account supports server-side and client-side rules."
+            : "This account supports client-side rules only.";
+
+    /// <summary>The status line for an account with no rules: there are none to count, so the mode is
+    /// the whole message.</summary>
+    internal static string NoRulesStatus(bool supportsServerRules)
+        => CountSentence([], supportsServerRules) + " " + ModeClause(supportsServerRules);
+
+    /// <summary>
+    /// The window's title. Opened from a shared mailbox it names the account shown (#678): with one account
+    /// there is no Account list to focus, and focus lands on that account's first rule, so the title is
+    /// what says whose rules these are as the window opens.
+    /// </summary>
+    public string WindowTitle => _openedFromSharedMailbox && SelectedAccount is { } shown
+        ? $"Rules Manager — {shown.DisplayName}"
+        : "Rules Manager";
+
+    /// <summary>
+    /// The sentence that opens the status line when the Rules Manager was opened from a shared mailbox
+    /// (#678): its rules are managed in Outlook, and the window is showing another account instead.
+    /// Empty otherwise, and once the user has chosen an account.
+    /// </summary>
+    internal string SharedMailboxPreamble()
+        => _sharedMailboxLabel is { } label
+            ? $"Rules for the shared mailbox {label} are managed in Outlook. Showing {SelectedAccount?.DisplayName} instead. "
+            : string.Empty;
+
+    /// <summary>Ends a fragment with a full stop so the next sentence can be appended to it. Exception
+    /// messages are the input here and are inconsistent about their own punctuation.</summary>
+    private static string Terminated(string fragment)
+    {
+        var t = fragment.TrimEnd();
+        return t.Length == 0 || t[^1] is '.' or '!' or '?' ? t : t + ".";
+    }
+
+    internal static string BuildStatus(List<UnifiedRuleRow> rows, List<string> failures, bool supportsServerRules,
+        bool serverLoadFailed = false, bool clientLoadFailed = false)
     {
         if (failures.Count > 0)
         {
-            // Lead with what went wrong; append counts only for the section(s) that did load.
-            var loaded = rows.Count == 0 ? "" : " " + Counts(rows);
-            return string.Join(" ", failures) + loaded;
+            // Lead with what went wrong, then the counts for the section(s) that did load. With nothing
+            // loaded there is nothing to count, so state the mode instead — otherwise a failed load on a
+            // client-only account and one on a server-capable account produce the same sentence, and the
+            // window has no other surface that tells them apart. Each failure is terminated first: an
+            // exception message rarely ends in a full stop, and gluing the next sentence onto it gives
+            // one run-on with no break to read.
+            // One half failed on an account that has both: count the half that loaded, even when it holds
+            // none, so its count is stated rather than left to be inferred. A rules file that can't be read
+            // arrives here as a failed client-side load, not as loaded and empty (#700).
+            var oneHalfFailed = supportsServerRules && serverLoadFailed != clientLoadFailed;
+            var loaded = oneHalfFailed
+                ? " " + LoadedCount(rows, supportsServerRules, serverLoadFailed)
+                : rows.Count == 0
+                    ? " " + ModeClause(supportsServerRules)
+                    : " " + Counts(rows, supportsServerRules);
+            return string.Join(" ", failures.Select(Terminated)) + loaded;
         }
-        return rows.Count == 0 ? "No rules for this account." : Counts(rows);
+        return rows.Count == 0 ? NoRulesStatus(supportsServerRules) : Counts(rows, supportsServerRules);
 
-        static string Counts(List<UnifiedRuleRow> r)
+        // After one half failed to load, count only the half that did (#679). "0 on server" straight after
+        // "Couldn't load server-side rules" reads as "this account has none" — the very misreading the failure
+        // text is there to prevent.
+        static string LoadedCount(List<UnifiedRuleRow> r, bool supportsServer, bool serverFailed)
         {
-            var server = r.Count(x => x.RunsWhere == RuleRunsWhere.Server);
-            var client = r.Count(x => x.RunsWhere == RuleRunsWhere.Client);
-            return $"{r.Count} rule{(r.Count == 1 ? "" : "s")}: {server} on server, {client} in QuickMail.";
+            var kind = serverFailed ? RuleRunsWhere.Client : RuleRunsWhere.Server;
+            var n = r.Count(x => x.RunsWhere == kind);
+            var noun = kind == RuleRunsWhere.Client ? "client-side" : "server-side";
+            var count = n == 0 ? $"No {noun} rules." : $"{n} {noun} rule{(n == 1 ? "" : "s")}.";
+            return count + " " + ModeClause(supportsServer);
+        }
+
+        static string Counts(List<UnifiedRuleRow> r, bool supportsServer)
+        {
+            // Counts first — what the reader came for — then what the account can hold, in the same words
+            // whichever kind it is. Neither half is left to be inferred from the other's shape: an earlier
+            // pass said "N client-side rules." and let the ABSENCE of the server split mean "client-only",
+            // then said the presence of "0 on server" meant "server rules are possible here". Both are the
+            // same trick, and the mode used to be spoken outright on every load (#550).
+            return CountSentence(r, supportsServer) + " " + ModeClause(supportsServer);
         }
     }
+
+    /// <summary>
+    /// How many rules a loaded account has, in the status line's own words but without its mode clause:
+    /// what moving through the Account list says (#734).
+    /// </summary>
+    internal static string CountSentence(IReadOnlyCollection<UnifiedRuleRow> r, bool supportsServer)
+        => r.Count == 0
+            ? "No rules yet."
+            : supportsServer
+                ? $"{r.Count} rule{(r.Count == 1 ? "" : "s")}: " +
+                  $"{r.Count(x => x.RunsWhere == RuleRunsWhere.Server)} on server, " +
+                  $"{r.Count(x => x.RunsWhere == RuleRunsWhere.Client)} on client."
+                // A client-only account can't have server rules, so the split would be "0 on server"
+                // clutter; the status line's mode clause says the same thing in words.
+                : $"{r.Count} rule{(r.Count == 1 ? "" : "s")}.";
 }

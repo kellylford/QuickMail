@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using QuickMail.Models;
@@ -7,11 +8,12 @@ using QuickMail.Models;
 namespace QuickMail.ViewModels;
 
 /// <summary>
-/// One entry in the appointment editor's "Calendar" save-target picker: the local calendar
-/// (<see cref="CalendarEvent.LocalAccountId"/>) or a server-backed account's calendar.
-/// <paramref name="CalendarId"/> is the CalDAV collection URL for an iCloud target (which offers
-/// one entry per calendar, e.g. Home / Family); it is null for Local, Microsoft, and Google
-/// targets, which save to the account's default/primary calendar.
+/// One place an appointment can be saved, as the editor's Calendar picker lists it.
+///
+/// <paramref name="CalendarId"/> names a specific calendar: a CalDAV collection URL for iCloud, the
+/// provider's calendar id for Microsoft and Google. It is null for the local calendar, and for an
+/// account's "(default calendar)" entry — the one that means "wherever this account normally files
+/// things", which is what a write that names no calendar does.
 /// </summary>
 public sealed record CalendarSaveTarget(string Label, Guid AccountId,
                                         string? CalendarId = null, string? CalendarName = null);
@@ -27,6 +29,7 @@ public enum EditorField
     RepeatInterval,
     RepeatUntil,
     SaveTarget,
+    Invite,
 }
 
 /// <summary>
@@ -57,9 +60,10 @@ public partial class EventEditorViewModel : ObservableObject
     public bool IsEdit { get; }
 
     /// <summary>
-    /// Labels for the "Calendar" save-target picker. Index 0 is always the local calendar;
-    /// the rest are server-backed (Microsoft or Google) accounts. Plain strings so the ComboBox
-    /// items announce correctly (Selector accessibility rule).
+    /// Labels for the "Calendar" save-target picker. Index 0 is always the local calendar; then,
+    /// per connected account, its "(default calendar)" entry followed by each calendar the user can
+    /// write to. Plain strings so the ComboBox items announce correctly (Selector accessibility
+    /// rule).
     /// </summary>
     public IReadOnlyList<string> SaveTargetLabels { get; }
 
@@ -70,9 +74,10 @@ public partial class EventEditorViewModel : ObservableObject
     public Guid SelectedTargetAccountId => SelectedTarget?.AccountId ?? CalendarEvent.LocalAccountId;
 
     /// <summary>
-    /// The chosen target's calendar (CalDAV collection URL) and display name — set only for an
-    /// iCloud target, which the save uses to tag and route the event. Null for Local / Microsoft /
-    /// Google (their default calendar).
+    /// The chosen target's calendar and display name — a CalDAV collection URL for iCloud, the
+    /// provider's calendar id for Microsoft and Google — which the save uses to tag and route the
+    /// event. Null for Local, and for an account's "(default calendar)" entry, where naming no
+    /// calendar is what makes the server file into its default.
     /// </summary>
     public string? SelectedTargetCalendarId => SelectedTarget?.CalendarId;
     public string? SelectedTargetCalendarName => SelectedTarget?.CalendarName;
@@ -122,6 +127,50 @@ public partial class EventEditorViewModel : ObservableObject
 
     [ObservableProperty] private string _location = string.Empty;
     [ObservableProperty] private string _notes = string.Empty;
+
+    /// <summary>
+    /// The Invite field (issue #866): the people to send the meeting to, as addresses separated by
+    /// semicolons or commas, each optionally <c>Name &lt;address&gt;</c>. Read back with
+    /// <see cref="EventAttendees.TryParse"/> on save.
+    /// </summary>
+    [ObservableProperty] private string _inviteText = string.Empty;
+
+    partial void OnInviteTextChanged(string value) => Revalidate();
+
+    // Inviting from the local calendar is refused, so choosing it after typing addresses has to
+    // revalidate too — or the refusal would only appear on the next Save.
+    partial void OnSelectedTargetIndexChanged(int value) => Revalidate();
+
+    /// <summary>
+    /// True on a meeting someone else organized: the field shows who is invited but cannot change
+    /// it, because the guest list is the organizer's.
+    /// </summary>
+    public bool IsInviteReadOnly { get; }
+
+    /// <summary>What the Invite field is for, given to screen readers as help text.</summary>
+    /// <summary>
+    /// The Invite entry a refused save blamed, so the View can select just that one: selecting the
+    /// whole field, as the other fields do, would let the correction overwrite every good address
+    /// typed beside it. Empty when Invite is fine.
+    /// </summary>
+    public string InvalidInviteEntry { get; private set; } = string.Empty;
+
+    public string InviteHelpText => IsInviteReadOnly
+        ? "The people invited by the organizer. Only the organizer can change who is invited."
+        : "Email addresses of the people to invite, separated by semicolons.";
+
+    // What an edit must carry through from the stored appointment that the editor does not show:
+    // who was invited before (so removed people get a cancellation), who organizes it, its
+    // version, and where a CalDAV server keeps it.
+    private readonly List<EventAttendee> _originalAttendees = [];
+    // Rooms and equipment the meeting books. Not shown in Invite (they are not people to invite)
+    // but written back with it, so changing the guest list does not release a booking.
+    private readonly List<EventAttendee> _resources = [];
+    private readonly string _organizer = string.Empty;
+    private readonly string _organizerName = string.Empty;
+    private readonly string? _sequence;
+    private readonly string _resourceUrl = string.Empty;
+    private readonly bool? _userIsOrganizer;
 
     /// <summary>
     /// How long the appointment lasts. Preserved when the start moves; re-derived whenever the end
@@ -345,11 +394,20 @@ public partial class EventEditorViewModel : ObservableObject
 
     /// <summary>
     /// Preselects the save target matching the user's default calendar (issue #497), and reports
-    /// whether one was found. Prefers the exact calendar; falls back to any target on the same
-    /// account, because the tree offers a node per discovered calendar while a Microsoft or Google
-    /// account contributes a single target (its default calendar) — "that account" is still the
-    /// right answer there. An unmatched default (the account was removed, or the calendar has not
-    /// synced yet) leaves the picker on the local calendar rather than guessing.
+    /// whether one was found.
+    ///
+    /// <para>
+    /// Prefers the exact calendar. A default set on the ACCOUNT rather than on one of its calendars
+    /// carries no calendar id, and matches the account's "(default calendar)" target — the entry
+    /// that means the same thing — because <see cref="CalendarSaveTarget.CalendarId"/> is null
+    /// there too. The fall back to any target on the same account is for a default naming a
+    /// calendar that is no longer offered: unsubscribed, or gone read-only.
+    /// </para>
+    ///
+    /// <para>
+    /// An unmatched default (the account was removed) leaves the picker on the local calendar
+    /// rather than guessing.
+    /// </para>
     /// </summary>
     public bool SelectTarget(Guid accountId, string? calendarId)
     {
@@ -378,9 +436,20 @@ public partial class EventEditorViewModel : ObservableObject
     /// Creates an editor populated from an existing locally-created event. For an expanded
     /// occurrence of a repeating series (OccurrenceStart set), the editor opens on the
     /// occurrence's own date/time and offers the This event / All events scope choice.
+    /// <paramref name="userOrganizes"/> is false for a meeting someone else invited the user to,
+    /// whose Invite field is then read-only.
     /// </summary>
-    public EventEditorViewModel(CalendarEvent existing)
+    public EventEditorViewModel(CalendarEvent existing, bool userOrganizes = true)
     {
+        IsInviteReadOnly = !userOrganizes;
+        _originalAttendees = existing.Attendees.ToList();
+        _organizer = existing.Organizer;
+        _organizerName = existing.OrganizerName;
+        _sequence = existing.Sequence;
+        _resourceUrl = existing.ResourceUrl;
+        _userIsOrganizer = existing.UserIsOrganizer;
+        _resources = existing.Attendees.Where(a => a.IsResource).ToList();
+        _inviteText = EventAttendees.Format(EventAttendees.People(existing.Attendees));
         _uid = existing.Uid;
         IsEdit = true;
         _editAccountId = existing.AccountId;   // server rows keep their account; the
@@ -560,6 +629,41 @@ public partial class EventEditorViewModel : ObservableObject
             return false;
         }
 
+        // Who is invited. A meeting someone else organized keeps its list as it was: the field is
+        // read-only there, and its text is only the display of that list.
+        List<EventAttendee> attendees;
+        InvalidInviteEntry = string.Empty;
+        if (IsInviteReadOnly)
+        {
+            attendees = _originalAttendees.ToList();
+        }
+        else if (!EventAttendees.TryParse(InviteText, _originalAttendees, out attendees, out var invalid))
+        {
+            InvalidInviteEntry = invalid;
+            error = $"{invalid} is not an email address. Separate addresses with semicolons.";
+            field = EditorField.Invite;
+            return false;
+        }
+        else
+        {
+            attendees.AddRange(_resources);
+        }
+        var attendeesChanged = !IsInviteReadOnly && !EventAttendees.SameAddresses(attendees, _originalAttendees);
+        // Refused only when the user is inviting someone: a guest list a Local appointment already
+        // carries (a meeting imported from a .ics file) is not something it will send.
+        if (attendeesChanged && attendees.Count > 0 && targetAccountId == CalendarEvent.LocalAccountId)
+        {
+            // Local Calendar lives on this computer only: there is no server to send from, and no
+            // account to be the organizer that replies come back to.
+            error = IsDetachSave
+                ? "Only the whole meeting can have people invited. Remove the people from Invite, or change all events in the series."
+                : "To invite people, save the appointment to an online calendar (iCloud, Google or Microsoft), not Local Calendar.";
+            field = IsEdit || !ShowSaveTarget ? EditorField.Invite : EditorField.SaveTarget;
+            return false;
+        }
+        // A repeating meeting needs no check of its own: repeating appointments are already held
+        // to Local Calendar above, where inviting is refused.
+
         evt = new CalendarEvent
         {
             Uid            = IsDetachSave ? "local-" + Guid.NewGuid().ToString("N") : _uid,
@@ -577,6 +681,16 @@ public partial class EventEditorViewModel : ObservableObject
             IsAllDay       = IsAllDay,
             RecurrenceRule = rrule,
             ResponseStatus = CalendarResponseStatus.Accepted,
+            Attendees         = attendees,
+            AttendeesChanged  = attendeesChanged,
+            PreviousAttendees = _originalAttendees.ToList(),
+            // An edit is the same appointment: same organizer, same version to build on, same place
+            // on the server. A detached occurrence is a new appointment and starts clean.
+            Organizer      = IsDetachSave ? string.Empty : _organizer,
+            OrganizerName  = IsDetachSave ? string.Empty : _organizerName,
+            Sequence       = IsDetachSave ? null : _sequence,
+            ResourceUrl    = IsDetachSave ? string.Empty : _resourceUrl,
+            UserIsOrganizer = IsDetachSave ? null : _userIsOrganizer,
         };
         return true;
     }

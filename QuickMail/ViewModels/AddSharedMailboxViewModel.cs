@@ -22,16 +22,26 @@ public partial class AddSharedMailboxViewModel : ObservableObject
     {
         _allAccounts = accounts.ToList();
 
-        // Only shared-capable accounts can host a shared mailbox: a work/school Microsoft 365 (Graph)
-        // account, or an IMAP account. A personal Microsoft account has no Exchange shared mailboxes,
-        // a POP3 account has no concept of a second mailbox at all (one maildrop, no folders, no
-        // access delegation), and a shared account can't itself be a parent. Personal is resolved via
-        // OAuthService.ResolveIsPersonalMicrosoftAccount (flag, else domain guess) so an undetected
-        // personal Graph account is excluded too — the same resolution scope selection uses.
+        // Only a WORK/SCHOOL Microsoft 365 account ON THE GRAPH BACKEND can be a shared-mailbox parent.
+        // Shared mailboxes are Graph-only for v1: a shared mailbox reads via /users/{shared} on the
+        // parent's Graph token, and Graph is the default and strictly better backend for a work/school
+        // account (mail-only folder taxonomy, immutable ids, delta). The IMAP-parent path (XOAUTH2
+        // user={shared}) was built and then dropped (#31 PR 3) — a work/school account on IMAP is a
+        // legacy/testing configuration with no real users, so it is not offered as a parent. Everything
+        // else is excluded because it has no shared mailbox to offer:
+        //   - Personal Microsoft (Outlook.com/Hotmail/Live): consumer accounts are not in an Exchange org
+        //     and cannot be granted access to another mailbox. Resolved via ResolveIsPersonalMicrosoftAccount
+        //     (flag, else domain guess), the same as scope selection.
+        //   - Non-Microsoft IMAP (Gmail app-password, Yahoo, iCloud, Fastmail, "Other"): RFC 2342
+        //     "shared folders" are namespace folders inside the user's own connection, not a delegated
+        //     mailbox added by address — a different concept, deliberately out of scope (spec §4.2).
+        //   - A work/school account on the IMAP or POP3 backend, and a shared account itself: no Graph
+        //     token to borrow (IMAP dropped per PR 3; POP3 has no second mailbox at all).
         ParentOptions = _allAccounts
             .Where(a => !a.IsShared
-                        && a.BackendKind != BackendKind.Pop3Smtp
-                        && !(a.BackendKind == BackendKind.MicrosoftGraph && OAuthService.ResolveIsPersonalMicrosoftAccount(a)))
+                        && a.AuthType == AuthType.OAuth2Microsoft
+                        && a.BackendKind == BackendKind.MicrosoftGraph
+                        && !OAuthService.ResolveIsPersonalMicrosoftAccount(a))
             .ToList();
 
         _selectedParent = ParentOptions.FirstOrDefault(a => a.Id == preferredParentId)
@@ -47,7 +57,7 @@ public partial class AddSharedMailboxViewModel : ObservableObject
     /// <summary>Shown when no account can host a shared mailbox. The Account Manager reports this in its
     /// status line instead of opening a dead-end dialog; the dialog also carries it as a fallback.</summary>
     public const string NoEligibleParentMessage =
-        "Add a Microsoft 365 (work or school) or IMAP account first — a shared mailbox reads through one of your accounts.";
+        "Add a Microsoft 365 work or school account first — a shared mailbox reads through one, and only work or school accounts have them.";
 
     public List<AccountModel> ParentOptions { get; }
 
@@ -63,8 +73,10 @@ public partial class AddSharedMailboxViewModel : ObservableObject
     [NotifyCanExecuteChangedFor(nameof(AddCommand))]
     private AccountModel? _selectedParent;
 
-    /// <summary>Graph shared mailboxes have no live watcher — only the #456 sweep. True for a Graph
-    /// parent (shows the poll caption and drives its Hint announce); false for an IMAP parent (IDLE).</summary>
+    /// <summary>Graph shared mailboxes have no live watcher — only the #456 sweep — so they update on the
+    /// poll interval, not instantly. Shows the poll caption and drives its Hint announce. Since parents are
+    /// now Graph-only (#31 PR 3/5), this is true for every eligible parent; kept as a guard against a null
+    /// or (defensively) non-Graph selection.</summary>
     public bool ShowGraphPollNote => SelectedParent?.BackendKind == BackendKind.MicrosoftGraph;
 
     /// <summary>The poll caption for a Graph parent. Shown visibly AND spoken once as a Hint when the

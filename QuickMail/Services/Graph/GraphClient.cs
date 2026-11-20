@@ -83,6 +83,20 @@ public sealed class GraphClient : IDisposable
         return await resp.Content.ReadFromJsonAsync<T>(JsonOpts, ct);
     }
 
+    /// <summary>
+    /// GETs a single object with an explicit token scope set, optionally silent-only. The
+    /// scope-carrying counterpart of <see cref="GetAsync{T}(AccountModel, string, CancellationToken)"/>,
+    /// which acquires its token interactively — background and post-write calendar work must never
+    /// raise a sign-in, so it cannot use that one.
+    /// </summary>
+    public async Task<T?> GetAsync<T>(AccountModel account, string path,
+        string[]? scopes, bool silentOnly, CancellationToken ct = default)
+    {
+        using var resp = await SendAsync(account, HttpMethod.Get, path, null, scopes, silentOnly, headers: null, ct);
+        await EnsureSuccessAsync(resp, ct);
+        return await resp.Content.ReadFromJsonAsync<T>(JsonOpts, ct);
+    }
+
     /// <summary>GET a collection, following <c>@odata.nextLink</c> until exhausted.</summary>
     public Task<List<T>> GetAllPagesAsync<T>(AccountModel account, string path, CancellationToken ct = default)
         => GetAllPagesAsync<T>(account, path, null, ct);
@@ -255,15 +269,52 @@ public sealed class GraphClient : IDisposable
         return await resp.Content.ReadAsByteArrayAsync(ct);
     }
 
+    /// <summary>
+    /// A GET whose body is streamed into <paramref name="destination"/> rather than read into memory
+    /// whole — for a message's MIME, which can be hundreds of megabytes (#728).
+    /// </summary>
+    public async Task CopyToAsync(AccountModel account, string path,
+        IReadOnlyDictionary<string, string>? headers, System.IO.Stream destination, CancellationToken ct = default)
+    {
+        using var resp = await SendAsync(account, HttpMethod.Get, path, null, scopes: null, silentOnly: false, headers, ct);
+        await EnsureSuccessAsync(resp, ct);
+        await using var body = await resp.Content.ReadAsStreamAsync(ct);
+        await body.CopyToAsync(destination, ct);
+    }
+
     private Task<HttpResponseMessage> SendAsync(
         AccountModel account, HttpMethod method, string pathOrUrl, Func<HttpContent>? contentFactory, CancellationToken ct)
         => SendAsync(account, method, pathOrUrl, contentFactory, null, silentOnly: false, headers: null, ct);
+
+    /// <summary>
+    /// #31: a shared mailbox is read through its parent's token but against the shared address's own
+    /// messages, so every <c>/me</c>-relative Graph path becomes <c>/users/{SharedAddress}</c>. Keeping
+    /// this rewrite in the one request funnel lets <see cref="GraphMailService"/> keep writing <c>/me</c>
+    /// everywhere. Only mail paths (<c>/users/{addr}/mailFolders…</c>, <c>/messages…</c>) are used for a
+    /// shared account — the parent's delegated <c>Mail.ReadWrite.Shared</c> covers those; the bare
+    /// <c>/users/{addr}</c> directory object is never requested (it would need a directory permission we
+    /// don't hold). Absolute follow-on URLs already point at the shared mailbox and never reach here.
+    /// </summary>
+    private static string ApplySharedRoot(AccountModel account, string path)
+    {
+        if (!account.IsShared) return path;
+        // Always rewrite for a shared account — never fall through to /me, which is the PARENT's mailbox.
+        // A missing SharedAddress is an upstream bug (the add dialog requires one); it yields /users// and
+        // a clean 404 → disconnected, which is far safer than silently reading the parent's mail here.
+        if (path.Equals("/me", StringComparison.Ordinal)
+            || path.StartsWith("/me/", StringComparison.Ordinal)
+            || path.StartsWith("/me?", StringComparison.Ordinal))
+            return $"/users/{account.SharedAddress}" + path["/me".Length..];
+        return path;
+    }
 
     private async Task<HttpResponseMessage> SendAsync(
         AccountModel account, HttpMethod method, string pathOrUrl, Func<HttpContent>? contentFactory, string[]? scopes, bool silentOnly,
         IReadOnlyDictionary<string, string>? headers, CancellationToken ct)
     {
-        var url = pathOrUrl.StartsWith("http", StringComparison.OrdinalIgnoreCase) ? pathOrUrl : _baseUrl + pathOrUrl;
+        var url = pathOrUrl.StartsWith("http", StringComparison.OrdinalIgnoreCase)
+            ? pathOrUrl                              // absolute @odata.nextLink — already the right mailbox
+            : _baseUrl + ApplySharedRoot(account, pathOrUrl);
 
         // Up to 3 attempts to ride out HTTP 429 throttling.
         for (int attempt = 0; ; attempt++)

@@ -100,7 +100,30 @@ internal sealed class UiProbeDriver
                 return await CaptureSettledAsync(_window, path);
 
             case "reading-pane":
-                return await CaptureReadingPaneAsync(path);
+                return await CaptureReadingPaneAsync(path, UiProbeFixture.HtmlMessageId);
+
+            // #825: the attachment row shows its file size as visible text instead of a tooltip.
+            case "reading-pane-attachment":
+                return await CaptureReadingPaneAsync(path, UiProbeFixture.AttachmentMessageId);
+
+            // The same with the first (long-named) attachment selected and focused, to check the
+            // size stays readable on a selected row.
+            case "reading-pane-attachment-selected":
+                return await CaptureReadingPaneAsync(path, UiProbeFixture.AttachmentMessageId,
+                    SelectFirstReadingPaneAttachment);
+
+            case "compose-attachment":
+                return await CaptureChildWindowAsync(() => ExecuteCommand("mail.new"),
+                    w => w is ComposeWindow, path,
+                    w =>
+                    {
+                        if (w.DataContext is not ComposeViewModel vm) return;
+                        vm.Attachments.Add(new AttachmentModel { FileName = UiProbeFixture.LongAttachmentName, FileSize = 3_250_586 });
+                        vm.Attachments.Add(new AttachmentModel { FileName = "notes.txt", FileSize = 812 });
+                    },
+                    // Close without the "Save Draft?" prompt the added files would raise: a
+                    // modal box left open stops the probe from exiting, and it times out.
+                    cleanup: w => { if (w is ComposeWindow compose) compose.ConfirmSaveOnClose = null; });
 
             case "calendar":
                 ExecuteCommand("view.calendar");
@@ -112,6 +135,13 @@ internal sealed class UiProbeDriver
                 return await CaptureChildWindowAsync(() => ExecuteCommand("mail.new"),
                     w => w is ComposeWindow, path);
 
+            // #729: the formatting toolbar (and its Paragraph style box) is shown only in
+            // HTML mode, which the fixture's default compose mode does not open in.
+            case "compose-html":
+                return await CaptureChildWindowAsync(() => ExecuteCommand("mail.new"),
+                    w => w is ComposeWindow, path,
+                    w => (w.DataContext as ViewModels.ComposeViewModel)?.SetMode(Models.ComposeMode.Html));
+
             case "theme-manager":
                 return await CaptureChildWindowAsync(() => ExecuteCommand("theme.manager.open"),
                     w => w is ThemeManagerWindow, path);
@@ -120,9 +150,42 @@ internal sealed class UiProbeDriver
                 return await CaptureChildWindowAsync(() => ExecuteCommand("contacts.openAddressBook"),
                     w => w is AddressBookWindow, path);
 
+            // #690. Both are list-plus-editor windows whose row list was one of the eleven carrying an
+            // item-container style that replaced the themed one, and neither was reachable from any
+            // existing surface — so a list rendering WPF chrome instead of the theme's had nothing
+            // that could capture it. The fixture seeds one account and two flags, so each opens on a
+            // populated list rather than an empty box.
+            //
+            // The flag list draws its selected row with the ACTIVE treatment in both, even though
+            // FlagManagerWindow puts focus in EditNameBox on open, so the capture is the state the
+            // defect shows in. Measured across the fix, dark / parchment: the fill goes from WPF's
+            // #264557 / #C3DFEA to Theme.SelectionBackground, and the text from the theme foreground
+            // to Theme.SelectionText. The accounts list opens with its row focused but NOT selected
+            // (SelectedAccount is null until you pick one), so that capture shows no selection at all
+            // — it is here for the rest of the window, not for the row colors.
+            case "accounts":
+                return await CaptureChildWindowAsync(() => ExecuteCommand("account.manage"),
+                    w => w is AccountManagerDialog, path);
+
+            case "flag-manager":
+                return await CaptureChildWindowAsync(() => ExecuteCommand("mail.openFlagManager"),
+                    w => w is FlagManagerWindow, path);
+
             case "rules":
                 return await CaptureChildWindowAsync(() => ExecuteCommand("mail.rules"),
-                    w => w is RulesManagerWindow or UnifiedRulesWindow, path);
+                    w => w is UnifiedRulesWindow, path);
+
+            // #682. Its own surface because no other capture reaches it: the rule editor opens from the
+            // Rules Manager, not from MainWindow, so it is two windows deep and "rules" above captures
+            // the list in front of it.
+            case "rule-editor":
+                return await CaptureRuleEditorAsync(path, expandAdvanced: false);
+
+            // Half the editor's conditions and three of its actions live inside the Advanced expander,
+            // which a new rule opens collapsed — so the capture above shows none of them. Same reason
+            // settings-saving is separate from settings-appearance.
+            case "rule-editor-advanced":
+                return await CaptureRuleEditorAsync(path, expandAdvanced: true);
 
             case "saved-views":
                 return await CaptureChildWindowAsync(() => _vm.ManageViewsCommand.Execute(null),
@@ -141,6 +204,50 @@ internal sealed class UiProbeDriver
                     w => w is SettingsDialog, path,
                     prepare: w => SelectTabByHeader((SettingsDialog)w, "tart"));
 
+            // #912. The only Settings pane with a list and its detail controls side by side.
+            case "settings-sounds":
+                return await CaptureChildWindowAsync(() => _window.ShowSettingsDialogForProbe(),
+                    w => w is SettingsDialog, path,
+                    prepare: w => SelectTabByHeader((SettingsDialog)w, "Sounds"));
+
+            // #971. The question for a gallery scheme added before changes were tracked: the longest
+            // text and the longest button row of any small dialog, so the one to check at 200%.
+            case "sound-scheme-update":
+                return await CaptureChildWindowAsync(() =>
+                    {
+                        var plan = new SoundSchemeUpdatePlan(new System.Collections.Generic.Dictionary<string, string>(),
+                            0, 1, 4, SoundSchemeUpdateMode.AddMissingOnly);
+                        new SoundSchemeUpdateDialog(SoundSchemeUpdate.Question("Maya Voicing Glass", plan, 0, filesDeletedIfReplaced: 2))
+                        { Owner = _window }.ShowDialog();
+                    },
+                    w => w is SoundSchemeUpdateDialog, path);
+
+            // General settings scrolled to Composing so the send preference is visible.
+            case "settings-composing":
+                return await CaptureChildWindowAsync(() => _window.ShowSettingsDialogForProbe(),
+                    w => w is SettingsDialog, path,
+                    prepare: w =>
+                    {
+                        SelectTabByHeader((SettingsDialog)w, "eneral");
+                        w.UpdateLayout();
+                        if (w.FindName("ConfirmBeforeSendCheckBox") is FrameworkElement checkbox)
+                        {
+                            checkbox.Focus();
+                            checkbox.BringIntoView();
+                        }
+                    });
+
+            // #728. Saving Messages sits below the fold of the General tab.
+            case "settings-saving":
+                return await CaptureChildWindowAsync(() => _window.ShowSettingsDialogForProbe(),
+                    w => w is SettingsDialog, path,
+                    prepare: w =>
+                    {
+                        SelectTabByHeader((SettingsDialog)w, "eneral");
+                        w.UpdateLayout();
+                        (w.FindName("SaveFolderBox") as FrameworkElement)?.BringIntoView();
+                    });
+
             case "command-palette":
                 return await CaptureChildWindowAsync(() => _window.OpenCommandPaletteForProbe(),
                     w => w is CommandPaletteWindow, path);
@@ -154,7 +261,7 @@ internal sealed class UiProbeDriver
                     w => w is RowFieldsWindow, path);
 
             default:
-                LogService.Log($"ui-probe: unknown surface \"{surface}\". Known: inbox, reading-pane, calendar, compose, theme-manager, address-book, rules, saved-views, settings-appearance, settings-startup, command-palette, folder-picker, row-fields.");
+                LogService.Log($"ui-probe: unknown surface \"{surface}\". Known: inbox, reading-pane, reading-pane-attachment, reading-pane-attachment-selected, compose-attachment, calendar, compose, theme-manager, address-book, accounts, flag-manager, rules, rule-editor, rule-editor-advanced, saved-views, settings-appearance, settings-startup, settings-sounds, settings-composing, settings-saving, command-palette, folder-picker, row-fields.");
                 return false;
         }
     }
@@ -167,11 +274,12 @@ internal sealed class UiProbeDriver
     }
 
     /// <summary>
-    /// Selects the fixture HTML message and awaits the window's render-complete
+    /// Opens the given fixture message (the HTML message, or the one with attachments)
+    /// and awaits the window's render-complete
     /// signal (WebView2 NavigationCompleted + an idle turn) — the strongest
     /// settle signal available, per spec Decision F.
     /// </summary>
-    private async Task<bool> CaptureReadingPaneAsync(string path)
+    private async Task<bool> CaptureReadingPaneAsync(string path, string messageId, Action? afterRender = null)
     {
         var rendered = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         void OnRendered() => rendered.TrySetResult(true);
@@ -181,7 +289,7 @@ internal sealed class UiProbeDriver
             // Through the window's open path (the notification-activation route):
             // the VM command alone loads the detail but never renders the body.
             _ = _window.OpenMessageForProbeAsync(
-                UiProbeFixture.AccountId, UiProbeFixture.InboxFolder, UiProbeFixture.HtmlMessageId);
+                UiProbeFixture.AccountId, UiProbeFixture.InboxFolder, messageId);
 
             var done = await Task.WhenAny(rendered.Task, Task.Delay(SurfaceTimeout)) == rendered.Task;
             if (!done)
@@ -190,6 +298,11 @@ internal sealed class UiProbeDriver
                 return false;
             }
             await IdleAsync();
+            if (afterRender != null)
+            {
+                afterRender();
+                await IdleAsync();
+            }
             return await CaptureSettledAsync(_window, path);
         }
         finally
@@ -198,25 +311,30 @@ internal sealed class UiProbeDriver
         }
     }
 
+    private void SelectFirstReadingPaneAttachment()
+    {
+        if (_window.FindName("ReadingPaneAttachmentList") is not ListBox list || list.Items.Count == 0)
+        {
+            LogService.Log("ui-probe: reading-pane attachment list missing or empty.");
+            return;
+        }
+        list.SelectedIndex = 0;
+        list.UpdateLayout();
+        (list.ItemContainerGenerator.ContainerFromIndex(0) as ListBoxItem)?.Focus();
+    }
+
     /// <summary>
     /// Opens a surface that lives in its own window (modal or modeless), waits
     /// for the window to appear and settle, captures it, and closes it.
     /// </summary>
     private async Task<bool> CaptureChildWindowAsync(Action open, Func<Window, bool> match,
-        string path, Action<Window>? prepare = null)
+        string path, Action<Window>? prepare = null, Action<Window>? cleanup = null)
     {
         // Modal ShowDialog would block this method if called directly — fire it
         // through the dispatcher and poll from within whatever loop is pumping.
         _ = _window.Dispatcher.BeginInvoke(open);
 
-        Window? child = null;
-        var deadline = Environment.TickCount64 + (long)SurfaceTimeout.TotalMilliseconds;
-        while (child is null && Environment.TickCount64 < deadline)
-        {
-            await Task.Delay(100);
-            child = Application.Current.Windows.OfType<Window>()
-                .FirstOrDefault(w => match(w) && w.IsLoaded && w.IsVisible);
-        }
+        var child = await WaitForWindowAsync(match);
         if (child is null)
         {
             LogService.Log($"ui-probe: expected window for {Path.GetFileNameWithoutExtension(path)} never appeared.");
@@ -237,10 +355,108 @@ internal sealed class UiProbeDriver
         {
             // Always close: a leaked modal child would leave its nested message
             // loop running while RunAsync tries to shut the app down.
+            try { cleanup?.Invoke(child); } catch (Exception ex) { LogService.Debug($"ui-probe: child cleanup failed: {ex.Message}"); }
             try { child.Close(); } catch (Exception ex) { LogService.Debug($"ui-probe: child close failed: {ex.Message}"); }
             await IdleAsync();
         }
     }
+
+    /// <summary>
+    /// Waits for an open window the predicate matches, up to <see cref="SurfaceTimeout"/>; null when none
+    /// appears. Polling rather than an event because the window a surface wants may be opened by a command,
+    /// by another window, or already be up.
+    /// </summary>
+    private static async Task<Window?> WaitForWindowAsync(Func<Window, bool> match)
+    {
+        var deadline = Environment.TickCount64 + (long)SurfaceTimeout.TotalMilliseconds;
+        while (Environment.TickCount64 < deadline)
+        {
+            await Task.Delay(100);
+            var hit = Application.Current.Windows.OfType<Window>()
+                .FirstOrDefault(w => match(w) && w.IsLoaded && w.IsVisible);
+            if (hit is not null) return hit;
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Captures the rule editor, which is two windows deep: open the Rules Manager, wait for it, then ask
+    /// it for a new rule. The editor is modeless (see CLAUDE.md on dialogs over a live WebView2), so
+    /// nothing here runs inside a nested message loop and the capture can proceed while both are open.
+    /// <para>
+    /// The rule is prefilled, the way Create Rule from Message prefills one, so the capture shows text in
+    /// the boxes rather than an empty form — an empty TextBox says nothing about how its content reads.
+    /// The Rules Manager behind it is closed on the way out, whether or not the editor was reached.
+    /// </para>
+    /// </summary>
+    private async Task<bool> CaptureRuleEditorAsync(string path, bool expandAdvanced)
+    {
+        var name = Path.GetFileNameWithoutExtension(path);
+        _ = _window.Dispatcher.BeginInvoke(() => ExecuteCommand("mail.rules"));
+
+        if (await WaitForWindowAsync(w => w is UnifiedRulesWindow) is not UnifiedRulesWindow rules)
+        {
+            LogService.Log($"ui-probe: the Rules Manager never appeared, so {name} could not be reached.");
+            return false;
+        }
+
+        try
+        {
+            await IdleAsync();
+            _ = rules.Dispatcher.BeginInvoke(() => rules.PrefillFromTemplate(ProbeRuleTemplate()));
+
+            if (await WaitForWindowAsync(w => w is ServerRuleEditorWindow) is not { } editor)
+            {
+                LogService.Log($"ui-probe: expected window for {name} never appeared.");
+                return false;
+            }
+
+            try
+            {
+                await IdleAsync();
+                if (expandAdvanced && FindDescendant<Expander>(editor) is { } advanced)
+                {
+                    advanced.IsExpanded = true;
+                    await IdleAsync();
+
+                    // Expanding alone captures an open expander and none of its contents: the section is
+                    // taller than the window, so all of it sits below the fold inside the ScrollViewer and
+                    // the shot shows a turned chevron over the same fields as the collapsed one. The window
+                    // resizes (CanResizeWithGrip), so grow it to what the screen allows and scroll the
+                    // section to the top — what a reviewer would do by hand before looking.
+                    editor.Height = Math.Min(1180, SystemParameters.WorkArea.Height);
+                    await IdleAsync();
+                    advanced.BringIntoView();
+                    await IdleAsync();
+                }
+                return await CaptureSettledAsync(editor, path);
+            }
+            finally
+            {
+                try { editor.Close(); } catch (Exception ex) { LogService.Debug($"ui-probe: editor close failed: {ex.Message}"); }
+                await IdleAsync();
+            }
+        }
+        finally
+        {
+            try { rules.Close(); } catch (Exception ex) { LogService.Debug($"ui-probe: rules window close failed: {ex.Message}"); }
+            await IdleAsync();
+        }
+    }
+
+    /// <summary>The rule the editor capture is prefilled from. Fixed text, so two runs are comparable.</summary>
+    private static MailRule ProbeRuleTemplate() => new()
+    {
+        Name = "Rule for newsletter@example.com",
+        // What MainViewModel.CreateRuleFromMessage builds: the sender as a substring match, because a
+        // display name can hold a comma and the address fields read one as a separator (#682). Carrying
+        // it in FromContains instead put it in the Advanced section, so the capture showed an empty form
+        // above a prefilled field nobody could see.
+        SenderContains = "newsletter@example.com",
+        UseSenderCondition = true,
+        SubjectContains = "Weekly digest",
+        UseSubjectCondition = false,
+    };
 
     /// <summary>Selects the TabItem whose header contains the fragment (e.g. Appearance).</summary>
     private static void SelectTabByHeader(Window window, string headerFragment)

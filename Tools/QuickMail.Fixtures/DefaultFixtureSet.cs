@@ -62,7 +62,7 @@ public static class DefaultFixtureSet
             Summary("1003", UiProbeFixture.InboxFolder, "Ben Ortiz", "Invoice attached — please review",
                 hoursAgo: 5, isRead: false, isServerFlagged: true,
                 preview: "Flagged for follow-up before Friday."),
-            Summary("1004", UiProbeFixture.InboxFolder, "Files Team", "Q4 report",
+            Summary(UiProbeFixture.AttachmentMessageId, UiProbeFixture.InboxFolder, "Files Team", "Q4 report",
                 hoursAgo: 8, isRead: true,
                 preview: "The quarterly report is attached as a PDF."),
             Summary("1005", UiProbeFixture.InboxFolder,
@@ -96,6 +96,11 @@ public static class DefaultFixtureSet
             "<p>This week's items, rendered as real HTML:</p>" +
             "<h2>Highlights</h2>" +
             "<ul><li>First list item</li><li>Second list item with a <a href=\"https://example.com\">link</a></li><li>Third item</li></ul>" +
+            // Link shapes the context menu has to tell apart (issue #671): an address link, a link
+            // whose wording differs from where it goes, and one that is its own address.
+            "<p>Questions? <a href=\"mailto:ava@example.com\">Email Ava</a>, " +
+            "or read the <a href=\"https://example.com/notice\">full notice</a>.</p>" +
+            "<p><a href=\"https://example.com/plain\">https://example.com/plain</a></p>" +
             "<blockquote>A blockquote to exercise quoted styling in the reading pane.</blockquote>" +
             "<p>Plain closing paragraph.</p>"));
         await localStore.UpsertDetailAsync(Detail(inbox[2],
@@ -104,6 +109,13 @@ public static class DefaultFixtureSet
             plain: "The quarterly report is attached as a PDF.",
             attachments:
             [
+                new AttachmentModel
+                {
+                    FileName = UiProbeFixture.LongAttachmentName,
+                    ContentType = "application/pdf",
+                    FileSize = 3_250_586,
+                    PartSpecifier = "3",
+                },
                 new AttachmentModel
                 {
                     FileName = "Q4-report.pdf",

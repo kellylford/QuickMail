@@ -8,21 +8,28 @@ QuickMail is a keyboard and screen reader friendly email program for Windows. Gm
 
 - [System Requirements](#system-requirements)
 - [Installing and Updating QuickMail](#installing-and-updating-quickmail)
+- [Release History](#release-history)
 - [Accounts](#accounts)
 - [For Microsoft 365 Administrators and Tenant Owners](#for-microsoft-365-administrators-and-tenant-owners)
 - [Main Window](#main-window)
 - [Reading Mail](#reading-mail)
 - [Composing Mail](#composing-mail)
+- [Pictures](#pictures)
 - [Address Book](#address-book)
 - [Grab Addresses from a Message](#grab-addresses-from-a-message)
 - [Flags](#flags)
 - [Mail Rules](#mail-rules)
 - [Saved Views](#saved-views)
+- [Startup](#startup)
 - [Calendar](#calendar)
 - [What Syncs and What Doesn't](#what-syncs-and-what-doesnt)
+- [Working Offline](#working-offline)
+- [Moving Your Settings to Another Computer](#moving-your-settings-to-another-computer)
 - [Notifications](#notifications)
+- [Sounds](#sounds)
 - [Tools Menu](#tools-menu)
 - [Connection Diagnostics](#connection-diagnostics)
+- [Data Folder and Command-Line Options](#data-folder-and-command-line-options)
 - [Reporting Issues](#reporting-issues)
 - [Settings](#settings)
 - [Themes](#themes)
@@ -61,6 +68,28 @@ The two versions are otherwise identical: same features, same settings, same dat
 1. Download **QuickMail-win.msi** — or **QuickMail-win-arm64.msi** for a Snapdragon PC, as described above — from the [releases page](https://github.com/kellylford/QuickMail/releases) and run it.
 2. The setup wizard walks through a welcome page, the license agreement, and installation. QuickMail installs for the current user only — no administrator permission is needed. If the WebView2 component QuickMail uses to display mail is missing from your PC, setup adds it automatically.
 3. A Start Menu entry is created. The first time QuickMail starts, it asks whether to also add a desktop shortcut — either answer is remembered, and you can change your mind anytime in **Settings → General** under **Desktop Shortcut**.
+
+### Installing with winget
+
+QuickMail is also in the Windows Package Manager, usually called **winget**. winget is a program built into Windows 10 and 11 that installs other programs from a single typed command: no web page to find, no file to download, and no setup wizard to step through. It downloads the same installer as the releases page, picks the right version for your computer, whether it has an Intel, AMD or ARM processor, and installs it for your account with no administrator permission needed.
+
+If you have never used winget, here is the whole process, start to finish.
+
+1. **Open a command window.** Press the Windows key, type `terminal`, and press Enter. That opens Windows Terminal, and focus is on a line waiting for a command. (Typing `cmd` or `powershell` instead works just as well. So does pressing Windows+X and then I.) You do not need to run it as administrator.
+2. **Type the command and press Enter:**
+
+   ```
+   winget install quickmail
+   ```
+
+   You can also copy the command from here and paste it with Ctrl+V. `winget install KellyLford.QuickMail` is the package's full name and does the same thing.
+3. **Agree to the terms, the first time only.** The first time you use winget, it shows a few lines about the Microsoft Store's terms and then waits at `Do you agree to all the source agreements terms?`, on a line reading `[Y] Yes  [N] No:`. Type `Y` and press Enter. winget remembers your answer and never asks again. To skip the question, run `winget install quickmail --accept-source-agreements` instead.
+4. **Wait for it to finish.** winget says it found QuickMail, notes that the program is licensed to you by its owner, then downloads and installs it, which takes a minute or so. A small installer progress window, titled **Windows Installer** and then **QuickMail**, appears briefly and closes on its own; it needs nothing from you. It is done when the last line says `Successfully installed` and the command prompt returns. A screen reader may not read the progress as it changes; reading the window's text once the prompt is back shows the result.
+5. **Start QuickMail** from the Start menu, like any other program, and close the command window with Alt+F4 or by typing `exit`.
+
+If Windows says `winget` is not recognized, your copy of Windows is missing it. Install **App Installer** from the Microsoft Store, which is the program that provides winget, and try again. If winget says it found no package, check the spelling of `quickmail`.
+
+You only need winget once. After that, QuickMail updates itself exactly as described in [How updating works](#how-updating-works), so the version winget lists can be older than the one you are running. That is expected, and `winget upgrade --all` leaves QuickMail alone for that reason. To remove it, use **Settings → Apps** or `winget uninstall quickmail`; either way you are asked about your data as described in [Uninstalling](#uninstalling).
 
 ### If you already have QuickMail installed
 
@@ -117,7 +146,21 @@ Two settings in **Settings → Advanced**, under **Updates**, put the whole mech
 
 ### Uninstalling
 
-Remove QuickMail from **Settings → Apps** as usual. After the app is removed, QuickMail asks whether to also delete your data — accounts, settings, contacts, rules, templates, saved views, cached mail, and saved passwords. Choose **No** (the default) to keep everything, so reinstalling later picks up exactly where you left off; choose **Yes** to remove it all.
+Remove QuickMail from **Settings → Apps** as usual. About ten seconds after the app is removed, or longer if Windows is busy with another installation, QuickMail asks whether to also delete your data — accounts, settings, contacts, rules, templates, saved views, cached mail, and saved passwords. Choose **No** (the default) to keep everything, so reinstalling later picks up exactly where you left off; choose **Yes** to remove it all.
+
+Running a newer installer over the QuickMail you have is an upgrade, not an uninstall, so nothing is asked and your settings, including start at sign-in, stay as they were. (Updates QuickMail installs by itself never involve this.) That holds from version 0.8.53 on; if you run the 0.8.53 installer over an older copy and it asks about your data, choose **No**, and if **Start QuickMail automatically when I sign in to Windows** is off afterwards, turn it back on in **File → Settings → Startup**.
+
+---
+
+## Release History
+
+Every version of QuickMail has release notes saying what was added, changed and fixed in it. They are all on the web, newest first, at [QuickMail Release History](https://kellylford.github.io/QuickMail/releases.html).
+
+Each version has its own page there, and every page links to the versions either side of it, so you can read back as far as you like. The list starts with version 0.5.0 in May 2026.
+
+To find out which version you are running, open **Help → About QuickMail**. If you installed QuickMail with the installer it updates itself, so you are normally on the newest version already.
+
+The same notes are on each version's own page on GitHub, alongside that version's downloads, at [github.com/kellylford/QuickMail/releases](https://github.com/kellylford/QuickMail/releases).
 
 ---
 
@@ -125,7 +168,7 @@ Remove QuickMail from **Settings → Apps** as usual. After the app is removed, 
 
 Adding an account, changing one, testing it, and removing it all happen in **Manage Accounts**. Open it from **File → Manage Accounts…**, from the **Accounts** button on the toolbar, or from the Command Palette (**Ctrl+Shift+P**) by choosing **Manage Accounts**. It has no keyboard shortcut of its own to begin with; you can give it one under **File → Settings → Keyboard Shortcuts**.
 
-Manage Accounts opens with focus on the first entry in the **Accounts** list, so you can arrow through your accounts straight away. **New**, **Delete**, and **Set Default** sit below the list; the settings for whichever account is selected fill the rest of the window; **Save**, **Test Connection**, and **Close** are at the bottom. When you have no accounts yet there is nothing to land on, so focus goes to **New** instead.
+Manage Accounts opens with the first account in the **Accounts** list selected and focused — or, when you open it from an account's **Account Settings…**, that account — so **Delete** and **Set Default** act on the account you hear, and you can arrow through the others straight away. **New**, **Delete**, and **Set Default** sit below the list; the settings for whichever account is selected fill the rest of the window; **Save**, **Test Connection**, and **Close** are at the bottom, and Tab reaches them in that order, so **Close** is the last stop in the window. **Enter** in a text field saves, and **Escape** closes the window. Removing an account with **Delete** (**Alt+D**) always asks first, and afterwards the next account in the list is selected. If you delete your last account, there is nothing left to land on, so focus goes to **New** (**Alt+N**). While you have no accounts, the **Accounts** toolbar button, **File → Manage Accounts…** and the Command Palette open Add Account directly instead of this window; on a new install, that is also where **Import Settings…** (**Alt+I**) is, for bringing your settings from another computer (see *Moving Your Settings to Another Computer*).
 
 For most accounts you need three things: your provider, your email address, and your password. QuickMail knows the server settings for the providers it lists, and looks them up for the ones it does not.
 
@@ -148,7 +191,7 @@ A provider is fixed when the account is created. Manage Accounts shows it as tex
 
 ### Adding an account
 
-Press **New** in Manage Accounts. The Add Account dialog opens with focus on the **Provider** list.
+The first time QuickMail starts, with no accounts yet, the Add Account dialog opens by itself. After that, press **New** in Manage Accounts. Add Account opens with focus on the **Provider** list. On a new install it also has an **Import Settings…** button (**Alt+I**), just above the buttons at the bottom, for bringing your accounts from another computer instead; QuickMail mentions it when the dialog opens. If you close Add Account without adding anything, focus goes to the **Accounts** button on the toolbar (read as "Manage email accounts") — press Enter there when you are ready. Until you have an account, the toolbar button, **File → Manage Accounts…** and the Command Palette all open Add Account rather than Manage Accounts.
 
 1. Choose your **Provider** — or skip to step 2 and let your address choose it.
 2. Tab to **Email address** and type it. Leaving this field is also what starts the settings lookup for an address QuickMail does not already know; see [Automatic settings lookup](#automatic-settings-lookup).
@@ -157,9 +200,18 @@ Press **New** in Manage Accounts. The Add Account dialog opens with focus on the
 5. **Sync contacts from this account** and **Sync calendar from this account** appear for iCloud accounts and for accounts that sign in — Microsoft, and Gmail when you choose Google sign-in. Check them *before* signing in, so the permission can be part of the same sign-in. (A Gmail account using an app password has no contact or calendar sync, so the boxes do not appear.)
 6. Press **Add Account**.
 
+The account is saved, and the dialog says so — "*account name* added.", using your email address when you left the name blank — with two buttons in place of the form:
+
+- **Add another account** (**Alt+N**) opens an empty form for the next one.
+- **Done** (**Alt+D**) closes Add Account and Manage Accounts together, and puts you on the new account in the **Accounts** list, where QuickMail is already connecting to it. Focus starts on **Done**, so Enter finishes; Escape, or closing the window, does the same, since the account is already saved. If contact or calendar sync could not be turned on for the new account, QuickMail says so once it has finished trying.
+
+Either way you are not taken back through the settings you just typed. To change them later, open Manage Accounts and choose the account.
+
 Whether that permission really is part of the same sign-in depends on the account. Google sign-in folds it in, and so does a personal Outlook.com account set to connect over **Microsoft 365 (Graph)** — one screen lists mail, contacts, and calendar together. A work or school Microsoft account asks separately once the account is added, on purpose: organizations that restrict what their users may approve would turn one over-asking screen into a failed sign-in, and no account at all.
 
-Server names, ports, and SSL settings are behind **Advanced settings**, an expander that stays closed unless you need it. Tab reaches its header before its contents, so one keystroke moves past the whole thing. **Sign in with Microsoft** and **Sign in with Google** come last of all, after Advanced settings and everything inside it — signing in is the last thing you do, so it is the last thing you tab to. The same is true in Manage Accounts.
+Server names, ports, and SSL settings are behind **Advanced settings**, an expander that stays closed unless you need it. Tab reaches its header before its contents, so one keystroke moves past the whole thing. **Sign in with Microsoft** and **Sign in with Google** come last in the form, after Advanced settings and everything inside it — signing in is the last thing you do, so it is the last field you tab to. The same is true in Manage Accounts.
+
+The buttons at the bottom follow the form in the order you see them: **Add Account**, **Test Connection**, then **Cancel** as the last stop in the dialog. **Enter** in a text field adds the account, and **Escape** cancels.
 
 If something required is missing, **Add Account** does not close the dialog. It says what is missing and moves focus to the field that needs attention — the email address, the password, or, when there are no server settings at all, the **IMAP host** with Advanced settings opened for you.
 
@@ -180,7 +232,7 @@ This step reads where your mail *goes*, rather than who your organisation is wit
 
 Settings that arrive over the network are never accepted unless they are encrypted, so a lookup can never quietly hand your password to a server that would take it in the clear. Servers you type yourself are your own business and are left alone.
 
-When nothing is found, **Advanced settings** opens automatically and focus moves to the **IMAP host** field, so you can type the settings yourself. The message also names the way out for a work or school Microsoft 365 account, which has no IMAP host to type: choose **Outlook.com / Microsoft 365** as the provider and sign in.
+When nothing is found, **Advanced settings** opens automatically so you can type the settings yourself, and you hear why. Focus stays where you are: the lookup finishes a moment after you have moved on, usually into **Password**, and moving you then would send whatever you were typing into the wrong field. **Add Account** takes you to the **IMAP host** field if you press it with no server settings. The message also names the way out for a work or school Microsoft 365 account, which has no IMAP host to type: choose **Outlook.com / Microsoft 365** as the provider and sign in.
 
 To turn off steps 2, 3, and 4, set `AutoDiscoverOnline = off` in `config.ini`. The built-in provider list keeps working either way.
 
@@ -229,7 +281,7 @@ The result is announced and stays on screen as status text near the buttons. In 
 QuickMail signs in to Microsoft mailboxes rather than asking for a password — work or school **Microsoft 365 / Exchange Online** accounts and personal **Outlook.com / Hotmail / Live.com** accounts alike.
 
 1. In the Add Account dialog, set **Provider** to **Outlook.com / Microsoft 365** — or just type your address, which selects it for you. The password box disappears; Microsoft accounts sign in instead.
-2. Activate **Sign in with Microsoft** — the last tab stop in the dialog, after Advanced settings. A Microsoft sign-in window opens inside QuickMail. Sign in and approve the permissions QuickMail requests; the window closes itself and returns you to the dialog.
+2. Activate **Sign in with Microsoft** — the last field in the dialog, after Advanced settings. A Microsoft sign-in window opens inside QuickMail. Sign in and approve the permissions QuickMail requests; the window closes itself and returns you to the dialog.
 3. Activate **Add Account**.
 
 Sign in as **the same address you typed** into the account. If the account you sign in with does not match, QuickMail warns you and keeps the address you entered rather than silently switching to a different mailbox — this matters most in organizations where an administrator signs in at the approval screen.
@@ -241,6 +293,8 @@ Sign in as **the same address you typed** into the account. If the account you s
 You can also choose for yourself. Open **Advanced settings** and use the **Connection method** list to pick **Standard IMAP/SMTP** or **Microsoft 365 (Graph)**; choosing Graph announces that IMAP and SMTP settings are not required, and choosing IMAP fills the Outlook server settings back in. This choice is fixed when the account is created — to change it later, remove the account and add it again.
 
 > **Work or school accounts may need your administrator's approval first.** Many organizations require an administrator to approve a new app for the whole organization before anyone can sign in. If your sign-in ends at a **"needs admin approval"** message with no way to continue, QuickMail is working correctly — your organization has not yet approved it. Send your IT administrator to [For Microsoft 365 Administrators and Tenant Owners](#for-microsoft-365-administrators-and-tenant-owners); once they approve QuickMail, sign-in works normally. Personal Outlook.com accounts are not affected and need no approval.
+>
+> If an administrator signs in at that approval screen, they can approve QuickMail for the whole organization there (there is a "consent on behalf of your organization" option). Because the administrator's account is not the one you were adding, QuickMail leaves your account unchanged and **offers to sign you in again as yourself** — choose **Yes** to finish connecting. An administrator can also approve QuickMail ahead of time without this back-and-forth via **Help → Grant Admin Consent for Your Organization** or the administrators section above.
 
 To bring this account's contacts into your address book, check **Sync contacts from this account** before signing in. See [Syncing Contacts from Your Accounts](#syncing-contacts-from-your-accounts).
 
@@ -319,11 +373,14 @@ own web settings, and — for Gmail and Yahoo — an app password rather than yo
 **What is different from IMAP:**
 
 - **Messages are downloaded whole and kept on this computer.** Reading a message, opening its
-  attachments, and searching all work with no network.
-- **Four folders — Inbox, Sent, Drafts and Trash — and they belong to QuickMail.** A POP3 server has
-  no folders to show, so these are QuickMail's own. Creating, renaming, moving and deleting folders
-  are not offered for a POP3 account; QuickMail says so rather than failing at the server.
-- **Read and unread, flags, and moves between those folders stay on this computer.** POP3 has nowhere
+  attachments, searching, and saving the original message all work with no network.
+- **Inbox, Sent, Drafts and Trash belong to QuickMail, and so do any folders you add.** A POP3
+  server has no folders to show, so these are QuickMail's own. You can create folders of your own
+  — to file a mailing list, say — and move, copy and delete them, and point rules at them,
+  exactly as on an IMAP account (see [Creating Folders](#creating-folders)). They exist only on this
+  computer. Deleting one moves its mail, and the mail in any folders inside it, to Trash. The four
+  built-in folders cannot be moved or deleted; QuickMail says so if you try.
+- **Read and unread, flags, and moves between folders stay on this computer.** POP3 has nowhere
   on the server to record them, so another mail program reading the same mailbox will not see them.
 - **New mail arrives on the sync interval**, not the moment it lands. POP3 has no equivalent of the
   live connection QuickMail holds open for IMAP, so there is no instant notification.
@@ -370,15 +427,78 @@ Press **Save** — the default button, so Enter is enough — to keep the change
 
 **Sign in with Microsoft** and **Sign in with Google** are here too, for when a sign-in needs renewing.
 
-**Set Default** marks the selected account as your default — the account new messages are sent from unless you choose another, and the one new mail rules are created for. The default account is announced as "default" alongside its name in the list.
+**Set Default** marks the selected account as your default — the account new messages are sent from unless you choose another, and the one the Rules Manager opens on when you are not in a particular account (in **All Inboxes**, for example). The default account is announced as "default" alongside its name in the list.
 
 Server settings sit behind the same **Advanced settings** expander as in Add Account, so an account that is working needs no scrolling past hosts and ports to reach the settings people actually change. The **Provider** at the top is fixed when the account is created; to change it, remove the account and add it again.
 
+### Reconnecting an account
+
+An account that shows as disconnected can be reconnected where you are. Move to the
+**Accounts** list in the main window, select the account, open the context menu (**Shift+F10** or
+the Applications key), and choose **Reconnect**. You can also open the Command Palette
+(**Ctrl+Shift+P**) and choose **Reconnect Account**, which acts on the account selected in the
+**Accounts** list. It has no keyboard shortcut to begin with; you can give it one under **File → Settings → Keyboard Shortcuts**.
+
+- If the account's sign-in has expired, the Microsoft sign-in window opens, or for a Google account a
+  sign-in page in your browser. Finish a Google sign-in within five minutes. Connecting at
+  startup opens neither, so an account whose sign-in has expired stays disconnected until you
+  reconnect it here or sign in again from **Manage Accounts**.
+- A shared mailbox reads its mail through the account it belongs to, so reconnecting a shared mailbox
+  signs that account in and connects it first.
+- Sign in as the account itself. If you sign in as someone else, for example an administrator
+  approving permissions, the account is not connected, and QuickMail tells you who you signed in as.
+
+The status bar says how it went: "Work reconnected.", or "Could not reconnect Work." followed by the
+reason, such as no saved password, no network connection, or a server that could not be reached. A
+reconnect you ask for tries once and reports straight away.
+
+### Changing the order of your accounts
+
+Accounts appear in the order you added them, and you can rearrange them. Move to the **Accounts**
+list in the main window, select an account, and either press a key or use the context menu
+(**Shift+F10**, the Applications key, or right-click):
+
+| Key | Action |
+|---|---|
+| `Alt+Up` | Move Up |
+| `Alt+Down` | Move Down |
+| `Alt+Home` | Move to Start |
+| `Alt+End` | Move to End |
+
+Each move says where the account landed — "Moved above Work" — and leaves you on the account you
+moved, so you can press the key again. At either end of the list QuickMail tells you that too,
+rather than doing nothing.
+
+The order is not just the account list. It is the order the accounts appear in the folder tree, and
+the order of the **From** list when you compose a message, so putting the account you use most at the
+top puts it first everywhere. The four moves are also in the Command Palette (**Ctrl+Shift+P**), and
+you can give them different keys in **File → Settings → Keyboard Shortcuts**.
+
 ### Removing an account
 
-Select the account and press **Delete**. There is no confirmation step, and the removal happens at once: QuickMail forgets the account's password from Windows Credential Manager, deletes the mail it had cached, removes any contacts synced from it, and for Microsoft and Google accounts signs out as well. You hear "Account deleted. Cleaning up…", then "Account deleted." when the tidying has finished.
+Select the account and press **Delete**. For an ordinary account there is no confirmation step, and the removal happens at once: QuickMail forgets the account's password from Windows Credential Manager, deletes the mail it had cached, removes any contacts synced from it, and for Microsoft and Google accounts signs out as well. You hear "Account deleted. Cleaning up…", then "Account deleted." when the tidying has finished. (Deleting an account that a shared mailbox reads through does ask first, because it removes the shared mailbox too — see [Shared mailboxes](#shared-mailboxes).)
 
 **Nothing is deleted from the mail server.** Removing an account removes it from QuickMail only — add it again and your mail is still there.
+
+### Shared mailboxes
+
+A shared mailbox is a mailbox several people read and send from — a `support@`, `info@`, or `sales@` address that belongs to a team rather than a person. If your organization has given you access to one, you can add it to QuickMail and it appears as its own mailbox in the folder tree, alongside your own accounts.
+
+Shared mailboxes are a **Microsoft 365 work or school** feature. You add one through an account you already have: QuickMail reads and sends the shared mailbox using your existing sign-in, so there is no separate password and no separate sign-in for it. Personal Outlook.com accounts and non-Microsoft (IMAP) accounts do not have shared mailboxes, so the option is offered only when you have a work or school Microsoft 365 account to read it through.
+
+**To add a shared mailbox:** open **Account Manager** (Tools menu), activate **Add shared mailbox**, choose the work or school account that has access to it if you are asked, and type the shared mailbox's email address. Press **Add**. The mailbox connects using that account and its folders load. You do not need access to a password — access comes from your own account's permission to the mailbox, which your organization grants.
+
+**Reading and sending.** A shared mailbox reads like any other: select it in the folder tree and open its folders. To send from it, choose the shared address in the **From** list when composing — the message goes out as the shared mailbox, not as you.
+
+**Sending while it is disconnected.** A shared mailbox sends through the sign-in of the account it belongs to, so while that account is signed out the shared mailbox is disconnected and cannot send. A message you send from it then waits in the **Outbox** instead of failing: you hear "Message queued. It will be sent when Support is connected again." (with your shared mailbox's name), the window closes, and the message goes out once the account it belongs to is signed in again. To do that now, reconnect the shared mailbox from the **Accounts** list.
+
+**Freshness.** A shared mailbox updates on a timer rather than the instant new mail arrives: **shared mailboxes update every few minutes, not instantly.** Your own mailboxes still update live; only the shared one waits for the next check.
+
+**New-mail notifications are off for a shared mailbox by default.** A shared mailbox is often a busy team address, so QuickMail does not pop a notification for every message that lands in it. If you do want notifications for a particular shared mailbox, select it in Account Manager and turn on **Notify me of new mail in this shared mailbox**. The main **Show a Notification When New Mail Arrives** setting still has to be on for any notification to appear.
+
+**Rules.** A shared mailbox's rules are managed in Outlook, not in QuickMail, so a shared mailbox is not in the Rules Manager's **Account** list. QuickMail cannot reach a shared mailbox's server-side rules, and a client-side rule would act, from your computer only, on mail everyone else reads. **Create Rule from Message** is not in the context menu for a shared mailbox's messages, and **Ctrl+Shift+T** and the command palette say so on the status bar instead of making a rule from one. In the mailbox's folders, the rule summary on the status bar says its rules are managed in Outlook. A client-side rule saved on a shared mailbox by an earlier version is kept but no longer runs.
+
+**Removing.** Removing the account that a shared mailbox reads through also removes the shared mailbox — you are told which shared mailboxes will go when you delete their parent account. Removing a shared mailbox on its own leaves the account it read through untouched.
 
 ---
 
@@ -433,6 +553,8 @@ https://login.microsoftonline.com/organizations/adminconsent?client_id=bcdc84f1-
 
 Replace `organizations` with your tenant ID or a verified domain to target a specific tenant. Review the permission list Microsoft shows and approve. This grants consent tenant-wide in one step.
 
+**Option C — from inside QuickMail.** If you have QuickMail installed, choose **Help → Grant Admin Consent for Your Organization…**. Sign in as one of the admin roles above in the window that opens, review the permission list, and approve. This grants QuickMail's Microsoft Graph permissions tenant-wide in one step without building a URL by hand, and it works even before anyone in your organization has added an account — the consent itself registers QuickMail in your tenant. QuickMail tells you when consent has been granted.
+
 After approval, your users sign in normally with no further prompts.
 
 ### If you would rather not grant blanket approval
@@ -471,6 +593,8 @@ You can also jump directly to any pane:
 ### Unified Inbox
 
 Select **All Inboxes** at the top of the folder tree to see messages from all accounts merged into one list, sorted by date. The same **All Mail** group also holds **All Drafts**, **All Sent**, and **All Trash**, each merging that kind of folder across every account; **All Archive**, which follows each account's own archive setting; **All Flagged**, which collects flagged messages from every folder rather than from one kind of folder; and **Watched Conversations**, described below.
+
+Each account also has its own **All Mail — *account name*** entry in the folder tree, which shows every message from every folder of that one account, newest first; these entries are in **Go to Folder** too. None of these merged views moves or copies anything: they only gather messages into one list.
 
 In any of these merged views, each row also says which folder the message came from — qualified with the account name when the view spans more than one account, so "Work, Archive" and "Home, Archive" are told apart. In an ordinary single-folder view the folder is already known, so nothing extra is said. You can move where this falls in the row, or turn it off, in [Message List Fields](#message-list-fields).
 
@@ -525,6 +649,25 @@ If collapsing hides the folder you were on, the selection moves up to the neares
 
 How you leave the tree is how you find it: a folder you collapse stays collapsed while QuickMail refreshes its folder list, and coming back to the tree with **F6** or **Ctrl+2** leaves it collapsed rather than re-opening the branch holding the folder you are reading. Go to a different folder and the tree opens up to show it again, as it always has. Expansion is not remembered between runs — QuickMail starts each account open, and opens whatever it needs to reach the folder it lands in.
 
+### Hiding Folders
+
+Some accounts come with folders you never use: Conversation History, RSS Feeds, Notes, or a server's own housekeeping folders. You can take them out of the folder tree.
+
+- **Hide Folder** hides the selected folder, and every folder inside it, from the folder tree and from **Go to Folder**. QuickMail says what it hid, for example "Archive and the 2 folders inside it hidden." If you were in the folder tree, focus moves to the folder above.
+- **Show All Hidden Folders** brings back every hidden folder, in every account, and says how many came back.
+
+Both are on the folder tree's context menu (**Shift+F10**), on the **Folder** menu, and in the Command Palette (**Ctrl+Shift+P**). Neither has a shortcut key to begin with; you can assign one in [Keyboard Customization](#keyboard-customization).
+
+Hiding only changes what the folder list shows:
+
+- A hidden folder still syncs, and its mail still appears in **All Mail**, **All Inboxes** and the other combined folders.
+- You can still move or copy messages into a hidden folder, and rules can still file mail there: the folder pickers for **Move to Folder**, **Copy to Folder**, moving and copying folders, and rules list every folder.
+- A folder you added to a saved view stays in that view, because the view lists it by name.
+
+Some things cannot be hidden, and QuickMail says why if you try: an account, the **Inbox** (on some servers every other folder lives inside it), calendars, saved views, and combined folders such as All Mail. To bring back a single folder, choose **Show All Hidden Folders** and hide the others again.
+
+Hidden folders are remembered per account, so they go with the account if you export your settings to another computer.
+
 ### Creating Folders
 
 Create a new folder in any of these ways:
@@ -537,7 +680,9 @@ The new folder is created under the folder currently selected in the folder tree
 
 ### Moving and Copying Folders
 
-Select a folder in the folder tree, press **Shift+F10**, and choose **Move Folder…** or **Copy Folder…**. Both open a picker showing the same hierarchical tree used in the folder panel — folders nested under their parent, everything already expanded. Arrow to the folder you want the selected folder to live under and press Enter. Copying brings the folder's messages and any subfolders with it.
+Select a folder in the folder tree, press **Shift+F10**, and choose **Move Folder…** or **Copy Folder…**. Both open a picker showing the same hierarchical tree used in the folder panel — folders nested under their parent, everything already expanded, with the account name at the top. Arrow to the folder you want the selected folder to live under and press Enter. Copying brings the folder's messages and any subfolders with it.
+
+To move or copy a folder to the top level of its account, beside Inbox and Sent, select the account name at the top of the tree and press Enter. In this picker the account name is a destination, so **Open** stays available on it. Some mail servers keep every folder inside Inbox; on those, QuickMail says the folder cannot go above Inbox rather than moving it.
 
 Typing jumps to a folder here as it does in the folder tree: type the beginning of a folder name and the selection moves to it. Because a bare letter belongs to that typing, the picker's buttons take **Alt+O** for Open and **Alt+C** for Cancel. Enter and Escape work as usual. There is no **New Folder** button in this picker — create the folder first, then move into it.
 
@@ -546,17 +691,17 @@ Two things the picker leaves out on purpose:
 - **Folders belonging to your other accounts.** A folder can only move or copy within the account it already lives in, so only that account's folders are offered.
 - **The folder you are moving, and everything inside it.** A folder cannot be moved or copied into itself or into one of its own subfolders.
 
-The picker opens on the folder you came from. Since the folder you are moving is not one of the destinations, it opens on the folder that one currently sits under, so you start where you were rather than at the top of the list. For a top-level folder there is no such parent, and it opens on the first folder instead.
+The picker opens on the folder you came from. Since the folder you are moving is not one of the destinations, it opens on the folder that one currently sits under, so you start where you were rather than at the top of the list. For a top-level folder it opens on the first folder instead, not on the account name.
 
-Because it opens there, pressing Enter straight away would put the folder back where it started. QuickMail says so rather than doing it — as it does for messages already in the folder you picked.
+Because it opens there, pressing Enter straight away would put the folder back where it started. QuickMail says so rather than doing it — as it does for messages already in the folder you picked. Choosing the account name for a folder that is already at the top level is reported the same way.
 
 If those two exclusions leave nowhere to go — an account whose only folder is the one you are moving — QuickMail says so instead of opening an empty picker. The same happens if you choose Move or Copy Folder on a view rather than a folder: All Inboxes, All Mail, and the per-account All Mail entries look like folders in the tree but are collections of messages from several folders, so there is nothing to move.
 
 ### Moving and Copying Messages
 
-Select one or more messages (or a sender/recipient group, or a conversation) and choose **Move to Folder…** or **Copy to Folder…** from the context menu (Shift+F10) or the command palette. Both open a folder picker showing the same hierarchical tree used in the main folder panel — folders nested under their parent, with account names as headers when more than one account is present. Arrow through the tree and press Enter to complete the move or copy. If you need a destination that does not exist yet, activate **New Folder** (or **Alt+N**) in the picker to create one under the selected folder and move into it without leaving the dialog.
+Select one or more messages (or a sender/recipient group, or a conversation) and choose **Move to Folder…** or **Copy to Folder…** from the context menu (Shift+F10) or the command palette. Both open a folder picker showing the same hierarchical tree used in the main folder panel — folders nested under their parent, with the account name at the top of its folders. Arrow through the tree and press Enter to complete the move or copy. If you need a destination that does not exist yet, activate **New Folder** (or **Alt+N**) in the picker to create one under the selected folder and move into it without leaving the dialog. To create the folder at the top level of the account, beside Inbox and Sent, select the account name first. The account name itself is not a folder, so **Open** is unavailable while it is selected.
 
-**The picker opens on the folder you last filed to**, so filing several messages to the same place takes one keystroke after the first: open the picker, press Enter. Move and copy are remembered separately — copying to a reference folder does not change where Move to Folder opens — and each account keeps its own, since a folder on one account is not a destination for another.
+**The picker opens on the folder you last filed to**, so filing several messages to the same place takes one keystroke after the first: open the picker, press Enter. Move and copy are remembered separately — copying to a reference folder does not change where Move to Folder opens — and each account keeps its own.
 
 Before you have moved anything on that account, and whenever the remembered folder is no longer there — you have deleted or renamed it — the picker opens on the folder the messages are in instead, so you still start somewhere useful. The same applies when the messages you selected come from more than one account: no single remembered folder is right for all of them.
 
@@ -564,14 +709,141 @@ Only the folder you choose in the picker is remembered. Archiving and deleting f
 
 Typing jumps to a folder here too, exactly as it does in the main folder tree: type the beginning of a folder name and the selection moves to it. Because a bare letter belongs to that typing, the picker's buttons take **Alt+O** for Open, **Alt+C** for Cancel, and **Alt+N** for New Folder rather than plain letter shortcuts. Enter and Escape still work as usual.
 
+#### Moving and copying between accounts
+
+The picker shows the folders of your other accounts too, so you can move or copy a message from one account to another, for example from a work account into a folder of your personal one. QuickMail downloads each message and adds it to the other account, keeping whether it was read or flagged and when it arrived. A copy leaves the original where it was. A move puts the original in its own account's Trash once the copy is safely in place, so a mistaken move can be undone from Trash, and a failure part of the way never loses a message.
+
+This takes longer than a move within one account, since every message is downloaded and uploaded again, and the status bar counts through them ("Moving 4 of 20…"). If something stops it part of the way, the messages that did move leave the list and QuickMail tells you how many moved and why the rest did not.
+
+Microsoft 365 accounts cannot take messages from another account yet. Their folders are offered only for their own messages, and QuickMail says so if you try to paste messages from elsewhere into one.
+
+### Copying, Cutting and Pasting Messages
+
+You can also move and copy messages the way you move files in Explorer. In the message list, select messages (or a conversation or sender group's heading) and press:
+
+| Shortcut | Command | What it does |
+|----------|---------|--------------|
+| `Ctrl+C` | **Copy Messages** | Copies the messages. |
+| `Ctrl+X` | **Cut Messages** | Cuts the messages. Nothing moves yet. |
+| `Ctrl+V` | **Paste Messages** | Pastes them into a folder. |
+
+To paste, go to the folder tree (F6), select the folder, and press **Ctrl+V**; focus stays on that folder. Pressing **Ctrl+V** in the message list pastes into the folder it is showing. Pasted copies are copied there; cut messages are moved there, and the cut is then finished, so pasting again has nothing left to paste. A copy can be pasted into as many folders as you like. The destination can be in another account, as described above.
+
+As in Explorer, cutting does not remove anything until you paste, so a cut you change your mind about leaves everything where it was. Copying anything else afterwards, in QuickMail or in another program, replaces what you copied, and **Ctrl+V** in a folder then has nothing to paste. You cannot paste into a combined view such as All Inboxes or a saved view, since it is not one folder; QuickMail asks you to choose a folder.
+
+The same commands are on the **Message** menu, in the message list's context menu (Copy and Cut), and in the folder tree's context menu (Paste Messages), and you can change their keys in keyboard customizations. **Ctrl+C**, **Ctrl+X** and **Ctrl+V** keep their usual meaning in every text field and in the message itself.
+
+#### Copied messages in Explorer and in new messages
+
+Copied and cut messages also go on the Windows clipboard as email files (.eml), as they do in Outlook:
+
+- **Paste in Explorer or on the desktop** to save the messages there as files, named like Save names them. Pasting in Explorer never removes anything from QuickMail, even after a cut.
+- **Paste into a message you are writing** to attach them as emails. Copy a message in the message list, open a new message, reply or forward, and press **Ctrl+V**: the message is attached, and the recipient can open it as an email.
+
+QuickMail downloads each message to do this, so with several messages selected you hear "Copying 3 messages…" and then "3 messages copied." when they are ready. More than 100 messages at once are copied for pasting into folders only, without the files, so that selecting a whole large folder does not download all of it. If a message's original cannot be downloaded (for instance while offline), the copy still pastes into folders, and QuickMail tells you it could not make the files.
+
+### Opening Email Files
+
+QuickMail opens email files (.eml), such as messages you pasted into Explorer or saved with Save As, and emails attached to other messages.
+
+- **An attached email:** in a message's attachment list, press **Enter** on it (or choose **Open**). It opens in its own QuickMail window, as any message does.
+- **A file in Explorer:** open it with QuickMail. When QuickMail is installed it is offered in **Open with** for .eml files, but it does not take over from whatever already opens them; choose **Always** there if you want QuickMail to be the default. If QuickMail is already running, the message opens there.
+
+The window works like any message window: read it, open, save and copy its attachments, **Save As**, **Print**, **Reply**, **Reply All** and **Forward**. Replies and forwards go from your default account, since the message is not in any of your accounts. Commands that need a mailbox (Delete, Mark as Read, Create Rule from Message and Move to Main Window) are not offered. Closing the window takes you back to where you opened it from.
+
+If a file is not an email, QuickMail says so instead of opening it.
+
 ### Message List Views
 
-Press `Ctrl+Shift+V` (or use the **View** menu) to switch how messages are grouped:
+Use **View → View Mode** (`Ctrl+Shift+V` opens the View menu) to switch how messages are grouped:
 
 - **Messages** — flat list, newest first
 - **Conversations** — messages grouped by thread
 - **From** — messages grouped by sender
 - **To** — messages grouped by recipient
+
+### Selecting Several Messages
+
+In the **Messages** view, hold **Shift** and press **Up** or **Down** to extend the selection one message at a time without opening anything. (In Conversations, From, and To, acting on a group's heading already acts on all of its messages.) For bigger selections:
+
+| Shortcut | What it does |
+|----------|--------------|
+| `Ctrl+A` | Select every message in the list |
+| `Ctrl+Shift+Home` | Extend the selection from the current message to the first one |
+| `Ctrl+Shift+End` | Extend the selection from the current message to the last one |
+
+Anything you do next acts on all of them: **Delete**, **Move to Archive**, **Move to Folder…**, **Copy Messages**, **Save**, and so on.
+
+### Filtering the List
+
+**View → Filter** narrows the list without leaving the folder:
+
+| Filter | Shows |
+|--------|-------|
+| **Show All** | Everything (no filter) |
+| **Unread** | Messages not yet read, replied to, or forwarded |
+| **Read** | Messages marked as read |
+| **With Attachments** | Messages with at least one attachment |
+| **Replied** / **Forwarded** | Messages you have replied to / forwarded |
+| **To Me** | Messages with one of your account addresses on the To line, leaving out mailing-list mail |
+| **Watched** | Messages in conversations you are watching |
+| **Flagged** | **All Flagged**, or just the messages carrying one of your named flags |
+
+Every filter except **Flagged** is also in the command palette (for example **Show Unread Only** or **Show Messages Addressed to Me**), and you can give any of them a key in **File → Settings → Keyboard Shortcuts**. While a filter is on, the window title names it, for example "Inbox - Work — Unread". **Show All**, or **Show All Messages** in the palette, turns it off. A folder remembers its filter along with its other view settings.
+
+### Sorting the List
+
+**View → Sort** sets the order:
+
+| Sort | Orders by |
+|------|-----------|
+| **Newest First** (default) | Date, most recent first |
+| **Oldest First** | Date, oldest first |
+| **A → Z** / **Z → A** | Subject in the Messages view; the conversation, sender, or recipient name in the grouped views |
+| **Flagged First** | Flagged messages first, then newest first (by name in From and To) |
+| **Most Messages** / **Fewest Messages** | Groups with the most / fewest messages first — Conversations, From, and To only |
+
+**Most Messages** and **Fewest Messages** are unavailable in the flat Messages view. In the From view they show at a glance who writes to you most. Each sort is also in the command palette as **Sort: …**.
+
+### Moving to the Next Unread Message
+
+`Alt+Down` moves to the nearest unread message below where you are; `Alt+Up` moves to the nearest
+one above. They are also **Next Unread Message** and **Previous Unread Message** in the command
+palette, and you can give them different keys in **File → Settings → Keyboard Shortcuts**.
+
+In the **Messages** view they move down or up the list, skipping everything already read. In
+**Conversations**, **From**, and **To** they run through every message the tree holds, in group
+order — so they cross from one conversation or sender into the next rather than stopping at the end
+of the one you are in. Closed groups are searched too, and a closed group holding the unread message
+is opened so that message can take focus. It stays open afterwards, like any group you open
+yourself.
+
+Below and above mean what they say on screen: which of them is newer depends on how the folder is
+sorted.
+
+Both keys act while you are in the message list or a group tree — including when you are moving
+through the list with the reading pane open beside it. They do nothing while focus is inside the
+reading pane itself, and an open message window has its own keys: **Alt+Left** and **Alt+Right**
+already move to the previous and next message there.
+
+While a message tab is showing there is no list to move through, and the two actions are not offered
+in that window's command palette. Start one from the main window's palette while the calendar is
+open, or while a message tab covers the list, and QuickMail says why instead of going quiet.
+
+Neither wraps around. When there is no unread message left in the direction you are going, nothing
+moves and QuickMail says "No unread messages below" or "No unread messages above", so that running
+out is never mistaken for a key that did not register. (That is a **Result** announcement — see
+[Screen Reader Announcements](#screen-reader-announcements) if you have those switched off.)
+
+### Reaching the Top or Bottom of the List
+
+**Up** and **Down** move one message at a time, and **Home** and **End** go to the first and last
+message, in every view. When you are already on the first message, **Up** and **Home** have nowhere
+to go, and on the last, neither do **Down** and **End**. QuickMail then plays the **Reached the end
+of a list** sound, or, when sounds are off, your sound scheme has none for it, or another sound is
+still playing, says "Top of list" or "Bottom of list" (a **Result** announcement). In **Conversations**, **From** and **To**, the bottom is the last row you can
+reach, which is a message when the last group is open. See
+[The Top and Bottom of the Message List](#the-top-and-bottom-of-the-message-list) for the details.
 
 ### Each Folder Remembers How You Left It
 
@@ -602,23 +874,128 @@ Density changes spacing only. What a row says, and what a screen reader reports 
 
 ### Searching
 
-Press `Ctrl+Shift+S` to open the search box. Type your query and press Enter. Results appear in the message list. Press Escape to clear the search and return to the full folder.
+Press `Ctrl+Shift+S`, or `/` in the message list, to open the search box. The list narrows as you type to the matching messages in the folder you are in — an ordinary folder, or a combined one such as **All Inboxes** or **All Mail** — and the number found is announced when you pause. Press **Down** or **Tab** to move into the results, and **Escape** to clear the search and return to the whole folder.
+
+Search reads the whole message, not only what the list shows: the sender, the recipients and Cc, the subject, the text of the message, and the names of its attachments. It searches the copy QuickMail keeps on this computer, so the text of a message is searchable once it has been downloaded — because you opened it, because QuickMail fetched it ahead of time, or because it is inside **Download messages for offline reading** (see [Reading messages without a connection](#reading-messages-without-a-connection)). The sender, recipients, subject and preview are always searchable, and there a match can be part of a word.
+
+**Words.** Every word you type has to be in the message, in any order. A word finds the words that begin with it, so `budg` finds "budget", and capitals and accents don't matter.
+
+- Put words in quotes to find them together, in that order: `"quarterly report"`.
+- Put a minus sign in front of a word or quoted phrase to leave out the messages that contain it: `budget -draft`.
+
+**Where a word is.** Put one of these in front of a word, or of a quoted phrase, to look for it in one place only:
+
+| Type | To find it in |
+|------|---------------|
+| `from:sam` | the sender's name or address |
+| `to:ann` | the recipients |
+| `cc:lee` | the Cc recipients |
+| `subject:invoice` | the subject |
+| `body:agenda` | the text of the message |
+| `attachment:report` | the names of attached files |
+
+**Which messages.** These narrow the results without looking for any text:
+
+| Type | Finds messages |
+|------|----------------|
+| `has:attachment` | with attachments |
+| `is:unread`, `is:read` | not yet read, or read |
+| `is:flagged`, `is:unflagged` | flagged, or not |
+| `after:2026-01-15` | received on that day or later |
+| `before:2026-02-01` | received before that day |
+| `folder:projects` | in a folder whose name contains "projects" — useful in All Mail |
+| `account:work` | in an account whose name or address contains "work" |
+
+A minus sign in front of `has:` or `is:` reverses it: `-has:attachment` finds messages with none. Write dates as year, month and day, or the way Windows shows a short date on your computer.
+
+Anything else with a colon in it — `Re:`, a time such as `10:30`, a web address — is searched for as ordinary text, so pasting a subject line works.
+
+Everything combines: `from:sam budget -draft is:unread after:2026-01-01` finds unread messages from Sam since the start of the year that mention the budget and don't mention a draft.
+
+### Advanced Search
+
+Press **Ctrl+/**, or choose **View → Advanced Search…**, to search with a form instead of typing the syntax. You can assign a different shortcut in **File → Settings → Keyboard Shortcuts**.
+
+The form has a field for each part of a message — **Words anywhere**, **From**, **To**, **Cc**, **Subject**, **Body** and **Attachment name** — and for the conditions: **Has attachments**, **Read state**, **Flag**, **Received from** and **Received up to** (both days included). Every word in a field is looked for in that part of the message, so **From** `Sam Smith` finds a sender with both words in the name or address. **Words anywhere** also takes everything the search box understands, such as `folder:projects`.
+
+Under **Look in**, choose where to search:
+
+- **This folder** searches the folder you were in, exactly as the search box does: the search box opens showing the search, so you can see how it is written and change it there.
+- **Every folder of these accounts** searches all of your mail in the accounts you leave checked — every account, unless you uncheck some — including Sent and Trash. The results open as a **Search results** folder.
+
+The accounts are a single list: **Tab** reaches it, **Up** and **Down** move between accounts, and **Space** checks or unchecks the one you are on. Below it, **Also search the mail server** asks each account's server as well as this computer — for mail older than the **Sync range**, or whose text was never downloaded (see [Searching the server too](#searching-the-server-too)). When a search of this computer alone finds nothing, QuickMail says so and suggests it.
+
+Press **Enter** to search. When something is found the form closes, focus moves to the first result, and the number found is announced. When nothing is found the form stays open with focus back in **Words anywhere**, so you can change the search and try again. A search of every folder of your accounts leaves you in the folder you were in; a search of **This folder** leaves its words in that folder's search box. While a search is running, **Escape** waits for it to finish. **Clear** empties the fields but keeps your choice of where to look, and **Escape** closes the form. **F6** moves between the fields, **Look in**, the list of accounts and the buttons.
+
+#### Searching the server too
+
+Search looks at the mail on this computer. To also find mail that isn't here — older than the **Sync range**, or whose text was never downloaded — check **Also search the mail server** in Advanced Search, or with Search results already open choose **Search the Server** on the results bar, or **Search the Server Too** in the command palette. QuickMail asks each account's mail server for the same search and adds what it finds that the results don't already have; you hear how many more were found, or that there were none. An account whose server refuses the search is named, and the others still count; one QuickMail already knows is offline is left out quietly.
+
+What each server can search for differs. Gmail and Microsoft 365 search the whole mailbox at once — for Gmail that is everything except Spam and Trash, and a search naming a folder goes folder by folder instead. Other mail servers are asked one folder at a time, which takes longer on a large account, and some search the text of a message more thoroughly than others. Messages found this way are shown but not kept: they stay in the results until you refresh or close them.
+
+#### Saving a search
+
+While a **Search results** folder is open, **View → Views → Save View…** — or **Save Search as View…** in the command palette — saves it as a view, with a name and, if you like, a keyboard shortcut. Choosing the view later runs the search again, so it always shows what matches now.
+
+The **Search results** folder works like any other folder: every view, sort, filter and message command applies, and the search box searches within the results. Above the list, a bar shows how many were found and for what, with **Change Search** — or **Ctrl+/** — to reopen the form with this search filled in, and **Close** — or **Escape** — to go back to the folder you started from. New mail that arrives while the results are open joins them if its sender, recipients, subject or preview match; a message that matches only in its text appears the next time the results are refreshed with **F5**.
+
+The first time you start a version of QuickMail with this search, it builds its index of the mail it already has, in the background, newest mail first. Until that finishes, older messages are found by their sender, recipients, subject and preview only. When QuickMail runs in online mode (`--online`) there is no copy on this computer, so search matches the sender, recipients, subject and preview of the messages in the list, and `cc:` and `attachment:` find nothing.
 
 ### Searching Folders
 
-Press `Ctrl+Shift+F` to search folder names. Type to filter the tree, press Enter to navigate to the matching folder.
+Press `Ctrl+Shift+Y` (or **View → Search Folders…**) for a list of every folder, including All Inboxes and the other merged folders. Focus starts in the list, so **Up**, **Down** and **Enter** work at once; press `/` to move to the search box and type to narrow the list.
 
 ### Refreshing
 
-Press **F5** to manually refresh the current folder.
+Press **F5** to refresh the folder you are in. With a saved view active, **F5** refreshes the view, so you stay in it.
+
+QuickMail also checks for new mail by itself. Most mail servers tell QuickMail the moment a message reaches your inbox, so it appears straight away. The **Check for new mail every** setting in **Settings → General** adds a regular check behind that (every 5 minutes unless you change it), which also catches changes made in other mail programs. **Off (server push only)** leaves it to the server.
+
+### Sync Range
+
+**View → Sync Range** decides how far back QuickMail keeps mail on this computer: **Last 7 Days**, **Last 30 Days** (the default), **Last 6 Months**, **Last 1 Year**, or **All Mail**. The same choice is **Sync range** in **Settings → General**. Older mail is still on your server; it is just not in QuickMail's lists, or in searches of the mail on this computer. A wider range means more to download the first time, and more disk space used.
+
+### The Status Bar
+
+Press **Ctrl+9** (unless **Message Open Mode** is **Tab** or a message tab is open, when it goes to the last tab), or cycle to it with **F6**, to reach the status bar. **Left** and **Right** move between its parts, and **Tab** leaves it.
+
+| Part | Shows |
+|------|-------|
+| **Status** | The message count and when mail was last checked, for example "7,326 messages. Synced 9:48 AM", or "Syncing mail…" while a check runs |
+| **Connection** | "Connecting…", "Syncing…", how many accounts are connected, **Offline**, or an error |
+| **Update** | Shown only when a new version is out. Press **Enter** to open the release page |
+| **Rules** | How many client-side rules are on or off and when they last ran. Press **Enter** or **Space** to open the Rules Manager |
+| **Offline reading** | Shown only when **Download messages for offline reading** is on |
+| **Sync progress** | Shown only while mail is being checked |
 
 ### Command Palette
 
-Press **Ctrl+Shift+P** to open the command palette. Type any part of a command name to find it. Press Enter to run it. This is the fastest way to discover and run any action in the app.
+Press **Ctrl+Shift+P** to open the command palette. It opens with focus in a filter box, and below it every command, sorted by category and then by name, with each command's shortcut key where it has one. This is the fastest way to discover and run any action in the app, including the many that have no shortcut key.
+
+**Start typing and the list narrows to what matches.** You do not have to type the start of a command's name, or even whole words:
+
+- **Any part of the name.** Typing `arch` finds **Move to Archive**.
+- **The initials.** Typing `gtf` finds **Go to Folder**.
+- **The category.** Typing `mail` lists the Mail commands.
+- **Several words, in any order.** Typing `arch mail` finds the Mail category's Archive command.
+
+The best match is always at the top of the list and is the one **Enter** runs. The command at the top is reported as it changes, and so is each command you reach by arrowing **Up** and **Down** — reported by Windows from the list itself, not announced by QuickMail over the top of it, so no announcement setting can switch it off. When a keystroke narrows the list without changing the command at the top, you hear the new count on its own — "3 commands" — because nothing else would tell you the list had moved.
+
+Focus stays in the filter box the whole time, so you can keep typing to narrow further without moving anywhere first.
+
+**Escape** clears the filter if you have typed anything, and closes the palette if the box is already empty. **Page Up** and **Page Down** move through the list ten at a time. If nothing matches what you have typed, you hear "No matching commands", and Enter says so too rather than doing nothing silently.
+
+The palette opens from anywhere in the main window, including while you are reading a message in the reading pane. Closing it puts you back where you were reading, and a command you choose runs before focus returns to the message.
+
+Other windows have their own palettes on the same key — the compose window, an open message, the address book, the rules window and more — listing the commands that belong to that window.
 
 ### Keyboard Customization
 
 Open **File → Settings → Keyboard Shortcuts** to reassign any shortcut to a different key. Select a command's field and press the key combination you want — QuickMail captures it, shows you what it heard, and asks you to confirm with **OK**, pick another with **Change**, or **Cancel**. If the combination is already assigned to something else, a warning names the existing command so you can decide whether to reassign it. Changes take effect immediately and survive restarts.
+
+**Finding a command in the list.** Type the first letter of a command's name to move to it, and type the same letter again to move to the next command that starts with it. Typing several letters quickly matches more of the name, as in the folder list.
+
+**Your keys show everywhere.** A key you assign is the one shown after the command in the menus, in toolbar tooltips and in the command palette. It is also the key screen readers are given as the command's shortcut key, so they can read it with the menu item or button. Whether that key is read out is a setting in your screen reader, not in QuickMail.
 
 **Bare keys as shortcuts.** You can assign a shortcut with no modifier key using **Delete, Backspace, Insert, or any function key (F1–F24)** — for example, bare **Delete** to delete a message, or **F5** to sync. (Bare **Delete** ships as a default binding for exactly this reason.) Plain letters, digits, and the Spacebar cannot be bound on their own — they would swallow ordinary typing — so pair them with **Ctrl**, **Alt**, or **Shift**. **Enter**, **Escape**, and **Tab** are reserved for navigating dialogs and are never captured as shortcuts.
 
@@ -644,15 +1021,19 @@ This is one of three ways to report a problem. See **[Reporting Issues](#reporti
 
 ### Opening a Message
 
-Press Enter on a message in the list to open it in the reading pane (or in a new tab or window, depending on your **Reading Mode** setting in **Settings → General**).
-
-Press **Ctrl+Enter** to open a message in a new tab regardless of the Reading Mode setting.
+Press Enter on a message in the list to open it in the reading pane (or in a new tab or window, depending on the **Message Open Mode** setting in **Settings → Windowing**).
 
 ### Reading Pane
 
 The reading pane renders HTML messages with WebView2. Links open in your default browser.
 
-Images from remote sources are not loaded — fetching them tells the sender your address is live, which is what a tracking pixel in a newsletter is for. Where the sender wrote a description for a picture, QuickMail shows that description in its place, so a picture that is also a link reads by what it is ("Facebook link") rather than by its web address. A picture the sender marked as decorative contributes nothing, which is what marking it that way asks for.
+Nothing in a message can run on your computer: scripts, embedded objects, frames, and forms are blocked or removed before it is shown. A message with a very large layout, such as some newsletters and statements, may be shown in a simplified form so the reading pane stays quick to move through.
+
+**Links have a context menu.** With a link focused, press **Shift+F10** or the Applications key (or right-click it) for **Open**, **Copy Address**, and — when the link's text is not simply its address again — **Copy Text**. On an email address link a **New Message to This Address** entry (last in the menu) opens a new message in QuickMail, instead of handing the address to whichever mail client Windows has registered. A copy that works says nothing — it did what you asked, and it clears any earlier failure notice. A copy that fails writes a line at the end of the message, starting **QuickMail:**, saying what could not be copied. Read to the end of the message to find it. In the reading pane and in a tab it also goes to the status bar, so **Ctrl+9** reads back the most recent one.
+
+That line is not usually spoken as it appears: it is written just as the menu closes, while your screen reader is announcing its way back into the message, so it arrives in the middle of that and is passed over. It is there to be found rather than to interrupt — which is the right trade for something that only happens when the clipboard is briefly held by another program. Copying the address is how you check where a link actually goes before following it, and comparing it with the link's text is how you spot one that does not go where it says it does. Closing the menu returns you to the link you opened it on, not to the top of the message. The menu is offered for ordinary web and email links; it does not appear on the **Accept** / **Tentative** / **Decline** buttons of a meeting invitation, which are internal to QuickMail.
+
+**Pictures.** Pictures sent inside a message are shown; pictures a message links to on the web are not loaded, and their descriptions are shown instead, so no message can tell its sender you opened it. See [Pictures](#pictures) for what is shown and when, the setting that controls it, and how pictures are kept safe.
 
 Press **F6** or **Shift+F6** to move between the reading pane and other panes.
 
@@ -673,25 +1054,29 @@ The setting persists across app restarts and applies to the reading pane, messag
 
 ### Message Windows
 
-When Reading Mode is set to **Window**, messages open in a separate window. Each window has a full menu bar (**File, Message, Navigate**), a toolbar, and a command palette. Shortcuts work the same as in the main window:
+When **Message Open Mode** is set to **Window**, messages open in a separate window. Each window has a full menu bar (**File, Message, Navigate**), a toolbar, and a command palette. Shortcuts work the same as in the main window:
 
 | Shortcut | Action |
 |----------|--------|
 | `Ctrl+R` | Reply |
 | `Ctrl+Shift+R` | Reply All |
-| `Ctrl+F` | Forward |
+| `Ctrl+Shift+F` | Forward |
 | `Delete` | Delete |
-| `Ctrl+Shift+M` | Move to Archive |
 | `Ctrl+Q` | Mark as Read |
 | `Ctrl+Shift+G` | Grab Addresses |
 | `Ctrl+Shift+W` | Watch or unwatch this message's conversation |
 | `Alt+A` | Focus the attachment list |
+| `Ctrl+S` | Save |
+| `F12` | Save As |
+| `Ctrl+P` | Print |
 
 Deleting a message from its window closes the window and returns focus to the originating position in the message list.
 
+A message window's status bar says where the message sits in its folder, for example "Message 3 of 47". **Alt+Left** and **Alt+Right** go to the previous and next message, and **F6** cycles the toolbar, the header fields, and the message. **Ctrl+W** or **Escape** closes the window, and focus goes back to that message in the list. **Navigate → Move to Main Window** (also a toolbar button and a palette command) moves the message into a tab in the main window and closes its own window.
+
 ### Attachments on a Received Message
 
-When a message has attachments, they appear in an **attachments list** just below the header fields (Subject, From, To, Date). This works the same way in all three reading modes — reading pane, tab, and window.
+When a message has attachments, they appear in an **attachments list** just below the header fields (Subject, From, To, Date). Each one shows its file name followed by its size, and screen readers read both. This works the same way in all three reading modes — reading pane, tab, and window.
 
 Reach the attachment list in either of two ways:
 
@@ -704,19 +1089,75 @@ Once focus is on the list, arrow between attachments and use:
 |----------|--------|
 | `Enter` | Open the selected attachment |
 | `Alt+Enter` | Show the attachment's properties |
-| `Shift+F10` (or the Menu key) | Open the context menu: **Save…**, **Save All…**, **Open** |
+| `Ctrl+C` | Copy the selected attachment to the clipboard |
+| `Shift+F10` (or the Menu key) | Open the context menu: **Save…**, **Save All…**, **Open**, **Copy**, **Copy All** |
+
+#### Copying attachments
+
+**Ctrl+C** on an attachment, or **Copy** in the attachment list's context menu, puts it on the Windows clipboard as a file. Paste it into Explorer or onto the desktop to save it there, or into a message you are writing to attach it. **Copy All** copies every attachment of the message at once; it is also in the command palette as **Copy All Attachments**. QuickMail downloads the attachments first if it has not already, and tells you when they are copied.
+#### Saving attachments without opening the message
+
+You can save a message's attachments straight from the message list. Open the context menu on the message (Shift+F10 or the Applications key) and choose **Save All Attachments…**, then choose a folder. Every attachment is saved there. With several messages selected, or a conversation or sender group's heading, the attachments of all those messages go into the one folder. Saving attachments does not mark a message as read.
+
+If none of the selected messages have attachments, QuickMail says so and does not ask for a folder. A file is never replaced: if the folder already has a file with the same name, or two attachments share a name, the later one is saved with a number added, such as "image001 (2).png". **Save All Attachments** is also in the command palette, and has no key until you give it one in keyboard customizations.
+
+### Saving and Printing Messages
+
+You can save a message to a file, or print it. **Save** and **Save As…** act on everything selected: one message, several selected messages, or a whole conversation or sender group when its heading is selected. **Print** acts on one message.
+
+| Shortcut | Command | What it does |
+|----------|---------|--------------|
+| `Ctrl+S` | **Save** | Saves in your default format, into your save folder, without asking. |
+| `F12` | **Save As…** | Asks where to save and in which format. |
+| `Ctrl+P` | **Print…** | Opens the Windows Print dialog. |
+
+All three are on the **File** menu, and Save As and Print are also on a message's context menu. They work the same way in the reading pane, a tab, and a message window, and they are in the command palette.
+
+**Formats.** You can save a message in four formats:
+
+- **Email message (.eml).** The original message exactly as your mail server holds it, attachments included. Any mail program can open it, and so can Windows. This is the default, and it is the only format that keeps everything.
+- **Text file (.txt).** A block of details, then the message's own text. It opens in Notepad or any editor.
+- **Web page (.html).** The same details, then the message with its formatting, headings, tables and links. It opens in any browser.
+- **PDF (.pdf).** The web page as a PDF. The PDF is tagged, so its headings and tables come through to a screen reader.
+
+The text, web page and PDF formats all start with the same details, in words rather than raw headers: subject, sender, reply-to address if it is different, recipients, date, the account and folder the message is in, whether it has been read, flagged, replied to or forwarded, and its attachments by name and size. Meeting invitations also list the meeting, its time and place, and the organizer.
+
+**Pictures.** A saved web page, a PDF and a printout show the same pictures the reading pane does. Pictures included in the message are written into the file itself, unless **Show pictures included in messages** is off. Pictures from the web are included only if QuickMail already loaded them this session, with **Load Pictures** or the setting; saving never fetches one. Any picture left out shows its description in its place. Nothing in a saved web page runs or loads from the internet when you open it: its pictures are part of the file. The Original format keeps the message exactly as it was sent, pictures and all, and Text keeps descriptions only. See [Pictures](#pictures).
+
+**Where Save puts files.** Save uses the format and folder set in **Settings → General → Saving Messages**. The default is **Email message** in your **Documents** folder. Each file is named from the subject, sender and date, for example *Your order has shipped - Jane Smith - 2026-09-17 1432.eml*. Save never replaces or duplicates a file without asking. If you have saved the message there before, Save opens the Save As dialog on that name, so you can pick another name or folder; choose the same name and Windows asks whether to replace it. If you save several messages and some were saved there before, QuickMail asks once: **Yes** replaces those copies, **No** keeps both and saves new copies beside them, and **Cancel** saves nothing. The status bar says what was saved and where.
+
+**Save As.** For one message, Save As opens the standard Save dialog with the file name filled in. Choose a different format with **Save as type**. For several messages, the dialog's title says how many. Choose a folder and a format, and each message is saved under its own name. Save As starts in the folder you used last time, and it does not change your default format or folder.
+
+**When the original is not available.** An email message file has to come from your mail server. When QuickMail cannot reach the server, or the server no longer has the message, Save As does not write something else in its place. It says why and asks whether you want to choose another format. The text file, web page and PDF formats work offline for any message whose text is on this computer.
+
+For POP3 accounts, QuickMail keeps the original of every message it downloads, so it can always save one. Messages downloaded before version 0.8.47 kept their original only if they had attachments. For others, QuickMail downloads the original again if it is still on the server. If it is not, the message can still be saved in the other formats.
 
 ### Message Properties
 
-Press **Alt+Enter** on any message to open a properties window showing sender, recipients, date, size, and flags.
+**Alt+Enter** opens a read-only Properties window for whatever is selected:
+
+| Selected | Shows |
+|----------|-------|
+| A message | Its headers, where it is stored, its format and attachments, and its raw headers when QuickMail has them |
+| A conversation, sender, or recipient group | Message count, unread count, dates, and who is in it |
+| A folder | Its name, path, account, and message counts |
+| An account | Its servers, ports, security, sign-in method (never a password), and a **Sync** section: messages cached on this computer, the oldest one, and the sync range |
+| A contact or a group in the address book | Name and address, groups and members, when last used |
+| An attachment | File name, type, and size |
+
+Focus starts on the list of properties; **Up** and **Down** move through it, and section names are rows of their own. **Enter** or **Ctrl+C** copies the row you are on as "Field: Value". **Copy all** copies everything as text, section by section, and **Escape** closes the window.
+
+On a conversation, or on a sender's group in the From view, **Alt+Enter** lists the senders the same way, each as name and address. A sender's group is gathered by name, so if mail under that name came from more than one address, every address is listed. That way, someone else using a familiar name shows up there.
 
 ### Marking as Read
 
-Press `Ctrl+Q` to mark the selected message or messages as read. Messages are also marked read automatically when you open them (configurable in **Settings → General**).
+Press `Ctrl+Q` to mark the selected message or messages as read. Messages are also marked read when you open them.
 
 ### Deleting Messages
 
 Press **Delete**. Deleted messages go to Trash. Press `Ctrl+Shift+E` to empty the Trash for the selected account.
+
+Before emptying, QuickMail tells you how many messages will be permanently deleted and asks you to confirm, since this cannot be undone. To skip the question, clear **Confirm before emptying trash** under **Mail Actions** in **Settings → General**.
 
 ### Archiving Messages
 
@@ -736,15 +1177,22 @@ If an account has no Archive folder and you have not set one, QuickMail tells yo
 
 ### Tabs
 
-QuickMail can open messages in tabs, keeping multiple messages visible at once.
+Set **Settings → Windowing → Message Open Mode** to **Tab** and each message you open gets its own tab, in a strip above the message list. The first tab is always the message list itself. **Escape** in a message tab goes back to the list and leaves the tab open; **Ctrl+W** closes it.
 
 | Shortcut | Action |
 |----------|--------|
-| `Ctrl+Tab` | Next tab |
-| `Ctrl+Shift+Tab` | Previous tab |
-| `Ctrl+W` | Close tab |
-| `Ctrl+Shift+`` ` | Tab list (navigate by name) |
-| `Ctrl+Shift+T` | Focus tab strip |
+| `Ctrl+Tab` / `Ctrl+Shift+Tab` | Next / previous tab |
+| `Ctrl+1` … `Ctrl+8` | Go to tab 1 to 8 |
+| `Ctrl+9` | Go to the last tab |
+| `Ctrl+W` | Close the tab (in reading-pane mode, close the reading pane) |
+| `Ctrl+Shift+T` | Move focus to the tab strip |
+| ``Ctrl+Shift+` `` | Tab list: **Up** and **Down** to choose, **Enter** to go there, **Escape** to leave it |
+
+These number keys choose tabs whenever the tab strip is showing: always in Tab mode, and in the other modes while a message tab is open. See [Keyboard Shortcuts](#keyboard-shortcuts) for how to reach the panes then.
+
+In the tab strip, **Left** and **Right** move through the tabs. Each tab has two stops: its name (**Enter** or **Space** shows it) and its close button (**Enter** or **Space** closes it).
+
+The command palette has **Close Other Tabs**, **Move Tab Left**, **Move Tab Right**, and **Move Tab to New Window**, which moves the message into a window of its own without reloading it. None has a key until you give it one.
 
 ---
 
@@ -757,7 +1205,7 @@ QuickMail can open messages in tabs, keeping multiple messages visible at once.
 | `Ctrl+N` | New message |
 | `Ctrl+R` | Reply |
 | `Ctrl+Shift+R` | Reply All |
-| `Ctrl+F` | Forward |
+| `Ctrl+Shift+F` | Forward |
 
 ### Compose Panes
 
@@ -779,7 +1227,46 @@ Enter in the From list never sends the message. Sending is **Alt+S** or **Ctrl+E
 
 ### Address Autocomplete
 
-Start typing a name or address in To, Cc, or Bcc. QuickMail searches your address book and recent contacts. Arrow down to choose a suggestion; press Enter or Tab to accept. Press Escape to dismiss without accepting.
+Start typing a name or address in To, Cc, or Bcc. QuickMail searches your address book and recent contacts. People whose name, a word of their name, or address begins with what you typed come first; after them come those who only contain it. A contact group whose name matches is offered too, after the people, so a single Tab never adds a whole group by accident; type the group's whole name to put it first. Choosing a group adds all its members.
+
+When suggestions appear, a screen reader hears the first one and how many there are, for example "Jane Smith jane@uni.edu, 3 suggestions". Press **Tab** to enter that first suggestion; you stay in the field, ready for the next address. Type another letter to narrow the list, and you hear the new first suggestion. Tab only enters a suggestion you are typing towards, one whose name, a word of its name, or address begins with what you typed. When the best match only contains your text somewhere in the middle, you hear just the number of suggestions, and Tab keeps what you typed. A complete address you have typed out in full is kept as typed too, unless it is exactly one in the list. To choose a different one, press **Down** to move into the list, arrow to it, and press **Enter** or **Tab**. Press **Escape** to dismiss the list without accepting.
+
+#### Choosing what is suggested
+
+Four settings in **Settings → General → Composing** decide what is suggested:
+
+- **Suggest addresses as I type** — on by default. Turn it off and no suggestions appear at all; **Tab** and **Enter** keep exactly what you type. The next two settings apply only while this one is on.
+  - **Suggest from my address book** — on by default. Your contacts and groups, including contacts synced from your Microsoft, Google, or iCloud accounts.
+  - **Suggest people I've sent to** — on by default. The people QuickMail has remembered sending to; there are none until you turn on the next setting.
+- **Remember people I send to** — off by default. See below.
+
+These apply to the **Invite** field of an appointment too, and take effect in windows already open as soon as you save them.
+
+#### Remembering people you send to
+
+QuickMail can also suggest people you have sent mail to who are not in your address book. Turn on **Remember people I send to** in **Settings → General → Composing**. It is off by default. While it is on, everyone in To, Cc, and Bcc of each message you send, or queue in the Outbox, is remembered; on screen their suggestion says "sent to before". They are kept on this computer only, separately from your address book, so the address book does not fill up with everyone you have ever written to. They are suggested while **Suggest people I've sent to** is on. Someone who is also in your address book is suggested once, as the contact. Your own addresses, those of your accounts and shared mailboxes, are never remembered, so a copy to yourself does not put you in the list. QuickMail remembers up to 1,000 people and drops the ones you have not written to for longest. They are not included when you export your settings.
+
+Turning the setting off stops remembering anyone new; to stop suggesting the people already remembered, turn off **Suggest people I've sent to**. **Forget People I've Sent To** beside it clears everyone remembered, after asking; your address book is not changed. To see who is remembered, forget one person, or save someone as a contact, use the address book's [People I've Sent To](#people-ive-sent-to) tab.
+
+### Address Fields
+
+Each address you finish becomes its own item, showing the person's name, or the address when there is no name. Finish an address with **Enter**, **Tab**, a comma, or a semicolon, or choose one from the suggestions. While suggestions are showing, **Tab** enters the first suggestion when you are typing towards it (see [Address Autocomplete](#address-autocomplete)); **Enter** always keeps exactly what you typed.
+
+| Key | Action |
+|-----|--------|
+| `Left` at the start of the box | Move to the last address |
+| `Left` / `Right` | Move between addresses; `Right` on the last one returns to the box |
+| `Delete` or `Backspace` | Remove the address you are on, or all selected addresses |
+| `Backspace` in an empty box | Remove the last address |
+| `Ctrl+A` on an address | Select every address in the field |
+| `Ctrl+C` | Copy the address you are on, or all selected ones |
+| `Shift+F10` on an address | **Copy Address**, **Add to Address Book**, **Remove** |
+
+Each address is read as the full name and address. After **Ctrl+K** (Check Addresses), one that could not be resolved is shown in red, and its name starts with "Unrecognized:", so it is not told by color alone.
+
+### Pasting Addresses
+
+You can paste several addresses into To, Cc, or Bcc at once, separated by commas, semicolons, or one per line, as Outlook and most mail programs copy them. Each becomes its own address, including names written last name first, such as `Smith, John <john@example.com>`. Copying addresses from one of these fields (select an address and press `Ctrl+C`, or `Ctrl+A` on an address to copy them all) pastes back the same way into another field or another message.
 
 ### Editing Modes
 
@@ -791,9 +1278,13 @@ Every compose window offers three modes, switchable at any time with `Ctrl+Shift
 | Markdown | `Ctrl+Shift+2` | Write Markdown; sent as formatted HTML |
 | HTML | `Ctrl+Shift+3` | Rich text editor with real formatting |
 
-Switching from a rich mode to Plain Text asks for confirmation because formatting would be lost.
+You can also switch with the **Compose mode** list in the window's status row. Your text converts as you switch: Markdown becomes real formatting in HTML mode, and formatting becomes Markdown when you leave it. Switching from a rich mode to Plain Text asks for confirmation because formatting would be lost. The mode new messages start in is **Default compose mode** in **Settings → General → Composing**.
 
-Messages composed in Markdown or HTML are sent with both an HTML part and a plain text part.
+**What Markdown understands:** headings (`#` to `######`), bold, italic, strikethrough (`~~`), inline code and fenced code blocks (with a language name after the opening fence), bullet, numbered and nested lists, links, bare web addresses, pictures (`![description](address)`), quotes (`>`), horizontal rules (`---`), and tables written with pipes (`| A | B |`). HTML typed into a Markdown message is never run; it stays as visible text. A task list (`- [x] done`) is sent as the text you typed, since mail programs strip checkboxes and they are not accessible in email.
+
+**Switching Markdown to HTML and back gives you what you wrote:** heading levels, table header rows and column alignment, picture descriptions, code-block languages, quotes, and link addresses all come back unchanged.
+
+**What recipients get:** a Markdown or HTML message goes out as a complete HTML document that declares its language, uses your subject as its title, keeps picture descriptions, and marks table header cells so a recipient's screen reader announces column headers. A plain text part goes alongside it.
 
 ### Formatting (Markdown and HTML Modes)
 
@@ -803,24 +1294,52 @@ Messages composed in Markdown or HTML are sent with both an HTML part and a plai
 | Italic | `Ctrl+I` |
 | Underline (HTML only) | `Ctrl+U` |
 | Strikethrough | `Ctrl+Shift+X` |
-| Heading 1 / 2 / 3 | `Ctrl+Alt+1` / `Ctrl+Alt+2` / `Ctrl+Alt+3` |
+| Normal text | `Ctrl+Alt+0` |
+| Heading 1 to 6 | `Ctrl+Alt+1` to `Ctrl+Alt+6` |
+| Quote | `Ctrl+Shift+9` |
 | Bullet list | `Ctrl+Shift+L` |
 | Numbered list | `Ctrl+Shift+N` |
-| Insert link | `Ctrl+L` |
+| Insert link | `Ctrl+K` in the message body, or `Ctrl+L` |
+| Insert image | `Ctrl+Shift+I` |
+| Image properties | `Alt+Enter` on a picture |
 | Clear formatting | `Ctrl+Space` |
 | Announce formatting at cursor | `Ctrl+T` |
 | Show formatting in browsable list | `Ctrl+Shift+T` |
 
 **Nested lists:** In a list, press **Tab** to indent an item (creating a sub-list); press **Shift+Tab** to dedent.
 
-### Checking Formatting (HTML Mode)
+In Markdown mode these commands type the Markdown for you: `**` for bold, `*` for italic, `~~` for strikethrough, `- ` or `1. ` for lists, and `[text](address)` for a link. With text selected, a command wraps or unwraps it; with nothing selected, it puts in an empty pair and leaves the cursor between them. Underline has no Markdown form, so it works in HTML mode only, and QuickMail says so if you try it in Markdown. Each command says what it did, for example "Bold on" or "Bullet list off".
 
-- **`Ctrl+T`** — announces a one-line summary: "Heading 2. Bold on, Italic off, Underline off."
+Every compose action is also on the menu bar, which you reach with **Alt** or **F10**: **File** (Send, Save Draft, Insert Template, Save as Template, Add Attachments, Close), **Edit**, **View** (the three modes, with the current one checked, and Preview), **Format**, **Insert** (Link, Image, Image Properties), and **Tools** (Check Spelling, Next and Previous Misspelling, Toggle Spelling Announcements, Address Book, Check Addresses, Command Palette). Format items are unavailable in Plain Text mode.
+
+The window title starts with the subject and the mode, for example "Lunch Friday - HTML - QuickMail", so the taskbar and **Alt+Tab** tell your messages apart. Before you type a subject it says what kind of message it is, such as "Reply".
+
+### Headings, Quotes and Normal Text
+
+Every line of a message has a paragraph style: **Normal text**, **Heading 1** to **Heading 6**, or **Quote**. A recipient's screen reader can move by the headings and quotes you create.
+
+- **Headings.** Press `Ctrl+Alt+1` to `Ctrl+Alt+6` to make the line you are on a heading of that level (in HTML mode, every line you have selected). Pressing the same key again makes them normal text again. When you press Enter at the end of a heading, the new line is normal text; pressing Enter in the middle of a heading splits it into two headings.
+- **Normal text.** Press `Ctrl+Alt+0` to turn headings or quoted lines back into ordinary paragraphs.
+- **Quote.** Press `Ctrl+Shift+9` (the same key Gmail uses) to quote the lines you are on or have selected. Press it again on quoted lines to take them out of the quote. Pressing Enter inside a quote continues the quote; pressing Enter on an empty quoted line ends it. Quotes can be inside other quotes, the way an earlier message is quoted in a reply chain; `Ctrl+Shift+9` on a quote inside another quote takes away one level.
+- In HTML mode, the **Paragraph style** box on the formatting toolbar shows the style at the cursor. Arrow to a style and press Enter to apply it, or choose one from the open list; either way you are returned to your text. Arrowing on its own changes nothing, and leaving the box or pressing Escape in the open list puts it back. The same styles are in **Format → Paragraph Style**, where the current one is checked.
+- In Markdown mode, these commands write the Markdown for you: `#` to `######` for headings and `>` for quotes.
+
+When you reply in HTML mode, the message you are replying to is quoted as a real quote with its own formatting — headings, lists, links and any earlier quotes — instead of lines that begin with `>`. The plain text part of the message still marks quoted lines with `>`.
+
+### Pictures in a Message
+
+A picture can go in the body of a message in Markdown or HTML mode (`Ctrl+Shift+I`, paste, or drop), and every picture has to have a description or be marked decorative before it goes in. See [Pictures](#pictures) for everything about putting pictures in, sending them, and how they are kept safe.
+
+### Checking Formatting (Markdown and HTML Modes)
+
+- **`Ctrl+T`** — announces a one-line summary: "Heading 2. Bold on, Italic off, Underline off." Inside a quote it says so ("Quote", or "Quote, level 2" inside a quote within a quote). In a link it adds the link's address, and in inline code it adds "Code on".
 - **`Ctrl+Shift+T`** — opens a small window listing the same details one per row. Arrow through them; press Escape or Enter to close.
 
 ### Preview (Markdown and HTML Modes)
 
 Press **F8** to open a rendered preview in a separate window. The preview is fully focusable, so you can browse the formatted output exactly as a recipient would. Links open in your default browser. Press **Escape** or **Ctrl+W** to close the preview.
+
+The preview shows the message as it was when you opened it. To see later changes, close it and press **F8** again.
 
 ### Check Spelling (Full Dialog)
 
@@ -856,16 +1375,26 @@ The message stays visible and editable behind the Spelling window, with the curr
 
 Inline navigation wraps around the message so it always finds misspellings wherever the cursor starts.
 
-When a screen reader is active, QuickMail announces each misspelling along with up to three suggestions. By default, each suggestion is numbered — for example: "Misspelling: teh. 1: the, 2: then, 3: them." Press `Alt+1`, `Alt+2`, or `Alt+3` to replace the misspelled word with that numbered suggestion without leaving the compose area.
+When a screen reader is active, QuickMail announces each misspelling along with up to three suggestions. By default, each suggestion is numbered — for example: "Misspelling: teh. 1: the, 2: then, 3: them." Press `Alt+1`, `Alt+2`, or `Alt+3` to replace the misspelled word with that numbered suggestion without leaving the compose area, and `Ctrl+Z` to undo the replacement. If you have typed since you heard the misspelling and the word has moved, QuickMail announces the misspelling at the cursor instead of replacing anything; press the key again to replace that one.
+
+**Alt+F7** repeats the misspelling and its suggestions. **Shift+F10** on a misspelled word opens a menu with more suggestions and **Ignore All**. To silence spelling announcements for a while without leaving the message, choose **Tools → Toggle Spelling Announcements** (also in the compose command palette); it switches **Announce spelling errors while navigating** and says which way it went. **Ctrl+F7** and **Ctrl+Shift+F7** always announce, whatever this is set to.
 
 Control announcement behavior in **File → Settings → General → Screen Reader Announcements**:
 
 - **Announce spelling suggestions** — turn off to hear only the misspelled word without suggestions.
 - **Spelling Suggestions Verbosity** — choose **Numbers with suggestions** (default) to hear "1: the, 2: then" so `Alt+1/2/3` maps directly to what is spoken, or **Just suggestions** to hear "the, then, them" without numbers.
 
+#### Turning off spell checking as you type
+
+QuickMail checks spelling in the background as you write, using the spell checker built into Windows. After you paste a long text with many words the dictionary doesn't know (names, model numbers, web addresses), that check can hold the compose window for 10 to 15 seconds. Meanwhile the window responds slowly, and a screen reader may read a line twice, skip lines, or say nothing as you arrow through the text. This comes from WPF, the Windows technology QuickMail is built on, and is reported to Microsoft as [dotnet/wpf#6106](https://github.com/dotnet/wpf/issues/6106).
+
+If it gets in your way, turn off **File → Settings → General → Composing → Check spelling as I type**. Messages you open afterwards are not spell-checked while you write: no underlines, and no misspelling announcements as you move the cursor. When you want a check, press **F7** for the Check Spelling dialog, or **Ctrl+F7** / **Ctrl+Shift+F7** for the next or previous misspelling. The first of these you use in a message starts spell checking for that message, so expect a short wait the first time in a long message. After that, `Alt+1`, `Alt+2` and `Alt+3` work as usual. If you press **Alt+F7** to repeat the spelling announcement before any of those, QuickMail tells you spell checking is off for this message.
+
+You can also leave the setting on and simply wait 15 seconds or so after a long paste before reviewing what you pasted.
+
 ### Attachments
 
-Attach files with `Ctrl+Shift+A` in the compose window, by pasting files from the clipboard (`Ctrl+V`), or by dragging and dropping them onto the window. A screen reader announces how many files were attached.
+Attach files with `Ctrl+Shift+A` in the compose window, by pasting files from the clipboard (`Ctrl+V`), or by dragging and dropping them onto the window. A screen reader announces how many files were attached. A message you copied in the message list (`Ctrl+C`) pastes in as an attached email, and an attachment you copied from another message pastes in as a file.
 
 Press **Alt+A** to move focus to the list of files already attached — the same key that reaches the attachment list of a message you are reading. Arrow through the list and press **Delete** to remove the selected file. If the message has nothing attached yet, QuickMail announces "No attachments."
 
@@ -874,25 +1403,51 @@ Press **Alt+A** to move focus to the list of files already attached — the same
 Save a message you write often — a standard reply, a form response — as a reusable template.
 
 - **Save as Template** (command palette) saves the current subject and body as a new template, titled from the subject line (or "Untitled" if the subject is empty).
-- **Insert Template…** (command palette) opens a search-and-select picker: type to filter by title, arrow to a template, and press **Insert** or Enter to add its subject (if the Subject field is empty) and body into the message you are composing.
+- **Insert Template…** (command palette) opens a search-and-select picker: type to filter by title, arrow to a template, and press **Insert** or Enter to add its subject (if the Subject field is empty) and body into the message you are composing. The body goes in where your cursor is, on lines of its own, and `Ctrl+Z` takes it out again.
 
 Templates can include `{sender}`, `{date}`, and `{time}` placeholders, which are replaced with your display name and today's date and time when the template is inserted. Templates are plain text; in HTML mode, only the text is inserted.
 
 ### Checking Addresses
 
-Press `Ctrl+K` to check every address in the To, Cc, and Bcc fields. QuickMail looks up any bare name against your address book — if exactly one contact matches, it fills in that contact's address automatically. Addresses that are not valid and cannot be resolved are flagged as invalid. A screen reader announces how many addresses were resolved and how many are invalid.
+Press `Ctrl+K` in the To, Cc, or Bcc field (anywhere outside the message body, where `Ctrl+K` inserts a link, as in Outlook) to check every address in those fields. QuickMail looks up any bare name against your address book — if exactly one contact matches, it fills in that contact's address automatically. Addresses that are not valid and cannot be resolved are flagged as invalid. A screen reader announces how many addresses were resolved and how many are invalid.
 
 ### Sending
+
+To ask before each send, turn on **Confirm before sending a message** in **Settings → General → Composing**. It is off by default. Saving this setting also applies it to messages already open for editing. Send, **Alt+S**, **Ctrl+Enter**, and the command palette all ask the same question. Choose **Yes** to send, or **No** (the default), **Cancel**, or **Escape** to keep editing. The confirmation also applies before a message is queued in the Outbox while offline; it is not repeated when the queued message goes out. Repeated send commands while confirmation or sending is underway do not send the message twice. If a draft save is still running, QuickMail tells you to try sending again in a moment.
 
 | Shortcut | Action |
 |----------|--------|
 | `Alt+S` or `Ctrl+Enter` | Send |
 
+### Drafts
+
+**Ctrl+S** saves the message to your account's Drafts folder, replacing any earlier save. To pick it up again, go to **Drafts**, select it, and press **Enter**: it opens in the compose window, attachments included, and on IMAP and POP3 accounts in the mode you wrote it in. When you send it, it leaves the Drafts folder.
+
+Closing a message that has unsaved changes asks whether to save it as a draft: **Yes** saves and closes, **No** closes without saving, and **Cancel** goes back to the message.
+
 ### Auto-Save Drafts
 
-QuickMail saves your compose as a draft automatically every 2 minutes (on by default). A quiet status line in the compose window shows "Auto-saved 3:42 PM" after each save — no announcement interrupts your writing. If a save fails, it is announced once. You can check the last auto-save time from the command palette: **Ctrl+Shift+P → Announce Last Auto-Save**.
+QuickMail saves your compose as a draft automatically every 2 minutes (on by default). A quiet status line in the compose window shows "Auto-saved 3:42 PM" after each save — no announcement interrupts your writing. When the server cannot be reached, or a save has not finished after about 35 seconds, the status line reads "Kept on this computer 3:42 PM" instead and that is announced once; see [Working Offline: Drafts and the Outbox](#working-offline-drafts-and-the-outbox). If a save fails entirely, it is announced once. You can check the last auto-save time from the command palette: **Ctrl+Shift+P → Announce Last Auto-Save**.
 
 Control auto-save in **Settings → General → Composing**: turn it off, change the interval (30 seconds to 10 minutes), and set the default compose mode for new messages.
+
+### Working Offline: Drafts and the Outbox
+
+A dropped connection no longer traps your message in the compose window. QuickMail always tries your account first and falls back to this computer only when the server does not answer:
+
+- **Save Draft** (`Ctrl+S`) and auto-save keep the draft on this computer when the server cannot be reached. You hear "Draft saved on this computer. It will upload when you're online." The draft goes to your account's Drafts folder the next time QuickMail connects.
+- **Send** (`Alt+S`) queues the message when the server cannot be reached. You hear "Message queued. It will be sent when you're online.", the window closes, and the message leaves the moment a connection returns. A server that answers and refuses the message — a bad address, a rejected login — still fails in the window, where you can fix it.
+- **Closing** a window with unsaved changes and choosing Save keeps the draft on this computer if the server is unreachable, and the window closes. It stays open only when the draft could be saved nowhere at all.
+
+Everything waiting lives in the **Outbox**, the last entry in the All Mail group of the folder tree. The folder's count is spoken as "waiting" rather than "unread". Each row shows the account it will leave from, and its subject starts with its state: "Waiting to send", "Waiting to upload draft", "Sending…", or "Failed" followed by the reason.
+
+| In the Outbox | What happens |
+|---------------|--------------|
+| `Enter` on a row | Reopens it in the compose window, exactly as it was written — recipients, Bcc, attachments, and compose mode included. Saving or sending from there replaces the queued copy. |
+| `Delete` on a row | Asks first, then removes it from the queue. There is no Trash to recover from: the message has never been anywhere but this computer. |
+| **Send Outbox Now** (Message menu, or `Ctrl+Shift+P` → Send Outbox Now) | Tries every queued item right away, including any marked Failed. |
+
+The Outbox drains on its own when QuickMail connects at startup, when the connection returns, when a shared mailbox connects again, and on each background sync. A message from a shared mailbox whose account is signed out is not marked Failed: once the Outbox has tried it, its row says "Waiting for its account to be signed in", and it goes out once that account is signed in again. A drain is announced once as a whole, for example "Outbox: 2 messages sent, 1 draft uploaded." A message the server refused stays in the Outbox marked "Failed" with the reason, until you reopen and fix it, or remove it. The Outbox is not available in `--online` mode, which runs without the local store.
 
 ### Forwarding with Attachments
 
@@ -900,11 +1455,113 @@ When forwarding a message that has attachments, QuickMail opens an **Include Att
 
 ---
 
+## Pictures
+
+Pictures reach a message in two ways, and QuickMail treats them differently because they carry very different risks.
+
+- **Pictures sent inside the message.** The sender attached the picture to the message itself and placed it in the body — a photo in a family email, a logo in a signature, or a picture you put in with QuickMail. Showing it contacts no one but your own mail server, which is where the message already came from.
+- **Pictures on the web.** The message only links to a picture on the sender's server, and the picture is fetched when the message is shown. Newsletters and marketing mail work this way, and fetching the picture tells the sender that you opened the message, when, and roughly where — that is what a "tracking pixel" is for.
+
+### What QuickMail shows, and where
+
+| | Reading pane, message tabs and message windows |
+|---|---|
+| Pictures sent inside the message | **Shown** (unless you turn them off — see Settings below) |
+| Pictures on the web | **Not loaded** until you ask (see below). Their description is shown in their place, and a note at the top of the message says pictures were left out. |
+| Any picture, when reading as plain text | Not shown; the plain text is shown instead. |
+
+A picture is read by its description (alternative text). A picture that is also a link reads by that description, so a row of social icons reads "Facebook", "LinkedIn" rather than as web addresses. A picture the sender marked as decorative, or gave no description, is passed over, as it always has been.
+
+Pictures sent inside a message appear as the message opens; the text is shown at once and each picture fills in as it arrives, so reading is never interrupted. Showing them from the local copy of a message can mean reading that message again from your mail server. QuickMail does not download a large message again just for its pictures (more than 5 MB of attachments, or 10 MB in all), skips any single picture over 10 MB, and shows at most 40 pictures in one message; descriptions stand in for the rest.
+
+Only ordinary picture formats are shown: PNG, JPEG, GIF, WebP and BMP. SVG pictures are never shown, because an SVG file can carry script.
+
+### Loading pictures from the web
+
+When a message has pictures on the web, the first line of the message reads "Pictures from the web are not shown." followed by a **Load pictures** link. To see them:
+
+- Activate the **Load pictures** link, or
+- Press **Load Pictures** (`Ctrl+Shift+U`), or choose **View → Load Pictures**, or run it from the Command Palette.
+
+This works in the reading pane, message tabs and message windows. The message is shown again with its pictures, and focus stays in the message. QuickMail says "Loading pictures", or why there is nothing to load: no message is open, you are reading as plain text, the message has no pictures from the web, or they are already shown.
+
+Loading lasts while that message is open. The next message you open, or this one opened again later, starts with its web pictures left out again. To load them in every message, use the setting below.
+
+Even when you load pictures, a picture the message says is 2 pixels wide or high or smaller is never fetched. That is the usual size of a tracking pixel, and there is nothing to see. A tracker can still be disguised as an ordinary picture, so this is a courtesy, not a guarantee: once you load a message's pictures, assume the sender can tell you opened it.
+
+Loading a picture from the web tells its server that the message was opened, when, and your computer's internet (IP) address. That is unavoidable, and the reason they are not loaded unless you ask. QuickMail keeps what it tells the server to that:
+
+- QuickMail fetches each picture itself. The reading pane never contacts the web: it gets the picture from QuickMail, in the same way as a picture sent inside a message.
+- No cookies are sent or kept, and the server is not told which message or page the picture is in. Nothing lets the server connect one message you opened to another beyond your IP address.
+- Only public internet addresses are contacted. A picture pointing at your own computer or your local network, such as a router's settings page, is never requested, even if the server redirects to it. As a result, a picture on a company intranet does not load. If Windows is set to use a proxy server, pictures go through it, and the proxy decides what it will reach.
+- A picture at an encrypted (https) address is never followed to an unencrypted (http) one.
+- A picture server that is slow to answer is given up on after 30 seconds, and never holds up other pictures.
+- Whatever the server says a file is, QuickMail looks at the file itself and keeps it only if it really is a PNG, JPEG, GIF, WebP or BMP picture. A single picture over 10 MB is not shown, and at most 100 different pictures are loaded for one message.
+- Pictures you load are kept in memory while QuickMail runs, so going back to a message does not fetch them again. QuickMail never saves them to disk on its own; they are only written to a file if you save the message as a web page or PDF (see below).
+
+### Saving and printing messages with pictures
+
+**Save** and **Print** show the pictures the reading pane shows:
+
+| Format | Pictures included in the message | Pictures from the web |
+|---|---|---|
+| Original (.eml) | Kept, as sent | Kept as links; nothing is fetched |
+| Text | Descriptions only | Descriptions only |
+| Web page, PDF, and Print | Written into the file, unless **Show pictures included in messages** is off | Written into the file only if QuickMail already loaded them this session |
+
+Saving and printing never fetch a picture from the web. To include web pictures, choose **Load Pictures** first, then save or print. A saved web page holds its pictures inside the file, so it opens anywhere without contacting anything.
+
+### Settings
+
+- **Show pictures included in messages** (**Settings → General**, on by default). Uncheck it to show only descriptions, as QuickMail did before. It applies to the reading pane, message tabs and message windows, and an open message is shown again at once when you change it.
+- **Load pictures from the web automatically** (**Settings → General**, off by default). Check it to load pictures from the web in every message, as if you had chosen Load Pictures each time, with the same protections. The note at the top of the message no longer appears. Leave it off if you would rather senders not learn when you open their mail.
+- **Read messages as plain text** also hides every picture, since it shows the message's plain text.
+
+### Putting pictures in a message you write
+
+A picture can go in the body of a message in Markdown or HTML mode, and every picture has to have a description (alternative text) or be marked decorative before it goes in. The people you write to then always get one or the other: a screen reader reads the description, and skips a decorative picture.
+
+- **Insert Image** (`Ctrl+Shift+I`, or **Insert → Image**) lets you choose one or more picture files. For each one, the **Image Description** window opens with the file name and size shown for reference. Type a description in **Alternative text**, or check **Decorative image (no description)**. **OK** is not available until you have done one or the other. The file name is never used as the description.
+- A picture wider than 1600 pixels, such as a phone photo, can be shrunk as it goes in. **Shrink to 1600 pixels wide** is checked for you; uncheck it to send the picture at full size. A shrunk photo is turned the right way up.
+- **Paste** a picture (a screenshot, or a copied image) into the body, or **drop** picture files on the body, and the same window opens. Other files you paste or drop are attached as before.
+- **Image Properties** (`Alt+Enter`, or **Insert → Image Properties**) with the cursor on a picture opens the same window to change its description, mark it decorative, or remove the picture. With no picture at the cursor, QuickMail says so.
+- In HTML mode a picture is part of the text: arrow onto it to hear its description, and `Shift+Arrow` selects it like a character. `Ctrl+T` includes the picture at the cursor. Pictures cannot be copied or cut yet; QuickMail says so rather than losing the picture. To move one, remove it and insert it again.
+- In Markdown mode a picture is written as `![description](cid:…)`, and you can edit the description in the brackets directly. A picture that arrived with no description is written `![](cid:… "no description")` so that it is not mistaken for a decorative one.
+- Plain Text mode cannot hold a picture. Insert Image offers to attach the picture as a file instead, and switching a message with pictures to Plain Text tells you how many pictures will be removed.
+- Very large files (over 50 MB) and pictures that claim an enormous size are refused with a message rather than opened.
+- The information a camera or phone stores inside a photo — including where it was taken — is removed as the picture goes in. The picture itself is unchanged.
+
+**Sending.** Pictures travel inside the message, so the people you write to see them without their mail program fetching anything. A picture you deleted from the body is not sent. A described picture is sent with its description, a decorative one with an empty description, and one nobody described with none. In HTML mode, the plain text version of the message shows a described picture as "[Image: description]" and leaves decorative pictures out; in Markdown mode the plain text version is your Markdown, as it always has been.
+
+**Size.** QuickMail warns you once if the message grows past 10 MB, which some mail servers refuse, and pictures count toward the 25 MB limit along with attachments.
+
+**Drafts, the Outbox, replies and forwards.** Pictures stay with the message when you save it as a draft, when it waits in the Outbox, and when you reopen it. Forwarding a message with pictures, or replying to one in HTML mode, brings its pictures along: they appear as grey placeholders first and fill in as they are read from the original message. **F8** preview shows the pictures.
+
+### How pictures are kept safe
+
+- A picture on the web is never fetched unless you choose Load Pictures or turn on the setting that loads them. Even then the reading pane itself never contacts the web; QuickMail fetches the picture as described under "Loading pictures from the web". The compose window never fetches one.
+- The **Load pictures** link at the top of a message is QuickMail's own and works only in the copy of QuickMail that wrote it. A link a sender writes to look like it does nothing.
+- A picture sent inside a message is handed to the reading pane by QuickMail itself, from an address that never leaves your computer; the reading pane is allowed to load pictures from that address and nowhere else. The picture's own markup from the sender is discarded — QuickMail writes the picture into the page itself, keeping only its description and size.
+- Each message's pictures are served only while that message is shown, so one message can never show another's pictures.
+- Pictures that come with a reply or forward are brought across only if the original message actually shows them, and only in ordinary picture formats. A picture the sender merely named in the text is never fetched or sent on.
+- Pictures you put in a message, and ones kept for a draft or the Outbox, are stored in your QuickMail profile with the message and removed with it. Pictures shown while reading are kept in memory only, and only while QuickMail is running.
+- Replying keeps any picture the original linked to on the web as a link, as other mail programs do. QuickMail never fetches it, but the people you reply to may, depending on their mail program.
+
+---
+
 ## Address Book
 
 Press **Ctrl+Shift+B** to open the address book.
 
-The address book lists everyone you have sent mail to or explicitly added, plus — if you turn on contact sync — the contacts stored in your Microsoft and Google accounts. You can search by name or address, edit contact details, and organize contacts into groups. An **Account** column shows where each contact came from: **Local address book** for the ones you added yourself, or the account name for synced ones.
+The address book lists the people you have added, plus — if you turn on contact sync — the contacts stored in your Microsoft and Google accounts. You can search by name or address, edit contact details, and organize contacts into groups. An **Account** column shows where each contact came from: **Local address book** for the ones you added yourself, or the account name for synced ones.
+
+### Adding and Editing Contacts
+
+Type a **Name** and **Email** and press **Add**. To change a contact you added, select it and press **F2** (or **Edit**), change it, and choose **Save**. **Delete** removes the selected contacts; **Ctrl+A** selects them all.
+
+### Adding Contacts to a Message
+
+Press **Ctrl+Shift+B** in a compose window to open the address book with **To**, **Cc**, and **Bcc** buttons (**Alt+T**, **Alt+C**, **Alt+B**). Select a contact and press the one you want. The window stays open so you can add several people. On the **Groups** tab the same buttons add every member of the selected group, most recently used first, and you hear how many were added. Opened from the main window, these buttons start a new message for you.
 
 ### Filtering by Account
 
@@ -949,7 +1606,7 @@ Contact sync is one-directional and read-only in this release: no changes are wr
 
 ### Changing or Deleting a Synced Contact
 
-Because sync only runs one way, **the address book is not the place to change or remove a contact that came from an account.** With a synced contact selected, the **Edit** and **Delete** buttons are unavailable, and the matching Command Palette entries do nothing. This is deliberate: a deletion made here could not be sent to your account, so the contact would simply reappear the next time QuickMail refreshed — the change would look like it worked and then quietly undo itself.
+Because sync only runs one way, **the address book is not the place to change or remove a contact that came from an account.** With a synced contact selected, the **Edit** and **Delete** buttons are unavailable, and the matching Command Palette entries do nothing. Pressing the **Delete** key on a synced contact deletes nothing either: QuickMail says the contact is synced and read-only, the same message appears under the contact details, and focus stays where it was. If you select several contacts and some of them are synced, the **Delete** button and the **Delete** key both delete only the contacts you added yourself. The confirmation says how many synced contacts will be kept, and once the others are deleted, a line under the contact details shows how many synced contacts were not deleted. This is deliberate: a deletion made here could not be sent to your account, so the contact would simply reappear the next time QuickMail refreshed — the change would look like it worked and then quietly undo itself.
 
 To change or remove a synced contact for good, edit it where it actually lives, then bring the change back:
 
@@ -971,7 +1628,29 @@ Groups let you write to multiple people with a single address. Select a group in
 
 Open the address book and use the **Groups** pane to create, rename, and delete groups, and to add or remove members.
 
+| Action | Key |
+|--------|-----|
+| Move to the Groups list | `Ctrl+G` |
+| New group | `Ctrl+Shift+N` (type the name, **Enter**; **Escape** cancels) |
+| Rename the selected group | `F2` |
+| Delete the selected group | `Delete` — the contacts in it are kept |
+| Add the selected contact to a group | `Shift+F10` on the contact, then **Add to "*group*"** |
+| Open the Group Manager | `Ctrl+Shift+M` or **Manage…** — select a group, then **Enter** on a person adds or removes them |
+
 Group names must be unique, regardless of letter case ("Team" and "team" count as the same name). If you try to create or rename a group to a name that already exists, QuickMail tells you the name is already in use and leaves your text in place so you can choose a different one. Groups are never merged.
+
+### People I've Sent To
+
+The **People I've Sent To** tab lists the people QuickMail has remembered sending to who are not in your address book, most recently sent to first, with the date you last wrote to each. People are remembered only while **Remember people I send to** is on (see [Remembering people you send to](#remembering-people-you-send-to)); when it is off, a line above the list says so.
+
+| Action | Key |
+|--------|-----|
+| Forget the selected person | `Delete` or **Forget** (Alt+F), after asking |
+| Save the selected person as a contact | **Save to Contacts** (Alt+S) — they move to the Contacts tab |
+| Forget everyone | **Forget All…** (Alt+A), after asking — your address book is not changed |
+| Add the selected person to the message | **To**, **Cc**, **Bcc** (Alt+T, Alt+C, Alt+B) |
+
+Forgetting someone stops them being suggested, but if you send to them again they are remembered again. Typing a letter in the list jumps to the next person whose name, or address when there is no name, starts with it. These actions are also in the address book's command palette (**Ctrl+Shift+P**).
 
 ---
 
@@ -1012,11 +1691,13 @@ Press **Ctrl+Shift+K** to open the flag picker. Arrow to a flag and press Enter 
 
 ### Creating and Managing Flags
 
-Open the **Flag Manager** from the command palette (**Ctrl+Shift+P → Manage Flags**). You can create up to 20 named flags, each with an optional color. Use **Set as K default** to make any flag the one that **K** applies.
+Open the **Flag Manager** from the command palette (**Ctrl+Shift+P → Manage Flags**). You can create up to 20 named flags, each with an optional color. Use **Set K Default** to make any flag the one that **K** applies.
+
+In the Flag Manager, **Add Flag** creates one, **Rename** and the **Color** section change the selected flag, **Move Up** and **Move Down** set the order the flag picker lists them in, and **Delete** removes one (the built-in flag cannot be deleted). A message carries one flag at a time: picking another replaces it, and **K** on a message that has any flag clears it.
 
 ### Filtering by Flag
 
-Open the View menu or the filter combo box and choose **Flagged** to see only flagged messages in the current folder.
+**View → Filter → Flagged** offers **All Flagged** and each of your named flags, so you can show just "Urgent". With a flag filter on, unflagging a message takes it out of the list straight away. On a Microsoft 365 account the built-in flag is Outlook's "Flag for follow-up".
 
 ### All Flagged Mail
 
@@ -1034,57 +1715,79 @@ The flag is one of the pieces a row speaks, so where it falls — and whether it
 
 A mail rule watches your Inbox and acts on messages that match what you describe — filing newsletters into a folder, marking a mailing list as read, deleting something you never want to see.
 
-Open the **Rules Manager** from the **Tools** menu (`Ctrl+Shift+L`) or the command palette. It opens with the list of rules on the left and the selected rule's settings on the right.
+Open the **Rules Manager** from the **Tools** menu (`Ctrl+Shift+L`) or the command palette. A message open in its own window has the same **Tools → Rules…** and key; from there the Rules Manager opens on that message's account, and closing it returns you to the message. It lists the selected account's rules, and beside the list a **Rule detail** pane reads out the selected rule in full: what it applies to, and what it does. Rules are written in a separate editor window. **New** (`Ctrl+N`) opens it for a new rule, and **Edit** — or **Enter** on a rule in the list — opens it for the selected one. It is the same window whatever kind of account you have; it shows what the selected account supports.
+
+**Client-side and server-side.** A rule QuickMail runs itself is a **client-side** rule: it is stored on this computer and it acts on your mail while QuickMail is open. A **work or school** account added with the **Microsoft 365 (Graph)** connection method can also carry **server-side** rules, which your mail provider runs for you whether QuickMail is open or not — see [Microsoft 365: server-side rules](#microsoft-365-server-side-rules). Every other account has client-side rules only, including a work or school account you added over Standard IMAP/SMTP. Each row in the rules list is marked **on client** or **on server**, and the status line says which kinds the selected account can have, so neither is ever a guess.
+
+**One account at a time.** When you have more than one account, the Rules Manager opens on a single account chosen in an **Account** list at the top, rather than listing every account's rules together. Choose the account whose rules you want, and the list below shows just that mailbox's rules. If you have only one account there is no picker. It opens on the account you were in; see [Rules belong to one account](#rules-belong-to-one-account). This is the first thing to notice if you are used to seeing every account's rules in one list: your rules are not gone, they are behind the account picker. The **status line** just below the picker says how many rules the account has, where they run, and which kinds that account can have — so an empty list is never a mystery. As you move through the Account list, each account also says how many rules it has (a status announcement, so it follows your **Announce status** setting). **F6** cycles the panes — account list, rules, details, status line — so it reaches the status line and reads it back at any time.
 
 ### What a rule is made of
 
-- **Rule name** — how you recognize it in the list.
+The editor has the same parts whichever kind of rule you are writing.
+
+- **Rule name** — how you recognize it in the list. A rule must have one.
 - **Enabled** — turn a rule off without deleting it.
-- **Account** — which mailbox the rule watches. Every rule belongs to exactly one account; see [Rules belong to one account](#rules-belong-to-one-account).
-- **Conditions** — **From**, **To**, **Subject**, **Body**, and **Has attachments**. Check the ones you want and type the text to look for; the match is not case sensitive and looks for your text anywhere in the field. A message must satisfy **every** condition you checked, so leaving a condition unchecked is how you say "don't care".
-- **Action** — one of **Mark as read**, **Mark as unread**, **Move to folder**, or **Delete**. Choosing Move to folder adds a **Choose Folder…** button; the button then shows the folder you picked. The picker is the same folder tree used everywhere else you choose a destination, showing the folders of the rule's own account — a rule files mail within one mailbox. It opens on the folder the rule already files into, or on the first folder for a new rule.
+- **Apply when a message matches** — **Sender contains** and **Subject contains**. Each condition is switched on by the checkbox in front of it: check the ones you want and type the text to look for. A new rule starts with **none** of them checked — **Enabled** is the only box ticked — so the conditions a rule tests are the ones you asked for. Until a condition is checked its box is read-only and skipped by Tab, so the order is: check the condition, then Tab into its box and type. A message must satisfy **every** condition you checked, so leaving one unchecked is how you say "don't care". Matching ignores case. The *contains* conditions look for your text anywhere in the field, so **Sender contains** matches part of a sender's name as readily as an address. In a client-side rule, text that holds an email address, or part of one such as `@example.com`, is checked against the sender's actual address rather than the name they display, so nobody can match it by putting that address in their name. A whole address or domain must match whole: `@example.com` matches mail from example.com but not from example.com.other.net. A fragment such as `@example` or `jane@` matches any address containing it. Text without an @ still matches the name. **From addresses** and **Sent to addresses** are for email addresses, and each takes more than one, separated by commas — a message matches when it has **any one** of them. Use **Sender contains** where your text is not an address, or holds a comma. The choice is inside that one condition; the conditions themselves are still all required. A client-side rule's **Body contains** and **Subject or body contains** look at the start of the message that QuickMail keeps as its preview, not the whole message. Clearing a checkbox leaves the text sitting in its box, now read-only and skipped by Tab, so a condition you turned off is one keystroke from being turned back on rather than something you have to retype.
+- **Then do this** — **Move to folder**, **Mark as read (client-side only)**, **Delete**, **Play a sound (client-side only)**, and **Stop processing more rules**. **Delete** moves the message to the account's Trash, which Microsoft 365 calls Deleted Items. Choosing Move to folder adds a **Choose folder…** button; the button then shows the folder you picked. The picker is the same folder tree used everywhere else you choose a destination, showing the folders of the rule's own account — a rule files mail within one mailbox. It opens on the folder the rule already files into, or on the first folder for a new rule. If the folder you want to file into does not exist yet, activate **New Folder** (or **Alt+N**) in the picker to create one under the selected folder and target it without leaving the rule you are writing. When the button is offered, the account's name is at the top of the tree; select it to create the folder at the top level, beside Inbox and Sent. The button is not offered for a rule QuickMail cannot tie to one account — a rule that has no account of its own, or an account whose folders have not been read yet. The picker then falls back to showing every account, where a folder created under the selected node could land in a different mailbox from the one the rule files in; you can still pick an existing folder there.
+- **Advanced conditions & actions** — more conditions (**From addresses**, **Sent to addresses**, **Subject or body contains**, **Body contains**, **Sent to me**, **Sent only to me**, **Has attachments**, and **Importance is**) and more actions (**Mark as unread**, **Copy to folder**, **Set importance to**, and **Forward to**). The section starts collapsed for a new rule, and opens by itself when you edit a rule that uses anything in it, so editing never hides a field that is in use.
 
-**Test Rule** runs the rule against the messages currently in your list and tells you how many it would match, so you can check a rule before letting it loose. **Save** stores the rule; **New Rule** and **Delete** manage the list.
+**Save** stores the rule and closes the editor; **Cancel** closes it without saving. A **Move to folder**, **Copy to folder** or **Delete** rule needs at least one condition — with none it would act on every message — so QuickMail will not save it until you add one. **Mark as read**, **Mark as unread** and **Play a sound** rules can have none.
 
-Every enabled rule for the account is tried, in list order, and each one that matches acts. A rule that moves or deletes a message takes it out of the running for the rest of the list.
+**Play a sound** plays a sound when a rule runs, so you can tell mail from one sender by ear, or hear when something has been filed. Check it, then choose a sound, or choose **Choose Sound File…** to use your own WAV or MP3; focus then moves to **Sound**, which names your file. **Default sound** plays whatever the sound scheme in use has for **A rule matched** in **Settings → Sounds**, so changing that changes every rule set to the default. If the scheme sets it to **None**, those rules make no sound. It plays once each time the rule runs, however many messages it matched. It works even with **Play sounds for mail events** turned off, since adding it to a rule already asks for it. **Mute All Sounds** silences it, and it stays quiet during a presentation or while an app is running full screen. If the rule also moves or deletes the message, the sound only plays if that worked.
+
+A rule's sound is for mail arriving while QuickMail is running. Like the new-mail sound, it stays silent for mail that came in while QuickMail was closed, and when more than five matching messages arrive at once, such as when your computer wakes up. **Run on Existing Mail** stays silent too. A message a rule has played a sound for doesn't also play the new-mail sound. Rules run in order, and one that moves or deletes a message takes it away from the rules after it, so put a rule that plays a sound first if another rule files the same mail.
+
+**What a client-side rule can use.** A client-side rule can test **From addresses**, **Subject contains**, **Sender contains**, **Sent to addresses**, **Subject or body contains**, **Body contains**, and **Has attachments**. **From addresses** and **Sent to addresses** each take several addresses, and **Sender contains** can be used together with **From addresses**, in which case both have to match. It has a single subject condition, so **Subject contains** and **Subject or body contains** cannot both be used in one rule; **Save** says so if you try. It can **Mark as read** or **Mark as unread**, **Copy to folder**, **Move to folder** or **Delete**, and **Play a sound**, and it can do more than one of them — but not mark a message both read and unread, or both move and delete it. It does them in that order: marking first, then copying, then moving or deleting, since after that the message is no longer in the Inbox. **Mark as unread** changes only this computer's copy of the message, so it cannot be combined with moving or deleting, which would throw that copy away and the mark with it. A client-side rule cannot copy into the Inbox either: it runs on the Inbox, so each copy would be copied again on the next check. Everything else in the editor needs a server-side rule: **Sent to me**, **Sent only to me**, **Importance is**, **Set importance to**, **Forward to**, and **Stop processing more rules**. **Mark as read**, **Mark as unread** and **Play a sound** are the reverse — only a client-side rule can do them, which is why their labels say so. Editing never changes a rule's kind, so a client-side rule stays client-side. Where a rule cannot become a server-side one, the editor turns those options off rather than offering them: on an account that has client-side rules only, and while you edit a rule that already runs in QuickMail, since editing never changes a rule's kind. A line under **Enabled** says which of the two it is and names the options concerned; it is a Tab stop while it is there, so you meet it on the way through the form. Turned-off options are skipped by Tab, so you will not meet them while moving through the form. On a Microsoft 365 account a **new** rule still offers them — choosing one there is what makes the rule server-side. **Save** still refuses the combinations no client-side rule can hold, and names them: **Subject contains** with **Subject or body contains**, and **Move to folder** with **Delete**. While you edit a server-side rule, **Mark as unread** and **Play a sound** are unavailable, because the server has no way to do them, and so is **Mark as read**, unless the rule already has it — see [Microsoft 365: server-side rules](#microsoft-365-server-side-rules).
+
+**The order rules run in.** Every enabled rule for the account is tried, and each one that matches acts. Server-side rules run on the server as mail is delivered, in the order the list shows; **Move Up** and **Move Down** change it, and **Stop processing more rules** tells the server to skip the server-side rules after it. Client-side rules run when QuickMail sees the mail, in the order they were created, and cannot be reordered. A client-side rule that moves or deletes a message takes it out of the running for the client-side rules after it, both on mail as it arrives and when you use **Run on Existing Mail**.
 
 ### When rules run
 
-Rules run **on your Inbox, on mail as it arrives** — including mail that arrives while QuickMail is sitting open, not only at a full sync. This is deliberate: a rule never reaches back into Sent, Archive, Junk, Trash, or a folder you filed something into by hand, so nothing you deliberately put somewhere is moved or deleted behind your back. Mail already in the mailbox before a rule existed is left alone too.
+Rules run **on your Inbox, on mail as it arrives** — including mail that arrives while QuickMail is sitting open, not only at a full sync. A rule runs on a message when it arrives, however QuickMail first picks it up: the background check, or opening the Inbox a moment before that check comes round. If the Inbox is open when a matching message lands, the message can appear in the list for a moment before the rule acts on it. Rules only ever run on your Inbox, and this is deliberate: a rule never reaches back into Sent, Archive, Junk, Trash, or a folder you filed something into by hand, so nothing you deliberately put somewhere is moved or deleted behind your back. Mail already in the mailbox before a rule existed is left alone too, and so is older mail QuickMail shows for the first time because you widened the **Sync range**.
 
-To apply your rules to mail that is already there, use **Run on Existing Mail**. It runs every enabled rule over the Inbox of each account — again, the Inbox only — across the mail QuickMail has stored locally, and tells you how many messages were moved or deleted. (Mark as read and mark as unread still happen; they are not counted.) An account whose Inbox QuickMail has not read yet in this session is skipped rather than guessed at, and the skip is noted in the log.
+To apply your rules to mail that is already there, use **Run on Existing Mail**. It runs the selected account's enabled client-side rules over that account's Inbox — again, the Inbox only — across the mail QuickMail has stored locally. That can be more mail than the message list shows. When it finishes, the status line says how many rules ran, how many stored Inbox messages they ran on, how many messages were moved and deleted in all, and what each rule that acted did, for example "Ran 3 rules on 2,900 stored Inbox messages for the XS4All account. They moved 1,936 messages and deleted 6: techtalk moved 1,886; Newsletters moved 50; Spam deleted 6." A rule name that could be mistaken for part of that sentence, because it has a number, a period, comma, colon or semicolon, or the word moved, deleted or failed in it, is shown in quotation marks, such as “Top 10” moved 5. A rule that moved or deleted nothing is not named. When more than five rules acted, the first five are named and the rest are added up together. A message two rules match is counted once, under the rule that took it first. A rule that matched messages but couldn't move or delete them, for example because its folder has gone, says how many it failed on, and the log says why. (Marking read or unread and copying still happen; they are not counted.) If QuickMail has not read the account's Inbox yet in this session, because it is offline or still connecting, the rules don't run and the status line says so; try again once the account has connected.
 
 ### Rules belong to one account
 
-Each rule watches one account. Choose it in the **Account** list in the rule's settings; a new rule starts on your default account. The account each rule belongs to is shown beside its name in the rules list.
+Each rule watches one account: the one chosen in the Rules Manager's **Account** list when you create it. The editor has no account field of its own, so to write a rule for another account, choose that account in the list first. Changing the list while the editor is open doesn't move the rule: when you save, the list goes back to the rule's account and selects it, and the status line starts by saying so, for example "Rule saved to Home." The Rules Manager opens on the account you were in. From a view that spans accounts, such as **All Inboxes**, it opens on your default account — the one marked with **Set Default** in Account Manager. A rule made with [Create Rule from Message](#creating-a-rule-from-a-message) belongs to that message's account. Shared mailboxes are not in the list, because their rules are managed in Outlook; if you open the Rules Manager from one, it shows your default account instead, names that account in its title, and says why on its status line. See [Shared mailboxes](#shared-mailboxes).
 
-If you had rules from an earlier version that applied to **all accounts**, QuickMail converts each one into a separate rule per account the first time it starts, so they keep doing what they did. The one exception is a profile whose only accounts connect through Microsoft 365 directly: those mailboxes have no client-side rule to convert to, so an old all-accounts rule is dropped and the reason is written to the log.
+If you had rules from an earlier version that applied to **all accounts**, QuickMail converts each one into a separate rule for every account that is not connected through Microsoft 365 directly, the first time it starts, so they keep doing what they did there. An old rule is never copied onto a Microsoft 365 mailbox, so it cannot start acting on one without your say-so; in a profile whose only accounts are Microsoft 365, it is dropped and the reason is written to the log.
 
 ### Reading the rules list
 
-Each row in the rules list says the rule's name and the account it belongs to. Turn on **Show field labels in the rules list** in **Settings → General → Screen Reader Announcements** to hear those pieces named ("Name … account …") rather than run together.
+The list shows one account at a time, so a row does not repeat the account: it says the rule's name, where it runs, and whether it is enabled. Turn on **Show field labels in the rules list** in **Settings → General → Screen Reader Announcements** to hear those pieces named ("Rule … runs … status …") rather than run together.
+
+In the list, **Enter** edits the selected rule, **Space** turns it on or off, and **Delete** deletes it after asking. The buttons below the list are **New**, **Edit**, **Delete**, **Enable** or **Disable**, **Move Up**, **Move Down**, **Test**, **Run on Existing Mail**, and **Close**; most are on the list's context menu as well, and every one is in the command palette (`Ctrl+Shift+P`). **Escape** closes the window.
+
+**Test** runs the selected client-side rule against the messages that were in the message list when you opened the Rules Manager, and says how many of them it would match, so you can check a rule before letting it loose, for example "This rule would match 1,108 of the 2,526 messages in the message list for the XS4All account." Only messages in the rule's own account are counted, because the rule never acts on any others.
+
+**Test and Run on Existing Mail count different things**, so their numbers usually differ. **Test** checks only the selected rule, against only the messages in the message list. **Run on Existing Mail** runs every enabled client-side rule for the account, against all the Inbox mail QuickMail has stored, which can be more than the list shows. It also counts only what a rule moved or deleted, and once a rule has moved or deleted a message, the rules after it don't count it again.
 
 ### Creating a Rule from a Message
 
-Select a message and choose **Create Rule from Message** from the context menu or the command palette. QuickMail opens a new rule pre-filled with a condition matching the sender and, if present, the subject — a quick starting point you can adjust before saving.
+Select a message and choose **Create Rule from Message** (`Ctrl+Shift+T`) from the **Message** menu, the context menu or the command palette. In a message open in its own window it is on that window's **Message** menu, key and command palette, and uses the message the window is showing. QuickMail opens a new rule pre-filled from that message: the sender is filled in and its condition is **checked**, so the rule matches everything from that sender. It fills in the sender's email address rather than their name wherever QuickMail has it, so the rule doesn't also catch someone else using the same name. The subject is filled in too, but its condition starts **unchecked** — a rule that has to match one sender *and* one exact subject line matches, in practice, only the conversation you made it from. If you did want the subject as well, check its box; the text is already there. This does not work on a message in a shared mailbox, whose rules are managed in Outlook; see [Shared mailboxes](#shared-mailboxes).
 
 ### Microsoft 365: server-side rules
 
-If you have a **work or school** Microsoft 365 (Exchange) account, the Rules Manager does a little more. Alongside the rules that run inside QuickMail, it shows the **server-side rules** on your Exchange mailbox — the same rules Outlook calls "Inbox rules." A server rule runs on Microsoft's servers, so it acts on your mail **even when QuickMail is closed**, and it applies wherever you read that mailbox.
+If you have a **work or school** Microsoft 365 (Exchange) account, the Rules Manager does a little more. Alongside your client-side rules, it shows the **server-side rules** on your Exchange mailbox — the same rules Outlook calls "Inbox rules." A server rule runs on Microsoft's servers, so it acts on your mail **even when QuickMail is closed**, and it applies wherever you read that mailbox.
 
-Server-side rules are an organization feature, so **personal Outlook.com, Hotmail, and Live.com accounts do not have them** — even when connected through Microsoft 365 directly. For a personal account the Rules Manager shows only the rules that run inside QuickMail, the same as any other non-Exchange account.
+Server-side rules are an organization feature, so **personal Outlook.com, Hotmail, and Live.com accounts do not have them** — even when connected through Microsoft 365 directly. For a personal account the Rules Manager shows only client-side rules, the same as any other non-Exchange account.
 
-**One account at a time.** With a Microsoft 365 account present, the Rules Manager opens on a single account chosen in an **Account** list at the top, rather than listing every account's rules together. Choose the account whose rules you want, and the list below shows just that mailbox's rules. If you have only one account there is no picker. This is the first thing to notice if you are used to seeing every account's rules in one list: your rules are not gone, they are behind the account picker.
+**One list, marked where each rule runs.** For a work or school account, server-side and client-side rules appear together in a single list. Each row says where the rule runs — **on server** or **on client** — along with its name and whether it is enabled. Creating, editing, enabling or disabling, and deleting all work the same way whichever kind a rule is; only server-side rules can be reordered. The status line counts them the same way — "4 rules: 3 on server, 1 on client" — so which kinds an account is holding is on screen, and **F6** cycles round to read it back. If one kind can't be loaded, the status line says so and counts only the kind that did.
 
-**One list, marked where each rule runs.** Server rules and QuickMail rules appear together in a single list. Each row says where the rule runs — **on server** or **in QuickMail** — along with its name and whether it is enabled. Creating, editing, enabling or disabling, reordering, and deleting all work the same way whichever kind a rule is. When you open the Rules Manager, or switch to another account with the account picker, QuickMail announces that account's rule mode — that its rules run in QuickMail while it is open, or that the account also supports server-side rules — so an empty list is never a mystery about which kind the account can have.
+**QuickMail chooses where a new rule lives.** When you create a rule, QuickMail saves it as a server rule whenever it can, so it keeps working while QuickMail is closed. A rule that needs something only QuickMail can do — today that is **Mark as read**, **Mark as unread** or **Play a sound** — is saved as a client-side rule instead. On a work or school account, which *does* also do server rules, QuickMail announces that when it happens; the saved rule's own row says **on client** either way, so where it went is there to read whether or not you have announcements turned on.
 
-**QuickMail chooses where a new rule lives.** When you create a rule, QuickMail saves it as a server rule whenever it can, so it keeps working while QuickMail is closed. A rule that needs something only QuickMail can do — today that is **Mark as unread** — is saved as a QuickMail rule instead, and QuickMail tells you why.
+**Mark as read runs in QuickMail, not on the server.** Microsoft 365 will accept a server-side rule that marks messages as read, but Outlook Classic (the desktop Outlook for Windows) treats "mark it as read" as something only a client-side rule can do. It cannot show a server-side rule that marks messages as read, and when it saves its own rules it can switch such a rule off, saying that one or more rules could not be uploaded. So QuickMail no longer puts **Mark as read** in a server-side rule: a new rule that marks messages as read is saved as a client-side rule, which runs while QuickMail is open. Because a client-side rule cannot also **Stop processing more rules**, **Save** says so if you choose both.
 
-**Some server rules are read-only.** A rule you built in Outlook may use conditions or actions QuickMail cannot yet represent exactly. Rather than risk turning it into something you did not intend, QuickMail shows that rule as **read-only**: you can read it, but Edit, Delete, and Move are turned off. Change that rule in Outlook.
+A server-side rule that already marks messages as read, whether an earlier version of QuickMail made it or you made it in Outlook on the web, is left exactly as it is: QuickMail never removes the step for you. The detail pane says that Outlook Classic may not show the rule. When you edit it, a line under **Enabled** explains the same, and **Save** will not store the rule while **Mark as read** is checked. Clear **Mark as read** and save, and the rule keeps everything else and should show up in Outlook Classic again. If Outlook Classic switched the rule off, it stays off until you check **Enabled** as well. If marking as read is all the rule does, clearing it would leave the rule doing nothing, which **Save** refuses; the line under **Enabled** says so, and the way to keep the rule's effect is to delete it and create a new rule that marks messages as read, which QuickMail saves as a client-side rule. If you still want those messages marked as read, add a client-side rule that marks them as read; bear in mind that client-side rules act on mail in the Inbox, so it will not see messages a server-side rule has already moved somewhere else. Turning such a rule on or off, reordering it, and deleting it work as before without changing it.
 
-**Testing.** **Test** runs a rule against the messages in your list and reports how many it would match. It works on **QuickMail rules only**; for a **server rule** the Test control is turned off, the same way Edit and Delete are for a read-only rule — a server rule runs in Exchange, so there is nothing local to test it against.
+**Some server rules cannot be edited here.** A rule you built in Outlook may use conditions or actions QuickMail cannot yet represent exactly. Rather than risk turning it into something you did not intend, QuickMail turns **Edit** off for that rule, and the detail pane says why. You can still read it, turn it on or off, reorder it, and delete it; change the rule itself in Outlook. A rule the server marks **read-only** is different: it cannot be changed here at all, so Edit, Delete, Enable or Disable, and Move are all turned off.
 
-**Run on Existing Mail.** This applies **the selected account's** QuickMail rules to the mail already in its Inbox — matching the one-account-at-a-time layout, so it never acts on rules for an account you are not looking at. It is available only when that account has at least one enabled QuickMail rule; a Microsoft 365 account whose rules are all server-side has nothing for it to do (server rules run in Exchange and cannot be applied to existing mail from here), so the control is turned off in that case.
+**Names on addresses.** In a server-side rule an address can carry a person's name too, the way Outlook shows it. The **From addresses**, **Sent to addresses** and **Forward to** boxes show such an entry as `Name <address>`, and a name that holds a comma is in quotes, as in `"Ford, Kelly" <kelly@example.com>`, so it stays one entry. Saving keeps every name, so editing a rule made in Outlook no longer strips them. You can type an entry the same way; an address typed on its own is saved with the address as its name, which is how Outlook stores one. The rules list shows a named entry as the name with the address after it in parentheses.
+
+**Testing.** **Test** works on **client-side rules only**; for a **server rule** the Test control is turned off, the same way Edit and Delete are for a read-only rule — a server rule runs in Exchange, so there is nothing local to test it against.
+
+**Run on Existing Mail.** This applies **the selected account's** client-side rules to the mail already in its Inbox — matching the one-account-at-a-time layout, so it never acts on rules for an account you are not looking at. It is available only when that account has at least one enabled client-side rule; a Microsoft 365 account whose rules are all server-side has nothing for it to do (server rules run in Exchange and cannot be applied to existing mail from here), so the control is turned off in that case.
 
 **What your organization may need to allow.** For most work or school accounts, an administrator has to permit QuickMail to read and change your mailbox rules before this works. If that permission is not in place, you will see a message about it rather than your server rules; ask your administrator to grant QuickMail access.
 
@@ -1097,6 +1800,31 @@ A saved view is a named filter you can return to instantly — for example, "Unr
 Open the **View Manager** from the **View** menu or the command palette. Create a view by choosing a folder (or All Inboxes), a message filter, and optionally a date limit. Assign a hotkey to jump to it directly.
 
 Press the assigned hotkey from anywhere in the main window to switch to that view immediately.
+
+### Creating a View
+
+Go to the folder you want (any folder, or a merged one such as All Inboxes), and set the view mode, filter, and sort. Then choose **View → Views → Save View…**. Optionally press **Set…** and the keys you want for it. Under **Day Limit**, leave **Show all messages** checked, or clear it and type a number of days, such as 7. The **Name** is filled in from the account, folder, and day limit, for example "Work Inbox, last 7 days"; change it if you like, then choose **Save View**.
+
+### Going to a View
+
+- Press the view's key from anywhere in the main window.
+- Choose it from **View → Views**, where the view you are in is checked.
+- Expand **Views** at the top of the folder tree and choose it.
+- Type its name in the command palette, where views are in their own category.
+
+While a view is active, the window title shows its name.
+
+### Day Limit
+
+A day limit shows only mail from the last so many days. It adds to the view's filter ("Unread, last 7 days" is unread mail from the past week). It changes only what is shown: QuickMail keeps checking mail across the whole [Sync Range](#sync-range), and the older mail is back as soon as you leave the view.
+
+### Views Covering Several Folders
+
+To add a folder to a view, first go to that folder in the main window. Then open **View → Views → Manage Views…**, select the view, choose **Edit**, and choose **Save**. QuickMail asks: **Yes** replaces the view's folder, **No** adds the new one alongside it, and **Cancel** leaves the view alone. In the folder tree, a view with several folders has a ***view name* — All** entry, which shows them all together, and an entry for each folder.
+
+### Managing Views
+
+**View → Views → Manage Views…** opens the View Manager: your views on the left, and on the right what the selected one holds. **Apply View** goes to it, and **Delete** removes it. **Edit** lets you change its key, day limit and name; **Save** then keeps those changes and, if you are in a different folder, asks whether to replace or add it. **Save As New** makes a new view from where you are. A view's mode, filter and sort are set when it is created, so to change them, make a new view with **Save As New** and delete the old one. A view's key also shows in **File → Settings → Keyboard Shortcuts**, and changing it in either place changes both.
 
 ### Leaving a view
 
@@ -1135,6 +1863,10 @@ You can also do it from **File → Settings → Startup**, where the **Opens in*
 
 If the folder later disappears — you delete it, rename it, or remove the account — QuickMail opens in All Mail and tells you why. Nothing is lost and nothing needs repairing.
 
+### Go back to your startup folder
+
+Wherever you have moved to, press **Ctrl+Shift+I**, or choose **View → Go to Startup Folder**, to go straight back to your startup folder, with focus in its message list. If you have not chosen one, that is All Mail. It works like Go to Inbox in other mail programs, with your startup folder as the inbox.
+
 ### Choose how much is checked at startup
 
 Also under **File → Settings → Startup**, **Startup Sync** controls how much mail QuickMail checks while it is starting. This matters most if you have several accounts and a lot of folders.
@@ -1144,6 +1876,25 @@ Also under **File → Settings → Startup**, **Startup Sync** controls how much
 - **Every folder** — checks everything before settling. This is how QuickMail behaved before this setting existed.
 
 New mail still arrives in your inboxes straight away whichever you choose, so notifications are unaffected. Other folders are caught up by the background check — the **Check for new mail every** setting on the **General** tab. If you have set that to **Off**, other folders are only checked when you open them.
+
+### Start QuickMail when you sign in to Windows
+
+QuickMail can start by itself each time you sign in to Windows. This is **off** unless you turn it on.
+
+1. Open **File → Settings** and go to the **Startup** tab.
+2. Under **Windows Sign-In**, check **Start QuickMail automatically when I sign in to Windows**.
+3. Choose **Save**.
+
+**Start minimized**, just below, decides how QuickMail appears when Windows starts it. It is on by default, so QuickMail does not open its window over whatever you have started doing: it starts in the notification area if **Keep running in the notification area when I close the window** is on (**General** tab), and otherwise minimized on the taskbar. Mail is checked and notifications arrive as usual; open QuickMail from the taskbar, **Alt+Tab**, the tray icon, or the Start menu when you want it. Turn **Start minimized** off to have QuickMail open normally instead.
+
+QuickMail uses the standard Windows startup list, so it also appears in **Task Manager** under **Startup apps** and in Windows **Settings → Apps → Startup**. You can turn it off from either place, and QuickMail respects that: its own check box then reads unchecked, with a note that Windows' startup settings have it turned off. Checking it in QuickMail and saving turns it back on.
+
+Some things to know:
+
+- **Installed copies only.** The installed QuickMail stays in the same place across updates, so the startup entry always works. A portable copy can be moved, which would leave Windows pointing at nothing, so on a portable copy the Startup tab explains this instead of offering the setting.
+- **Uninstalling QuickMail removes the startup entry.** Nothing is left behind in your startup list.
+- **If QuickMail is already open** when Windows gets round to starting it — you opened it yourself right after signing in — nothing happens; your window is not brought to the front.
+- **Each profile is separate.** If you run QuickMail with `--profileDir`, turning this on starts that profile, and it has its own entry in the startup list.
 
 ---
 
@@ -1174,6 +1925,20 @@ Expand the **Calendar** node in the folder tree to choose which events you are l
 - **Each calendar under an account** — if an account has more than one calendar (for example iCloud's Home, Family, and Work, or several Google or Outlook calendars), each appears as its own node beneath the account, so you can look at just that one.
 
 Selecting a source filters the list to it. "All Calendars" is the usual choice for day-to-day use.
+
+### Where Calendar sits in the folder list
+
+**Calendar** is the first thing in the folder tree. If you reach your mail by arrowing down from the
+top of the tree, that puts the calendar in your way every time, so you can move it to the bottom
+instead.
+
+1. In the folder tree, move to the **Calendar** node.
+2. Open the context menu with **Shift+F10** or the Applications key (or right-click).
+3. Choose **Calendar at Top of Folder List** or **Calendar at Bottom of Folder List**.
+
+Both are checkable, so opening the menu also tells you where the calendar is now. At the bottom it
+sits after your accounts — the last root in the tree. The choice is remembered between sessions, and
+both are in the Command Palette (**Ctrl+Shift+P**) if you would rather not go through the menu.
 
 ### Choosing a default calendar for new appointments
 
@@ -1220,7 +1985,7 @@ Move through the list with the **Up and Down arrows**. The list has **Subject**,
 
 From any event you have two quick ways to see more:
 
-- Press **Tab** once to move into a **details box** below the list that shows the full appointment (title, when, whether it repeats, location, and for meeting invitations the organizer and your response status), read from the top so a screen reader can review it line by line.
+- Press **Tab** once to move into a **details box** below the list that shows the full appointment (title, when, whether it repeats, location, for meeting invitations the organizer and your response status, and who is invited with each person's answer), read from the top so a screen reader can review it line by line.
 - Press **Enter** to act on the appointment. On an invitation you **haven't answered yet**, Enter opens a short menu — **Accept**, **Tentative**, **Decline**, or **Open full appointment** — so you can respond right from the calendar (see below). On your own appointment, Enter opens the editor; on an invitation you've already answered, it opens the source email.
 
 If you prefer each row spoken with field labels ("Subject …, when …, location …") instead of the concise form, turn on **Show field labels in the calendar event list** in **Settings → General**. It takes effect immediately.
@@ -1244,11 +2009,23 @@ Press **N** (or the **New** toolbar button) to open the appointment editor. It i
 - **All day** — check this for an all-day event; the time fields then switch off. Turning it back off restores the times you had.
 - **Starts / Ends** — a date and a time for each. See **Entering dates and times** below.
 - **Location** — optional.
+- **Invite** — optional. The email addresses of people to invite, separated by semicolons. See [Inviting people to an appointment](#inviting-people-to-an-appointment).
 - **Repeat** — leave as "Does not repeat" for a one-off, or set up a repeating appointment (see below).
 - **Notes** — free text.
-- **Calendar** — when you have a Microsoft, Google, or iCloud account connected, a picker lets you choose where the new appointment is saved: your **Local Calendar** or a connected account. For iCloud the picker lists each of your Apple calendars (Home, Family, …) so you can choose which one. With no connected calendar this picker does not appear and everything is saved locally. The picker starts on your [default calendar](#choosing-a-default-calendar-for-new-appointments) if you have set one, and on **Local Calendar** if you have not.
+- **Calendar** — when you have a Microsoft, Google, or iCloud account connected, a picker lets you choose where the new appointment is saved. It lists your **Local Calendar** first, then every calendar you can write to on each connected account, named account-first: **Work: Team**, **Apple: Family**. Microsoft and Google accounts also get an entry for the account itself — **Work (default calendar)** — meaning whichever calendar that account normally files things into, which is useful when you do not mind and would rather it follow whatever you set on the provider's own site. iCloud has no such entry: an iCloud appointment always names the calendar it goes on. Calendars you only subscribe to, such as a holidays feed or someone else's calendar shared with you read-only, are left out: they are there to be read, and an appointment saved to one would only be refused. A calendar with nothing in it yet is offered like any other, so you can file the first appointment into it. With no connected calendar this picker does not appear and everything is saved locally. The picker starts on your [default calendar](#choosing-a-default-calendar-for-new-appointments) if you have set one, and on **Local Calendar** if you have not.
 
 Press **Enter** (or the **Save** button) to save, or **Escape** to cancel. If something is wrong, QuickMail puts focus on the field at fault and shows the reason on an error line above the buttons; the message clears itself as soon as you fix it.
+
+### Inviting people to an appointment
+
+To make an appointment a meeting, type the people's email addresses in the editor's **Invite** field (**Alt+I** moves there), separated by semicolons. You can write a name with an address, as in `Ann Lee <ann@example.com>`. As you type, matching people and groups are suggested, just as in a message's **To** field and following the same settings (see [Choosing what is suggested](#choosing-what-is-suggested)): press **Down** to move into the suggestions and **Enter** to choose one, or press **Enter** or **Tab** straight away to take the first, which is the one a screen reader names when the list appears. A group adds all its members. Save the appointment to an iCloud, Google or Microsoft calendar, and each person gets a meeting invitation in their email that they can accept or decline in their own mail program.
+
+- **Who sends it.** Google and Microsoft send the invitations themselves. iCloud does too when its server offers to; if it does not, QuickMail emails them from your iCloud account. Either way, after you save QuickMail says how many people the invitation went to — or, if it could not be sent, why. The appointment is saved either way.
+- **Changing a meeting.** Edit it as you would any appointment. When you save, the people invited get an update. Anyone you add to **Invite** gets an invitation, and anyone you remove gets a cancellation.
+- **Deleting a meeting** you organized sends everyone a cancellation. The confirmation tells you who will get one before you answer.
+- **Seeing who is coming.** The details box under the calendar list shows who is invited and how each person has answered (accepted, tentative, declined, or no reply). Answers arrive the next time the calendar syncs.
+- **Someone else's meeting.** When you open a meeting you were invited to, the **Invite** field shows who is invited but cannot be changed: only the organizer changes the guest list.
+- **Local Calendar** cannot send invitations — there is no server to send them from — so the editor asks you to choose one of your accounts' calendars instead. Repeating appointments cannot be meetings yet, because repeating appointments are kept on the Local Calendar.
 
 ### Entering dates and times
 
@@ -1275,7 +2052,7 @@ In a **time** field:
 
 Stepping a time past midnight moves the date with it, so 11:50 PM stepped up becomes 12:00 AM the next day.
 
-You can also just type. Dates accept "8/3", "August 3", "2026-08-03", "today", "tomorrow", "friday", "next tuesday", a bare day number like "3" for that day of the month shown, and offsets like "+7", "-3", "+2w", "+1m", "+1y". Times accept "9", "930", "9:30", "9:30 AM", "9p", "14:30", "noon", "midnight", and offsets like "+30" or "-15". Press Enter or move to another field to apply what you typed; if it isn't something QuickMail can read as a date or a time, the field puts its previous value back.
+You can also just type. Moving to one of these fields with the keyboard selects the value it is holding, so the first thing you type replaces it rather than being added on to the end of it. If you leave the field part-way through typing and come back to it, what you had typed is still there and still where you left it. Dates accept "8/3", "August 3", "2026-08-03", "today", "tomorrow", "friday", "next tuesday", a bare day number like "3" for that day of the month shown, and offsets like "+7", "-3", "+2w", "+1m", "+1y". Times accept "9", "930", "9:30", "9:30 AM", "9p", "14:30", "noon", "midnight", and offsets like "+30" or "-15". Press Enter or move to another field to apply what you typed; if it isn't something QuickMail can read as a date or a time, the field puts its previous value back.
 
 **The end follows the start.** When you change the start date or start time, the end moves by the same amount, so a 30-minute appointment stays 30 minutes long and you are never sent back to fix an end you didn't touch. Changing the end directly sets a new length, which the start then preserves from that point on.
 
@@ -1308,7 +2085,11 @@ If saving a change to an online account ever fails, QuickMail saves your appoint
 
 ### Events your account will not let QuickMail change
 
-Some events on a connected calendar are managed by the provider itself, not by you, and the provider refuses to let **any** outside mail or calendar program edit or delete them. Google is the one you are most likely to meet. Its protected events are:
+Some events on a connected calendar can't be changed from QuickMail, because your account or your provider does not allow it. There are two kinds.
+
+**Events on a calendar you can only read.** A calendar someone shared with you as read-only, or a calendar you subscribe to (such as a holidays calendar), is read-only for your account. Microsoft and Google tell QuickMail which of your calendars are read-only when they sync, so pressing **Delete** or **E** on an event from one tells you straight away — for example, "Your account can only read the Holidays calendar, so this event can't be deleted here." — and nothing is attempted. Change such an event wherever it comes from: the person who shared the calendar, or the subscription. Birthdays on a Microsoft account follow your contacts, so change or clear the birthday on the contact in your Microsoft account.
+
+**Events your provider manages itself.** Google keeps some events under its own control and restricts what any outside mail or calendar program may change on them:
 
 - **Birthdays** — generated from your Google Contacts, usually titled "Happy birthday!"
 - **Out of office**
@@ -1316,9 +2097,11 @@ Some events on a connected calendar are managed by the provider itself, not by y
 - **Focus time**
 - **Events Gmail created for you** from a message, such as a flight, hotel, or delivery.
 
-Pressing **Delete** or saving an edit on one of these fails, and QuickMail currently reports it only as **"Could not update your online calendar."** The event is not damaged and nothing is lost — Google simply declined the change. A clearer message naming the reason is planned.
+Google allows some changes to these and refuses others, so QuickMail tries what you ask. If Google refuses, QuickMail tells you why in plain words, such as "Google doesn't let other programs change birthday events. Change the birthday on the contact in Google Contacts." The event is not damaged and nothing is lost — Google simply declined the change, and QuickMail leaves the event as it was.
 
-What to do instead, depending on the event:
+If any provider refuses a change because your account is not allowed to make it, QuickMail says so, for example "Microsoft doesn't allow your account to change this event." Any other failure, such as a lost connection, is still reported as "Could not update your online calendar."
+
+What to do instead, depending on the Google event:
 
 - **Birthday** — it follows the contact, so change or clear the birthday on that person in **Google Contacts**. To stop seeing birthdays altogether, hide the **Birthdays** calendar in Google Calendar's settings; QuickMail will stop showing them at the next sync.
 - **Out of office, Working location, Focus time** — create, change, or remove these in **Google Calendar** on the web or in its mobile app, where the special editors for them live.
@@ -1338,6 +2121,20 @@ There is a single reminder lead time for all appointments; per-appointment remin
 
 To share an appointment as a standard calendar file, select it and choose **Export Appointment as .ics** from the command palette (**Ctrl+Shift+P**) or the toolbar/menu. QuickMail writes a `.ics` file you can send to someone or import elsewhere. (Exporting one occurrence of a repeating appointment exports the whole series.) This action has no default keyboard shortcut, but you can assign one in **File → Settings → Keyboard Shortcuts**.
 
+### Importing a .ics file
+
+To bring appointments from a `.ics` file into QuickMail — a booking confirmation, a conference or school schedule, or an export from another calendar program — choose **File → Import Calendar File (.ics)…**, the same item on the Calendar node's context menu in the folder tree, or **Import Calendar File (.ics)…** from the command palette (**Ctrl+Shift+P**). Choose one or more files in the Open dialog and press **Enter**.
+
+The appointments go into the **Local Calendar**, where you can edit and delete them like any appointment you created. When the import finishes, QuickMail shows the calendar with the first imported appointment selected and tells you how many were imported, for example "Imported 12 appointments to Local Calendar. 1 skipped."
+
+- **Importing the same file again is safe.** An appointment that is already in the Local Calendar is updated rather than added a second time, and QuickMail says how many were updated.
+- **Repeating appointments keep their pattern**, and any occurrences the file leaves out stay left out. When the file moves one occurrence to another time, that occurrence appears on its new day.
+- **Cancelled appointments are skipped**, and counted in the "skipped" number.
+- **Nothing is sent to anyone.** A file that contains a meeting invitation is imported as a plain appointment; QuickMail does not reply to the organizer.
+- If a file contains no appointments QuickMail can use, a message says so and nothing changes.
+
+Import is a one-time copy: later changes to the original calendar do not follow. Reminders use your usual reminder setting, not any alarms in the file. This action has no default keyboard shortcut, but you can assign one in **File → Settings → Keyboard Shortcuts**.
+
 ### Searching your appointments
 
 Press **Ctrl+Shift+S** while the calendar is open to search. Type to filter the list by title, location, or notes; the count of matches is announced as you type. Press **Escape** to clear the search and return to the full list.
@@ -1355,11 +2152,13 @@ Calendars connect **per account**, the same way contact sync does. When you add 
 | **Local Calendar** | — (they live here) | Full | Nothing to set up; it is always there. |
 | **Microsoft** (Outlook.com, Microsoft 365) | Yes | Yes, for single (non-repeating) events | Check **Sync calendar from this account**. Microsoft asks once for calendar permission. |
 | **Google** | Yes | Yes, for single (non-repeating) events | Check **Sync calendar from this account**. Permission was granted when you signed in for mail. |
-| **iCloud** | Yes | Yes, for single (non-repeating) events | Check **Sync calendar from this account**. QuickMail uses the app-specific password you already entered for the account — no separate setup. When you create an appointment you can choose which iCloud calendar (Home, Family, …) it goes on. |
+| **iCloud** | Yes | Yes, for single (non-repeating) events | Check **Sync calendar from this account**. QuickMail uses the app-specific password you already entered for the account — no separate setup. |
+
+When you create an appointment you can choose which of an account's calendars it goes on — see the **Calendar** picker under [Creating an appointment](#creating-an-appointment). This works for Microsoft, Google and iCloud alike; Microsoft and Google additionally let you say "this account's usual calendar" without naming one.
 
 **Turning it on for an account you already have:** open **Manage Accounts**, select the account, and check **Sync calendar from this account**. It applies immediately — a **Calendar → [account]** node appears in the folder tree and the events sync in the background. Unchecking it removes them.
 
-Connected calendars refresh automatically in the background (roughly every 15 minutes, and once shortly after startup). Press **F5** to refresh on demand, or use **Sync Calendars Now** from the command palette. Syncing is a one-directional download plus, for Microsoft and Google, the single-event write-back described above; it never opens a sign-in prompt on its own — if an account needs you to sign in again for calendar access, QuickMail tells you.
+Connected calendars refresh automatically in the background (roughly every 15 minutes, and once shortly after startup), and again whenever you open the calendar, so an appointment you added somewhere else is there when you look. The list opens straight away from what QuickMail already has and folds in anything new when the account answers; opening the calendar again within half a minute reuses what it just fetched rather than asking again. Press **F5** to refresh on demand, or use **Sync Calendars Now** from the command palette. Syncing is a one-directional download plus, for Microsoft and Google, the single-event write-back described above; it never opens a sign-in prompt on its own — if an account needs you to sign in again for calendar access, QuickMail tells you.
 
 ### What the calendar does and does not do
 
@@ -1371,15 +2170,18 @@ To set expectations clearly:
 - Show four views (Agenda, Day, Week, Month) and jump to any date.
 - Remind you before appointments (when you turn reminders on).
 - Respond to meeting invitations and keep your reply in sync.
+- Invite people to appointments on Microsoft, Google, and iCloud calendars, and send them updates and cancellations.
 - Download events from Microsoft, Google, and iCloud calendars, and create, edit, and delete single (non-repeating) events on any of them.
 - Export any appointment as a `.ics` file.
+- Import `.ics` files into the Local Calendar.
 
 **It does not (yet):**
 
 - Work in online mode — it needs the local cache.
 - Send **repeating** appointments to an online account (repeating appointments are saved to the Local Calendar).
+- Send invitations from the Local Calendar.
 - Edit or delete **repeating** events that came from an online calendar (repeating server events are read-only).
-- Edit or delete the events your provider manages for you — Google birthdays, out-of-office, working location, focus time, and events Gmail created from a message. Google blocks this for every outside program, not just QuickMail; see [Events your account will not let QuickMail change](#events-your-account-will-not-let-quickmail-change).
+- Edit or delete the events your provider manages for you — Google birthdays, out-of-office, working location, focus time, and events Gmail created from a message. Google restricts this for every outside program, not just QuickMail; when it refuses a change, QuickMail tells you why. See [Events your account will not let QuickMail change](#events-your-account-will-not-let-quickmail-change).
 - Connect calendars from generic CalDAV servers other than iCloud (Fastmail, Nextcloud, and the like).
 - Subscribe to public `.ics` calendar feeds (holidays, sports schedules, and the like).
 - Offer multiple named calendars, calendar colors, per-appointment reminder times, or reminder snoozing.
@@ -1426,7 +2228,9 @@ The direction matters, so it is worth being blunt about it: a **two-way** item i
 | **Contacts** | Download only | QuickMail reads your Microsoft, Google, and iCloud contacts and never writes back. Synced contacts cannot be edited or deleted in the address book — [make the change at the account and re-sync](#changing-or-deleting-a-synced-contact). |
 | **Calendar events** | Mostly two-way | Single (non-repeating) events on a connected calendar can be created, edited, and deleted from QuickMail. Repeating events, meeting invitations, and the events your provider manages for you are [download only](#events-your-account-will-not-let-quickmail-change). |
 | **Meeting responses** | Two-way | Accept, Tentative, and Decline are emailed to the organizer and update your calendar. |
-| **Mail rules** | This computer only | Rules run inside QuickMail as mail arrives. They are not server rules — your provider does not know about them, and they do nothing while QuickMail is closed. |
+| **Client-side mail rules** | This computer only | They run inside QuickMail as mail arrives. They are not server-side rules — your provider does not know about them, and they do nothing while QuickMail is closed. |
+| **Server-side mail rules** | Two-way | Only on a work or school Microsoft 365 account, and not on a shared mailbox, whose rules are managed in Outlook. They live on your Exchange mailbox, so they run while QuickMail is closed and apply wherever you read that mailbox. Your organization may need to allow QuickMail to manage them, and a rule the server marks read-only cannot be changed here. See [Microsoft 365: server-side rules](#microsoft-365-server-side-rules). |
+| **The Outbox** | This computer only, until sent | Messages and drafts queued while the server was unreachable wait in QuickMail's data folder and go to your account the next time it connects. No other program sees them until then. See [Working Offline: Drafts and the Outbox](#working-offline-drafts-and-the-outbox). |
 | **Everything else in QuickMail** | This computer only | Settings, themes, keyboard customizations, signatures, message templates, saved views, message-list field choices, contact groups, and the contacts you typed in yourself. |
 
 ### If something you changed came back
@@ -1435,21 +2239,123 @@ That is nearly always a download-only item. QuickMail refreshed from the account
 
 ### Moving to a new computer
 
-Your mail, your contacts, and your connected calendars come back on their own once you add your accounts again, because they live on the server. The **This computer only** row above does not: rules, flags you named, templates, signatures, saved views, and your settings are stored in QuickMail's data folder (`%APPDATA%\QuickMail`) and need to be copied across if you want them.
+Your mail, your contacts, and your connected calendars come back on their own once you add your accounts again, because they live on the server. The **This computer only** rows above do not: client-side rules, flags you named, templates, signatures, saved views, and your settings are stored in QuickMail's data folder (`%APPDATA%\QuickMail`) and need to be copied across if you want them.
 
 **A [POP3 account](#pop3-accounts) is the exception to the first sentence.** If it is set to remove mail from the server once collected, the server has nothing left to give back and `mail.db` in that data folder is your mail — copy it across, or back it up, like any other document.
 
 ---
 
+## Working Offline
+
+QuickMail keeps a copy of your recent mail on this computer, and when the connection drops you keep reading it. The status bar's connection label reads **Offline**; screen readers hear "Offline. Showing cached messages." once, and "Back online." when the connection returns. QuickMail waits a few seconds before saying Offline, so a momentary blip never interrupts you.
+
+### What works offline
+
+- Reading any message you have opened before, or that QuickMail fetched ahead of time (it keeps the newest messages of each folder you open, and the ones around any message you read). To keep more, see [Reading messages without a connection](#reading-messages-without-a-connection).
+- The message list of every folder you have opened, with its unread state and flags.
+- Searching and filtering what is on this computer, the calendar, and the address book.
+- Composing. Saving a draft keeps it on this computer, and Send queues the message; both go to your account the moment the connection returns. See [Working Offline: Drafts and the Outbox](#working-offline-drafts-and-the-outbox).
+
+When you open a folder offline the status bar reads "Offline — showing 12 cached messages." or "Offline — no cached messages in Projects." It never sits on "Loading…".
+
+### What needs a connection
+
+- A message that was never downloaded: "This message is not available offline." Reply and Forward on it say the same and open nothing.
+- Attachments: "Attachments are not available offline."
+- New mail, folder changes, and everything else a server has to do. Marking read, flagging, moving and deleting are not queued: offline they fail with a message, and the next sync after the connection returns puts the message back the way the server has it. Only composing waits for you.
+
+### Reading messages without a connection
+
+By default QuickMail keeps the full text of a message only once you have opened it, or when it fetched a few ahead of time. To have more ready before the connection drops, choose a window under **Settings → General → Sync → Download messages for offline reading**: **Off** (the default); the last **7**, **30** or **90** days; the last **6 months** or **year**; or **All mail**.
+
+With a window set, the sync at launch and each background check (**Check for new mail every**) finish by downloading the text of each Inbox message in that window that QuickMail does not have yet, newest first, a few hundred at a time; new mail arriving in the Inbox gets its text straight away. When a pass completes you hear "Downloaded 120 messages for offline reading." once. A few things to know:
+
+- Inbox only, unless you also check **Include other folders, not just the Inbox**. Then Sent, Archive and your other folders are downloaded too — everything except Trash, Junk and Drafts — Inbox first. Search finds words in the text of those messages only once they are downloaded, so this is what makes searching your sent and archived mail work without opening each message. It can download a great deal more, so it is off by default. Without it, other folders keep working the way they always have: a message is kept once you open it.
+- Never wider than the **Sync range** above it, since QuickMail cannot keep what it has not synced.
+- Attachments are not included. Opening one still needs a connection.
+- POP3 accounts already keep every message whole, so the setting does not apply to them.
+- The text lives in `mail.db` in QuickMail's data folder, which grows accordingly — roughly tens of megabytes for a month of a busy Inbox, so a year or all mail can run to hundreds of megabytes or more.
+- The status bar says how it is going: "Messages: 1,240 of 2,000 downloaded", and "Messages: downloading 120 of 500" while a batch is coming down. Press **Ctrl+9** to reach the status bar (unless the tab strip is showing, in Tab mode or while a message tab is open, when **Ctrl+9** goes to the last tab) and **Right** to move along it. Nothing is said aloud as it changes; it is there to be read when you want it.
+- A large window fills in gradually. Each pass downloads up to 500 messages per Inbox, newest first, so a big Inbox set to a year or all mail takes many background checks to finish.
+
+### Getting back online
+
+Nothing to press. When Windows reports the network again QuickMail reconnects every account by itself; if the network is up but the server does not answer (a hotel or airport sign-in page, an outage at the provider), it keeps trying on its own, first every half minute and then every five. **F5** forces an attempt at any time. Once something answers, the folder you are looking at refreshes and anything waiting in the Outbox goes out.
+
+---
+
+## Moving Your Settings to Another Computer
+
+If you use QuickMail on more than one computer, or are setting up a new one, you can carry your settings across in one file instead of setting everything up again. The same file also works as a backup of your settings before you reinstall Windows.
+
+### Turning it on
+
+Exporting and importing settings are off until you turn them on, on each computer you use them on: open **Settings**, go to the **Advanced** tab, and check **Allow exporting and importing settings** (**Alt+X**). **Export Settings** and **Import Settings** then appear on the **File** menu and in the Command Palette straight away, and stay there until you turn the setting off. Importing settings never changes this setting, on either computer.
+
+### Exporting your settings
+
+1. Choose **File → Export Settings…**, or **Export Settings** from the Command Palette.
+2. The window lists what can go into the file, all of it checked: accounts and signatures; rules, saved views, flags and watched conversations; the address book; message templates; keyboard shortcuts; themes and message list layout; the Local Calendar; and your preferences with the custom spelling dictionary. The list is one stop when you press **Tab**; arrow through it (**Home** and **End** go to the first and last) and press **Space** to leave something out.
+3. Press **Tab** to read a summary of what the file will hold. It contains email addresses, server names, signatures and, if you leave them checked, your address book and Local Calendar. **It never contains a password or a sign-in.**
+4. Choose **Export…** and save the file. Its name ends in `.qmsettings`. QuickMail says how many categories it saved and how large the file is, and returns you to where you were.
+
+Your own sound files go into the file along with rules or preferences, up to 32 MB of them, each scheme's with that scheme. A sound that several schemes use is counted once toward the 32 MB. On the other computer they are added to the sounds already there. If a sound with the same name is already there, it stays as it is. A settings file from QuickMail 0.8.69 or earlier keeps all its sounds together; QuickMail copies each one into the schemes that use it, and where the other computer already had a sound of that name, it copies the one already there into those schemes. Importing preferences replaces the sound schemes on the other computer, including schemes of your own, with the ones in the file. To share a single scheme instead, see [Sound Schemes](#sound-schemes).
+
+Keep the file somewhere private: although it has no passwords in it, it does have your contacts and account details. Copy it to the other computer however you like, on a USB stick or through a folder you already sync.
+
+Your mail is not in the file. It comes back from your mail servers on the other computer. Three things in QuickMail exist only on this computer and are not carried: mail in a POP3 account that is set not to leave mail on the server, the folders you made on a POP3 account (mail that comes back from the server arrives in the Inbox, and a rule that filed into one of those folders leaves the mail in the Inbox until you point it somewhere else), and unsent mail waiting in the Outbox.
+
+### Importing them on the other computer
+
+**On a new install**, you do not need to turn anything on. The first time QuickMail starts, **Add Account** opens with an **Import Settings…** button (**Alt+I**). Choose it, pick the `.qmsettings` file, and carry on from step 5 below. The button is there until the first account is added, so you can close Add Account and come back to it later from the **Accounts** button on the toolbar. If you cancel the import, you are taken back to Add Account. Using it does not turn on **Allow exporting and importing settings**: that stays off until you turn it on yourself.
+
+**On a computer that already has QuickMail set up:**
+
+1. Turn on **Allow exporting and importing settings** on this computer (see *Turning it on*).
+2. Send, save or close any message you are writing. Importing restarts QuickMail, and it will not go ahead while a message window is open.
+3. Choose **File → Import Settings…**.
+4. Pick the `.qmsettings` file.
+5. A preview opens before anything changes, with focus on its summary: which computer the file came from, how many accounts will be added or updated, and what happens next. Press **F6** to move between the summary, the list of what will be imported, the accounts, and the buttons.
+   - Each line of **What will be imported** says what is in the file and what it replaces here, for example "Message templates: 4 templates, replacing the 2 here".
+   - Each account says what will happen to it: "will be added", or "already on this computer, settings will be updated". If this computer has the same address as a different kind of account (for example IMAP here and Microsoft 365 in the file), the account is added separately and the preview says so.
+6. Choose **Import and Restart**, or **Cancel** to leave everything as it is. Pressing **Enter** in the summary or a list does not import; only the button does.
+7. QuickMail closes, opens again, and brings the settings in as it starts. The **Settings Imported** window then opens with focus on the report: what came in, anything that was left out or turned off, and the name of the folder holding a copy of your previous settings. **Copy Report** puts the report on the clipboard.
+
+If the file is not a QuickMail settings file, is damaged, or was made by a newer version of QuickMail, you are told so and nothing changes.
+
+### What importing does
+
+- **This computer ends up matching the file.** Rules, saved views, templates, keyboard shortcuts, themes and the other settings you exported replace the ones here, so importing the same file twice gives the same result. Anything you did not export is left alone.
+- **Accounts are never removed.** An account in the file that is already here (the same address and the same kind of account) keeps its sign-in here and takes the file's settings and signature. An account that is not here yet is added. Accounts here that are not in the file stay as they are.
+- **Shared mailboxes come with their account.** A shared mailbox is imported only when the account it belongs to is imported too.
+- **Contacts synced from a server are kept.** Your own address book and groups are replaced with the ones in the file. A group member that was synced from a server is matched to the same person here by email address; one that cannot be found here yet is left out of the group, and the report says how many.
+- **Local Calendar appointments are added and updated, never deleted.** An appointment already here is updated rather than duplicated.
+- **Some settings belong to this computer and are not changed:** whether exporting and importing are allowed, where Save puts files, logging and connection diagnostics, whether to start minimized at sign-in, and your own Google sign-in app details if you set those up. A setting the file does not mention, because it was made by an older QuickMail, keeps its value here.
+- **Anything that cannot be matched is turned off and named, never guessed.** A rule for an account that is not on this computer is switched off, and a saved view loses that account's folders. For a Microsoft 365 account, folders are found again by name the first time the account's folders load; a rule whose folder that account does not have is switched off, and the status bar says which. Set a folder on the rule to turn it back on.
+- **A copy of your previous settings is kept** in a folder named `backup-` followed by the date and time, in QuickMail's data folder. If the import fails part-way, QuickMail puts everything back from that copy and tells you. If anything could not be put back, it names those files so you can copy them back yourself, with QuickMail closed.
+
+### Signing in after an import
+
+Passwords and sign-ins never travel between computers, so an account that is new on this computer has to be signed in once. An account that was already here keeps its sign-in, unless the file signs it in a different way. In the **Settings Imported** window, arrow to an account in **Accounts to sign in**:
+
+- For a Microsoft or Google account, press **Enter** and sign in in the window that opens.
+- For an account that uses a password, press **Enter** to move to the **Password** box, type the password, and press **Enter** again. Moving to a different account clears the box, so a password is never saved under the wrong account.
+
+Each account reads as "needs sign-in" or "signed in". You can close the window and sign in later with **Reconnect** on the account instead.
+
+---
+
 ## Notifications
 
-New-mail notifications and the option to keep QuickMail running in the notification area when you close the window are both **off by default**. To turn them on, go to **Settings → General → Notifications**.
+New-mail notifications and the option to keep QuickMail running in the notification area when you close the window are both **off by default**. To turn them on, go to **Settings → General → Notifications**. For QuickMail's own sounds, see [Sounds](sounds.html).
 
 ### Show a Notification When New Mail Arrives
 
 When this setting is on, QuickMail shows a Windows notification as new mail arrives in any inbox. The notification is announced by screen readers and appears in the Windows notification center, which you open with **Win+N** on Windows 11 (or **Win+A** on Windows 10). Pressing **Enter** on a notification brings QuickMail to the foreground and opens that message.
 
 If multiple messages arrive together, the notification shows a count ("5 new messages") and brings QuickMail to the foreground when activated. Single-message notifications show the sender's name and subject and open that message.
+
+**Shared mailboxes are an exception:** they do not notify by default, even with this setting on, because a shared mailbox is often a busy team address. To get notifications for a specific shared mailbox, turn on **Notify me of new mail in this shared mailbox** for it in Account Manager. This setting still has to be on for those notifications to appear. See [Shared mailboxes](#shared-mailboxes).
 
 Notifications require **Windows 10 1809 or later**.
 
@@ -1470,12 +2376,120 @@ The first time you hide the window to the tray, a notification explains that Qui
 
 ---
 
+## Sounds
+
+QuickMail can play a short sound when something happens, such as a message being sent or new mail arriving. Sounds for events are **off by default**, and you can also have a [rule](mail-rules.html) play a sound. This is a first version, and we would like to hear what you think; see [Tell us what you think](#tell-us-what-you-think). They add to QuickMail's announcements and status text rather than replacing them, so you still get those whether or not you use sounds.
+
+### Turning Sounds On
+
+Go to **Settings → Sounds** and check **Play sounds for mail events**. These events then have a sound:
+
+- Message sent, message queued to send later, and send failed
+- New mail, and mail in a conversation you are watching
+- A delete, move, archive or empty trash that failed
+- Connection lost and connection restored
+- Calendar reminder, if you have turned on calendar reminders
+- Message deleted, archived and moved
+- Trash emptied
+- Reached the end of a list: pressing **Up** or **Home** when the first message is already selected, or **Down** or **End** at the last (see [The Top and Bottom of the Message List](#the-top-and-bottom-of-the-message-list))
+- A rule matched, which is the sound a [rule](mail-rules.html) set to **Default sound** plays
+
+If you delete or file a lot of mail in a row, you may prefer to set those three message sounds to **None**. Repeats of the same sound within a second are dropped, except the end-of-list sound, which plays each time you press a key at the end of the list.
+
+### The Top and Bottom of the Message List
+
+When the first message is already selected, **Up** and **Home** have nowhere to go, and when the last is selected, neither do **Down** and **End**. The selection stays where it is, so nothing else tells you that you have reached the end. QuickMail does:
+
+- If sounds are on and the scheme in use has a sound for **Reached the end of a list**, you hear that sound, a short, soft note, and nothing is said. Pressing again quickly plays it again, cutting off the one before.
+- Otherwise, QuickMail says "Top of list" or "Bottom of list". It also says so, rather than playing the sound late, when another sound is still playing. QuickMail doesn't interrupt what your screen reader is saying to say it. It is an action result, like "No unread messages below", so you hear it while **Announce action results** is on, under **Screen Reader Announcements** in **Settings → General**.
+
+This works in every message list view: the plain message list, Conversations, and the From and To groups, where the end is the last row you can reach, which is a message when the last group is expanded. Each press at the end tells you again. Holding a key down tells you once, when it gets to the end, rather than on every repeat. **Page Up** and **Page Down** are unchanged.
+
+**Glass**, **Soft bell** and **Wood** have the new sound. Schemes you made yourself, or added from the Sound Scheme Gallery, have no sound for it until you choose one in **Settings → Sounds** (or the gallery offers an update for that scheme), and until then QuickMail says "Top of list" or "Bottom of list" instead.
+
+### Choosing a Sound
+
+1. In **Settings → Sounds**, arrow through **Sound events**. Each entry says the event and its sound, such as "New mail: Arrived".
+2. Choose a sound in **Sound for this event**, or choose **None** to silence that event.
+3. Choose **Preview** to hear it, at the volume showing, or press **Space** on an event in the list to hear that event's sound without leaving the list. Either one plays even if sounds are muted, and stops when you close Settings or preview **None**.
+4. To use a sound of your own, choose **Choose File…** and pick a WAV or MP3 file of up to 5 MB and 30 seconds. QuickMail keeps its own copy in the scheme showing, so you can move or delete the original. Focus moves to **Sound for this event**, which now names your file. Each scheme keeps its own sound files, and lists only those, so to use the same file in another scheme, choose it there as well.
+5. To delete one of your own sound files from a scheme, select an event that uses it and choose **Remove file…**. QuickMail first says how many of the scheme's events still use the file. Those play a built-in sound instead once the file is gone, and the file shows as "(missing)" in the list. Other schemes and rules keep their own copies. Removing a file takes effect at once, even if you then choose Cancel.
+
+Choose **Save** to keep your changes. **Volume** sets how loud QuickMail's sounds are, within whatever Windows is set to. It starts at 80%.
+
+### Sound Tutorial
+
+To learn what each sound means, choose **Help → Sound Tutorial**. It lists every event by name. Arrow to one and press **Space** or **Enter** to hear its sound in the scheme you use, at your saved volume, even if sounds are off or muted. If the event has no sound, QuickMail says "No sound." If the event uses a sound file of yours that has gone, QuickMail says so and plays the built-in sound. **Escape** or **Close** closes the window. It changes nothing; to choose sounds or another scheme, use **Settings → Sounds**.
+
+### Sound Schemes
+
+A sound scheme is a set of choices, one sound for each event. **Sound scheme** chooses the one in use. QuickMail comes with three: **Glass**, **Soft bell** and **Wood**. They have the same sounds with the same melodies, so a sound means the same thing whichever you choose. The tone changes, and **Wood** is also a little quieter. To compare them, select an event, change the scheme and choose **Preview**, all before saving.
+
+Each scheme keeps its own choices. Changing an event while **Glass** is chosen changes Glass only, and switching to **Wood** shows Wood's own choices. Changes you make to several schemes are all kept until you choose **Save** or **Cancel**, so you can switch back and forth while you decide. The line above **Sound events** says how many events in the scheme have a sound, such as "4 of 15 events have a sound".
+
+**Make your own scheme.** Choose **New scheme…**, type a name and press Enter. The new scheme starts with every event set to **None**, so it is silent until you give events a sound. Focus moves to **Sound events**, ready for you to pick sounds. A scheme of your own can use the built-in sounds in any tone, listed as, for example, "Arrived (Soft bell)", as well as your own sound files. **Copy scheme…** does the same, but starts from the sounds of the scheme showing, which is the quickest way to make, say, Glass with your own new-mail sound.
+
+**Rename scheme…** and **Delete scheme…** work on schemes of your own. Deleting a scheme deletes its sound files too, once you choose **Save**; no other scheme or rule uses them, since each keeps its own. If you choose **Cancel** instead, the scheme and its files stay. If you delete the scheme in use, QuickMail goes back to Glass. **Copy scheme…** copies the scheme's sound files along with it, so the copy and the original can then be changed or deleted separately.
+
+**Reset a built-in scheme.** If you have changed Glass, Soft bell or Wood, **Reset scheme…** puts it back to how it ships. It is available only when the scheme showing has changes. Sound files of your own that you added to the scheme are deleted when you choose **Save**, unless you have given one of them to an event again since the reset; QuickMail says so when it asks. If you choose **Cancel**, the scheme and its files stay as they were.
+
+**Get more schemes.** **Browse schemes…** opens the Sound Scheme Gallery, a list of schemes that other people have made and shared. It starts with two: **Essentials**, which has sounds only for the events you might otherwise miss (new mail, a send or action that failed, and the connection dropping and coming back), and **Maya Voicing Glass**, which plays each event's Glass sound and then has an AI voice say what the event was, a good way to learn the sounds. Each entry gives the scheme's name, who made it, and how many events it has a sound for; its description, author and licence are in **Details**, the next Tab stop, a read-only box you can read with the cursor keys, and the description and licence are also the entry's help text. Choose **Add** (or press Enter on a scheme) to add it as a scheme of your own, ready to preview. Choose **Save** to keep it, or delete it if you don't like it. A scheme you have already added says "Added." at the end of its entry, and **Add** is unavailable for it. When the gallery has a newer version of a scheme you added, its entry says "Update available." and the button becomes **Update**. Before anything changes, QuickMail tells you what the update will do. Before using anything from the gallery, QuickMail checks that the list is signed with the gallery's own key and that the file is exactly the one the list names, and then checks the scheme's sound files as it does for **Import scheme…**.
+
+**Updates keep your changes.** QuickMail remembers the sounds of the gallery version you added. When you update, each event you left alone gets the new version's sound, each event you changed keeps your sound, and an event the new version has that your copy doesn't, such as **Reached the end of a list**, is added. An event you left alone that the new version no longer has a sound for goes silent, as it is in the new version. Your own sound files stay. A message tells you what will change, for example "3 events get the new version's sounds, 1 new event is added, 2 events you changed are kept." Choose **OK** to update, or **Cancel** or **Escape** to leave your copy as it is. The scheme keeps the name you gave it.
+
+If an event has no sound in your copy and none in the gallery version either, QuickMail counts it as one you left alone, so a later version that gives it a sound gives it to you. Set it back to **None** afterwards if you want it silent.
+
+A scheme you added before QuickMail 0.8.72 has no record of the gallery version, so QuickMail can't tell your changes from the gallery's. For those, a window asks which way to update, with focus on the first choice: **Add only what's missing** gives a sound to the events your copy doesn't have and changes nothing else; **Replace everything** gives every event the new version's sound, losing any changes you made; **Cancel** or **Escape** leaves your copy as it is. After **Replace everything**, the copy records the new version, so the next update keeps your changes. After **Add only what's missing**, it still can't tell, so the next update asks the same question.
+
+Nothing changes until you choose **Save** in Settings. When you do, sound files from the old version that nothing uses any more are deleted; if you choose **Cancel** instead, your copy stays exactly as it was.
+
+**Hear when an update is waiting.** If you have added a scheme from the gallery, QuickMail checks the gallery for updates to it at most once a day, a couple of minutes after it starts. When one is waiting, the status bar says so and you hear it, for example "An update is available for the Maya Voicing Glass sound scheme. Settings, Sounds, Browse schemes." QuickMail says it once for each new version, not again every day while it waits. Like QuickMail's own update notice, it is an action result, so **Announce action results** decides whether you hear it. QuickMail doesn't update anything by itself; open **Browse schemes…** and choose **Update** when you want it. To stop these checks, turn off **Check for updates to sound schemes from the gallery**, just below **Browse schemes…** in **Settings → Sounds**. Without a scheme from the gallery, or with that setting off, QuickMail contacts the gallery only while **Browse schemes…** is open. The check asks only for the gallery's list, and sends nothing about you or your schemes; see the [privacy policy](https://kellylford.github.io/QuickMail/privacy.html).
+
+**Share a scheme.** **Export scheme…** saves the scheme showing, and any sound files of your own it uses, as a `.qmsounds` file. On another computer, or for someone else, **Import scheme…** adds it as a new scheme of your own, with its sound files. If a scheme of that name is already there, the new one gets a number after its name. Choose **Save** to keep an imported scheme.
+
+A scheme file holds only standard WAV files (16-bit), the kind every app can play. If the scheme uses an MP3 or another kind of sound file of your own, **Export scheme…** turns it into a WAV file inside the exported file, so the scheme works in any app and in the gallery. The WAV keeps the sound's name, ending in ".wav". Your own MP3 stays as it is, and QuickMail still plays it. If a sound can't be turned into a WAV file of 5 MB and 30 seconds or less, it is left out, and **Export scheme…** tells you how many events have no sound in the file as a result. Schemes exported from QuickMail 0.8.69 still import with any MP3s they carry. When you import a scheme, a sound file in it that is damaged, too large or not a standard WAV file is left out, and QuickMail says how many events have no sound because of it.
+
+The Idea Place's other apps, such as The Chat Place, share schemes the same way, but each app has its own events and its own kind of file. If you import a scheme made for another app, QuickMail tells you which app it is for.
+
+### New Mail Sounds and Notifications
+
+The new-mail sound works whether or not new-mail notifications are on. It follows the same rules:
+
+- It only plays for unread mail that arrives in an Inbox while QuickMail is running.
+- It does not play when a lot of mail arrives at once, such as when your computer wakes up.
+- A shared mailbox stays silent unless you turn on **Notify me of new mail in this shared mailbox** for it in Account Manager.
+
+While **Play sounds for mail events** or **Mute all sounds** is on, notifications leave out the Windows notification sound, so you hear QuickMail's sound and not both. That applies even to an event set to **None**. A notification for mail a rule has just played a sound for leaves it out as well.
+
+### When Sounds Stay Quiet
+
+Sounds for things that happen on their own, such as new mail, connection changes and reminders, stay quiet during a presentation, while an app is running full screen, and during the quiet time Windows sets after a new account's first sign-in. Sounds that answer something you just did, such as a message being sent, still play. A message going out from the Outbox on its own counts as something that happened on its own.
+
+**Windows Do Not Disturb does not silence QuickMail's sounds**, because Windows gives apps no way to tell when it is on. To silence them, use **Mute All Sounds**.
+
+### Mute All Sounds
+
+Choose **Tools → Mute All Sounds**, or run it from the Command Palette, to silence every sound, including anything playing. Do the same again to turn sounds back on. You can give it a keyboard shortcut in **Settings → Keyboard Shortcuts**.
+
+### Tell Us What You Think
+
+Sounds are new, and your experience decides where they go next. We would especially like to know:
+
+- Are these the right events? Which are missing, and which would you never use?
+- What do you think of the sounds? Which scheme do you prefer, and are any two sounds too alike, harsh, or easy to confuse with your screen reader's own sounds?
+- How do the sounds work alongside your screen reader's speech?
+
+Use **Help → Report a Bug**, or email [support@theideaplace.net](mailto:support@theideaplace.net).
+
+---
+
 ## Tools Menu
 
 The **Tools** menu is always available from the main window menu bar and groups together the commands used less often than day-to-day mail actions:
 
 - **Address Book…** (`Ctrl+Shift+B`)
 - **Rules…** (`Ctrl+Shift+L`) — opens the [Rules Manager](#mail-rules).
+- **Mute All Sounds** — silences every [sound](sounds.html), and shows a check mark while it's on.
 - **Command Palette…** (`Ctrl+Shift+P`)
 
 **Choosing how QuickMail looks and reads is on the View menu**, not here — **Manage Themes…** opens the [Theme Manager](#themes), **Density** sets [message list density](#message-list-density), and **Message List Fields…** opens the [field chooser](#message-list-fields). **Next Theme** and **Previous Theme** have no menu items; run them from the Command Palette, or give them a key of your own in **File → Settings → Keyboard Shortcuts**.
@@ -1546,6 +2560,64 @@ Recording stops as soon as you turn the setting off. To remove what has already 
 
 ---
 
+## Data Folder and Command-Line Options
+
+### What is in the data folder
+
+QuickMail keeps everything in `%APPDATA%\QuickMail` (usually `C:\Users\<you>\AppData\Roaming\QuickMail`) unless you start it with `--profileDir`. The main files are:
+
+| File | Holds |
+|------|-------|
+| `accounts.json` | Accounts: servers, ports, names. No passwords |
+| `config.ini` | Your settings |
+| `hotkeys.json` | Keys you assigned yourself |
+| `contacts.json`, `groups.json` | The address book and contact groups |
+| `rules.json` | Client-side rules |
+| `views.json`, `folderviews.json` | Saved views, and how each folder was last left |
+| `flags.json`, `watches.json` | Named flags and watched conversations |
+| `templates.json` | Message templates |
+| `custom.lex` | Words you added to the dictionary |
+| `mail.db` | The copy of your mail kept on this computer |
+| `msal.cache` | Encrypted Microsoft sign-in tokens |
+| `quickmail.log`, `connection.log` | The application log and the connection diagnostics log |
+
+Passwords are not in any of these files. They are in Windows Credential Manager. To move all this to another computer, see [Moving Your Settings to Another Computer](#moving-your-settings-to-another-computer).
+
+### Settings with no switch in Settings
+
+A few settings live only in `config.ini`. Close QuickMail before editing the file, because QuickMail rewrites it whenever you save settings. Lines starting with `#` are comments. Changes take effect the next time QuickMail starts.
+
+| Setting | Values | Default | What it does |
+|---------|--------|---------|--------------|
+| `MaxImapConnectionsPerAccount` | `1`–`15` | `6` | How many connections QuickMail may open to each account's mail server at once. Background work stays below this, so opening a message always has room. Raise it only if your provider allows more |
+| `AutoDiscoverOnline` | `on` / `off` | `on` | Whether adding an account looks up settings on the network for a domain QuickMail does not know; see [Automatic settings lookup](#automatic-settings-lookup) |
+| `GraphPollSeconds` | `30`–`600` | `60` | How often a Microsoft 365 account is checked for new mail |
+
+You can also set **Preview lines** for one account by adding a section named after the account's ID, which is in `accounts.json`:
+
+    [account:xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx]
+    PreviewLines = 1
+
+### Command-line options
+
+| Option | What it does |
+|--------|--------------|
+| `--profileDir <path>` | Keep all data in `<path>` instead of `%APPDATA%\QuickMail`. The folder is created if needed |
+| `--online` | Fetch everything live from the server and keep nothing on this computer. Search is limited, and the calendar and Outbox are unavailable |
+| `file.eml` | Open an email file in its own window, in the QuickMail already running if there is one |
+| `/debug` | Write detailed diagnostics to `quickmail.log` |
+| `--help` | List the options and exit |
+
+### Separate profiles
+
+`--profileDir` gives you a completely separate QuickMail, with its own accounts, mail, and settings, for example to keep work and personal mail apart:
+
+    QuickMail.exe --profileDir "C:\QuickMail\Work"
+
+Each profile can run at the same time as the others. An account you add to a new profile asks for its password as usual. A profile folder belongs to one computer: Microsoft sign-ins and passwords stay on the computer that saved them, so do not share one folder between computers through a synced folder. To move to another computer, see [Moving Your Settings to Another Computer](#moving-your-settings-to-another-computer).
+
+---
+
 ## Reporting Issues
 
 QuickMail improves because people report problems and suggest changes. There are **three** ways to do it. They mostly differ in one thing: **whether you can be contacted for follow-up**. Pick whichever fits.
@@ -1554,7 +2626,7 @@ QuickMail improves because people report problems and suggest changes. There are
 |-----|-------|-----------|-----------|
 | **1. Report a Bug → Send** | Help menu, in QuickMail | No | You want to report a problem but don't want any follow-up. |
 | **2. Report a Bug → Copy report and open GitHub** | Help menu, in QuickMail | Yes (via GitHub) | You have a GitHub account and want automatic filing plus direct contact. |
-| **3. Email** | `quickmailissues@theideaplace.net` | Yes (by email) | You'd rather use email and want a personal reply. |
+| **3. Email** | `support@theideaplace.net` | Yes (by email) | You'd rather use email and want a personal reply. |
 
 ### 1. Report a Bug — Send it directly (no account needed, anonymous)
 
@@ -1572,13 +2644,13 @@ Choose this option when you **have a GitHub account** and want automatic bug rep
 
 ### 3. Email us (personal follow-up)
 
-If you'd rather not use the in-app tool at all, email **[quickmailissues@theideaplace.net](mailto:quickmailissues@theideaplace.net)**. Describe the problem in your own words — the more detail (what you did, what happened, what you expected), the better.
+If you'd rather not use the in-app tool at all, email **[support@theideaplace.net](mailto:support@theideaplace.net)**. Describe the problem in your own words — the more detail (what you did, what happened, what you expected), the better.
 
 Choose this option when you **don't mind sending an email** and want a **personal follow-up**.
 
 ### What's included in a report — and what's never included
 
-Alongside what you type, an in-app report (options 1 and 2) adds a short **Environment** section so a problem can be reproduced in the right context: the QuickMail version, your Windows version, the .NET runtime version, the active color theme, the current view, the current sort order, and the message open mode (reading pane, tab, or window).
+Alongside what you type, an in-app report (options 1 and 2) adds a short **Environment** section so a problem can be reproduced in the right context: the QuickMail version, your Windows version, the .NET runtime version, the version of the Microsoft Edge WebView2 runtime that shows messages, the active color theme, the current view, the current sort order, the message open mode (reading pane, tab, or window), and how many accounts you have set up together with the mail protocols they connect over — for example `2 (IMAP, Microsoft 365)`. Any shared mailboxes are counted separately, as in `2 (Microsoft 365), plus 1 shared mailbox`, since a shared mailbox is not one of your own accounts. That last line is counts and protocol names only: no address, server name, or account name is included.
 
 **No message content, email addresses, account settings, passwords, or log file content is ever collected or sent.** The Preview shows the full report verbatim, so you always see exactly what is included before it leaves your computer.
 
@@ -1586,15 +2658,26 @@ Alongside what you type, an in-app report (options 1 and 2) adds a short **Envir
 
 ## Settings
 
-Press **Ctrl+,** to open Settings.
+Press **Ctrl+,** to open Settings. The **Sounds** tab has no access key, so reach it with **Ctrl+Tab** or the arrow keys; see [Sounds](sounds.html).
 
 ### General
 
-- **Reading Mode** — Reading Pane, Tab, or Window
-- **Mark messages read** — automatically on open, or manually only
+- **Preview lines** — Off to 5 lines of message text under each row (3 by default). Takes effect when you next open a folder.
+- **Display mode** — how folders you have not set up yourself are grouped: Messages, Conversations, From, or To.
+- **Sync range** — how far back mail is kept on this computer; see [Sync Range](#sync-range).
+- **Initial fetch count** — how many messages QuickMail fetches from a folder the first time it checks it.
+- **Check for new mail every** — the regular check behind the server's own notice of new mail; **Off (server push only)** relies on the server alone.
+- **Confirm before emptying trash** (**Mail Actions**) — on by default.
 - **Default compose mode** — Plain Text, Markdown, or HTML
+- **Check spelling as I type** — on by default. Turn it off if a message stalls, or your screen reader misreads lines, after you paste a long text. See [Turning off spell checking as you type](#turning-off-spell-checking-as-you-type).
 - **Auto-save drafts** — on/off and interval
+- **Confirm before sending a message** — off by default. Asks before sending or queuing mail; applies to open compose windows as soon as settings are saved.
+- **Suggest addresses as I type** — on by default, with **Suggest from my address book** and **Suggest people I've sent to** under it, both on. Turn off the first to have no address suggestions at all. See [Choosing what is suggested](#choosing-what-is-suggested).
+- **Remember people I send to** — off by default. Remembers people you send to, kept apart from the address book, so they can be suggested; **Forget People I've Sent To** clears them. See [Remembering people you send to](#remembering-people-you-send-to).
 - **Read messages as plain text** — when on, display all messages as plain text instead of HTML
+- **Show pictures included in messages** — on by default. Shows pictures that travel with a message; nothing is fetched from the sender.
+- **Load pictures from the web automatically** — off by default. Loads the pictures a message links to on the web in every message, rather than only when you choose **Load Pictures**. See [Pictures](#pictures).
+- **Saving Messages** — the **Save format** and **Save folder** that **Save** (Ctrl+S) uses. **Choose Folder…** picks the folder and **Use Documents** goes back to your Documents folder. See [Saving and Printing Messages](#saving-and-printing-messages).
 - **Notifications** — two checkboxes:
   - **Show a notification when new mail arrives** — enable Windows notifications for new mail in inboxes (requires Windows 10 1809 or later)
   - **Keep running in the notification area when I close the window** — closing the main window hides QuickMail to the tray instead of exiting
@@ -1604,6 +2687,10 @@ Press **Ctrl+,** to open Settings.
 Accounts are not part of Settings — they have a window of their own. Open **File → Manage Accounts…** to add, edit, test, or remove one. See [Accounts](#accounts).
 
 ### Advanced
+
+**Screen Reader Typing**
+
+- **NVDA Typing Fix** — off by default. Turn it on if you use NVDA's typed-word echo: NVDA then speaks each word as you press the space bar in any text field, such as the message body, To, Cc, Bcc and Subject. Without it, the space bar doesn't reach NVDA as a typed character, so NVDA says nothing and then speaks all the words run together at the next punctuation mark. With it on, typed-character echo may no longer speak the space bar. Takes effect as soon as you select **Save**, including in windows that are already open.
 
 **Account Sign-In**
 
@@ -1632,9 +2719,13 @@ Controls the order of timestamp and message text in each log line. **Action firs
 
 - **Capture screenshots of new windows** — off by default, and a developer aid rather than an everyday setting. It saves a picture of each window as you open it, so someone reviewing how QuickMail looks has something to look at. It lasts for the current session only — QuickMail turns it back off when it closes — and every window's title bar says so while it is on. The images stay on your computer and are removed by **Delete QuickMail logs**.
 
-### Keyboard
+### Keyboard Shortcuts Tab
 
-Reassign shortcuts for any registered command.
+Arrow to a command, press **Enter** (or **Set Shortcut…**) and press the keys you want; **Delete** (or **Restore Default**) puts back the command's own key. Your keys are kept in `hotkeys.json` in QuickMail's data folder. See [Keyboard Customization](#keyboard-customization).
+
+### Windowing
+
+- **Message Open Mode** — **Reading pane** (the default), **Tab**, or **Window**: where a message opens when you press **Enter**.
 
 ### Appearance
 
@@ -1675,8 +2766,8 @@ Control which categories of announcements QuickMail makes:
 | Custom Announcements | Master on/off for all programmatic announcements |
 | Announce hints | Instructional tips ("Press Escape to return") |
 | Announce status | Background progress (sync, loading, connection state) |
-| Announce results | Action outcomes (messages moved, addresses saved, flag changes) |
-| Announce delete and archive actions | Delete and archive outcomes ("1 message archived"). Turn off to stop these from interrupting the screen reader as it reads the next message; failures are still announced |
+| Announce results | Action outcomes (messages copied, addresses saved, flag changes) |
+| Announce delete, archive and move actions | Delete, archive and move outcomes that are worth saying: a count when you acted on several at once ("3 messages deleted"), and "Folder is now empty". Deleting, archiving or moving a single message says nothing either way — the row is gone and the next one is read, so there is nothing left to tell you. Failures are announced as results, so they are heard even with this turned off, as long as **Announce action results** is on |
 | Announce formatting while navigating | Block type announced when caret enters a new paragraph type in HTML compose |
 | Announce spelling errors when typing | Misspellings called out as you type them |
 | Announce spelling errors while navigating | Misspellings called out as you move the cursor through the message |
@@ -1684,7 +2775,7 @@ Control which categories of announcements QuickMail makes:
 | Spelling Suggestions Verbosity | Numbers with suggestions (default) or just suggestions |
 | Show field labels in the contact list | When on, address-book rows speak field names ("Name … email … account …"); when off, they speak concise field data only |
 | Show field labels in the calendar event list | When on, calendar rows speak field names ("Subject … when … location …") |
-| Show field labels in the rules list | When on, rules-list rows speak field names ("Name … account …") |
+| Show field labels in the rules list | When on, rules-list rows speak field names ("Rule … runs … status …") |
 
 All settings default to on except the three **Show field labels** switches and **Announce spelling errors when typing**, which are off. **Spelling Suggestions Verbosity** defaults to **Numbers with suggestions**. Turn off **Custom Announcements** to silence everything at once; turn it back on to restore your individual preferences.
 
@@ -1789,14 +2880,17 @@ The **Row type** list at the top chooses which kind of row you are editing. Each
 | Flag | The flag's name, when the message is flagged |
 | Status (combined) | One word: "replied", "forwarded", "unread", or "read" |
 | Attachments | "attachments" |
-| From, Subject, Preview, Date, To | The field's text |
+| From | The sender's name, or their address when they have no name. The address itself is in the opened message and in Properties (**Alt+Enter**) |
+| Subject, Preview, Date, To | The field's text |
 | Source folder | Where the message lives — only in aggregate views such as All Archive, where it is account-qualified when the view spans accounts |
 | Unread, Replied, Forwarded | Each state on its own, so you can arrange them separately |
 | Mailing list | "mailing list" |
 
 ### Fields for group rows
 
-**Conversation groups** offer Subject, Message count, Sender, Flag, Has unread, Preview, and Date. **Sender and recipient groups** offer Sender, Message count, Flag, Has unread, Preview, Date, and Newest subject. A message count is spoken as "1 message" or "3 messages".
+**Conversation groups** offer Subject, Message count, Sender, Flag, Has unread, Preview, Date, Unread count, and Unread of total. **Sender and recipient groups** offer Sender, Message count, Flag, Has unread, Preview, Date, Newest subject, Unread count, and Unread of total. A message count is spoken as "1 message" or "3 messages".
+
+**Has unread** only tells you that at least one message in the group is unread. To hear how many, turn on **Unread count**, which says "2 unread", or **Unread of total**, which says "2 of 5 unread". Both say nothing when every message in the group has been read, and both are off to begin with. You will usually want only one of the three on. The window points out when two of them would say the same thing twice. Unread of total already includes the number of messages, so with it on you may want **Message count** off. A field you turn on is spoken where it sits in the list, and these two start at the end; use **Move Up** to hear the count sooner.
 
 ### Speaking a state only when it applies
 
@@ -1809,13 +2903,40 @@ This is how you get "tell me about unread but never say read": turn **Status (co
 
 **Status (combined) and the separate states overlap.** Both say the word "unread", so turning on Unread while Status (combined) is still on says it twice. Whenever that would happen, the **About this field** note in the options pane says so and tells you which one to turn off. The note is a focusable box, so it is reachable from the keyboard rather than being text only a sighted user would notice.
 
+### Choosing the word a field says
+
+Select a field, then use **Spoken as** in the options pane (Alt+K) to change the word it says. The box shows the word in use, and the preview, and the rows behind the window, change as you type.
+
+| Field | What Spoken as changes | Leave it empty and… |
+|-------|------------------------|---------------------|
+| A state, such as Unread or Replied | the word said when it applies | nothing is said for it |
+| Message count | the word after the number ("3 messages") | just the number is said |
+| Unread count, Unread of total | the word at the end ("2 unread", "2 of 5 unread") | "2", or "2 of 5" |
+| A text field, such as From or Subject | its label, said only while **Speak field labels** is on | that field has no label |
+
+A state set to **Always speak** also has **When off, spoken as** (Alt+E), the word said when it doesn't apply ("read", "not replied"). Once you change Message count's word, it is used for one message and for many alike. **Default word** (Alt+W) puts the shipped word back.
+
+For example, to hear a conversation as "6 of 12 Budget review", with nothing unread just "12 Budget review": turn on **Unread count** and set it to "of", put it just before **Message count**, empty Message count's box, and choose **Space** under **Between fields**.
+
 ### Field labels
 
 **Speak field labels** prefixes each text field with its name, so a row reads "From: Chris Lee. Subject: Budget review." rather than "Chris Lee. Budget review." It applies to all three row types. States and counts are never labelled, since "unread" and "3 messages" already say what they are.
 
+### Between fields
+
+**Between fields** chooses what separates the fields of a row:
+
+- **Period** (the default): "Chris Lee. Budget review. 2:14 PM."
+- **Comma**: "Chris Lee, Budget review, 2:14 PM"
+- **Space**: "Chris Lee Budget review 2:14 PM"
+
+If you listen at a slow rate, you may prefer a comma or a space between fields; how long each one pauses depends on your screen reader's settings. Only **Period** also ends the row with a period. Punctuation inside a field, such as the sentences of a preview, is never changed, and with **Comma** a field that already ends in punctuation (a preview ending "today." or a subject ending "?") is followed by a space rather than a second mark. The choice applies to all three row types.
+
+You can also make this choice from the window's command palette (Ctrl+Shift+P): **Separate Fields with a Period**, **with a Comma**, or **with a Space**.
+
 ### Starting over
 
-**Reset to Defaults** restores the shipped arrangement for the row type you are currently editing, leaving the other two alone.
+**Reset to Defaults** restores the shipped arrangement for the row type you are currently editing, words included, leaving the other two alone. It does not change **Speak field labels** or **Between fields**, which apply to every row type.
 
 Until you change anything, rows read the way they always have. Empty fields are skipped rather than leaving a gap, so a message with no preview or no subject reads without a pause where it would have been.
 
@@ -1839,18 +2960,25 @@ Every announcement is optional and controlled by the settings above. No custom s
 |----------|--------|
 | `F6` / `Shift+F6` | Cycle panes forward / backward |
 | `Ctrl+1` | Focus account list |
-| `Ctrl+2` | Focus folder tree |
+| `Ctrl+2` or `Ctrl+Y` | Focus folder tree |
 | `Ctrl+3` | Focus message list |
 | `Ctrl+9` | Focus status bar |
 | `Ctrl+Shift+P` | Command palette |
+| `Ctrl+/` | Advanced search |
 | `Ctrl+N` | New message |
 | `Ctrl+R` | Reply |
 | `Ctrl+Shift+R` | Reply All |
-| `Ctrl+F` | Forward |
+| `Ctrl+Shift+F` | Forward |
 | `Delete` | Delete |
 | `Ctrl+Shift+M` | Move to Archive (the account's Archive folder) |
 | `Ctrl+Q` | Mark as Read |
+| `Ctrl+S` | Save the selected messages (default format and folder) |
+| `F12` | Save As |
+| `Ctrl+P` | Print |
 | `Ctrl+A` | Select all messages (message list) |
+| `Shift+Up` / `Shift+Down` | Extend the selection |
+| `Ctrl+Shift+Home` / `Ctrl+Shift+End` | Extend the selection to the first / last message |
+| `Ctrl+C` / `Ctrl+X` / `Ctrl+V` | Copy, cut, and paste messages |
 | `Alt+Enter` | Message properties |
 | `F5` | Refresh |
 | `Ctrl+Shift+E` | Empty Trash |
@@ -1858,21 +2986,25 @@ Every announcement is optional and controlled by the settings above. No custom s
 | `K` | Toggle flag |
 | `Ctrl+Shift+K` | Pick flag |
 | `Ctrl+Shift+S` | Search messages |
-| `Ctrl+Shift+F` | Search folders |
+| `Ctrl+Shift+Y` | Search folders |
+| `Ctrl+Shift+I` | Go to Startup Folder |
 | `Ctrl+Shift+V` | View menu |
 | `Ctrl+Shift+H` | Toggle Plain Text View |
+| `Ctrl+Shift+U` | Load Pictures (from the web, for the open message) |
 | `Ctrl+Shift+G` | Grab Addresses from Message |
 | `Ctrl+Shift+B` | Address Book |
 | `Ctrl+Shift+L` | Rules Manager |
 | `Ctrl+,` | Settings |
 | `F1` | User Guide |
+| `Alt+Down` | Next unread message |
+| `Alt+Up` | Previous unread message |
 | `Shift+,` | First message in group |
 | `Shift+.` | Last message in group |
 | `Escape` | Close contact mail results (message list focus) |
 
 **Move to Folder…** and **Copy to Folder…** are available from the context menu (Shift+F10) or the command palette; they have no default keyboard shortcut. **Manage Themes**, **Next Theme**, **Previous Theme**, **Message List Fields…**, **Density: Comfortable**, **Density: Compact**, **Manage Flags…**, **Expand Folder**, **Collapse Folder**, **Expand All Folders**, **Collapse All Folders**, and **Report a Bug** likewise have no default key — reach them from the menus or the command palette, or assign a shortcut yourself in File → Settings → Keyboard Shortcuts.
 
-`Ctrl+1`, `Ctrl+2`, and `Ctrl+3` jump to a pane when no message tabs are open; with tabs open they select tab 1, 2, and 3 instead. **`Ctrl+Alt+1`, `Ctrl+Alt+2`, and `Ctrl+Alt+3` always** go to the account list, folder tree, and message list, whatever else is open. `Ctrl+0` moves to the toolbar.
+`Ctrl+1`, `Ctrl+2`, `Ctrl+3`, and `Ctrl+9` jump to a pane unless the tab strip is showing (always in Tab mode, and otherwise while a message tab is open); then they select tab 1, 2, 3, and the last tab instead. **`Ctrl+Alt+1`, `Ctrl+Alt+2`, and `Ctrl+Alt+3` always** go to the account list, folder tree, and message list, whatever else is open. `Ctrl+0` moves to the toolbar.
 
 **Calendar** (`Ctrl+Shift+C` to open): `A`/`D`/`W`/`M` switch views, `T` goes to today, `Ctrl+Left`/`Ctrl+Right` move between periods, `Ctrl+G` goes to a date, `N`/`E`/`Delete` create/edit/delete appointments, and `Ctrl+Shift+S` searches. See the [Calendar](#calendar) section for the full list.
 
@@ -1880,9 +3012,10 @@ Every announcement is optional and controlled by the settings above. No custom s
 
 | Shortcut | Action |
 |----------|--------|
-| `Ctrl+Enter` | Open message in new tab |
 | `Ctrl+Tab` | Next tab |
 | `Ctrl+Shift+Tab` | Previous tab |
+| `Ctrl+1` … `Ctrl+8` | Go to tab 1 to 8 (while the tab strip is showing) |
+| `Ctrl+9` | Go to the last tab (while the tab strip is showing) |
 | `Ctrl+W` | Close tab |
 | `Ctrl+Shift+T` | Focus tab strip |
 | `Ctrl+Shift+`` ` | Tab list |
@@ -1896,25 +3029,32 @@ Every announcement is optional and controlled by the settings above. No custom s
 | `Alt+M` | Focus From account |
 | `Alt+Y` | Focus message body |
 | `Alt+S` or `Ctrl+Enter` | Send |
+| `Ctrl+S` | Save draft |
+| `Ctrl+Shift+B` | Address Book (add to To, Cc, Bcc) |
 | `Ctrl+Shift+1/2/3` | Switch to Plain Text / Markdown / HTML mode |
 | `F7` | Check Spelling (full dialog) |
 | `Ctrl+F7` / `Ctrl+Shift+F7` | Next / previous misspelling (inline) |
+| `Alt+F7` | Repeat the spelling announcement |
 | `Alt+1` / `Alt+2` / `Alt+3` | Accept first / second / third spelling suggestion |
 | `F8` | Open preview (Markdown and HTML) |
 | `Ctrl+B` | Bold |
 | `Ctrl+I` | Italic |
 | `Ctrl+U` | Underline (HTML only) |
 | `Ctrl+Shift+X` | Strikethrough |
-| `Ctrl+Alt+1/2/3` | Heading 1 / 2 / 3 |
+| `Ctrl+Alt+0` | Normal text |
+| `Ctrl+Alt+1` to `Ctrl+Alt+6` | Heading 1 to 6 |
+| `Ctrl+Shift+9` | Quote |
 | `Ctrl+Shift+L` | Bullet list |
 | `Ctrl+Shift+N` | Numbered list |
-| `Ctrl+L` | Insert link |
+| `Ctrl+K` / `Ctrl+L` | Insert link (`Ctrl+K` in the message body) |
+| `Ctrl+Shift+I` | Insert image |
+| `Alt+Enter` | Image properties (on a picture) |
 | `Ctrl+Space` | Clear formatting |
 | `Ctrl+T` | Announce formatting at cursor |
 | `Ctrl+Shift+T` | Show formatting in browsable list |
 | `Ctrl+Shift+A` | Add attachment |
 | `Alt+A` | Focus attachment list |
-| `Ctrl+K` | Check addresses |
+| `Ctrl+K` | Check addresses (outside the message body) |
 | `Ctrl+Shift+P` | Command palette |
 | `Escape` | Close window (when no menu or dropdown is open) |
 

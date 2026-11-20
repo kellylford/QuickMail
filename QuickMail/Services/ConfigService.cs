@@ -128,11 +128,19 @@ public class ConfigService : IConfigService
 
     // ── Parser ────────────────────────────────────────────────────────────────────
 
-    private static ConfigModel ParseFile(string[] lines)
+    /// <param name="into">Parse on top of this model rather than the defaults: a key the file lacks keeps
+    /// its value there (a settings import from an older QuickMail, #507).</param>
+    internal static ConfigModel ParseFile(string[] lines, ConfigModel? into = null)
     {
-        var config       = new ConfigModel();
+        var config       = into ?? new ConfigModel();
         string? section  = null;
         Guid    acctGuid = Guid.Empty;
+        // Sounds (#932): [sounds.<id>] sections, and what 0.8.67/0.8.68 wrote, migrated after the loop.
+        string? soundSchemeId   = null;
+        string? legacySoundPack = null;
+        string? soundSection    = null;
+        var legacySounds   = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var schemeSections = new Dictionary<string, Dictionary<string, string>>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var raw in lines)
         {
@@ -169,6 +177,19 @@ public class ConfigService : IConfigService
                     section  = "features";
                     acctGuid = Guid.Empty;
                 }
+                else if (header == "sounds")
+                {
+                    section  = "sounds";
+                    acctGuid = Guid.Empty;
+                }
+                else if (header.StartsWith("sounds.", StringComparison.Ordinal) && header.Length > "sounds.".Length)
+                {
+                    section      = "soundscheme";
+                    acctGuid     = Guid.Empty;
+                    soundSection = header["sounds.".Length..];
+                    if (!schemeSections.ContainsKey(soundSection))
+                        schemeSections[soundSection] = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                }
                 else if (header == "google")
                 {
                     section  = "google";
@@ -198,6 +219,12 @@ public class ConfigService : IConfigService
                         break;
                     case "readasplaintext":
                         config.ReadAsPlainText = ParseBool(value);
+                        break;
+                    case "showembeddedpictures":
+                        config.ShowEmbeddedPictures = ParseBool(value);
+                        break;
+                    case "loadwebpictures":
+                        config.LoadWebPictures = ParseBool(value);
                         break;
                     case "viewmode":
                         config.ViewMode = value.ToLowerInvariant() switch
@@ -244,6 +271,12 @@ public class ConfigService : IConfigService
                         if (int.TryParse(value, out var msp))
                             config.MailSyncPollMinutes = msp <= 0 ? 0 : Math.Clamp(msp, 1, 120);
                         break;
+                    case "offlinebodydays":
+                        if (int.TryParse(value, out var obd)) config.OfflineBodyDays = obd < 0 ? ConfigModel.OfflineBodyDaysAll : obd;
+                        break;
+                    case "offlinebodyallfolders":
+                        config.OfflineBodyAllFolders = ParseBool(value);
+                        break;
                     case "appearancethemeid":
                         if (!string.IsNullOrWhiteSpace(value)) config.AppearanceThemeId = value;
                         break;
@@ -270,6 +303,7 @@ public class ConfigService : IConfigService
                     case "announcespellingwhilenavigating": config.AnnounceSpellingWhileNavigating = ParseBool(value); break;
                     case "announcespellingsuggestions":     config.AnnounceSpellingSuggestions     = ParseBool(value); break;
                     case "messagelistshowfieldlabels":      config.MessageListShowFieldLabels      = ParseBool(value); break;
+                    case "messagelistfieldseparator":       config.MessageListFieldSeparator       = RowFieldSeparators.FromConfigValue(value); break;
                     case "contactlistshowfieldlabels":      config.ContactListShowFieldLabels      = ParseBool(value); break;
                     case "calendarlistshowfieldlabels":     config.CalendarListShowFieldLabels     = ParseBool(value); break;
                     case "rulelistshowfieldlabels":         config.RuleListShowFieldLabels         = ParseBool(value); break;
@@ -284,15 +318,57 @@ public class ConfigService : IConfigService
                         break;
                     case "announceformattingwhilenavigating": config.AnnounceFormattingWhileNavigating = ParseBool(value); break;
                     case "confirmemptytrash":    config.ConfirmEmptyTrash    = ParseBool(value); break;
+                    case "savemessageformat":    config.SaveMessageFormat    = MessageSaveFormats.ToConfigValue(MessageSaveFormats.FromConfigValue(value)); break;
+                    case "savemessagefolder":    config.SaveMessageFolder    = value; break;
+                    case "lastsaveasfolder":     config.LastSaveAsFolder     = value; break;
                     case "notifyonnewmail":      config.NotifyOnNewMail      = ParseBool(value); break;
                 case "notifyonwatchedconversation": config.NotifyOnWatchedConversation = ParseBool(value); break;
+                    case "playeventsounds":      config.PlayEventSounds      = ParseBool(value); break;
+                    case "mutesounds":           config.MuteSounds           = ParseBool(value); break;
+                    case "soundvolume":
+                        if (int.TryParse(value, out var soundVolume) && soundVolume >= 0 && soundVolume <= 100)
+                            config.SoundVolume = soundVolume;
+                        break;
+                    case "soundscheme":
+                        if (!string.IsNullOrWhiteSpace(value)) soundSchemeId = value;
+                        break;
+                    case "checksoundschemeupdates": config.CheckSoundSchemeUpdates = ParseBool(value); break;
+                    case "lastsoundschemeupdatecheck":
+                        // Round-trip ("o") UTC; anything else is as if never checked, so the next check just happens.
+                        if (DateTime.TryParse(value, System.Globalization.CultureInfo.InvariantCulture,
+                                System.Globalization.DateTimeStyles.RoundtripKind, out var lastCheck)
+                            && lastCheck.Kind == DateTimeKind.Utc)
+                            config.LastSoundSchemeUpdateCheck = lastCheck;
+                        break;
+                    case "announcedsoundschemeupdates":
+                        // "<gallery id>:<sha256>, …"; a malformed pair is dropped, so at worst it is said again.
+                    {
+                        var announced = new Dictionary<string, string>(StringComparer.Ordinal);
+                        foreach (var pair in value.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
+                        {
+                            var colon = pair.IndexOf(':');
+                            if (colon <= 0) continue;
+                            var announcedId = pair[..colon];
+                            var announcedSha = pair[(colon + 1)..];
+                            if (SoundGalleryService.IsValidId(announcedId) && SoundGalleryService.IsValidSha256(announcedSha))
+                                announced[announcedId] = announcedSha;
+                        }
+                        config.AnnouncedSoundSchemeUpdates = announced;
+                        break;
+                    }
+                    case "soundpack":   // 0.8.67 and 0.8.68; see ApplySoundSections
+                        if (!string.IsNullOrWhiteSpace(value)) legacySoundPack = value;
+                        break;
                     case "closetotray":          config.CloseToTray          = ParseBool(value); break;
                     case "trayhintshown":        config.TrayHintShown        = ParseBool(value); break;
+                    case "startminimizedatsignin": config.StartMinimizedAtSignIn = ParseBool(value); break;
                     case "logformat":
                         config.LogFormat = string.Equals(value, "timefirst", StringComparison.OrdinalIgnoreCase) ? "timeFirst" : "actionFirst";
                         break;
                     case "enablelogging": config.EnableLogging = ParseBool(value); break;
                     case "connectiondiagnostics": config.ConnectionDiagnostics = ParseBool(value); break;
+                    case "nvdatypingfix":         config.NvdaTypingFix         = ParseBool(value); break;
+                    case "allowsettingstransfer": config.AllowSettingsTransfer = ParseBool(value); break;
                     case "tutorialcompleted":    config.TutorialCompleted    = ParseBool(value); break;
                     case "desktopshortcutprompted": config.DesktopShortcutPrompted = ParseBool(value); break;
                     case "autoupdate":              config.AutoUpdate              = ParseBool(value); break;
@@ -306,6 +382,24 @@ public class ConfigService : IConfigService
                             "html"     => Models.ComposeMode.Html,
                             _          => Models.ComposeMode.PlainText,
                         };
+                        break;
+                    case "checkspellingasyoutype":
+                        config.CheckSpellingAsYouType = ParseBool(value);
+                        break;
+                    case "confirmbeforesend":
+                        config.ConfirmBeforeSend = ParseBool(value);
+                        break;
+                    case "rememberrecipients":
+                        config.RememberRecipients = ParseBool(value);
+                        break;
+                    case "suggestaddresses":
+                        config.SuggestAddresses = ParseBool(value);
+                        break;
+                    case "suggestfromaddressbook":
+                        config.SuggestFromAddressBook = ParseBool(value);
+                        break;
+                    case "suggestpeopleemailed":
+                        config.SuggestPeopleEmailed = ParseBool(value);
                         break;
                     case "autosavedrafts":
                         config.AutoSaveDrafts = ParseBool(value);
@@ -321,6 +415,7 @@ public class ConfigService : IConfigService
                     case "showdeclinedevents": config.ShowDeclinedEvents = ParseBool(value); break;
                     case "defaultcalendarsource": config.DefaultCalendarSource = value; break;
                     case "calendarpaneopen":   config.CalendarPaneOpen   = ParseBool(value); break;
+                    case "calendaratendoffolderlist": config.CalendarAtEndOfFolderList = ParseBool(value); break;
                 }
             }
             else if (section == "windowing")
@@ -369,6 +464,16 @@ public class ConfigService : IConfigService
                 // Preserve the original key case so IFeatureGate matches FeatureFlag.ToString().
                 config.Features[rawKey] = value;
             }
+            else if (section == "sounds")
+            {
+                // 0.8.67/0.8.68's one list for every style; moved into a scheme after the loop.
+                legacySounds[rawKey] = value;
+            }
+            else if (section == "soundscheme" && soundSection is not null)
+            {
+                // Kept as written; SoundCatalog.Resolve validates a value when it is used.
+                schemeSections[soundSection][rawKey] = value;
+            }
             else if (section == "google")
             {
                 switch (key)
@@ -379,12 +484,102 @@ public class ConfigService : IConfigService
             }
         }
 
+        ApplySoundSections(config, soundSchemeId, legacySoundPack, legacySounds, schemeSections);
         return config;
+    }
+
+    /// <summary>
+    /// Starts a key in a <c>[sounds.user-…]</c> section that records the gallery version's sound for an
+    /// event (#971), such as <c>GallerySound.NewMail</c>. A QuickMail before 0.8.72 keeps such a key as
+    /// an event it doesn't know, so it survives a downgrade; <see cref="GallerySoundSha256Key"/> is what
+    /// then tells a stale record from a current one.
+    /// </summary>
+    internal const string GallerySoundPrefix = "GallerySound.";
+
+    /// <summary>
+    /// The SHA-256 of the gallery file the recorded sounds are from (#971). They are used only while it
+    /// equals <c>GallerySha256</c>: an older QuickMail updating the scheme changes that and keeps the
+    /// recorded sounds as unknown events, so after a downgrade and back they would be another version's.
+    /// </summary>
+    internal const string GallerySoundSha256Key = "GallerySoundSha256";
+
+    /// <summary>
+    /// Builds the sound schemes from what the file holds (#932). A file from 0.8.67 or 0.8.68 has
+    /// <c>SoundPack</c> and one <c>[sounds]</c> list for every style: the pack becomes the scheme in
+    /// use, and the list moves into that scheme, so nobody loses a choice on upgrade. Only the new
+    /// form is ever written back.
+    /// </summary>
+    private static void ApplySoundSections(ConfigModel config, string? schemeId, string? legacyPack,
+        Dictionary<string, string> legacySounds, Dictionary<string, Dictionary<string, string>> sections)
+    {
+        if (schemeId is not null) config.SoundSchemeId = schemeId;
+        else if (legacyPack is not null)
+        {
+            var pack = legacyPack.Trim().ToLowerInvariant();
+            config.SoundSchemeId = SoundCatalog.IsBuiltInSchemeId(pack) ? pack : legacyPack;
+        }
+
+        if (legacySounds.Count > 0)
+        {
+            // The list applied to whichever style was chosen when it was written, and under any style
+            // that build didn't have it played as Glass, so it goes to Glass then.
+            var target = (legacyPack ?? SoundCatalog.DefaultPack).Trim().ToLowerInvariant();
+            if (!SoundCatalog.IsBuiltInSchemeId(target)) target = SoundCatalog.DefaultPack;
+            if (!sections.TryGetValue(target, out var section))
+                sections[target] = section = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var (key, value) in legacySounds)
+                section.TryAdd(key, value);   // a [sounds.<id>] entry is newer, so it wins
+        }
+
+        if (sections.Count == 0) return;
+        // A new dictionary rather than adding to one the sound worker may be reading (an import's baseline).
+        var schemes = new Dictionary<string, SoundScheme>(config.SoundSchemes, StringComparer.OrdinalIgnoreCase);
+        foreach (var (id, entries) in sections)
+        {
+            if (SoundCatalog.IsBuiltInSchemeId(id))
+            {
+                schemes[id] = new SoundScheme(id, SoundCatalog.PackLabel(id), isBuiltIn: true, pack: id, entries);
+            }
+            else if (SoundCatalog.IsUserSchemeId(id))
+            {
+                entries.Remove("Name", out var name);
+                entries.Remove("Author", out var author);
+                entries.Remove("License", out var license);
+                entries.Remove("Description", out var description);
+                entries.Remove("GalleryId", out var galleryId);
+                entries.Remove("GallerySha256", out var gallerySha);
+                // Where it came from in the gallery: both halves, well formed, or nothing, so a hand
+                // edit can't make the gallery offer an update that isn't one.
+                var origin = galleryId is not null && gallerySha is not null
+                    && SoundGalleryService.IsValidId(galleryId) && SoundGalleryService.IsValidSha256(gallerySha)
+                    ? new SoundGalleryOrigin(galleryId, gallerySha) : null;
+                // The gallery version's sounds (#971), "GallerySound.<event> = <sound>": never events,
+                // and kept only with an origin, and only if they are that origin's file's sounds. Without
+                // both, the scheme is treated as never tracked, which is the safe way to update it.
+                entries.Remove(GallerySoundSha256Key, out var baselineSha);
+                var baselineIsCurrent = origin is not null && string.Equals(baselineSha, origin.Sha256, StringComparison.Ordinal);
+                var baseline = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                foreach (var key in entries.Keys.Where(k => k.StartsWith(GallerySoundPrefix, StringComparison.OrdinalIgnoreCase)).ToList())
+                {
+                    entries.Remove(key, out var sound);
+                    if (key.Length > GallerySoundPrefix.Length) baseline[key[GallerySoundPrefix.Length..]] = sound!;
+                }
+                schemes[id] = new SoundScheme(id, string.IsNullOrWhiteSpace(name) ? id : name, isBuiltIn: false, events: entries,
+                    author: author, license: license, description: description, galleryOrigin: origin,
+                    galleryBaseline: baselineIsCurrent && baseline.Count > 0 ? baseline : null);
+            }
+            else
+            {
+                // From a newer QuickMail: kept exactly as written, never shown or played.
+                schemes[id] = new SoundScheme(id, id, isBuiltIn: false, events: entries);
+            }
+        }
+        config.SoundSchemes = schemes;
     }
 
     // ── Writer ────────────────────────────────────────────────────────────────────
 
-    private static string BuildFileText(ConfigModel config)
+    internal static string BuildFileText(ConfigModel config)
     {
         var sb = new StringBuilder();
 
@@ -407,6 +602,17 @@ public class ConfigService : IConfigService
         sb.AppendLine("# Read messages as plain text instead of HTML.");
         sb.AppendLine("# When on, each message is rendered from its original plain-text part (or text");
         sb.AppendLine("# extracted from the HTML when there is no plain-text part). Values: on, off.");
+        sb.AppendLine();
+
+        sb.AppendLine($"ShowEmbeddedPictures = {(config.ShowEmbeddedPictures ? "on" : "off")}");
+        sb.AppendLine("# Show pictures sent inside a message. They contact no server. Pictures a message");
+        sb.AppendLine("# links to on the web are not affected; see LoadWebPictures. Values: on, off.");
+        sb.AppendLine();
+
+        sb.AppendLine($"LoadWebPictures = {(config.LoadWebPictures ? "on" : "off")}");
+        sb.AppendLine("# Load pictures from the web in every message. Off: they load only when you ask,");
+        sb.AppendLine("# with Load Pictures. Loading one tells its server you opened the message.");
+        sb.AppendLine("# Values: on, off.");
         sb.AppendLine();
 
         sb.AppendLine($"ViewMode = {config.ViewMode}");
@@ -456,6 +662,13 @@ public class ConfigService : IConfigService
         sb.AppendLine();
 
         sb.AppendLine($"MailSyncPollMinutes = {(config.MailSyncPollMinutes <= 0 ? 0 : Math.Clamp(config.MailSyncPollMinutes, 1, 120))}");
+        sb.AppendLine($"OfflineBodyDays = {(config.OfflineBodyDays < 0 ? ConfigModel.OfflineBodyDaysAll : config.OfflineBodyDays)}");
+        sb.AppendLine("# Days of Inbox mail whose full text is downloaded for reading offline.");
+        sb.AppendLine("# 0 (default) is off; 7, 30, 90, 180 or 365 keep that many days; -1 keeps all.");
+        sb.AppendLine("# Never wider than SyncDays.");
+        sb.AppendLine("# Attachments are not included.");
+        sb.AppendLine($"OfflineBodyAllFolders = {config.OfflineBodyAllFolders.ToString().ToLowerInvariant()}");
+        sb.AppendLine("# true: also download from folders other than the Inbox (not Trash, Junk, Drafts). Default false.");
         sb.AppendLine("# Fallback mail-sync interval (minutes) behind IMAP IDLE.");
         sb.AppendLine("# Periodically re-syncs inboxes so new mail still arrives if the server never");
         sb.AppendLine("# pushes or the IDLE connection dies, and read/flag changes from other clients");
@@ -514,6 +727,12 @@ public class ConfigService : IConfigService
         sb.AppendLine("# what order is set in the Message List Fields window. Values: on, off.");
         sb.AppendLine();
 
+        sb.AppendLine($"MessageListFieldSeparator = {RowFieldSeparators.ToConfigValue(config.MessageListFieldSeparator)}");
+        sb.AppendLine("# Message list: what goes between the fields of each row's accessible name. Only");
+        sb.AppendLine("# period (default) also ends the row with a period. Punctuation inside a field is");
+        sb.AppendLine("# never changed. Values: period, comma, space.");
+        sb.AppendLine();
+
         sb.AppendLine($"ContactListShowFieldLabels = {(config.ContactListShowFieldLabels ? "on" : "off")}");
         sb.AppendLine("# Address book: speak field labels (Name/email/account) in each contact row's");
         sb.AppendLine("# accessible name. Off (default) speaks concise field data only. Values: on, off.");
@@ -543,12 +762,12 @@ public class ConfigService : IConfigService
         sb.AppendLine();
 
         sb.AppendLine($"AnnounceResults = {(config.AnnounceResults ? "on" : "off")}");
-        sb.AppendLine("# Announce action outcomes such as search result counts and move confirmations.");
+        sb.AppendLine("# Announce action outcomes such as search result counts and copy confirmations.");
         sb.AppendLine("# Values: on, off.");
         sb.AppendLine();
 
         sb.AppendLine($"AnnounceMessageActions = {(config.AnnounceMessageActions ? "on" : "off")}");
-        sb.AppendLine("# Announce delete and archive outcomes (e.g. \"1 message archived\"). Split from");
+        sb.AppendLine("# Announce delete, archive and move outcomes (e.g. \"3 messages archived\"). Split from");
         sb.AppendLine("# AnnounceStatus so this frequent chatter can be silenced on its own. Values: on, off.");
         sb.AppendLine();
 
@@ -585,6 +804,19 @@ public class ConfigService : IConfigService
         sb.AppendLine("# Values: on, off.");
         sb.AppendLine();
 
+        sb.AppendLine($"SaveMessageFormat = {MessageSaveFormats.ToConfigValue(MessageSaveFormats.FromConfigValue(config.SaveMessageFormat))}");
+        sb.AppendLine("# The format Save (Ctrl+S) writes, and the type Save As starts on.");
+        sb.AppendLine("# Values: eml (the original message), txt, html, pdf. Default eml.");
+        sb.AppendLine();
+
+        sb.AppendLine($"SaveMessageFolder = {config.SaveMessageFolder}");
+        sb.AppendLine("# The folder Save (Ctrl+S) writes into. Empty means your Documents folder.");
+        sb.AppendLine();
+
+        sb.AppendLine($"LastSaveAsFolder = {config.LastSaveAsFolder}");
+        sb.AppendLine("# Where Save As last saved to. Maintained by QuickMail.");
+        sb.AppendLine();
+
         sb.AppendLine($"NotifyOnNewMail = {(config.NotifyOnNewMail ? "on" : "off")}");
         sb.AppendLine("# Show a Windows notification when new mail arrives in an inbox.");
         sb.AppendLine("# Notifications appear while QuickMail is running. Values: on, off.");
@@ -596,10 +828,55 @@ public class ConfigService : IConfigService
         sb.AppendLine("# not just the inbox. Values: on, off.");
         sb.AppendLine();
 
+        sb.AppendLine($"PlayEventSounds = {(config.PlayEventSounds ? "on" : "off")}");
+        sb.AppendLine("# Play sounds for mail events such as a message being sent. A rule's own sound");
+        sb.AppendLine("# does not depend on this. Values: on, off.");
+        sb.AppendLine();
+
+        sb.AppendLine($"MuteSounds = {(config.MuteSounds ? "on" : "off")}");
+        sb.AppendLine("# Silence every sound, including rule sounds. Values: on, off.");
+        sb.AppendLine();
+
+        sb.AppendLine($"SoundVolume = {config.SoundVolume}");
+        sb.AppendLine("# How loud QuickMail's sounds play, within what Windows is set to (0-100).");
+        sb.AppendLine();
+
+        sb.AppendLine($"SoundScheme = {config.SoundSchemeId}");
+        sb.AppendLine("# The sound scheme in use. Values: glass, softbell, wood, or the id of a scheme of");
+        sb.AppendLine("# your own, which has its own [sounds.user-...] section below.");
+        sb.AppendLine();
+
+        sb.AppendLine($"CheckSoundSchemeUpdates = {(config.CheckSoundSchemeUpdates ? "on" : "off")}");
+        sb.AppendLine("# At most once a day, check the sound scheme gallery for updates to schemes you");
+        sb.AppendLine("# added from it, and say when one is waiting. Only done when you have one.");
+        sb.AppendLine("# Values: on, off.");
+        sb.AppendLine();
+
+        if (config.LastSoundSchemeUpdateCheck is { } lastSoundCheck)
+        {
+            sb.AppendLine($"LastSoundSchemeUpdateCheck = {lastSoundCheck.ToUniversalTime().ToString("o", System.Globalization.CultureInfo.InvariantCulture)}");
+            sb.AppendLine("# When QuickMail last checked the gallery for sound scheme updates (UTC).");
+            sb.AppendLine();
+        }
+
+        if (config.AnnouncedSoundSchemeUpdates.Count > 0)
+        {
+            sb.AppendLine($"AnnouncedSoundSchemeUpdates = {string.Join(", ", config.AnnouncedSoundSchemeUpdates.Select(a => $"{a.Key}:{a.Value}"))}");
+            sb.AppendLine("# The gallery updates QuickMail has already told you about, so each is said once.");
+            sb.AppendLine();
+        }
+
         sb.AppendLine($"CloseToTray = {(config.CloseToTray ? "on" : "off")}");
         sb.AppendLine("# When you close the main window, keep QuickMail running in the notification");
         sb.AppendLine("# area (system tray) instead of exiting, so new-mail notifications keep arriving.");
         sb.AppendLine("# Restore it from the tray icon or a notification. Values: on, off.");
+        sb.AppendLine();
+
+        sb.AppendLine($"StartMinimizedAtSignIn = {(config.StartMinimizedAtSignIn ? "on" : "off")}");
+        sb.AppendLine("# When Windows starts QuickMail as you sign in, start without opening the window:");
+        sb.AppendLine("# in the notification area if CloseToTray is on, otherwise minimized on the");
+        sb.AppendLine("# taskbar. Whether it starts at sign-in is set in Settings > Startup, and lives");
+        sb.AppendLine("# in Windows' startup apps list rather than in this file. Values: on, off.");
         sb.AppendLine();
 
         sb.AppendLine($"TrayHintShown = {(config.TrayHintShown ? "on" : "off")}");
@@ -620,6 +897,11 @@ public class ConfigService : IConfigService
         sb.AppendLine("# Values: on, off.");
         sb.AppendLine();
 
+        sb.AppendLine($"AllowSettingsTransfer = {(config.AllowSettingsTransfer ? "on" : "off")}");
+        sb.AppendLine("# Offer File > Export Settings and File > Import Settings, for moving your settings to");
+        sb.AppendLine("# another computer. Default off. Values: on, off.");
+        sb.AppendLine();
+
         sb.AppendLine($"ConnectionDiagnostics = {(config.ConnectionDiagnostics ? "on" : "off")}");
         sb.AppendLine("# Record connection diagnostics to connection.log and add Connection Diagnostics");
         sb.AppendLine("# to the Help menu. Turn this on when investigating connection or account-status");
@@ -627,6 +909,12 @@ public class ConfigService : IConfigService
         sb.AppendLine("# The journal records account labels (which may be email addresses), server host");
         sb.AppendLine("# names and IP addresses. It never records passwords, tokens or message content.");
         sb.AppendLine("# Values: on, off.");
+        sb.AppendLine();
+
+        sb.AppendLine($"NvdaTypingFix = {(config.NvdaTypingFix ? "on" : "off")}");
+        sb.AppendLine("# Make the space bar in text fields reach screen readers as a typed character, so");
+        sb.AppendLine("# typed-word echo speaks each word as you type (issue #300). Takes effect immediately.");
+        sb.AppendLine("# Default off. Values: on, off.");
         sb.AppendLine();
 
         sb.AppendLine($"TutorialCompleted = {(config.TutorialCompleted ? "on" : "off")}");
@@ -673,6 +961,27 @@ public class ConfigService : IConfigService
         sb.AppendLine("# Values: plain, markdown, html.");
         sb.AppendLine();
 
+        sb.AppendLine($"CheckSpellingAsYouType = {(config.CheckSpellingAsYouType ? "on" : "off")}");
+        sb.AppendLine("# Spell-check compose text in the background as it is typed or pasted. Off, spell");
+        sb.AppendLine("# checking starts only when Check Spelling (F7) or Next/Previous Misspelling");
+        sb.AppendLine("# (Ctrl+F7/Ctrl+Shift+F7) is used in that message. Turn off if the compose window");
+        sb.AppendLine("# stalls after pasting long text. Values: on, off. Default on.");
+        sb.AppendLine();
+
+        sb.AppendLine($"ConfirmBeforeSend = {(config.ConfirmBeforeSend ? "on" : "off")}");
+        sb.AppendLine("# Ask before sending or queuing a message.");
+        sb.AppendLine();
+        sb.AppendLine($"SuggestAddresses = {(config.SuggestAddresses ? "on" : "off")}");
+        sb.AppendLine("# Suggest addresses as you type in To, Cc, Bcc and Invite. Off, no suggestions appear at all,");
+        sb.AppendLine("# whatever the next two say. Values: on, off. Default on.");
+        sb.AppendLine($"SuggestFromAddressBook = {(config.SuggestFromAddressBook ? "on" : "off")}");
+        sb.AppendLine("# Suggest contacts and groups from your address book. Values: on, off. Default on.");
+        sb.AppendLine($"SuggestPeopleEmailed = {(config.SuggestPeopleEmailed ? "on" : "off")}");
+        sb.AppendLine("# Suggest people you have sent to (see RememberRecipients). Values: on, off. Default on.");
+        sb.AppendLine($"RememberRecipients = {(config.RememberRecipients ? "on" : "off")}");
+        sb.AppendLine("# Remember the people you send to, so they can be suggested. Kept apart from the address");
+        sb.AppendLine("# book, on this computer only. Values: on, off. Default off.");
+        sb.AppendLine();
         sb.AppendLine($"AutoSaveDrafts = {(config.AutoSaveDrafts ? "on" : "off")}");
         sb.AppendLine("# Automatically save the message as a draft while composing.");
         sb.AppendLine("# Auto-save is quiet: success shows in the compose status row without an announcement;");
@@ -706,6 +1015,9 @@ public class ConfigService : IConfigService
             sb.AppendLine("# \"Use as Default Calendar for New Appointments\". Remove this line to go");
             sb.AppendLine("# back to the local calendar.");
         }
+        sb.AppendLine($"CalendarAtEndOfFolderList = {(config.CalendarAtEndOfFolderList ? "on" : "off")}");
+        sb.AppendLine("# Where the Calendar sits in the folder tree: off puts it first, on puts it");
+        sb.AppendLine("# last. Set it from the Calendar node's context menu.");
         sb.AppendLine();
 
         // ── Startup (#516) ───────────────────────────────────────────────────────
@@ -811,6 +1123,46 @@ public class ConfigService : IConfigService
                 sb.AppendLine($"GoogleClientId = {config.GoogleClientId}");
             if (!string.IsNullOrEmpty(config.GoogleClientSecret))
                 sb.AppendLine($"GoogleClientSecret = {config.GoogleClientSecret}");
+            sb.AppendLine();
+        }
+
+        // ── [sounds.<scheme>] ──────────────────────────────────────────────────────
+        // A built-in scheme lists only what the person changed; an event not listed plays its shipped
+        // sound. A scheme of the person's own lists every event; one not listed plays nothing.
+        foreach (var scheme in config.SoundSchemes.Values)
+        {
+            var isOwn = SoundCatalog.IsUserSchemeId(scheme.Id);
+            if (scheme.Events.Count == 0 && !isOwn) continue;
+            sb.AppendLine($"[sounds.{scheme.Id}]");
+            if (scheme.IsBuiltIn)
+            {
+                sb.AppendLine($"# Changes to the {scheme.Name} sound scheme. Values: none, builtin:<name>,");
+                sb.AppendLine($"# builtin:<pack>/<name>, custom:<file in the sounds\\{SoundCatalog.SchemeFolderName(scheme.Id)} folder>.");
+            }
+            else if (isOwn)
+            {
+                sb.AppendLine("# A sound scheme of your own. An event not listed plays no sound.");
+                sb.AppendLine($"Name = {scheme.Name}");
+                if (scheme.Author is not null) sb.AppendLine($"Author = {scheme.Author}");
+                if (scheme.License is not null) sb.AppendLine($"License = {scheme.License}");
+                if (scheme.Description is not null) sb.AppendLine($"Description = {scheme.Description}");
+                if (scheme.GalleryOrigin is { } origin)
+                {
+                    sb.AppendLine("# Where it came from in the sound scheme gallery, so the gallery can offer updates.");
+                    sb.AppendLine($"GalleryId = {origin.Id}");
+                    sb.AppendLine($"GallerySha256 = {origin.Sha256}");
+                    if (scheme.GalleryBaseline is { Count: > 0 } baseline)
+                    {
+                        sb.AppendLine("# The gallery version's sounds, so an update keeps the events you change.");
+                        sb.AppendLine($"{GallerySoundSha256Key} = {origin.Sha256}");
+                        foreach (var (eventKey, sound) in baseline)
+                            sb.AppendLine($"{GallerySoundPrefix}{eventKey} = {sound}");
+                    }
+                }
+            }
+            sb.AppendLine();
+            foreach (var (name, value) in scheme.Events)
+                sb.AppendLine($"{name} = {value}");
             sb.AppendLine();
         }
 

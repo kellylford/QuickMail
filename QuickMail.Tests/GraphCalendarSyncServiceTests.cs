@@ -89,6 +89,7 @@ public class GraphCalendarSyncServiceTests : IDisposable
         public Task<OAuthResult> SignInInteractiveWithContactsAsync(AccountModel account, CancellationToken ct = default) => Task.FromResult(new OAuthResult(string.Empty, string.Empty));
         public Task RequestContactsConsentAsync(AccountModel account, CancellationToken ct = default) => Task.CompletedTask;
         public Task RequestCalendarConsentAsync(AccountModel account, CancellationToken ct = default) => Task.CompletedTask;
+        public Task RequestSharedMailboxConsentAsync(AccountModel parent, CancellationToken ct = default) => Task.CompletedTask;
         public Task SignOutAsync(AccountModel account) => Task.CompletedTask;
     }
 
@@ -458,6 +459,166 @@ public class GraphCalendarSyncServiceTests : IDisposable
 
     // ── Create push (POST /me/events) ────────────────────────────────────────────
 
+    /// <summary>
+    /// A new appointment is tagged with the calendar it landed on (#569).
+    ///
+    /// POST /me/events files into the account's default calendar, and the read-down tags every row
+    /// with its calendar's real id — so an untagged created row fails the per-calendar folder-tree
+    /// node's filter and is invisible while the user is looking at that node, until the next
+    /// sync's replace-slice restamps it. That is the "press F5 and now it shows up" the issue
+    /// reports.
+    /// </summary>
+    [Fact]
+    public async Task CreateEvent_TagsTheRowWithTheDefaultCalendar()
+    {
+        var handler = new RecordingHandler(
+            Json(EventJson("srv-1", "Board meeting", "2026-08-01T14:00:00.0000000",
+                           "2026-08-01T15:00:00.0000000")),
+            Json(@"{ ""id"": ""cal-default"", ""name"": ""Calendar"" }"));
+
+        await Service(handler).CreateEventAsync(GraphAccount(), new CalendarEvent
+        {
+            Uid = "local-tmp", AccountId = _accountId, Summary = "Board meeting",
+            StartTimeTicks = new DateTime(2026, 8, 1, 14, 0, 0, DateTimeKind.Utc).Ticks,
+            EndTimeTicks   = new DateTime(2026, 8, 1, 15, 0, 0, DateTimeKind.Utc).Ticks,
+        }, TestContext.Current.CancellationToken);
+
+        var row = Assert.Single(await _store.LoadCalendarEventsAsync());
+        Assert.Equal("cal-default", row.CalendarId);
+        Assert.Equal("Calendar", row.CalendarName);
+    }
+
+    /// <summary>
+    /// An appointment filed to a chosen calendar is POSTed to that calendar. <c>POST /me/events</c>
+    /// only ever files into the account's default, so it cannot honour the editor's Calendar picker
+    /// — an appointment the user filed to Team would land on Calendar and quietly move.
+    /// </summary>
+    [Fact]
+    public async Task CreateEvent_OnAChosenCalendar_PostsToThatCalendar_AndTagsItWithIt()
+    {
+        var handler = new RecordingHandler(
+            Json(EventJson("srv-1", "Standup", "2026-08-01T14:00:00.0000000",
+                           "2026-08-01T15:00:00.0000000")));
+
+        await Service(handler).CreateEventAsync(GraphAccount(), new CalendarEvent
+        {
+            Uid = "local-tmp", AccountId = _accountId, Summary = "Standup",
+            CalendarId = "cal-team", CalendarName = "Team",
+            StartTimeTicks = new DateTime(2026, 8, 1, 14, 0, 0, DateTimeKind.Utc).Ticks,
+            EndTimeTicks   = new DateTime(2026, 8, 1, 15, 0, 0, DateTimeKind.Utc).Ticks,
+        }, TestContext.Current.CancellationToken);
+
+        Assert.EndsWith("/me/calendars/cal-team/events", handler.Urls[0]);
+        // One request only: the calendar is known, so there is nothing to look up.
+        Assert.Equal("POST", Assert.Single(handler.Methods));
+
+        var row = Assert.Single(await _store.LoadCalendarEventsAsync());
+        Assert.Equal("cal-team", row.CalendarId);
+        Assert.Equal("Team", row.CalendarName);
+    }
+
+    /// <summary>
+    /// The sync records the account's calendar LIST, not just the calendars that turn out to have
+    /// events. A calendar with nothing in it is still one the first appointment can be filed into,
+    /// and only the list says whether a calendar can be written to at all.
+    /// </summary>
+    [Fact]
+    public async Task Sync_RecordsTheCalendarList_IncludingEmptyAndReadOnlyCalendars()
+    {
+        var handler = new RecordingHandler(
+            Json(@"{ ""value"": [
+                     { ""id"": ""cal-default"", ""name"": ""Calendar"", ""canEdit"": true },
+                     { ""id"": ""cal-empty"", ""name"": ""Family"", ""canEdit"": true },
+                     { ""id"": ""cal-shared"", ""name"": ""Bosses diary"", ""canEdit"": false } ] }"),
+            Json(EventJson("srv-1", "Board meeting", "2026-08-01T14:00:00.0000000",
+                           "2026-08-01T15:00:00.0000000")));
+
+        await Service(handler).SyncAllAsync(TestContext.Current.CancellationToken);
+
+        var sources = await _store.LoadCalendarSourcesAsync();
+        Assert.Equal(3, sources.Count);
+        // No events came back for this one, and it is offerable all the same.
+        Assert.Contains(sources, s => s.CalendarId == "cal-empty" && s.CanWrite);
+        Assert.Contains(sources, s => s.CalendarId == "cal-shared" && !s.CanWrite);
+        Assert.Contains("canEdit", handler.Urls[0]);
+    }
+
+    /// <summary>
+    /// A default calendar that cannot be fetched leaves the row untagged rather than costing the
+    /// user their appointment, which is already on the server by the time this runs.
+    ///
+    /// Untagged, specifically — NOT tagged with some other calendar. Microsoft documents that
+    /// <c>/me/calendars</c> can omit the default calendar, and that their own default calendar
+    /// example carries <c>isDefaultCalendar: false</c>, so an enumerate-and-guess approach lands on
+    /// the wrong one. A wrongly tagged row is worse than an untagged one: still missing from the
+    /// node the user is on, and now also under a node it does not belong to.
+    /// </summary>
+    [Fact]
+    public async Task CreateEvent_WhenTheDefaultCalendarCannotBeResolved_StoresTheEventUntagged()
+    {
+        var handler = new RecordingHandler(
+            Json(EventJson("srv-1", "Board meeting", "2026-08-01T14:00:00.0000000",
+                           "2026-08-01T15:00:00.0000000")),
+            Json("nope", code: HttpStatusCode.InternalServerError));
+
+        var created = await Service(handler).CreateEventAsync(GraphAccount(), new CalendarEvent
+        {
+            Uid = "local-tmp", AccountId = _accountId, Summary = "Board meeting",
+            StartTimeTicks = new DateTime(2026, 8, 1, 14, 0, 0, DateTimeKind.Utc).Ticks,
+            EndTimeTicks   = new DateTime(2026, 8, 1, 15, 0, 0, DateTimeKind.Utc).Ticks,
+        }, TestContext.Current.CancellationToken);
+
+        Assert.Equal("srv-1", created.Uid);
+        var row = Assert.Single(await _store.LoadCalendarEventsAsync());
+        Assert.Equal("srv-1", row.Uid);
+        Assert.Equal(string.Empty, row.CalendarId);
+    }
+
+    /// <summary>A nameless calendar still needs a label for the Calendar column to read.</summary>
+    [Fact]
+    public async Task CreateEvent_WhenTheDefaultCalendarHasNoName_LabelsItCalendar()
+    {
+        var handler = new RecordingHandler(
+            Json(EventJson("srv-1", "Board meeting", "2026-08-01T14:00:00.0000000",
+                           "2026-08-01T15:00:00.0000000")),
+            Json(@"{ ""id"": ""cal-default"", ""name"": ""   "" }"));
+
+        await Service(handler).CreateEventAsync(GraphAccount(), new CalendarEvent
+        {
+            Uid = "local-tmp", AccountId = _accountId, Summary = "Board meeting",
+            StartTimeTicks = new DateTime(2026, 8, 1, 14, 0, 0, DateTimeKind.Utc).Ticks,
+            EndTimeTicks   = new DateTime(2026, 8, 1, 15, 0, 0, DateTimeKind.Utc).Ticks,
+        }, TestContext.Current.CancellationToken);
+
+        Assert.Equal("Calendar", Assert.Single(await _store.LoadCalendarEventsAsync()).CalendarName);
+    }
+
+    /// <summary>
+    /// Editing a synced appointment keeps its calendar tag. The edit used to map the server's reply
+    /// with no calendar id at all, wiping the tag to empty — so an appointment the user had just
+    /// edited dropped out of its own calendar's node until the next sync put it back. The Google
+    /// update path has preserved the tag all along; this is the Microsoft counterpart.
+    /// </summary>
+    [Fact]
+    public async Task UpdateEvent_KeepsTheCalendarTag()
+    {
+        var handler = new RecordingHandler(
+            Json(EventJson("srv-1", "Board meeting (moved)", "2026-08-01T15:00:00.0000000",
+                           "2026-08-01T16:00:00.0000000")));
+
+        await Service(handler).UpdateEventAsync(GraphAccount(), new CalendarEvent
+        {
+            Uid = "srv-1", AccountId = _accountId, Summary = "Board meeting (moved)",
+            CalendarId = "cal-team", CalendarName = "Team",
+            StartTimeTicks = new DateTime(2026, 8, 1, 15, 0, 0, DateTimeKind.Utc).Ticks,
+            EndTimeTicks   = new DateTime(2026, 8, 1, 16, 0, 0, DateTimeKind.Utc).Ticks,
+        }, TestContext.Current.CancellationToken);
+
+        var row = Assert.Single(await _store.LoadCalendarEventsAsync());
+        Assert.Equal("cal-team", row.CalendarId);
+        Assert.Equal("Team", row.CalendarName);
+    }
+
     [Fact]
     public async Task CreateEvent_Timed_PostsExpectedShape_AndStoresServerCopy()
     {
@@ -475,8 +636,11 @@ public class GraphCalendarSyncServiceTests : IDisposable
 
         var created = await service.CreateEventAsync(GraphAccount(), evt, TestContext.Current.CancellationToken);
 
-        Assert.Equal("POST", Assert.Single(handler.Methods));
+        // Two requests: the create, then the calendar-list lookup that tags the stored row with
+        // the calendar POST /me/events filed into (#569).
+        Assert.Equal(["POST", "GET"], handler.Methods);
         Assert.EndsWith("/me/events", handler.Urls[0]);
+        Assert.Contains("/me/calendar?", handler.Urls[1]);   // singular: the default calendar itself
         // Prefer header carries the machine's Windows zone (see Sync test); the body below still
         // sends explicit UTC start/end, so the created event's times are unambiguous.
         Assert.Equal($"outlook.timezone=\"{TimeZoneInfo.Local.Id}\"", handler.PreferHeaders[0]);

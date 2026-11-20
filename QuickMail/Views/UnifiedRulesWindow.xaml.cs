@@ -30,25 +30,33 @@ public partial class UnifiedRulesWindow : Window
 
     private readonly MailRule? _prefillTemplate;
 
+    // Passed straight through to the rule editor, whose folder picker is the one that offers to
+    // create a folder (issue #645). This window opens no picker of its own.
+    private readonly FolderCreationSupport? _folderCreation;
+
+    // Announces the messages of rule editors that have closed while this window is open (#701).
+    private readonly ClosedEditorAnnouncements _closedEditors;
+
     public UnifiedRulesWindow(
         UnifiedRulesViewModel vm,
         IEnumerable<AccountModel> accounts,
         IReadOnlyDictionary<Guid, List<MailFolderModel>> cachedFolders,
-        MailRule? prefillTemplate = null)
+        MailRule? prefillTemplate = null,
+        FolderCreationSupport? folderCreation = null)
     {
         InitializeComponent();
         _vm = vm;
         _accounts = accounts;
         _cachedFolders = cachedFolders;
         _prefillTemplate = prefillTemplate;
+        _folderCreation = folderCreation;
         DataContext = vm;
 
         vm.EditorRequested += OnEditorRequested;
         vm.ConfirmDeleteRequested += OnConfirmDelete;
-        vm.ClientRuleNoticeRequested += OnClientRuleNotice;
         vm.AnnouncementRequested += OnAnnouncement;
-        vm.WriteBlockedByPermission += OnPermissionMessage;
         vm.FocusSelectedRuleRequested += OnFocusSelectedRule;
+        _closedEditors = new ClosedEditorAnnouncements(OnAnnouncement);
 
         RegisterCommands();
 
@@ -89,7 +97,7 @@ public partial class UnifiedRulesWindow : Window
             id: "rules.moveDown", category: "Rules", title: "Move Rule Down",
             execute: () => Run(_vm.MoveDownCommand), isAvailable: () => _vm.CanMoveDown));
         _registry.Register(new CommandDefinition(
-            id: "rules.test", category: "Rules", title: "Test Rule Against Selected Messages",
+            id: "rules.test", category: "Rules", title: "Test Rule Against the Message List",
             execute: () => Run(_vm.TestRuleCommand), isAvailable: () => _vm.CanTestSelected));
         _registry.Register(new CommandDefinition(
             id: "rules.runOnExisting", category: "Rules", title: "Run Rules on Existing Mail",
@@ -129,11 +137,14 @@ public partial class UnifiedRulesWindow : Window
 
     private void OnEditorRequested(ServerRuleEditorViewModel editorVm)
     {
-        // The list is account-scoped, so the editor's folder picker scopes to the same account. Read
-        // live rather than captured: the editor is modeless and the save path reads this same
-        // selection, so both must see the account the list is on at the moment they act.
+        // The list is account-scoped, so the editor's folder picker scopes to the account the editor opened
+        // on. Captured, not read live: the editor is modeless, so the Account list stays usable while it is
+        // open, and the save uses the account the editor opened on too (#683).
+        var accountId = editorVm.AccountId ?? _vm.SelectedAccount?.Id;
         var editor = new ServerRuleEditorWindow(
-            editorVm, _accounts, _cachedFolders, () => _vm.SelectedAccount?.Id) { Owner = this };
+            editorVm, _accounts, _cachedFolders, () => accountId, _folderCreation) { Owner = this };
+        // Once the editor has closed, its messages are this window's to say (#701): see ClosedEditorAnnouncements.
+        editor.Closed += (_, _) => _closedEditors.EditorClosed(editorVm);
         editor.Show();
         editor.Activate();
     }
@@ -141,26 +152,33 @@ public partial class UnifiedRulesWindow : Window
     private bool OnConfirmDelete(string message, string title)
         => MessageBox.Show(this, message, title, MessageBoxButton.YesNo, MessageBoxImage.Warning) == MessageBoxResult.Yes;
 
-    private void OnClientRuleNotice(string message)
-        => MessageBox.Show(this, message, "Saved as a QuickMail rule", MessageBoxButton.OK, MessageBoxImage.Information);
-
     private void OnAnnouncement(string text, AnnouncementCategory category)
-        // Results and status are action outcomes the user should hear promptly, so they interrupt. A Hint
-        // is ambient — the rule-mode cue spoken as you land on an account — and must NOT cut off the
-        // platform's own announcement of the newly-selected account, so it queues instead of interrupting.
-        => AccessibilityHelper.Announce(this, text, interrupt: category != AnnouncementCategory.Hint, category: category);
-
-    private void OnPermissionMessage(string message)
-        => AccessibilityHelper.Announce(this, message, category: AnnouncementCategory.Hint);
+        // Results are action outcomes the user should hear promptly, so they interrupt. Status and Hints
+        // queue instead, so they can't cut off the platform's own announcement of whatever just changed:
+        // an account's rule count is a Status said as the Account list moves (#734), and interrupting
+        // would cut off the account name the list itself is saying. Nothing in this window raises a Hint
+        // today, but the policy is per-category, not per-call-site, so it stays correct for the next one.
+        => AccessibilityHelper.Announce(this, text, interrupt: category == AnnouncementCategory.Result, category: category);
 
     // Enter = edit, Space = enable/disable, Delete = delete. Each honours the command's CanExecute, so
     // a key does nothing where the button/menu item is disabled (e.g. Move on a client rule).
+    // Space toggles the selected rule. It is taken on PreviewKeyDown because the ListBox handles Space
+    // itself (to select the focused item) and can mark it handled before a bubbling KeyDown handler on
+    // the same element sees it. Plain Space only, and only when there is a rule it can toggle; otherwise
+    // the list keeps its normal behaviour.
+    private void RulesListBox_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.Space || Keyboard.Modifiers != ModifierKeys.None) return;
+        if (!_vm.ToggleEnabledCommand.CanExecute(null)) return;
+        _vm.ToggleEnabledCommand.Execute(null);
+        e.Handled = true;
+    }
+
     private void RulesListBox_KeyDown(object sender, KeyEventArgs e)
     {
         switch (e.Key)
         {
             case Key.Enter: Invoke(_vm.EditRuleCommand); e.Handled = true; break;
-            case Key.Space: Invoke(_vm.ToggleEnabledCommand); e.Handled = true; break;
             case Key.Delete: Invoke(_vm.DeleteRuleCommand); e.Handled = true; break;
         }
 
@@ -271,10 +289,9 @@ public partial class UnifiedRulesWindow : Window
         _vm.CancelPendingLoad();
         _vm.EditorRequested -= OnEditorRequested;
         _vm.ConfirmDeleteRequested -= OnConfirmDelete;
-        _vm.ClientRuleNoticeRequested -= OnClientRuleNotice;
         _vm.AnnouncementRequested -= OnAnnouncement;
-        _vm.WriteBlockedByPermission -= OnPermissionMessage;
         _vm.FocusSelectedRuleRequested -= OnFocusSelectedRule;
+        _closedEditors.Stop();
         base.OnClosed(e);
     }
 }

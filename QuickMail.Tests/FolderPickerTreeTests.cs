@@ -136,11 +136,12 @@ public class FolderPickerTreeTests
         var window = Picker();
         try
         {
-            var roots = Roots(window);
-
-            // Single account → no account header wrapper; INBOX is a root.
-            var inbox = roots.FirstOrDefault(n => n.Label == "INBOX");
-            Assert.True(inbox is not null, "INBOX is not a root of the picker tree.");
+            // The account is the tree's only root (#954: it is the "top level" destination), and the
+            // folders sit beneath it.
+            var account = Assert.Single(Roots(window));
+            Assert.True(account.IsHeader, "The picker's root is not the account.");
+            var inbox = account.Children.FirstOrDefault(n => n.Label == "INBOX");
+            Assert.True(inbox is not null, "INBOX is not directly under the account root.");
 
             var projects = inbox!.Children.FirstOrDefault(n => n.Label == "Projects");
             Assert.True(projects is not null, "Projects is not nested under INBOX — the picker is still flat.");
@@ -173,8 +174,9 @@ public class FolderPickerTreeTests
             var all = Flatten(Roots(window)).ToList();
             Assert.All(all, n => Assert.NotEqual(other, n.Folder?.AccountId ?? AccountId));
             Assert.DoesNotContain(all, n => n.Label == "Receipts");
-            // Scoped to one account, so no account header either.
-            Assert.DoesNotContain(all, n => n.IsHeader);
+            // Scoped to one account, so its root is the only header — never the other account's.
+            var header = Assert.Single(all, n => n.IsHeader);
+            Assert.Equal(AccountId, header.AccountId);
         }
         finally { window.Close(); }
     }
@@ -287,8 +289,8 @@ public class FolderPickerTreeTests
 
     /// <summary>
     /// Landing on nothing is never right, so a source whose parent cannot stand in — a top-level
-    /// folder, whose parent is the account root this picker does not offer — still opens on a real
-    /// folder rather than on an empty tree.
+    /// folder, whose parent is the account root — still opens on a real folder rather than on an
+    /// empty tree, and not on the root, where Enter would only report it is already there.
     /// </summary>
     [StaFact]
     public void OpensOnAFolderEvenWhenTheSourceHasNoParentToFallBackTo()
