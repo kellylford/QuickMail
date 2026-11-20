@@ -109,17 +109,25 @@ public class SoundCatalogTests
     }
 
     [Theory]
-    [InlineData(SoundEvent.AddressSuggestions, "AddressSuggestions", "suggest")]
-    [InlineData(SoundEvent.AddressInserted, "AddressInserted", "inserted")]
-    public void TheAddressSuggestionEventsHaveTheirOwnSoundsAndAnswerAKeyPress(SoundEvent e, string key, string sound)
+    [InlineData(SoundEvent.AddressSuggestions, "AddressSuggestions", "suggest", true)]
+    [InlineData(SoundEvent.AddressInserted, "AddressInserted", "inserted", false)]
+    public void TheAddressSuggestionEventsHaveTheirOwnSoundsAndAnswerAKeyPress(SoundEvent e, string key, string sound, bool shipsSilent)
     {
         // #1048. Each plays at once or not at all (TryPlayNow), as an answer to the key just pressed;
-        // a scheme of the person's own made before these events plays nothing for them.
+        // a scheme of the person's own made before these events plays nothing for them. The list
+        // appearing ships silent in the built-in schemes, since screen readers sound it themselves.
         var info = SoundCatalog.Info(e);
         Assert.Equal(key, info.ConfigKey);
+        Assert.Equal(sound, info.BuiltInSound);
         Assert.Equal(SoundOrigin.Navigation, info.Origin);
+        Assert.Equal(shipsSilent, info.ShipsSilent);
         Assert.All(SoundCatalog.Packs, pack =>
-            Assert.Equal(SoundRef.BuiltIn(sound), SoundCatalog.Resolve(e, SoundCatalog.BuiltInScheme(pack.Id))));
+            Assert.Equal(shipsSilent ? SoundRef.None : SoundRef.BuiltIn(sound),
+                SoundCatalog.Resolve(e, SoundCatalog.BuiltInScheme(pack.Id))));
+        // Chosen in a built-in scheme, it plays.
+        var chosen = new SoundScheme("glass", "Glass", isBuiltIn: true, pack: "glass",
+            events: new Dictionary<string, string> { [key] = $"builtin:{sound}" });
+        Assert.Equal(SoundRef.BuiltIn(sound), SoundCatalog.Resolve(e, chosen));
         var older = new SoundScheme("user-older", "Older", isBuiltIn: false,
             events: new Dictionary<string, string> { ["NewMail"] = "builtin:arrived" });
         Assert.Equal(SoundRef.None, SoundCatalog.Resolve(e, older));

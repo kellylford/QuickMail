@@ -64,8 +64,12 @@ public enum SoundOrigin
 /// <param name="Label">What Settings calls it.</param>
 /// <param name="BuiltInSound">The built-in sound it uses unless the person chooses another.</param>
 /// <param name="Origin">Why it plays.</param>
+/// <param name="ShipsSilent">
+/// The built-in schemes start it at None, so it plays only once the person chooses its sound. Its
+/// built-in sound is still the one offered for it, and still stands in for a custom file that's gone.
+/// </param>
 public sealed record SoundEventInfo(
-    SoundEvent Event, string ConfigKey, string Label, string BuiltInSound, SoundOrigin Origin);
+    SoundEvent Event, string ConfigKey, string Label, string BuiltInSound, SoundOrigin Origin, bool ShipsSilent = false);
 
 /// <summary>A tone of built-in sound: a folder of WAVs. A screen reader reads the item from <see cref="ToString"/>.</summary>
 /// <param name="Id">Its folder under Sounds/BuiltIn, and the id of the built-in scheme that uses it.</param>
@@ -130,7 +134,8 @@ public static class SoundCatalog
         new(SoundEvent.TrashEmptied,       "TrashEmptied",       "Trash emptied",              "emptied",      SoundOrigin.Direct),
         new(SoundEvent.ListEnd,            "ListEnd",            "Reached the end of a list",  "edge",         SoundOrigin.Navigation),
         new(SoundEvent.RuleMatched,        "RuleMatched",        "A rule matched",             DefaultRuleSound, SoundOrigin.Rule),
-        new(SoundEvent.AddressSuggestions, "AddressSuggestions", "Address suggestions appeared", "suggest",     SoundOrigin.Navigation),
+        // Ships silent (#1048): screen readers play their own sound when a suggestion list appears.
+        new(SoundEvent.AddressSuggestions, "AddressSuggestions", "Address suggestions appeared", "suggest",     SoundOrigin.Navigation, ShipsSilent: true),
         new(SoundEvent.AddressInserted,    "AddressInserted",    "Address inserted from suggestions", "inserted", SoundOrigin.Navigation),
     ];
 
@@ -149,6 +154,10 @@ public static class SoundCatalog
     private static readonly Dictionary<SoundEvent, SoundEventInfo> ByEvent = Events.ToDictionary(e => e.Event);
 
     public static SoundEventInfo Info(SoundEvent e) => ByEvent[e];
+
+    /// <summary>What a built-in scheme plays for an event as it ships: its built-in sound, or None for one that ships silent.</summary>
+    public static SoundRef Shipped(SoundEventInfo info) =>
+        info.ShipsSilent ? SoundRef.None : SoundRef.BuiltIn(info.BuiltInSound);
 
     /// <summary>Identifies a message between the rule that sounded for it and the new-mail sound.</summary>
     public static string MessageKey(Guid accountId, string messageId) => $"{accountId:N}|{messageId}";
@@ -222,7 +231,7 @@ public static class SoundCatalog
         var info = Info(e);
         if (scheme.Events.TryGetValue(info.ConfigKey, out var value) && SoundRef.TryParse(value, out var chosen))
             return chosen;
-        return scheme.IsBuiltIn ? SoundRef.BuiltIn(info.BuiltInSound) : SoundRef.None;
+        return scheme.IsBuiltIn ? Shipped(info) : SoundRef.None;
     }
 
     /// <summary>
