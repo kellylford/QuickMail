@@ -813,6 +813,46 @@ public class AddressSuggestionTests
     }
 
     [StaFact]
+    public void Compose_ALetterThatLeavesTheListAsItWas_KeepsIt_SoItIsNotReportedAgain()
+    {
+        EnsureApplication();
+        var rig = BuildComposeRig(new Contacts());
+        try
+        {
+            rig.Box.InputBox.Text = "b";
+            PumpUntil(() => rig.Popup.IsOpen && rig.List.SelectedIndex == 0);
+            var shown = rig.List.ItemsSource;
+            var selected = rig.List.SelectedItem;
+
+            rig.Box.InputBox.Text = "bo";   // still just Bob Ray
+            PumpUntil(() => rig.Controller.IsOpen);
+            for (var i = 0; i < 5; i++) { Thread.Sleep(10); DoEvents(); }
+            Assert.Same(shown, rig.List.ItemsSource);
+            Assert.Same(selected, rig.List.SelectedItem);
+
+            // Typing on still enters the one Tab would take.
+            rig.Box.InputBox.RaiseEvent(Key_(rig.Window, Key.Tab));
+            Assert.Equal("bob@example.com", Assert.Single(rig.Box.GetChips()).EmailAddress);
+        }
+        finally
+        {
+            rig.Controller.Dispose();
+            rig.Window.Close();
+        }
+    }
+
+    [Fact]
+    public void SameSuggestions_ComparesWhatIsHeard_InOrder()
+    {
+        static AddressSuggestion P(string name, string email, bool recent = false) =>
+            new(new ContactModel { DisplayName = name, EmailAddress = email }, recent);
+        Assert.True(AddressSuggestionController.SameSuggestions([P("Ann", "a@x.com"), P("Bob", "b@x.com")], [P("Ann", "a@x.com"), P("Bob", "b@x.com")]));
+        Assert.False(AddressSuggestionController.SameSuggestions([P("Ann", "a@x.com"), P("Bob", "b@x.com")], [P("Bob", "b@x.com"), P("Ann", "a@x.com")]));
+        Assert.False(AddressSuggestionController.SameSuggestions([P("Ann", "a@x.com")], [P("Ann", "a@x.com", recent: true)]));
+        Assert.False(AddressSuggestionController.SameSuggestions([P("Ann", "a@x.com")], [P("Ann", "a@x.com"), P("Bob", "b@x.com")]));
+    }
+
+    [StaFact]
     public void Compose_TheListIsNotAlsoSaidInWords_UnlessAskedTo()
     {
         EnsureApplication();
@@ -889,8 +929,9 @@ public class AddressSuggestionTests
     private static void DoEvents()
     {
         var frame = new System.Windows.Threading.DispatcherFrame();
+        // ApplicationIdle, below ContextIdle: an address chosen in the list is announced at ContextIdle.
         System.Windows.Threading.Dispatcher.CurrentDispatcher.BeginInvoke(
-            System.Windows.Threading.DispatcherPriority.Background,
+            System.Windows.Threading.DispatcherPriority.ApplicationIdle,
             new Action(() => frame.Continue = false));
         System.Windows.Threading.Dispatcher.PushFrame(frame);
     }

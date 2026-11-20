@@ -485,14 +485,18 @@ internal sealed class AddressSuggestionController : IDisposable
 
             // The sound marks the list appearing, not each keystroke that changes it while it shows.
             var appearing = !_popup.IsOpen;
-            _list.ItemsSource      = combined;
+            // A keystroke that leaves the list as it was keeps it, so the screen reader is not told
+            // about the same suggestions again on every letter ("proj" read Project X team four times).
+            var unchanged = !appearing && ReferenceEquals(_controlling, entry)
+                && _list.ItemsSource is IReadOnlyList<AddressSuggestion> current && SameSuggestions(current, combined);
+            if (!unchanged) _list.ItemsSource = combined;
             _shownFor              = searchToken;
             _popup.PlacementTarget = entry.Element;
             _popup.Placement       = PlacementMode.Bottom;
             _popup.IsOpen          = true;
             if (appearing) _sounds?.TryPlayNow(SoundEvent.AddressSuggestions);
             Control(entry);
-            ExposeFirst(combined, searchToken);
+            ExposeFirst((IReadOnlyList<AddressSuggestion>)_list.ItemsSource, searchToken, unchanged);
 
             // Interrupting: each keystroke replaces the list, so a slower announcement of the list
             // before it is stale and should not be finished.
@@ -513,6 +517,18 @@ internal sealed class AddressSuggestionController : IDisposable
         }
     }
 
+    /// <summary>The same suggestions in the same order, as a person would hear them.</summary>
+    internal static bool SameSuggestions(IReadOnlyList<AddressSuggestion> a, IReadOnlyList<AddressSuggestion> b)
+    {
+        if (a.Count != b.Count) return false;
+        for (var i = 0; i < a.Count; i++)
+        {
+            if (a[i].IsGroup != b[i].IsGroup || a[i].IsRecent != b[i].IsRecent
+                || !string.Equals(a[i].Display, b[i].Display, StringComparison.Ordinal)) return false;
+        }
+        return true;
+    }
+
     /// <summary>Moves the "controls this list" relationship to <paramref name="entry"/>, or clears it with null.</summary>
     private void Control(IAddressEntry? entry)
     {
@@ -529,10 +545,13 @@ internal sealed class AddressSuggestionController : IDisposable
     /// list gives the count. When Tab would keep what was typed instead, nothing is selected, so
     /// nothing heard is a promise Tab does not keep, and the list reports that its contents changed.
     /// Selected after layout: the row's container has to exist for its selection to be reported.
+    /// For a list kept as it was (<paramref name="unchanged"/>), nothing is reported unless what Tab
+    /// would do has changed: typing out a whole address can mean Tab no longer takes the first.
     /// </summary>
-    private void ExposeFirst(IReadOnlyList<AddressSuggestion> suggestions, string typed)
+    private void ExposeFirst(IReadOnlyList<AddressSuggestion> suggestions, string typed, bool unchanged)
     {
         var tabTakesFirst = AddressSuggestionRanking.TabTakesFirst(suggestions, typed);
+        if (unchanged && (_list.SelectedIndex == 0) == tabTakesFirst) return;
         _list.SelectedIndex = -1;
         _owner.Dispatcher.InvokeAsync(() =>
         {
@@ -707,11 +726,21 @@ internal sealed class AddressSuggestionController : IDisposable
         target.FocusInput();
     }
 
-    /// <summary>Says an address went in, and plays its sound. Typing on is silent, so without this nothing told the user.</summary>
+    /// <summary>
+    /// Says an address went in, and plays its sound. Typing on is silent, so without this nothing told
+    /// the user. Chosen in the list, focus is on its way back to the field, so the words wait until the
+    /// move has been handled: raised before it, Narrator dropped them for the field's own reading
+    /// ("To edit"), where NVDA said both.
+    /// </summary>
     private void Inserted(string announcement, bool fromField)
     {
         _sounds?.TryPlayNow(SoundEvent.AddressInserted);
-        AccessibilityHelper.Announce(_owner, announcement, interrupt: fromField, category: AnnouncementCategory.Result);
+        if (fromField)
+            AccessibilityHelper.Announce(_owner, announcement, interrupt: true, category: AnnouncementCategory.Result);
+        else
+            _owner.Dispatcher.InvokeAsync(
+                () => AccessibilityHelper.Announce(_owner, announcement, category: AnnouncementCategory.Result),
+                DispatcherPriority.ContextIdle);
     }
 
     /// <summary>What is said when one address goes into a field: "ann@example.com added to To field".</summary>
