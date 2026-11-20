@@ -185,6 +185,7 @@ public class RuleService : IRuleService
         FromAddresses = source.FromAddresses is null ? null : [.. source.FromAddresses],
         UseSenderCondition = source.UseSenderCondition,
         SenderContains = source.SenderContains,
+        FromAddressesOff = source.FromAddressesOff is null ? null : [.. source.FromAddressesOff],
         UseToCondition = source.UseToCondition,
         ToContains = source.ToContains,
         SentToAddresses = source.SentToAddresses is null ? null : [.. source.SentToAddresses],
@@ -327,8 +328,7 @@ public class RuleService : IRuleService
         // anyone owning a domain can send from. A fragment that is neither ("@acme", "john.smith@") can only mean a
         // substring, so it stays one, as it always was.
         var trimmed = value.Trim();
-        var at = trimmed.IndexOf('@', StringComparison.Ordinal);
-        return trimmed.IndexOf('.', at + 1) > at
+        return AddressMatch.IsWhole(trimmed)
             ? AddressMatch.Names(msg.FromEmail, trimmed)
             : msg.FromEmail.Contains(trimmed, StringComparison.OrdinalIgnoreCase);
     }
