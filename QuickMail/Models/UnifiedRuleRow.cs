@@ -124,7 +124,10 @@ public sealed class UnifiedRuleRow
         // "from …" as a server rule's row words it (ServerRuleModel.DescribeConditions): since the review of
         // #806 an address is matched as a whole address, not as text the From header contains. Sent to is
         // still matched as text the To line contains (RuleService), so it keeps "to contains" (review of #858).
-        if (r.FromValues() is { Count: > 0 } from) conditions.Add($"from {Quoted(from)}");
+        // A value with no @ (an older rule holding just a name) is still matched as text the From header
+        // contains, so a row with any such value keeps saying "from contains".
+        if (r.FromValues() is { Count: > 0 } from)
+            conditions.Add(from.All(v => v.Contains('@')) ? $"from {Quoted(from)}" : $"from contains {Quoted(from)}");
         if (r.UseSenderCondition && !string.IsNullOrWhiteSpace(r.SenderContains))
             conditions.Add($"sender contains '{r.SenderContains}'");
         if (r.ToValues() is { Count: > 0 } to) conditions.Add($"to contains {Quoted(to)}");

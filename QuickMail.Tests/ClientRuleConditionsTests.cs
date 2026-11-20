@@ -943,4 +943,23 @@ public class ClientRuleConditionsTests
         Assert.Contains("If from 'billing@x.com' and to contains 'me@x.com' →", row.RowText, StringComparison.Ordinal);
         Assert.DoesNotContain("from contains", row.RowText, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void ClientRows_KeepFromContains_ForAValueWithNoAt()
+    {
+        // A From value with no @, an older rule holding just a name, is still matched as text the From
+        // header contains, so "from" alone would overstate it (Kelly's note on #858).
+        var row = UnifiedRuleRow.ForClient(new MailRule
+        {
+            Name = "Jane",
+            IsEnabled = true,
+            UseFromCondition = true,
+            FromContains = "Jane Smith",
+            UseToCondition = false,
+            UseSubjectCondition = false,
+            Action = RuleAction.MarkAsRead,
+        });
+
+        Assert.Contains("If from contains 'Jane Smith' →", row.RowText, StringComparison.Ordinal);
+    }
 }
