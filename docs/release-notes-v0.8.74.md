@@ -1,5 +1,7 @@
 # QuickMail v0.8.74 Release Notes
 
+This update is about addressing messages. QuickMail can now remember the people you send to and suggest them as you type, even when they aren't in your address book. You choose where suggestions come from, and a new address book tab lets you see and manage who is remembered. With a screen reader, you now hear the first suggestion as it appears, and Tab enters it.
+
 ## Added
 
 - **Suggest people you've sent mail to.** A new setting, **Remember people I send to** (Settings → General → Composing), lets QuickMail suggest the people you have sent mail to as you type in To, Cc and Bcc, even when they are not in your address book. It is off by default. They are kept on this computer only and separately from your address book, so it does not fill up with everyone you have ever written to. Your own addresses are never remembered. **Forget People I've Sent To** clears them. (#1037)
