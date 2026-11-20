@@ -350,6 +350,15 @@ public class MouseClickInputTests
             // screen - Topmost - for the rest of the process.
             try
             {
+                // Start-up now lands on a folder of its own, All Mail when nothing else is configured,
+                // on its own schedule. Before this wait, that selection could arrive after the test had
+                // read which folder was open and before it checked again, so a click that opened nothing
+                // read as opening All Mail, and a click that opened Inbox was overwritten by it (seen in
+                // CI on reviving this PR, a different test each run). Wait for it, bounded, then settle.
+                var startup = System.Diagnostics.Stopwatch.StartNew();
+                while (On(() => _vm.SelectedFolder) is null && startup.Elapsed < Patience)
+                    Thread.Sleep(20);
+
                 // Seeded repeatedly until it sticks. The ViewModel's own start-up load runs on its
                 // own schedule and clears the message list when it lands, so a single seed is a race
                 // against a machine we do not control - lost on CI, where the load arrives later than
