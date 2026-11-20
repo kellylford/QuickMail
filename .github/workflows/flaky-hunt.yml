@@ -27,10 +27,15 @@ on:
         description: 'Optional dotnet test --filter expression (blank = whole suite)'
         required: false
         default: ''
+      # Off by default: tests that send real keystrokes or clicks pass on the hunt's first pass and
+      # then fail on every later one, because after the first pass the keystrokes no longer reach the
+      # window under test. TypedSpaceFixTests failed 9 of 10 with "text is ''" on 2026-11-20, while
+      # passing in the normal CI run. Repeating them only finds the runner, not a flake. Turn this on
+      # to hunt one of them on purpose, with a filter.
       input_tests:
-        description: 'Run the opt-in synthesized-input tests (QUICKMAIL_RUN_INPUT_TESTS)'
+        description: 'Run the opt-in synthesized-input tests (QUICKMAIL_RUN_INPUT_TESTS); they do not survive repetition'
         required: false
-        default: 'true'
+        default: 'false'
   push:
     branches:
       - 'flaky-hunt/**'
@@ -66,7 +71,8 @@ jobs:
       - name: Run the suite repeatedly
         shell: pwsh
         env:
-          QUICKMAIL_RUN_INPUT_TESTS: ${{ (github.event.inputs.input_tests != 'false') && '1' || '' }}
+          # Only when asked for: a pushed flaky-hunt/** branch has no inputs, and gets the default (off).
+          QUICKMAIL_RUN_INPUT_TESTS: ${{ (github.event.inputs.input_tests == 'true') && '1' || '' }}
         run: |
           $iterations = [int]("${{ github.event.inputs.iterations }}" -replace '^$', '10')
           $filter     = "${{ github.event.inputs.filter }}"
