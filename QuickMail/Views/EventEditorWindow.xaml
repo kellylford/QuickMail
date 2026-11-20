@@ -149,8 +149,11 @@
              Read-only on a meeting someone else organized — its guest list is theirs. -->
         <Label     Grid.Row="5" Grid.Column="0" Content="_Invite:" Target="{Binding ElementName=InviteBox}"
                    Padding="0" Margin="0,0,8,10" VerticalAlignment="Center"/>
-        <TextBox   Grid.Row="5" Grid.Column="1" Grid.ColumnSpan="3"
+        <!-- A ControllingTextBox: while suggestions show, it tells UI Automation it drives the
+             list (ControllerFor). The implicit TextBox style does not reach a subclass. -->
+        <controls:ControllingTextBox Grid.Row="5" Grid.Column="1" Grid.ColumnSpan="3"
                    x:Name="InviteBox"
+                   Style="{DynamicResource {x:Type TextBox}}"
                    AutomationProperties.Name="Invite"
                    AutomationProperties.HelpText="{Binding InviteHelpText}"
                    Text="{Binding InviteText, UpdateSourceTrigger=PropertyChanged}"
@@ -172,6 +175,7 @@
                          MaxHeight="200"
                          MinWidth="300"
                          AutomationProperties.Name="Address suggestions"
+                         AutomationProperties.AutomationId="SuggestionsList"
                          IsTabStop="True"
                          KeyboardNavigation.TabNavigation="Cycle">
                     <ListBox.ItemContainerStyle>

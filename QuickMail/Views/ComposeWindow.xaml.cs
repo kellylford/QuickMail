@@ -165,12 +165,12 @@ public partial class ComposeWindow : Window
         };
 
         _suggestions = new AddressSuggestionController(this, _contactService, AutoCompletePopup, SuggestionList,
-            _recipientHistory, () => SuggestionSources.From(_configService.Load()));
+            _recipientHistory, () => SuggestionSources.From(_configService.Load()), _vm.Sounds);
         // The return trip from the list is not a fresh arrival in the field: don't read its chips again.
         _suggestions.EnteringSuggestions += () => _suppressNextFocusAnnouncement = true;
-        foreach (var box in new[] { ToBox, CcBox, BccBox })
+        foreach (var (box, field) in new[] { (ToBox, "To"), (CcBox, "Cc"), (BccBox, "Bcc") })
         {
-            _suggestions.Attach(new TokenizedAddressEntry(box));
+            _suggestions.Attach(new TokenizedAddressEntry(box, field));
             box.IsKeyboardFocusWithinChanged += AddressBox_IsKeyboardFocusWithinChanged;
             box.AddToContactsRequested       =  AddChipToContacts;
         }

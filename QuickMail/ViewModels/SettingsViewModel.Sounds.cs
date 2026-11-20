@@ -159,7 +159,7 @@ public partial class SettingsViewModel
     /// <summary>Reset applies to a built-in scheme that differs from how it ships.</summary>
     public bool CanResetScheme =>
         SelectedSoundScheme is { IsBuiltIn: true }
-        && SoundEventRows.Any(r => r.Choice.Stored != SoundRef.BuiltIn(r.Info.BuiltInSound).ToStored());
+        && SoundEventRows.Any(r => r.Choice.Stored != SoundCatalog.Shipped(r.Info).ToStored());
 
     /// <summary>How many events in the scheme shown make a sound, such as "4 of 15 events have a sound".</summary>
     public string SchemeSoundCount
@@ -374,7 +374,7 @@ public partial class SettingsViewModel
             {
                 var value = values.TryGetValue(info.ConfigKey, out var v) ? v : SoundRef.None.ToStored();
                 // A built-in scheme records only what differs from how it ships; one of the person's own, everything.
-                if (!scheme.IsBuiltIn || value != SoundRef.BuiltIn(info.BuiltInSound).ToStored()) events[info.ConfigKey] = value;
+                if (!scheme.IsBuiltIn || value != SoundCatalog.Shipped(info).ToStored()) events[info.ConfigKey] = value;
             }
             if (scheme.IsBuiltIn && events.Count == 0) continue;
             schemes[scheme.Id] = new SoundScheme(scheme.Id, scheme.Name, scheme.IsBuiltIn, scheme.Pack, events,
@@ -492,13 +492,13 @@ public partial class SettingsViewModel
     public bool TryResetScheme()
     {
         if (!CanResetScheme || SelectedSoundScheme is not { } scheme) return false;
-        var question = $"Reset {scheme.Name} to how it ships? Every event goes back to its built-in sound.";
+        var question = $"Reset {scheme.Name} to how it ships? Every event goes back to the sound it ships with.";
         // Said only when there are any: on Save, the files the scheme then doesn't use are deleted (#955).
         if (_sounds?.CustomSoundFiles(scheme.Id).Count > 0)
             question += " The sound files you added to it are deleted when you save, unless an event still uses them.";
         if (ConfirmRequested?.Invoke(question, "Reset Sound Scheme") != true) return false;
         foreach (var row in SoundEventRows)
-            row.Choice = ChoiceFor(SoundRef.BuiltIn(row.Info.BuiltInSound));
+            row.Choice = ChoiceFor(SoundCatalog.Shipped(row.Info));
         if (SelectedSoundEvent is not null) SelectedSoundChoice = SelectedSoundEvent.Choice;
         _schemesReplacedHere.Add(scheme.Id);   // its files it no longer names go on Save (#955)
         return true;

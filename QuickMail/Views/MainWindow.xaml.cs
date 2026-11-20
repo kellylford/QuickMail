@@ -3271,7 +3271,7 @@ public partial class MainWindow : Window
     /// <summary>Opens the modeless appointment editor and restores focus to the list on close.</summary>
     private void OpenEventEditor(EventEditorViewModel editorVm)
     {
-        var editor = new EventEditorWindow(editorVm, _contactService, _configService, _recipientHistory) { Owner = this };
+        var editor = new EventEditorWindow(editorVm, _contactService, _configService, _recipientHistory, _vm.Sounds) { Owner = this };
         editor.Closed += (_, _) =>
         {
             // Return focus to the calendar list (virtualised — re-focus the selected row).

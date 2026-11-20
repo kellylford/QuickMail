@@ -84,11 +84,15 @@ public class SoundCatalogTests
     [Fact]
     public void EveryEventHasItsOwnSoundByDefault()
     {
-        var none = Glass();
-        var sounds = Enum.GetValues<SoundEvent>().Select(e => SoundCatalog.Resolve(e, none)).ToList();
-
-        Assert.All(sounds, s => Assert.Equal(SoundRefKind.BuiltIn, s.Kind));
-        Assert.Equal(sounds.Count, sounds.Distinct().Count());
+        // Every event has a built-in sound of its own. A built-in scheme plays it, except for an event
+        // that ships silent (#1048), which plays nothing until the person chooses its sound.
+        var glass = Glass();
+        Assert.All(Enum.GetValues<SoundEvent>(), e =>
+            Assert.Equal(SoundCatalog.Info(e).ShipsSilent ? SoundRefKind.None : SoundRefKind.BuiltIn,
+                SoundCatalog.Resolve(e, glass).Kind));
+        var builtIn = SoundCatalog.Events.Select(i => i.BuiltInSound).ToList();
+        Assert.Equal(builtIn.Count, builtIn.Distinct().Count());
+        Assert.Equal([SoundEvent.AddressSuggestions], SoundCatalog.Events.Where(i => i.ShipsSilent).Select(i => i.Event));
     }
 
     [Fact]
@@ -106,6 +110,31 @@ public class SoundCatalogTests
             events: new Dictionary<string, string> { ["NewMail"] = "builtin:arrived" });
         Assert.Equal(SoundRef.None, SoundCatalog.Resolve(SoundEvent.ListEnd, older));
         Assert.Equal(SoundOrigin.Navigation, SoundCatalog.Info(SoundEvent.ListEnd).Origin);
+    }
+
+    [Theory]
+    [InlineData(SoundEvent.AddressSuggestions, "AddressSuggestions", "suggest", true)]
+    [InlineData(SoundEvent.AddressInserted, "AddressInserted", "inserted", false)]
+    public void TheAddressSuggestionEventsHaveTheirOwnSoundsAndAnswerAKeyPress(SoundEvent e, string key, string sound, bool shipsSilent)
+    {
+        // #1048. Each plays at once or not at all (TryPlayNow), as an answer to the key just pressed;
+        // a scheme of the person's own made before these events plays nothing for them. The list
+        // appearing ships silent in the built-in schemes, since screen readers sound it themselves.
+        var info = SoundCatalog.Info(e);
+        Assert.Equal(key, info.ConfigKey);
+        Assert.Equal(sound, info.BuiltInSound);
+        Assert.Equal(SoundOrigin.Navigation, info.Origin);
+        Assert.Equal(shipsSilent, info.ShipsSilent);
+        Assert.All(SoundCatalog.Packs, pack =>
+            Assert.Equal(shipsSilent ? SoundRef.None : SoundRef.BuiltIn(sound),
+                SoundCatalog.Resolve(e, SoundCatalog.BuiltInScheme(pack.Id))));
+        // Chosen in a built-in scheme, it plays.
+        var chosen = new SoundScheme("glass", "Glass", isBuiltIn: true, pack: "glass",
+            events: new Dictionary<string, string> { [key] = $"builtin:{sound}" });
+        Assert.Equal(SoundRef.BuiltIn(sound), SoundCatalog.Resolve(e, chosen));
+        var older = new SoundScheme("user-older", "Older", isBuiltIn: false,
+            events: new Dictionary<string, string> { ["NewMail"] = "builtin:arrived" });
+        Assert.Equal(SoundRef.None, SoundCatalog.Resolve(e, older));
     }
 
     [Fact]

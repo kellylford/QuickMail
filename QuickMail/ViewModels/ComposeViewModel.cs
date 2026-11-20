@@ -298,6 +298,9 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
 
     private readonly ISoundService? _sounds;
 
+    /// <summary>The window's address suggestions play their sounds through it; null for none.</summary>
+    internal ISoundService? Sounds => _sounds;
+
     public ComposeViewModel(ISendMailService smtp, IAccountService accountService, ICredentialService credentials, IMailService imap, ITemplateService templateService, IMarkdownService? markdown = null,
         IOutboxService? outbox = null, IConnectivityService? connectivity = null, Func<Guid, bool>? isAccountConnected = null,
         ISoundService? sounds = null)

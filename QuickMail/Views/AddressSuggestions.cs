@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Automation.Peers;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
@@ -150,6 +151,9 @@ internal interface IAddressEntry
     /// <summary>The element whose keys and focus the controller watches.</summary>
     FrameworkElement Element { get; }
 
+    /// <summary>What the field is called when an address is said to have gone into it: "To", "Cc", "Invite".</summary>
+    string FieldName { get; }
+
     /// <summary>The partial address being typed — the search text.</summary>
     string CurrentInput { get; }
 
@@ -169,6 +173,16 @@ internal interface IAddressEntry
     void FocusInput();
 
     /// <summary>
+    /// The suggestion list showing for this field, or null once it has gone. The field tells UI
+    /// Automation it controls that list (<c>ControllerFor</c>), which is how a screen reader knows
+    /// suggestions appeared and which list to read the selected one from.
+    /// </summary>
+    void SetSuggestionList(UIElement? list);
+
+    /// <summary>Reports that the list it controls changed with nothing selected in it (UIA layout invalidated).</summary>
+    void ReportSuggestionsChanged();
+
+    /// <summary>
     /// Set while focus is in the suggestion list, so a field that commits what it holds when it
     /// loses focus does not commit the partial text the user is choosing a replacement for.
     /// </summary>
@@ -179,18 +193,22 @@ internal interface IAddressEntry
 internal sealed class TokenizedAddressEntry : IAddressEntry
 {
     private readonly TokenizedAddressBox _box;
-    public TokenizedAddressEntry(TokenizedAddressBox box)
+    public TokenizedAddressEntry(TokenizedAddressBox box, string fieldName)
     {
         _box = box;
+        FieldName = fieldName;
         _box.InputTextChanged += (_, _) => InputChanged?.Invoke(this, EventArgs.Empty);
     }
     public FrameworkElement Element => _box;
+    public string FieldName { get; }
     public string CurrentInput => _box.CurrentInputText;
     public bool CanEdit => true;
     public event EventHandler? InputChanged;
     public void AcceptSuggestion(string displayName, string email) => _box.AcceptSuggestion(displayName, email);
     public void AddAddress(string displayName, string email) => _box.AddAddress(displayName, email);
     public void FocusInput() => _box.FocusInput();
+    public void SetSuggestionList(UIElement? list) => _box.SetSuggestionList(list);
+    public void ReportSuggestionsChanged() => _box.ReportSuggestionsChanged();
     public bool SuppressLostFocusCommit { set => _box.SuppressLostFocusCommit = value; }
 }
 
@@ -204,12 +222,14 @@ internal sealed class TokenizedAddressEntry : IAddressEntry
 internal sealed class TextBoxAddressEntry : IAddressEntry
 {
     private readonly TextBox _box;
-    public TextBoxAddressEntry(TextBox box)
+    public TextBoxAddressEntry(TextBox box, string fieldName)
     {
         _box = box;
+        FieldName = fieldName;
         _box.TextChanged += (_, _) => InputChanged?.Invoke(this, EventArgs.Empty);
     }
     public FrameworkElement Element => _box;
+    public string FieldName { get; }
     public string CurrentInput
     {
         get
@@ -269,6 +289,10 @@ internal sealed class TextBoxAddressEntry : IAddressEntry
     // The caret stays where accepting left it, so the user carries on from the address chosen.
     public void FocusInput() => _box.Focus();
 
+    // Only a ControllingTextBox can say what it controls; the Invite field is one.
+    public void SetSuggestionList(UIElement? list) => (_box as ControllingTextBox)?.SetControls(list);
+    public void ReportSuggestionsChanged() => (_box as ControllingTextBox)?.RaiseControlsLayoutInvalidated();
+
     public bool SuppressLostFocusCommit { set { } } // a text box commits nothing on losing focus
 
     private static string Formatted(string displayName, string email)
@@ -314,12 +338,25 @@ internal sealed class AddressSuggestionController : IDisposable
     private readonly ListBox _list;
     private readonly IRecipientHistory? _recents;
     private readonly Func<SuggestionSources> _sources;
+    private readonly ISoundService? _sounds;
     private IAddressEntry? _active;
     private CancellationTokenSource? _searchCts;
     private Task? _searchTask;
 
     /// <summary>The typed text the showing list answers; null while no list is showing.</summary>
     private string? _shownFor;
+
+    /// <summary>The field that tells UI Automation it controls the list, while one is showing.</summary>
+    private IAddressEntry? _controlling;
+
+    /// <summary>
+    /// Whether QuickMail also says the list in words when it appears or changes ("Ann Lee
+    /// ann@example.com, 3 suggestions"). Off: the fields expose the list through UI Automation
+    /// (<c>ControllerFor</c>, the selected first suggestion, the list's layout), which screen
+    /// readers report themselves, and saying it as well says it twice, as the command palette
+    /// showed. A field rather than a constant so tests can exercise both.
+    /// </summary>
+    internal bool AnnounceList { get; set; }
 
     /// <summary>At most this many remembered people are offered alongside the address book (#1037).</summary>
     internal const int MaxRecentSuggestions = 10;
@@ -334,19 +371,27 @@ internal sealed class AddressSuggestionController : IDisposable
     /// address book and the remembered people to suggest from (<see cref="SuggestionSources.From"/>).
     /// Null suggests from the address book only.
     /// </param>
+    /// <param name="sounds">
+    /// Plays "Address suggestions appeared" and "Address inserted from suggestions", or null for no
+    /// sounds. Both answer a key press, so each plays at once or not at all (<see cref="ISoundService.TryPlayNow"/>).
+    /// </param>
     public AddressSuggestionController(Window owner, IContactService contacts, Popup popup, ListBox list,
-        IRecipientHistory? recents = null, Func<SuggestionSources>? sources = null)
+        IRecipientHistory? recents = null, Func<SuggestionSources>? sources = null, ISoundService? sounds = null)
     {
         _owner = owner;
         _contacts = contacts;
         _popup = popup;
         _list = list;
         _recents = recents;
+        _sounds = sounds;
         _sources = sources ?? (() => new SuggestionSources(AddressBook: true, PeopleEmailed: false));
         _list.PreviewKeyDown += List_PreviewKeyDown;
-        _list.MouseLeftButtonUp += (_, _) =>
+        // Only a click on a row: the first row is selected ahead of time for Tab, so a click on the
+        // list's border would otherwise enter it.
+        _list.MouseLeftButtonUp += (_, e) =>
         {
-            if (_list.SelectedItem is AddressSuggestion s) Accept(s);
+            if (ItemsControl.ContainerFromElement(_list, e.OriginalSource as DependencyObject) is ListBoxItem { DataContext: AddressSuggestion s })
+                Accept(s, fromField: false);
         };
         // Focus leaving the list for anywhere but the field it serves closes it: left open, a
         // stale list would swallow the next Enter in the field and make Escape mean Cancel.
@@ -359,11 +404,13 @@ internal sealed class AddressSuggestionController : IDisposable
                     _popup.IsOpen = false;
             }, DispatcherPriority.Background);
         };
-        // However the popup closes, the field goes back to committing normally on losing focus.
+        // However the popup closes, the field goes back to committing normally on losing focus,
+        // and stops telling UI Automation it controls a list that is no longer there.
         _popup.Closed += (_, _) =>
         {
             _shownFor = null;
             if (_active != null) _active.SuppressLostFocusCommit = false;
+            Control(null);
         };
     }
 
@@ -378,10 +425,13 @@ internal sealed class AddressSuggestionController : IDisposable
         entry.Element.IsKeyboardFocusWithinChanged += (_, e) =>
         {
             if ((bool)e.NewValue) return;
-            // Focus left the field: close the list, unless the list is what took focus.
+            // Focus left the field: close the list, unless the list is what took focus, or it now
+            // serves the field focus went to (typed into straight away, its search can finish first).
             _owner.Dispatcher.InvokeAsync(() =>
             {
-                if (!_list.IsKeyboardFocusWithin) _popup.IsOpen = false;
+                if (_list.IsKeyboardFocusWithin) return;
+                if (_controlling is { } now && !ReferenceEquals(now, entry) && now.Element.IsKeyboardFocusWithin) return;
+                _popup.IsOpen = false;
             }, DispatcherPriority.Background);
         };
     }
@@ -421,6 +471,10 @@ internal sealed class AddressSuggestionController : IDisposable
                 ? _recents!.SearchAsync(searchToken, MaxRecentSuggestions, ct)
                 : Task.FromResult(new List<ContactModel>());
             await Task.WhenAll(contactTask, groupTask, recentTask);
+            // A search can finish after a later keystroke, or a move to another field, superseded it:
+            // its results must not replace the list, sound, or take the list for its field.
+            ct.ThrowIfCancellationRequested();
+            if (!ReferenceEquals(entry, _active)) return;
 
             // Only when someone remembered matched, and the address book is being suggested too: the
             // whole address book, so a remembered person who is a contact outside the few best contact
@@ -439,16 +493,26 @@ internal sealed class AddressSuggestionController : IDisposable
 
             if (combined.Count == 0) { _popup.IsOpen = false; return; }
 
-            _list.ItemsSource      = combined;
+            // The sound marks the list appearing, not each keystroke that changes it while it shows.
+            var appearing = !_popup.IsOpen;
+            // A keystroke that leaves the list as it was keeps it, so the screen reader is not told
+            // about the same suggestions again on every letter ("proj" read Project X team four times).
+            var unchanged = !appearing && ReferenceEquals(_controlling, entry)
+                && _list.ItemsSource is IReadOnlyList<AddressSuggestion> current && SameSuggestions(current, combined);
+            if (!unchanged) _list.ItemsSource = combined;
             _shownFor              = searchToken;
             _popup.PlacementTarget = entry.Element;
             _popup.Placement       = PlacementMode.Bottom;
             _popup.IsOpen          = true;
+            if (appearing) _sounds?.TryPlayNow(SoundEvent.AddressSuggestions);
+            Control(entry);
+            ExposeFirst((IReadOnlyList<AddressSuggestion>)_list.ItemsSource, searchToken, unchanged);
 
             // Interrupting: each keystroke replaces the list, so a slower announcement of the list
             // before it is stale and should not be finished.
-            AccessibilityHelper.Announce(_owner, AnnouncementFor(combined, searchToken), interrupt: true,
-                category: AnnouncementCategory.Result);
+            if (AnnounceList)
+                AccessibilityHelper.Announce(_owner, AnnouncementFor(combined, searchToken), interrupt: true,
+                    category: AnnouncementCategory.Result);
         }
         catch (OperationCanceledException)
         {
@@ -463,8 +527,60 @@ internal sealed class AddressSuggestionController : IDisposable
         }
     }
 
+    /// <summary>The same suggestions in the same order, as a person would hear them.</summary>
+    internal static bool SameSuggestions(IReadOnlyList<AddressSuggestion> a, IReadOnlyList<AddressSuggestion> b)
+    {
+        if (a.Count != b.Count) return false;
+        for (var i = 0; i < a.Count; i++)
+        {
+            if (a[i].IsGroup != b[i].IsGroup || a[i].IsRecent != b[i].IsRecent
+                || !string.Equals(a[i].Display, b[i].Display, StringComparison.Ordinal)) return false;
+        }
+        return true;
+    }
+
+    /// <summary>Moves the "controls this list" relationship to <paramref name="entry"/>, or clears it with null.</summary>
+    private void Control(IAddressEntry? entry)
+    {
+        if (ReferenceEquals(_controlling, entry)) return;
+        _controlling?.SetSuggestionList(null);
+        _controlling = entry;
+        entry?.SetSuggestionList(_list);
+    }
+
     /// <summary>
-    /// What is said when the list appears or changes (#1037). When Tab would enter the first
+    /// Tells UI Automation what the list now offers, with focus left in the field. When Tab would
+    /// enter the first suggestion, that one is selected, which is what Windows' suggestion handling
+    /// expects of a list with a default choice: the selection event names it, and its place in the
+    /// list gives the count. When Tab would keep what was typed instead, nothing is selected, so
+    /// nothing heard is a promise Tab does not keep, and the list reports that its contents changed.
+    /// Selected after layout: the row's container has to exist for its selection to be reported.
+    /// For a list kept as it was (<paramref name="unchanged"/>), nothing is reported unless what Tab
+    /// would do has changed: typing out a whole address can mean Tab no longer takes the first.
+    /// </summary>
+    private void ExposeFirst(IReadOnlyList<AddressSuggestion> suggestions, string typed, bool unchanged)
+    {
+        var tabTakesFirst = AddressSuggestionRanking.TabTakesFirst(suggestions, typed);
+        if (unchanged && (_list.SelectedIndex == 0) == tabTakesFirst) return;
+        _list.SelectedIndex = -1;
+        _owner.Dispatcher.InvokeAsync(() =>
+        {
+            // A later keystroke may have replaced or closed the list since.
+            if (!_popup.IsOpen || !ReferenceEquals(_list.ItemsSource, suggestions) || _list.IsKeyboardFocusWithin) return;
+            if (tabTakesFirst)
+            {
+                _list.SelectedIndex = 0;
+                _list.ScrollIntoView(_list.SelectedItem);
+            }
+            else
+            {
+                _controlling?.ReportSuggestionsChanged();
+            }
+        }, DispatcherPriority.Loaded);
+    }
+
+    /// <summary>
+    /// What is said when the list appears or changes (#1037), when <see cref="AnnounceList"/> is on. When Tab would enter the first
     /// suggestion, it is named before the count, since that is what a single key does; when Tab
     /// would keep what was typed instead, only the count is said, so nothing heard is a promise Tab
     /// does not keep.
@@ -536,7 +652,7 @@ internal sealed class AddressSuggestionController : IDisposable
             // default button.
             e.Handled = true;
             if (_list.SelectedItem is AddressSuggestion s)
-                _owner.Dispatcher.InvokeAsync(() => Accept(s), DispatcherPriority.Input);
+                _owner.Dispatcher.InvokeAsync(() => Accept(s, fromField: false), DispatcherPriority.Input);
         }
         else if (e.Key == Key.Escape)
         {
@@ -594,27 +710,69 @@ internal sealed class AddressSuggestionController : IDisposable
     public bool AcceptFirst()
     {
         if (!_popup.IsOpen || _list.Items.Count == 0 || _list.Items[0] is not AddressSuggestion first) return false;
-        Accept(first);
+        Accept(first, fromField: true);
         return true;
     }
 
-    private void Accept(AddressSuggestion suggestion)
+    /// <summary>
+    /// Enters the first suggestion only when Tab would (<see cref="AddressSuggestionRanking.TabTakesFirst"/>)
+    /// and the list answers what the field holds: the one that is selected, and that a screen reader
+    /// was told of. For Enter in the editor's Invite. False otherwise, so the key keeps its meaning.
+    /// </summary>
+    public bool AcceptTabChoice()
+        => _active is { } entry && _popup.IsOpen && IsCurrentFor(entry) && TabTakesShownFirst() && AcceptFirst();
+
+    /// <param name="fromField">
+    /// Chosen without leaving the field (Tab, or Enter in the editor's Invite), so nothing else is
+    /// said and what is said can cut off the list's now-stale announcement. Chosen in the list
+    /// instead, focus goes back to the field, and the screen reader's reading of it is not cut off.
+    /// </param>
+    private void Accept(AddressSuggestion suggestion, bool fromField)
     {
         if (_active == null) return;
         var target = _active;
         if (suggestion.IsGroup)
-            _ = AcceptGroupAsync(target, suggestion.Group!);
+        {
+            _ = AcceptGroupAsync(target, suggestion.Group!, fromField);
+        }
         else
+        {
             target.AcceptSuggestion(suggestion.Contact!.DisplayName ?? string.Empty, suggestion.Contact.EmailAddress);
+            Inserted(InsertedAnnouncement(suggestion.Contact.EmailAddress, target.FieldName), fromField);
+        }
         _popup.IsOpen = false;
         target.FocusInput();
     }
 
     /// <summary>
+    /// Says an address went in, and plays its sound. Typing on is silent, so without this nothing told
+    /// the user. Chosen in the list, focus is on its way back to the field, so the words wait until the
+    /// move has been handled: raised before it, Narrator dropped them for the field's own reading
+    /// ("To edit"), where NVDA said both.
+    /// </summary>
+    private void Inserted(string announcement, bool fromField)
+    {
+        _sounds?.TryPlayNow(SoundEvent.AddressInserted);
+        if (fromField)
+            AccessibilityHelper.Announce(_owner, announcement, interrupt: true, category: AnnouncementCategory.Result);
+        else
+            _owner.Dispatcher.InvokeAsync(
+                () => AccessibilityHelper.Announce(_owner, announcement, category: AnnouncementCategory.Result),
+                DispatcherPriority.ContextIdle);
+    }
+
+    /// <summary>What is said when one address goes into a field: "ann@example.com added to To field".</summary>
+    internal static string InsertedAnnouncement(string email, string fieldName) => $"{email.Trim()} added to {fieldName} field";
+
+    /// <summary>What is said when a group's members go into a field: "3 addresses from group 'Team' added to To field".</summary>
+    internal static string GroupInsertedAnnouncement(int count, string groupName, string fieldName) =>
+        $"{(count == 1 ? "1 address" : $"{count} addresses")} from group '{groupName}' added to {fieldName} field";
+
+    /// <summary>
     /// Expands a group into its members' addresses, most recently used first. The first member
     /// replaces the partial input; the rest are added after it.
     /// </summary>
-    private async Task AcceptGroupAsync(IAddressEntry target, GroupModel group)
+    private async Task AcceptGroupAsync(IAddressEntry target, GroupModel group, bool fromField)
     {
         List<ContactModel> allContacts;
         try
@@ -644,11 +802,7 @@ internal sealed class AddressSuggestionController : IDisposable
 
         _ = _contacts.TouchGroupAsync(group.Id);
 
-        AccessibilityHelper.Announce(_owner,
-            members.Count == 1
-                ? $"Inserted 1 address from group '{group.Name}'"
-                : $"Inserted {members.Count} addresses from group '{group.Name}'",
-            category: AnnouncementCategory.Result);
+        Inserted(GroupInsertedAnnouncement(members.Count, group.Name, target.FieldName), fromField);
     }
 
     /// <summary>Cancels a search still running. Called from the owning window's OnClosed.</summary>

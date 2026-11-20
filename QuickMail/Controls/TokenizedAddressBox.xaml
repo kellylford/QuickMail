@@ -1,6 +1,7 @@
 <UserControl x:Class="QuickMail.Controls.TokenizedAddressBox"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:QuickMail.Controls"
              Focusable="False"
              KeyboardNavigation.TabNavigation="Local">
     <UserControl.Resources>
@@ -58,7 +59,11 @@
             <WrapPanel x:Name="ChipPanel"
                        Orientation="Horizontal"
                        VerticalAlignment="Center">
-                <TextBox x:Name="InputBox"
+                <!-- A ControllingTextBox so that, while the suggestion list shows, this box tells
+                     UI Automation it drives that list (ControllerFor). The Style is set by hand:
+                     the implicit TextBox style does not reach a subclass. -->
+                <local:ControllingTextBox x:Name="InputBox"
+                         Style="{DynamicResource {x:Type TextBox}}"
                          BorderThickness="0"
                          Background="Transparent"
                          FocusVisualStyle="{x:Null}"

@@ -298,6 +298,7 @@
                          MaxHeight="200"
                          MinWidth="300"
                          AutomationProperties.Name="Address suggestions"
+                         AutomationProperties.AutomationId="SuggestionsList"
                          IsTabStop="True"
                          KeyboardNavigation.TabNavigation="Cycle">
                     <ListBox.ItemContainerStyle>

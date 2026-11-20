@@ -20,7 +20,9 @@
         { "key": "MessageMoved", "label": "Message moved", "sound": "moved" },
         { "key": "TrashEmptied", "label": "Trash emptied", "sound": "emptied" },
         { "key": "ListEnd", "label": "Reached the end of a list", "sound": "edge" },
-        { "key": "RuleMatched", "label": "A rule matched", "sound": "matched" }
+        { "key": "RuleMatched", "label": "A rule matched", "sound": "matched" },
+        { "key": "AddressSuggestions", "label": "Address suggestions appeared", "sound": "suggest" },
+        { "key": "AddressInserted", "label": "Address inserted from suggestions", "sound": "inserted" }
       ]
     },
     "thechatplace": {
