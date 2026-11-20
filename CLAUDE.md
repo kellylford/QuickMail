@@ -87,6 +87,13 @@ Tests that drive real keystrokes at a shown window are gated behind `QUICKMAIL_R
 
 Do **not** subclass `FactAttribute` to do this — that trips `xUnit3003` (losing the source-file/line info IDE test navigation uses) and is evaluated at discovery rather than execution.
 
+**MouseClickInputTests** is the mouse half of the same bargain (`InputTests.MouseSkipReason`): real `SendInput` clicks at real screen coordinates against a real `MainWindow`, which is the only rung that can prove a click on a given pixel ends up running a given handler. Everything the harness needed to learn is written up in the file's header and in `RealMouse.cs`; the four that will bite anyone extending it:
+
+- **The window runs on its own thread with a real `Dispatcher.Run()` loop.** Pumping it from the test thread with `DispatcherFrame`/`PushFrame` instead is a nested message loop over a live WebView2 — the deadlock the Modal Dialog Rules below describe — and it duly hung the suite.
+- **`SendInput` only queues.** Waiting for the dispatcher to go idle races the input it is meant to be waiting for; wait for delivery (`Delivered()`), not for idle.
+- **Use `InputHitTest`, never `VisualTreeHelper.HitTest`,** to ask what a click would land on. The latter is a geometric test that cheerfully returns visuals inside a **collapsed** subtree, still carrying their last-arranged bounds — a hidden pane answering for the visible one underneath it.
+- **Give the fixture an account.** With none, start-up opens the Account Manager *modally*, which disables the window under test: it receives no input at all while remaining the window `WindowFromPoint` names and hit-testing correctly in WPF, so every click looks exactly like a click the app ignored.
+
 Tests that launch a child process and time it (`UninstallDataPromptTests`, which runs the uninstall prompt's script through `powershell.exe`) are opt-in the same way, behind `QUICKMAIL_RUN_PROCESS_TESTS=1` (`ProcessTests`), which CI also sets and guards. With them in full local runs the test host crashed (0xC0000602) about half the time on a machine with a screen reader running. The cause is unknown and not these tests alone — a run with them skipped crashed too (0xC0000005) — so treat local test-host crashes as their own problem, not a reason to delete these tests.
 
 ## User Guide Publishing
