@@ -84,11 +84,15 @@ public class SoundCatalogTests
     [Fact]
     public void EveryEventHasItsOwnSoundByDefault()
     {
-        var none = Glass();
-        var sounds = Enum.GetValues<SoundEvent>().Select(e => SoundCatalog.Resolve(e, none)).ToList();
-
-        Assert.All(sounds, s => Assert.Equal(SoundRefKind.BuiltIn, s.Kind));
-        Assert.Equal(sounds.Count, sounds.Distinct().Count());
+        // Every event has a built-in sound of its own. A built-in scheme plays it, except for an event
+        // that ships silent (#1048), which plays nothing until the person chooses its sound.
+        var glass = Glass();
+        Assert.All(Enum.GetValues<SoundEvent>(), e =>
+            Assert.Equal(SoundCatalog.Info(e).ShipsSilent ? SoundRefKind.None : SoundRefKind.BuiltIn,
+                SoundCatalog.Resolve(e, glass).Kind));
+        var builtIn = SoundCatalog.Events.Select(i => i.BuiltInSound).ToList();
+        Assert.Equal(builtIn.Count, builtIn.Distinct().Count());
+        Assert.Equal([SoundEvent.AddressSuggestions], SoundCatalog.Events.Where(i => i.ShipsSilent).Select(i => i.Event));
     }
 
     [Fact]

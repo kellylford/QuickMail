@@ -85,7 +85,7 @@ public partial class EventEditorWindow : Window
     /// key, or Enter anywhere else or with the list closed, is left to mean what it usually does.
     /// </summary>
     internal bool TryChooseSuggestionOnEnter(Key key, ModifierKeys modifiers, bool inInvite)
-        => key == Key.Enter && modifiers == ModifierKeys.None && inInvite && _suggestions?.AcceptFirst() == true;
+        => key == Key.Enter && modifiers == ModifierKeys.None && inInvite && _suggestions?.AcceptTabChoice() == true;
 
     private void Save_Click(object sender, RoutedEventArgs e) => _vm.SaveCommand.Execute(null);
     private void Cancel_Click(object sender, RoutedEventArgs e) => _vm.CancelCommand.Execute(null);

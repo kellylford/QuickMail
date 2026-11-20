@@ -365,6 +365,27 @@ public class SoundSchemeTests
     }
 
     [Fact]
+    public void AnEventThatShipsSilent_IsNoneInABuiltInScheme_ResetsToNone_AndIsSavedOnlyWhenChosen()
+    {
+        // #1048: Address suggestions appeared ships silent in the built-in schemes.
+        var config = new StubConfigService();
+        var vm = MakeSettings(config);
+        vm.ConfirmRequested = (_, _) => true;
+        Assert.Equal("none", Row(vm, SoundEvent.AddressSuggestions).Choice.Stored);
+        Assert.False(vm.CanResetScheme);   // None is how it ships, so nothing differs
+
+        Choose(vm, SoundEvent.AddressSuggestions, "Suggest");
+        Assert.True(vm.CanResetScheme);
+        vm.SaveCommand.Execute(null);
+        Assert.Equal("builtin:suggest", config.Load().SoundSchemes["glass"].Events["AddressSuggestions"]);
+
+        vm.ResetSchemeCommand.Execute(null);
+        Assert.Equal("none", Row(vm, SoundEvent.AddressSuggestions).Choice.Stored);
+        vm.SaveCommand.Execute(null);
+        Assert.False(config.Load().SoundSchemes.ContainsKey("glass"));
+    }
+
+    [Fact]
     public void ResetDoesNothingIfTheAnswerIsNo()
     {
         var vm = MakeSettings(new StubConfigService());

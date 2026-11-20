@@ -386,9 +386,12 @@ internal sealed class AddressSuggestionController : IDisposable
         _sounds = sounds;
         _sources = sources ?? (() => new SuggestionSources(AddressBook: true, PeopleEmailed: false));
         _list.PreviewKeyDown += List_PreviewKeyDown;
-        _list.MouseLeftButtonUp += (_, _) =>
+        // Only a click on a row: the first row is selected ahead of time for Tab, so a click on the
+        // list's border would otherwise enter it.
+        _list.MouseLeftButtonUp += (_, e) =>
         {
-            if (_list.SelectedItem is AddressSuggestion s) Accept(s, fromField: false);
+            if (ItemsControl.ContainerFromElement(_list, e.OriginalSource as DependencyObject) is ListBoxItem { DataContext: AddressSuggestion s })
+                Accept(s, fromField: false);
         };
         // Focus leaving the list for anywhere but the field it serves closes it: left open, a
         // stale list would swallow the next Enter in the field and make Escape mean Cancel.
@@ -422,10 +425,13 @@ internal sealed class AddressSuggestionController : IDisposable
         entry.Element.IsKeyboardFocusWithinChanged += (_, e) =>
         {
             if ((bool)e.NewValue) return;
-            // Focus left the field: close the list, unless the list is what took focus.
+            // Focus left the field: close the list, unless the list is what took focus, or it now
+            // serves the field focus went to (typed into straight away, its search can finish first).
             _owner.Dispatcher.InvokeAsync(() =>
             {
-                if (!_list.IsKeyboardFocusWithin) _popup.IsOpen = false;
+                if (_list.IsKeyboardFocusWithin) return;
+                if (_controlling is { } now && !ReferenceEquals(now, entry) && now.Element.IsKeyboardFocusWithin) return;
+                _popup.IsOpen = false;
             }, DispatcherPriority.Background);
         };
     }
@@ -465,6 +471,10 @@ internal sealed class AddressSuggestionController : IDisposable
                 ? _recents!.SearchAsync(searchToken, MaxRecentSuggestions, ct)
                 : Task.FromResult(new List<ContactModel>());
             await Task.WhenAll(contactTask, groupTask, recentTask);
+            // A search can finish after a later keystroke, or a move to another field, superseded it:
+            // its results must not replace the list, sound, or take the list for its field.
+            ct.ThrowIfCancellationRequested();
+            if (!ReferenceEquals(entry, _active)) return;
 
             // Only when someone remembered matched, and the address book is being suggested too: the
             // whole address book, so a remembered person who is a contact outside the few best contact
@@ -703,6 +713,14 @@ internal sealed class AddressSuggestionController : IDisposable
         Accept(first, fromField: true);
         return true;
     }
+
+    /// <summary>
+    /// Enters the first suggestion only when Tab would (<see cref="AddressSuggestionRanking.TabTakesFirst"/>)
+    /// and the list answers what the field holds: the one that is selected, and that a screen reader
+    /// was told of. For Enter in the editor's Invite. False otherwise, so the key keeps its meaning.
+    /// </summary>
+    public bool AcceptTabChoice()
+        => _active is { } entry && _popup.IsOpen && IsCurrentFor(entry) && TabTakesShownFirst() && AcceptFirst();
 
     /// <param name="fromField">
     /// Chosen without leaving the field (Tab, or Enter in the editor's Invite), so nothing else is

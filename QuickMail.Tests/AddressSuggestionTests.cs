@@ -653,11 +653,6 @@ public class AddressSuggestionTests
         }
     }
 
-    /// <summary>
-    /// Pumps the dispatcher until <paramref name="condition"/> holds, failing after five seconds.
-    /// Synchronous on purpose, like the other WPF tests here: an [StaFact] thread has no
-    /// dispatcher loop of its own, so awaiting the dispatcher would wait forever.
-    /// </summary>
     // ── Saying what went in, the sounds, and the list as UI Automation sees it ──
 
     [Fact]
@@ -853,6 +848,78 @@ public class AddressSuggestionTests
     }
 
     [StaFact]
+    public void Compose_TypingInAnotherField_MovesTheListToIt_ForUiAutomation()
+    {
+        EnsureApplication();
+        var to = new QuickMail.Controls.TokenizedAddressBox();
+        var cc = new QuickMail.Controls.TokenizedAddressBox();
+        var list = new ListBox();
+        var popup = new System.Windows.Controls.Primitives.Popup { Child = list, StaysOpen = true };
+        var window = new System.Windows.Window
+        {
+            Content = new StackPanel { Children = { to, cc } },
+            Width = 400, Height = 200, ShowInTaskbar = false,
+        };
+        window.Show();
+        var controller = new AddressSuggestionController(window, new Contacts(), popup, list);
+        controller.Attach(new TokenizedAddressEntry(to, "To"));
+        controller.Attach(new TokenizedAddressEntry(cc, "Cc"));
+        try
+        {
+            var toPeer = System.Windows.Automation.Peers.UIElementAutomationPeer.CreatePeerForElement(to.InputBox);
+            var ccPeer = System.Windows.Automation.Peers.UIElementAutomationPeer.CreatePeerForElement(cc.InputBox);
+            to.InputBox.Text = "bo";
+            PumpUntil(() => popup.IsOpen && toPeer.GetControlledPeers() is { Count: 1 });
+
+            cc.InputBox.Text = "an";
+            PumpUntil(() => ccPeer.GetControlledPeers() is { Count: 1 });
+            Assert.Null(toPeer.GetControlledPeers());
+            Assert.Equal("ann@example.com", ((AddressSuggestion)list.Items[0]).Contact!.EmailAddress);
+        }
+        finally
+        {
+            controller.Dispose();
+            window.Close();
+        }
+    }
+
+    [StaFact]
+    public void Invite_EnteringASuggestion_SaysItWentIntoInvite_AndEnterLeavesAMatchOnlyContainedAlone()
+    {
+        EnsureApplication();
+        var contacts = new Contacts();
+        var heard = new List<string>();
+        AccessibilityHelper.AnnouncementObserver = (text, _) => heard.Add(text);
+        var vm = new EventEditorViewModel(new DateTime(2026, 11, 3, 9, 0, 0));
+        var window = new EventEditorWindow(vm, contacts) { ShowInTaskbar = false };
+        window.Show();
+        try
+        {
+            var invite = (TextBox)window.FindName("InviteBox");
+            var popup = (System.Windows.Controls.Primitives.Popup)window.FindName("InviteSuggestionPopup");
+            invite.Focus();
+
+            // Only contained in "joann"-style matches: nothing is selected, so Enter is the editor's own.
+            contacts.MatchContains = true;
+            invite.Text = "nn";
+            PumpUntil(() => popup.IsOpen);
+            Assert.False(window.TryChooseSuggestionOnEnter(Key.Enter, ModifierKeys.None, inInvite: true));
+            Assert.Equal("nn", invite.Text);
+
+            invite.Text = "bo";
+            PumpUntil(() => popup.IsOpen && window.Suggestions!.IsOpen);
+            PumpUntil(() => window.TryChooseSuggestionOnEnter(Key.Enter, ModifierKeys.None, inInvite: true));
+            Assert.Contains("bob@example.com", invite.Text, StringComparison.Ordinal);
+            Assert.Contains("bob@example.com added to Invite field", heard);
+        }
+        finally
+        {
+            AccessibilityHelper.AnnouncementObserver = null;
+            window.Close();
+        }
+    }
+
+    [StaFact]
     public void Compose_TheListIsNotAlsoSaidInWords_UnlessAskedTo()
     {
         EnsureApplication();
@@ -907,6 +974,11 @@ public class AddressSuggestionTests
         return dir?.FullName ?? throw new InvalidOperationException("QuickMail.sln not found above the test output.");
     }
 
+    /// <summary>
+    /// Pumps the dispatcher until <paramref name="condition"/> holds, failing after five seconds.
+    /// Synchronous on purpose, like the other WPF tests here: an [StaFact] thread has no
+    /// dispatcher loop of its own, so awaiting the dispatcher would wait forever.
+    /// </summary>
     private static void PumpUntil(Func<bool> condition)
     {
         var clock = System.Diagnostics.Stopwatch.StartNew();
