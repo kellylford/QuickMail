@@ -4,7 +4,7 @@
 
 - **The rule editor's address conditions have clearer names, and From is no longer hidden.** **From addresses** is now **From any of these addresses**, and has moved out of **Advanced conditions & actions** to sit next to **Sender contains**. **Sent to addresses** is now **Sent to any of these addresses**. The new names say that a message matches when it has any one of the addresses listed. (#858, from valiant8086)
 - **Create Rule from Message fills in the sender's address and their name separately.** **Create Rule from Message** (`Ctrl+Shift+T`) now puts the sender's email address in **From any of these addresses**, checked, so the rule matches everything from that address and nothing from anyone else using the same name. Their name goes in **Sender contains**, unchecked; check it too if you want a rule that needs both. If QuickMail doesn't have the sender's address yet, it fills in the name alone, as before. (#858)
-- **The Rules Manager's list words client-side and server-side rules the same way.** A client-side rule matching a full address now reads "If from" and the address, as a Microsoft 365 rule already did, rather than "from contains". A rule holding just a name still says "from contains", since that is still matched anywhere in the From line. (#858)
+- **The Rules Manager's list words client-side and server-side rules the same way.** A client-side rule matching a whole address or domain, such as `jane@example.com` or `@example.com`, now reads "If from" and the address, as a Microsoft 365 rule already did, rather than "from contains". A rule holding a name or part of an address, such as `@example`, still says "from contains", since that is still matched anywhere in the sender. (#858)
 
 ## Fixed
 

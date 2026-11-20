@@ -944,22 +944,40 @@ public class ClientRuleConditionsTests
         Assert.DoesNotContain("from contains", row.RowText, StringComparison.Ordinal);
     }
 
-    [Fact]
-    public void ClientRows_KeepFromContains_ForAValueWithNoAt()
+    [Theory]
+    // A name, or a fragment such as "@acme", is still matched as text the sender contains, so "from" alone would
+    // overstate it (Kelly's note on #858; review of the finished PR). Only a whole address or domain reads "from".
+    [InlineData(new[] { "Jane Smith" }, "If from contains 'Jane Smith' →")]
+    [InlineData(new[] { "@acme" }, "If from contains '@acme' →")]
+    [InlineData(new[] { "john.smith@" }, "If from contains 'john.smith@' →")]
+    [InlineData(new[] { "a@x.com", "Jane" }, "If from contains any of 'a@x.com', 'Jane' →")]
+    [InlineData(new[] { "@acme.com" }, "If from '@acme.com' →")]
+    [InlineData(new[] { "a@x.com", "b@y.org" }, "If from any of 'a@x.com', 'b@y.org' →")]
+    public void ClientRows_SayFromOnlyForWholeAddresses(string[] values, string expected)
     {
-        // A From value with no @, an older rule holding just a name, is still matched as text the From
-        // header contains, so "from" alone would overstate it (Kelly's note on #858).
         var row = UnifiedRuleRow.ForClient(new MailRule
         {
-            Name = "Jane",
+            Name = "Rule",
             IsEnabled = true,
             UseFromCondition = true,
-            FromContains = "Jane Smith",
+            FromAddresses = [.. values],
+            FromContains = values[0],
             UseToCondition = false,
             UseSubjectCondition = false,
             Action = RuleAction.MarkAsRead,
         });
 
-        Assert.Contains("If from contains 'Jane Smith' →", row.RowText, StringComparison.Ordinal);
+        Assert.Contains(expected, row.RowText, StringComparison.Ordinal);
     }
+
+    [Theory]
+    [InlineData("service@paypal.com", true)]
+    [InlineData("@paypal.com", true)]
+    [InlineData("PayPal <service@paypal.com>", true)]
+    [InlineData("@acme", false)]
+    [InlineData("john.smith@", false)]
+    [InlineData("Jane Smith", false)]
+    [InlineData("", false)]
+    public void WholeAddresses_AreTheOnesMatchedWhole(string value, bool whole)
+        => Assert.Equal(whole, QuickMail.Helpers.AddressMatch.IsWhole(value));
 }
