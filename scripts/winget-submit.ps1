@@ -82,6 +82,14 @@ if (-not (Test-GhPath "repos/$fork")) {
     foreach ($i in 1..30) { if (Test-GhPath "repos/$fork") { break }; Start-Sleep -Seconds 5 }
 }
 
+# Bring the fork's master up to upstream's first. The tree below is built on upstream's newest
+# commit, and the fork can refuse it ("base_tree is not a valid tree oid", HTTP 422) until it
+# has those objects itself, which is what failed 0.8.75's first submission. A failed sync is
+# only a warning: the fork often has them anyway, and the tree call says so clearly if not.
+$sync = & gh api -X POST "repos/$fork/merge-upstream" -f branch=master --jq .message 2>&1
+if ($LASTEXITCODE -eq 0) { Write-Host "Fork sync: $sync" }
+else { Write-Host "::warning::Could not sync $fork with ${upstream}: $sync" }
+
 $base = Invoke-Gh api "repos/$upstream/git/ref/heads/master" --jq .object.sha
 $baseTree = Invoke-Gh api "repos/$upstream/git/commits/$base" --jq .tree.sha
 
