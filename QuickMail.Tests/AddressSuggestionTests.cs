@@ -658,9 +658,9 @@ public class AddressSuggestionTests
     [Fact]
     public void InsertedAnnouncement_NamesTheAddressAndTheField()
     {
-        Assert.Equal("kelly@example.com added to To field", AddressSuggestionController.InsertedAnnouncement(" kelly@example.com ", "To"));
-        Assert.Equal("1 address from group 'Team' added to Cc field", AddressSuggestionController.GroupInsertedAnnouncement(1, "Team", "Cc"));
-        Assert.Equal("3 addresses from group 'Team' added to Invite field", AddressSuggestionController.GroupInsertedAnnouncement(3, "Team", "Invite"));
+        Assert.Equal("kelly@example.com added in To field", AddressSuggestionController.InsertedAnnouncement(" kelly@example.com ", "To"));
+        Assert.Equal("1 address from group 'Team' added in Cc field", AddressSuggestionController.GroupInsertedAnnouncement(1, "Team", "Cc"));
+        Assert.Equal("3 addresses from group 'Team' added in Invite field", AddressSuggestionController.GroupInsertedAnnouncement(3, "Team", "Invite"));
     }
 
     [StaFact]
@@ -681,7 +681,7 @@ public class AddressSuggestionTests
             rig.Box.InputBox.RaiseEvent(Key_(rig.Window, Key.Tab));
 
             Assert.Equal([SoundEvent.AddressSuggestions, SoundEvent.AddressInserted], sounds.Played);
-            Assert.Contains(("bob@example.com added to To field", AnnouncementCategory.Result), heard);
+            Assert.Contains(("bob@example.com added in To field", AnnouncementCategory.Result), heard);
         }
         finally
         {
@@ -708,13 +708,13 @@ public class AddressSuggestionTests
             PumpUntil(() => rig.Popup.IsOpen);
             rig.List.SelectedIndex = 0;
             rig.Controller.List_PreviewKeyDown(rig.List, Key_(rig.Window, Key.Enter));
-            PumpUntil(() => heard.Contains("bob@example.com added to To field"));
+            PumpUntil(() => heard.Contains("bob@example.com added in To field"));
 
             rig.Box.InputBox.Text = "Tea";
             PumpUntil(() => rig.Popup.IsOpen);
             rig.List.SelectedIndex = 0;
             rig.Controller.List_PreviewKeyDown(rig.List, Key_(rig.Window, Key.Enter));
-            PumpUntil(() => heard.Contains("2 addresses from group 'Team' added to To field"));
+            PumpUntil(() => heard.Contains("2 addresses from group 'Team' added in To field"));
             Assert.Equal(2, sounds.Played.Count(e => e == SoundEvent.AddressInserted));
         }
         finally
@@ -910,7 +910,7 @@ public class AddressSuggestionTests
             PumpUntil(() => popup.IsOpen && window.Suggestions!.IsOpen);
             PumpUntil(() => window.TryChooseSuggestionOnEnter(Key.Enter, ModifierKeys.None, inInvite: true));
             Assert.Contains("bob@example.com", invite.Text, StringComparison.Ordinal);
-            Assert.Contains("bob@example.com added to Invite field", heard);
+            Assert.Contains("bob@example.com added in Invite field", heard);
         }
         finally
         {

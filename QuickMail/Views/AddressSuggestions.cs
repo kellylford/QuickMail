@@ -761,12 +761,12 @@ internal sealed class AddressSuggestionController : IDisposable
                 DispatcherPriority.ContextIdle);
     }
 
-    /// <summary>What is said when one address goes into a field: "ann@example.com added to To field".</summary>
-    internal static string InsertedAnnouncement(string email, string fieldName) => $"{email.Trim()} added to {fieldName} field";
+    /// <summary>What is said when one address goes into a field: "ann@example.com added in To field".</summary>
+    internal static string InsertedAnnouncement(string email, string fieldName) => $"{email.Trim()} added in {fieldName} field";
 
-    /// <summary>What is said when a group's members go into a field: "3 addresses from group 'Team' added to To field".</summary>
+    /// <summary>What is said when a group's members go into a field: "3 addresses from group 'Team' added in To field".</summary>
     internal static string GroupInsertedAnnouncement(int count, string groupName, string fieldName) =>
-        $"{(count == 1 ? "1 address" : $"{count} addresses")} from group '{groupName}' added to {fieldName} field";
+        $"{(count == 1 ? "1 address" : $"{count} addresses")} from group '{groupName}' added in {fieldName} field";
 
     /// <summary>
     /// Expands a group into its members' addresses, most recently used first. The first member
