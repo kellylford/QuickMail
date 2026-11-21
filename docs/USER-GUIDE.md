@@ -1278,7 +1278,7 @@ Every compose window offers three modes, switchable at any time with `Ctrl+Shift
 | Markdown | `Ctrl+Shift+2` | Write Markdown; sent as formatted HTML |
 | HTML | `Ctrl+Shift+3` | Rich text editor with real formatting |
 
-You can also switch with the **Compose mode** list in the window's status row. Your text converts as you switch: Markdown becomes real formatting in HTML mode, and formatting becomes Markdown when you leave it. Switching from a rich mode to Plain Text asks for confirmation because formatting would be lost. The mode new messages start in is **Default compose mode** in **Settings → General → Composing**.
+You can also switch with the **Compose mode** list in the window's status row. Your text converts as you switch: Markdown becomes real formatting in HTML mode, and formatting becomes Markdown when you leave it. Switching from a rich mode to Plain Text asks for confirmation because formatting would be lost. The mode new messages start in is **Default compose mode** in **Settings → General → Composing**. A reply to a message that has formatting (HTML) opens in HTML mode whatever that setting says, so the original is quoted as a real quote rather than as lines beginning with `>`; forwards of those messages already did. Turn off **Reply to HTML messages in HTML**, in the same place, to have replies use the default mode too. A reply to a plain-text message always uses the default mode.
 
 **What Markdown understands:** headings (`#` to `######`), bold, italic, strikethrough (`~~`), inline code and fenced code blocks (with a language name after the opening fence), bullet, numbered and nested lists, links, bare web addresses, pictures (`![description](address)`), quotes (`>`), horizontal rules (`---`), and tables written with pipes (`| A | B |`). HTML typed into a Markdown message is never run; it stays as visible text. A task list (`- [x] done`) is sent as the text you typed, since mail programs strip checkboxes and they are not accessible in email.
 
@@ -2687,6 +2687,7 @@ Press **Ctrl+,** to open Settings. The **Sounds** tab has no access key, so reac
 - **Check for new mail every** — the regular check behind the server's own notice of new mail; **Off (server push only)** relies on the server alone.
 - **Confirm before emptying trash** (**Mail Actions**) — on by default.
 - **Default compose mode** — Plain Text, Markdown, or HTML
+- **Reply to HTML messages in HTML** — on by default. A reply to a message that has formatting opens in HTML mode, with the original quoted as a quote block, instead of in the default compose mode with every quoted line beginning with `>`. See [Editing Modes](#editing-modes).
 - **Check spelling as I type** — on by default. Turn it off if a message stalls, or your screen reader misreads lines, after you paste a long text. See [Turning off spell checking as you type](#turning-off-spell-checking-as-you-type).
 - **Auto-save drafts** — on/off and interval
 - **Confirm before sending a message** — off by default. Asks before sending or queuing mail; applies to open compose windows as soon as settings are saved.

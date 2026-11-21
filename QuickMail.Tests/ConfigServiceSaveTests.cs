@@ -28,6 +28,28 @@ public class ConfigServiceSaveTests
         Assert.Equal(config.AnnounceHints, reloaded.AnnounceHints);
     }
 
+    // #1050: on unless turned off, a config.ini written before it existed still means "on",
+    // and "off" survives a restart.
+    [Fact]
+    public void ReplyInHtmlToHtmlMessages_DefaultsOn_AndRoundTripsOff()
+    {
+        var profile = MakeTempProfile();
+        Directory.CreateDirectory(profile.ProfileDir);
+        File.WriteAllText(Path.Combine(profile.ProfileDir, "config.ini"), "DefaultComposeMode = plain\n");
+        var service = new ConfigService(profile);
+
+        var config = service.Load();
+        Assert.Equal(ComposeMode.PlainText, config.DefaultComposeMode);
+        Assert.True(config.ReplyInHtmlToHtmlMessages);
+
+        config.ReplyInHtmlToHtmlMessages = false;
+        service.Save(config);
+
+        Assert.False(new ConfigService(profile).Load().ReplyInHtmlToHtmlMessages);
+        Assert.Contains("ReplyInHtmlToHtmlMessages = off",
+            File.ReadAllText(Path.Combine(profile.ProfileDir, "config.ini")));
+    }
+
     // #883: the setting must survive a restart, and a config.ini written before it existed
     // must still mean "on".
     [Fact]

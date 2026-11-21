@@ -1805,18 +1805,12 @@ public partial class ComposeWindow : Window
 
     /// <summary>
     /// Applies the initial editing mode after the View's event handlers are wired:
-    /// drafts restore their saved mode; templates stay plain text; new composes use the configured default.
+    /// the view model decides which (<see cref="ComposeViewModel.InitialMode"/>).
     /// </summary>
     private void ApplyDefaultComposeMode()
     {
-        ComposeMode targetMode;
-        if (_vm.ComposeKind is ComposeKind.EditDraft or ComposeKind.NewDraft
-            || (_vm.ComposeKind == ComposeKind.Forward && _vm.SeededMode == ComposeMode.Html))
-            targetMode = _vm.SeededMode;       // restore saved mode (drafts) or honour HTML forward body
-        else if (_vm.ComposeKind is ComposeKind.EditTemplate)
-            targetMode = ComposeMode.PlainText; // templates are plain-text only
-        else
-            targetMode = _configService.Load().DefaultComposeMode;
+        var config = _configService.Load();
+        var targetMode = _vm.InitialMode(config.DefaultComposeMode, config.ReplyInHtmlToHtmlMessages);
 
         if (targetMode == ComposeMode.PlainText) return;
         _vm.SetMode(targetMode);

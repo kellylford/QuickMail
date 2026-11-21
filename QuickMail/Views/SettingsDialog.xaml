@@ -373,9 +373,17 @@
                                         <ComboBoxItem Tag="markdown" Content="Markdown"/>
                                         <ComboBoxItem Tag="html" Content="HTML"/>
                                     </ComboBox>
-                                    <TextBlock Text="Drafts and templates always reopen in plain text."
+                                    <TextBlock Text="Drafts reopen in the mode they were saved in; templates in plain text."
                                                Foreground="{DynamicResource Theme.TextSecondary}" FontSize="{DynamicResource Theme.FontSizeSmall}" Margin="0,3,0,0"/>
                                 </StackPanel>
+
+                                <CheckBox x:Name="ReplyInHtmlToHtmlMessagesCheckBox"
+                                          Content="Reply to HTML messages in HTML"
+                                          IsChecked="{Binding ReplyInHtmlToHtmlMessages, Mode=TwoWay}"
+                                          Margin="0,10,0,0"
+                                          AutomationProperties.HelpText="The original message is quoted as a quote block instead of lines starting with a greater-than sign. Replies to plain-text messages use the default compose mode."/>
+                                <TextBlock Text="The original message is quoted as a quote block instead of lines starting with &gt;. Replies to plain-text messages use the default compose mode."
+                                           Foreground="{DynamicResource Theme.TextSecondary}" FontSize="{DynamicResource Theme.FontSizeSmall}" Margin="0,3,0,0" TextWrapping="Wrap"/>
 
                                 <CheckBox x:Name="CheckSpellingAsYouTypeCheckBox"
                                           Content="Check spelling as I t_ype"

@@ -417,6 +417,22 @@ public class SettingsViewModelTests
         Assert.False(vmLoad.AnnounceSpellingSuggestions);
     }
 
+    // #1050: "Reply to HTML messages in HTML" is on unless the user turns it off.
+    [Fact]
+    public void ReplyInHtmlToHtmlMessages_DefaultsOn_AndRoundTrips()
+    {
+        var configService = new StubConfigService();
+
+        var vmSave = new SettingsViewModel(configService, new StubCommandRegistry());
+        Assert.True(vmSave.ReplyInHtmlToHtmlMessages);
+        vmSave.ReplyInHtmlToHtmlMessages = false;
+        vmSave.SaveCommand.Execute(null);
+
+        Assert.False(configService.Load().ReplyInHtmlToHtmlMessages);
+        var vmLoad = new SettingsViewModel(configService, new StubCommandRegistry());
+        Assert.False(vmLoad.ReplyInHtmlToHtmlMessages);
+    }
+
     // #883: "Check spelling as I type" is on unless the user turns it off.
     [Fact]
     public void CheckSpellingAsYouType_DefaultsToTrue()

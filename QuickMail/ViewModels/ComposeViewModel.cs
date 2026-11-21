@@ -186,6 +186,38 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
     /// <summary>The compose mode stored in the draft when it was last saved; PlainText for new composes.</summary>
     public ComposeMode SeededMode => _seededMode;
 
+    /// <summary>
+    /// The editing mode this compose window should open in. Drafts and messages reopened from the
+    /// Outbox restore the mode they were written in, an HTML forward opens in HTML, templates stay
+    /// plain text, a reply to a message that has HTML opens in HTML when
+    /// <paramref name="replyInHtmlToHtmlMessages"/> is on (#1050), and everything else uses
+    /// <paramref name="defaultMode"/>. Call once, before the first <see cref="SetMode"/>: the
+    /// reply's quoted HTML is consumed when the editor loads it.
+    /// </summary>
+    public ComposeMode InitialMode(ComposeMode defaultMode, bool replyInHtmlToHtmlMessages) =>
+        ResolveInitialMode(ComposeKind, _seededMode, _seededHtmlBody != null, _outboxId != null,
+            defaultMode, replyInHtmlToHtmlMessages);
+
+    /// <summary>The decision behind <see cref="InitialMode"/>, kept pure so it can be tested directly.</summary>
+    /// <param name="reopenedFromOutbox">
+    /// A queued message keeps its Kind (a queued reply is still a Reply) and the HTML it was
+    /// written with, so without this a reply queued in Markdown would come back in HTML.
+    /// </param>
+    public static ComposeMode ResolveInitialMode(
+        ComposeKind kind, ComposeMode seededMode, bool hasQuotedHtml, bool reopenedFromOutbox,
+        ComposeMode defaultMode, bool replyInHtmlToHtmlMessages)
+    {
+        if (reopenedFromOutbox
+            || kind is ComposeKind.EditDraft or ComposeKind.NewDraft
+            || (kind == ComposeKind.Forward && seededMode == ComposeMode.Html))
+            return seededMode;
+        if (kind == ComposeKind.EditTemplate)
+            return ComposeMode.PlainText;
+        if ((kind is ComposeKind.Reply or ComposeKind.ReplyAll) && hasQuotedHtml && replyInHtmlToHtmlMessages)
+            return ComposeMode.Html;
+        return defaultMode;
+    }
+
     public event Action? CloseRequested;
 
     /// <summary>
@@ -359,7 +391,8 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
 
         // Remember the original mode so the View can restore it after wiring up event handlers.
         // A reply carries the original as quoted HTML too; it is used if the reply opens in
-        // HTML mode (the default mode decides), so the quote keeps the original's structure.
+        // HTML mode (see InitialMode: on by default for replies to HTML messages, #1050), or is
+        // switched to it later, so the quote keeps the original's structure.
         _seededMode    = model.Mode;
         _seededHtmlBody = model.Mode == ComposeMode.Html || model.Kind is ComposeKind.Reply or ComposeKind.ReplyAll
             ? model.HtmlBody
