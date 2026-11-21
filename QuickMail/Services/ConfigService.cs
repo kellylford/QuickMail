@@ -960,7 +960,7 @@ public class ConfigService : IConfigService
             _                           => "plain",
         }}");
         sb.AppendLine("# Editing mode new compose windows start in.");
-        sb.AppendLine("# Drafts and templates always reopen in plain text.");
+        sb.AppendLine("# Drafts reopen in the mode they were saved in; templates in plain text.");
         sb.AppendLine("# Values: plain, markdown, html.");
         sb.AppendLine();
 

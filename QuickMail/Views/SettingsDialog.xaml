@@ -373,7 +373,7 @@
                                         <ComboBoxItem Tag="markdown" Content="Markdown"/>
                                         <ComboBoxItem Tag="html" Content="HTML"/>
                                     </ComboBox>
-                                    <TextBlock Text="Drafts and templates always reopen in plain text."
+                                    <TextBlock Text="Drafts reopen in the mode they were saved in; templates in plain text."
                                                Foreground="{DynamicResource Theme.TextSecondary}" FontSize="{DynamicResource Theme.FontSizeSmall}" Margin="0,3,0,0"/>
                                 </StackPanel>
 

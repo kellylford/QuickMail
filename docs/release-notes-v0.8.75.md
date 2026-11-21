@@ -13,6 +13,8 @@
 
 ## Fixed
 
+- **A message you reopen from the Outbox comes back in the mode you wrote it in.** It used to open in your default compose mode, so a message written in HTML or Markdown and queued while offline could come back as plain text. (#1050)
+
 - **Switched-off From addresses are kept.** In a client-side rule, if you switched **From any of these addresses** off and **Sender contains** on and saved, the addresses box was empty when you later turned that condition back on. The addresses are now kept, read-only, like the text of every other condition you turn off. (#858)
 
 

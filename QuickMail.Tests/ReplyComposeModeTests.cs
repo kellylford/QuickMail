@@ -61,7 +61,41 @@ public class ReplyComposeModeTests
         ComposeMode defaultMode, bool replyInHtml, ComposeMode expected)
     {
         Assert.Equal(expected,
-            ComposeViewModel.ResolveInitialMode(kind, seeded, hasQuotedHtml, defaultMode, replyInHtml));
+            ComposeViewModel.ResolveInitialMode(kind, seeded, hasQuotedHtml, reopenedFromOutbox: false,
+                defaultMode, replyInHtml));
+    }
+
+    // A message reopened from the Outbox comes back in the mode it was written in. A queued reply
+    // is still Kind=Reply and still carries HTML, so without this a reply queued in Markdown
+    // would come back in HTML.
+    [Theory]
+    [InlineData(ComposeKind.Reply,      ComposeMode.Markdown,  ComposeMode.PlainText, true)]
+    [InlineData(ComposeKind.ReplyAll,   ComposeMode.PlainText, ComposeMode.Html,      true)]
+    [InlineData(ComposeKind.Reply,      ComposeMode.Html,      ComposeMode.PlainText, false)]
+    [InlineData(ComposeKind.NewMessage, ComposeMode.Markdown,  ComposeMode.PlainText, true)]
+    [InlineData(ComposeKind.Forward,    ComposeMode.PlainText, ComposeMode.Html,      true)]
+    public void ResolveInitialMode_ReopenedFromOutbox_RestoresTheModeItWasWrittenIn(
+        ComposeKind kind, ComposeMode seeded, ComposeMode defaultMode, bool replyInHtml)
+    {
+        Assert.Equal(seeded,
+            ComposeViewModel.ResolveInitialMode(kind, seeded, hasQuotedHtml: true, reopenedFromOutbox: true,
+                defaultMode, replyInHtml));
+    }
+
+    [Fact]
+    public void ReplyQueuedInMarkdown_ReopensFromOutboxInMarkdown()
+    {
+        var vm = NewVm();
+        vm.Seed(new ComposeModel
+        {
+            Kind     = ComposeKind.Reply,
+            OutboxId = "queued-1",
+            Mode     = ComposeMode.Markdown,
+            Body     = "**Yes**\n\n> Are you free?",
+            HtmlBody = "<html><body><p><strong>Yes</strong></p><blockquote><p>Are you free?</p></blockquote></body></html>",
+        });
+
+        Assert.Equal(ComposeMode.Markdown, vm.InitialMode(ComposeMode.PlainText, replyInHtmlToHtmlMessages: true));
     }
 
     // ── Through a real reply ─────────────────────────────────────────────────
@@ -108,14 +142,24 @@ public class ReplyComposeModeTests
 
     // ── In the compose window ────────────────────────────────────────────────
 
+    private sealed class SignedAccountService(AccountModel account) : QuickMail.Services.IAccountService
+    {
+        public System.Collections.Generic.List<AccountModel> LoadAccounts() => [account];
+        public void SaveAccounts(System.Collections.Generic.List<AccountModel> accounts) { }
+        public void SetDefaultAccount(Guid accountId) { }
+    }
+
     private static (ComposeWindow Window, ComposeViewModel Vm) OpenReplyWindow(
-        MailMessageDetail detail, bool replyInHtml)
+        MailMessageDetail detail, bool replyInHtml, string? signature = null)
     {
         var config = new StubConfigService();
         config.Load().DefaultComposeMode = ComposeMode.PlainText;
         config.Load().ReplyInHtmlToHtmlMessages = replyInHtml;
-        var vm = NewVm();
-        vm.Seed(ComposeViewModel.CreateReply(detail, detail.AccountId));
+        var account = new AccountModel { Id = Guid.NewGuid(), IsDefault = true, Signature = signature ?? string.Empty };
+        var vm = new ComposeViewModel(
+            new StubSmtpService(), new SignedAccountService(account), new StubCredentialService(),
+            new StubImapMailService(), new StubTemplateService());
+        vm.Seed(ComposeViewModel.CreateReply(detail, account.Id));
         var window = new ComposeWindow(vm, new StubContactService(), new StubTemplateService(), config)
         {
             WindowStyle = WindowStyle.None, ShowInTaskbar = false, ShowActivated = false, ConfirmSaveOnClose = null,
@@ -142,6 +186,52 @@ public class ReplyComposeModeTests
             var quoted = new TextRange(quote!.ContentStart, quote.ContentEnd).Text;
             Assert.Contains("First line", quoted);
             Assert.Contains("Second line", quoted);
+
+            var all = new TextRange(editor.Document.ContentStart, editor.Document.ContentEnd).Text;
+            Assert.DoesNotContain(">", all);
+        }
+        finally { window.Close(); }
+    }
+
+    // The caret must start in the empty paragraph above "On ... wrote:", outside the quote, so
+    // the user types their reply at the top rather than inside the quoted message.
+    [StaFact]
+    public void ReplyWindow_HtmlOriginal_CaretStartsInAnEmptyLineAboveTheQuote()
+    {
+        var detail = Detail("First line", "<p>First line</p>");
+        var (window, _) = OpenReplyWindow(detail, replyInHtml: true);
+        try
+        {
+            var editor = window.FindName("RichBodyBox") as RichTextBox;
+            Assert.NotNull(editor);
+            var paragraph = editor!.CaretPosition.Paragraph;
+            Assert.NotNull(paragraph);
+            Assert.Same(editor.Document.Blocks.FirstBlock, paragraph);
+            Assert.Equal(string.Empty, new TextRange(paragraph!.ContentStart, paragraph.ContentEnd).Text.Trim());
+            Assert.Equal(0, RichTextDocumentConverter.QuoteDepth(paragraph));
+        }
+        finally { window.Close(); }
+    }
+
+    // A signature goes through the seeded-HTML path too (_seededHtmlBody += SignatureHtml), which
+    // is now what every reply to an HTML message takes.
+    [StaFact]
+    public void ReplyWindow_HtmlOriginal_WithSignature_PutsTheSignatureAfterTheQuote()
+    {
+        var detail = Detail("First line", "<p>First line</p>");
+        var (window, vm) = OpenReplyWindow(detail, replyInHtml: true, signature: "Kelly\nThe Idea Place");
+        try
+        {
+            Assert.Equal(ComposeMode.Html, vm.CurrentMode);
+            var editor = window.FindName("RichBodyBox") as RichTextBox;
+            Assert.NotNull(editor);
+
+            var blocks = editor!.Document.Blocks.ToList();
+            var quoteIndex = blocks.FindIndex(b => b is Section s && Equals(s.Tag, RichTextDocumentConverter.TagBlockquote));
+            Assert.True(quoteIndex >= 0, "the reply should hold the original as a quote block");
+            var after = string.Concat(blocks.Skip(quoteIndex + 1)
+                .Select(b => new TextRange(b.ContentStart, b.ContentEnd).Text));
+            Assert.Contains("The Idea Place", after);
 
             var all = new TextRange(editor.Document.ContentStart, editor.Document.ContentEnd).Text;
             Assert.DoesNotContain(">", all);
