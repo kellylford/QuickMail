@@ -622,7 +622,7 @@ public class HiddenFoldersTests
         Assert.Contains(contextHandler, contextMenu.Groups["body"].Value, StringComparison.Ordinal);
 
         var folderMenu = Regex.Match(xaml,
-            "<MenuItem Header=\"Fol_der\">(?<body>.*?)</MenuItem>\\s*\\r?\\n\\s*<!-- View -->", RegexOptions.Singleline);
+            "<MenuItem Header=\"Fol_der\"[^>]*>(?<body>.*?)</MenuItem>\\s*\\r?\\n\\s*<!-- View -->", RegexOptions.Singleline);
         Assert.True(folderMenu.Success);
         Assert.Contains("sc:CommandShortcut.Id=\"" + commandId + "\"", folderMenu.Groups["body"].Value, StringComparison.Ordinal);
         Assert.Contains(menuHandler, folderMenu.Groups["body"].Value, StringComparison.Ordinal);

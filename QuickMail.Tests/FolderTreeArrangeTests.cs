@@ -193,7 +193,7 @@ public class FolderTreeArrangeTests
         Assert.Equal(["Calendar", "All Mail", "Home", "Work"], RootLabels(vm));
         Assert.Equal([Home, Work], vm.Accounts.Select(a => a.Id));
         Assert.Equal([Home, Work], accounts.LastSaved.Select(a => a.Id));   // the Accounts list and From list read this
-        Assert.Equal("calendar, favorites, views, allmail, account, account", config.Load().FolderTreeOrder);
+        Assert.Equal(string.Empty, config.Load().FolderTreeOrder);   // still the default: nothing written
     }
 
     [Fact]
