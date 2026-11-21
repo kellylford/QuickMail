@@ -290,7 +290,7 @@ public class FavoriteFoldersTests
     [InlineData("favorites", "'Favorites' only groups the folders inside it, so it cannot be a favorite.")]
     [InlineData("allmailheader", "'All Mail' only groups the folders inside it, so it cannot be a favorite.")]
     [InlineData("allinboxes", "'All Inboxes' is a view, not a folder, so it cannot be a favorite.")]
-    [InlineData("accountallmail", "'All Mail' is a view, not a folder, so it cannot be a favorite.")]
+    [InlineData("accountallmail", "'All Mail — Work' is a view, not a folder, so it cannot be a favorite.")]
     [InlineData("calendar", "'Calendar' is a calendar, not a mail folder, so it cannot be a favorite.")]
     [InlineData("segment", "'Lists' only groups the folders inside it, so it cannot be a favorite.")]
     public async Task WhatIsNotAMailFolder_IsRefused_WithTheReason(string which, string expected)

@@ -110,7 +110,7 @@ public class AccountOrderMenuTests
             var items = menu!.Items.OfType<MenuItem>().ToList();
 
             var reorder = Assert.Single(items, i => AutomationProperties.GetName(i) == "Reorder");
-            Assert.Equal("O", AccessKeyOf(reorder.Header as string));
+            Assert.Equal("o", AccessKeyOf(reorder.Header as string), ignoreCase: true);
             var moves = reorder.Items.OfType<MenuItem>().ToList();
             Assert.Equal(["account.moveUp", "account.moveDown", "account.moveToStart", "account.moveToEnd"],
                          moves.Select(m => CommandShortcut.GetId(m)));

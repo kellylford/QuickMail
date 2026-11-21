@@ -47,9 +47,11 @@ public class FolderTreeOrderTests
     [Fact]
     public void AMissingSectionGoesBackBesideItsDefaultNeighbour()
     {
-        // Favorites belongs before Views; with Views gone too, after Calendar.
+        // Favorites belongs after Calendar, and Views after Favorites; with Calendar gone too, the
+        // first missing section goes before the next one present.
         Assert.Equal("account, calendar, favorites, views, allmail", N("account, calendar, views, allmail", 1));
         Assert.Equal("allmail, calendar, favorites, views", N("allmail, calendar", 0));
+        Assert.Equal("account, calendar, favorites, views, allmail", N("account, views, allmail", 1));
     }
 
     [Fact]

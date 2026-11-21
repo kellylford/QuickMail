@@ -173,11 +173,20 @@ public class MouseClickInputTests
             // A click first brings the window to the foreground, so the keystrokes go to it.
             app.ClickFolderLabel(app.Inbox);
             app.WaitUntil(() => app.SelectedFolderIs(app.Inbox), "the first click did not open Inbox");
+            // Opening a folder finishes on later turns, and may move focus as it does; let it finish
+            // before putting focus where this test needs it.
+            app.Settle();
 
             app.UseTheRealFolderTree();
             Assert.Equal(["All Mail", "Work"], app.RootLabels);
+            // Focus arriving from outside the tree is sent to the open folder or the first item
+            // (FolderList_GotKeyboardFocus), so enter the tree first and then move within it, as a
+            // user arrowing to Work does.
+            app.FocusRoot("All Mail");
+            app.Settle();
             app.FocusRoot("Work");
-            app.WaitUntil(() => app.FocusedTreeItemLabel == "Work", "focus did not reach Work; it is on " + app.FocusedTreeItemLabel);
+            app.Settle();
+            Assert.True(app.FocusedTreeItemLabel == "Work", "setup: focus did not stay on Work; it is on " + app.FocusedTreeItemLabel);
 
             OsInput.PressAltKey(OsInput.VK_UP);
 

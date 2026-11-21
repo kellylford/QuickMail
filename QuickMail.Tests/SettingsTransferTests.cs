@@ -902,9 +902,10 @@ public sealed class SettingsTransferTests : IDisposable
     public void Import_AnOlderFilesCalendarPositionBecomesTheFolderTreeOrder()
     {
         var desktop = SeedDesktop();
+        // Into [global], where the setting lived; the end of the file is another section.
         var lines = File.ReadAllLines(Path.Combine(desktop, "config.ini"))
             .Where(l => !l.TrimStart().StartsWith("FolderTreeOrder", StringComparison.OrdinalIgnoreCase))
-            .Append("CalendarAtEndOfFolderList = on");
+            .SelectMany(l => l.Trim() == "[global]" ? new[] { l, "CalendarAtEndOfFolderList = on" } : [l]);
         File.WriteAllLines(Path.Combine(desktop, "config.ini"), lines);
         var laptop = SeedLaptop();
 

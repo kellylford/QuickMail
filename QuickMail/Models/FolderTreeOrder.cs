@@ -86,14 +86,15 @@ public static class FolderTreeOrder
         return result;
     }
 
-    // Just before the nearest section that follows it by default, else just after the nearest one
-    // that precedes it, else at the start.
+    // Just after the nearest section that precedes it by default (so Favorites comes back after
+    // Calendar, where #1056 puts it), else just before the nearest one that follows it, else at the
+    // start.
     private static int DefaultPlaceFor(List<string> result, int sectionIndex)
     {
-        for (var n = sectionIndex + 1; n < Sections.Count; n++)
-            if (result.IndexOf(Sections[n]) is var at and >= 0) return at;
         for (var p = sectionIndex - 1; p >= 0; p--)
             if (result.IndexOf(Sections[p]) is var at and >= 0) return at + 1;
+        for (var n = sectionIndex + 1; n < Sections.Count; n++)
+            if (result.IndexOf(Sections[n]) is var at and >= 0) return at;
         return 0;
     }
 }
