@@ -117,8 +117,18 @@ public static class ImportFolderHeal
                 hidden[i] = Translate(hidden[i]) ?? hidden[i];
         }
 
-        // The caller saves the account when report.HiddenFoldersChanged, as it does for archiveChanged.
-        return FolderReferenceRemapper.Remap(accountId, folders, rules, views, config, hidden);
+        // Favorite folders (#1056) the same way.
+        List<FavoriteFolder>? favorites = null;
+        if (account is { FavoriteFolders.Count: > 0 })
+        {
+            favorites = account.FavoriteFolders;
+            foreach (var favorite in favorites)
+                favorite.FullName = Translate(favorite.FullName) ?? favorite.FullName;
+        }
+
+        // The caller saves the account when report.HiddenFoldersChanged or FavoriteFoldersChanged, as
+        // it does for archiveChanged.
+        return FolderReferenceRemapper.Remap(accountId, folders, rules, views, config, hidden, favorites);
     }
 
     // The remapper's matching for the one reference it does not cover: the whole name, else a leaf

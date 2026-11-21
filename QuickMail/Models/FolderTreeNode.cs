@@ -36,6 +36,14 @@ public sealed class FolderTreeNode : INotifyPropertyChanged
     /// </summary>
     public bool IsCalendarNode { get; init; }
 
+    /// <summary>
+    /// For the root of a section of the folder tree — Calendar, Favorites, Views or All Mail — its key
+    /// in <see cref="FolderTreeOrder"/> (#1058); null on every other node, accounts included. What
+    /// marks a node as a section that can be moved, rather than its label, which a user's account
+    /// could share.
+    /// </summary>
+    public string? SectionKey { get; init; }
+
     public string Label { get => _label; init => _label = value; }
 
     public ObservableCollection<FolderTreeNode> Children { get; } = [];

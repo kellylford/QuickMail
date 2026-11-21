@@ -31,6 +31,9 @@ public static class FolderReferenceRemapper
         /// <summary>True when the account's hidden-folder list was rewritten or pruned (#963). Not part of
         /// <see cref="AnythingChanged"/>: the list is on the account, which the caller saves separately.</summary>
         public bool HiddenFoldersChanged { get; set; }
+        /// <summary>True when the account's favorite folders were rewritten or pruned (#1056). Like
+        /// <see cref="HiddenFoldersChanged"/>, left out of <see cref="AnythingChanged"/> and the summary.</summary>
+        public bool FavoriteFoldersChanged { get; set; }
 
         public bool AnythingChanged =>
             RemappedRules.Count > 0 || DisabledRules.Count > 0 || AffectedViews.Count > 0 || StartupFolderChanged;
@@ -63,7 +66,8 @@ public static class FolderReferenceRemapper
         List<MailRule> allRules,
         List<SavedView> allViews,
         ConfigModel config,
-        List<string>? hiddenFolders = null)
+        List<string>? hiddenFolders = null,
+        List<FavoriteFolder>? favoriteFolders = null)
     {
         var report = new Report();
 
@@ -183,6 +187,23 @@ public static class FolderReferenceRemapper
                 hiddenFolders.Clear();
                 hiddenFolders.AddRange(remapped);
                 report.HiddenFoldersChanged = true;
+            }
+        }
+
+        // Favorite folders (#1056) the same way, each keeping when it was added and its place in
+        // Favorites. One that cannot be matched is dropped: it would show nothing.
+        if (favoriteFolders is { Count: > 0 })
+        {
+            var remapped = new List<FavoriteFolder>();
+            foreach (var entry in favoriteFolders)
+                if (Match(entry.FullName) is { } match &&
+                    !remapped.Any(r => string.Equals(r.FullName, match, StringComparison.Ordinal)))
+                    remapped.Add(new FavoriteFolder { FullName = match, AddedUtc = entry.AddedUtc, Order = entry.Order });
+            if (!remapped.Select(r => r.FullName).SequenceEqual(favoriteFolders.Select(f => f.FullName), StringComparer.Ordinal))
+            {
+                favoriteFolders.Clear();
+                favoriteFolders.AddRange(remapped);
+                report.FavoriteFoldersChanged = true;
             }
         }
 

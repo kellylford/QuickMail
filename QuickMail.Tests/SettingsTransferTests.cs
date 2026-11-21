@@ -879,18 +879,60 @@ public sealed class SettingsTransferTests : IDisposable
         var desktop = SeedDesktop();
         // A file from an older QuickMail, written before this setting existed.
         var lines = File.ReadAllLines(Path.Combine(desktop, "config.ini"))
-            .Where(l => !l.TrimStart().StartsWith("CalendarAtEndOfFolderList", StringComparison.OrdinalIgnoreCase));
+            .Where(l => !l.TrimStart().StartsWith("FolderTreeOrder", StringComparison.OrdinalIgnoreCase) &&
+                        !l.TrimStart().StartsWith("CalendarAtEndOfFolderList", StringComparison.OrdinalIgnoreCase));
         File.WriteAllLines(Path.Combine(desktop, "config.ini"), lines);
         var laptop = SeedLaptop();
         var cfg = ConfigService.ParseFile(File.ReadAllLines(Path.Combine(laptop, "config.ini")));
-        cfg.CalendarAtEndOfFolderList = true;
+        cfg.FolderTreeOrder = "allmail, account, calendar, favorites, views";
         File.WriteAllText(Path.Combine(laptop, "config.ini"), ConfigService.BuildFileText(cfg));
 
         Import(Export(desktop, [SettingsCategory.Preferences]), laptop);
 
         var after = ConfigService.ParseFile(File.ReadAllLines(Path.Combine(laptop, "config.ini")));
-        Assert.True(after.CalendarAtEndOfFolderList);   // not reset to the default
+        Assert.Equal("allmail, account, calendar, favorites, views", after.FolderTreeOrder);   // not reset to the default
         Assert.Equal(5, after.PreviewLines);            // what the file does say still arrives
+    }
+
+    /// <summary>
+    /// #1058: a file from 0.8.75 or earlier says where Calendar sat with CalendarAtEndOfFolderList and
+    /// nothing about FolderTreeOrder. Importing it puts Calendar where it was on that computer.
+    /// </summary>
+    [Fact]
+    public void Import_AnOlderFilesCalendarPositionBecomesTheFolderTreeOrder()
+    {
+        var desktop = SeedDesktop();
+        var lines = File.ReadAllLines(Path.Combine(desktop, "config.ini"))
+            .Where(l => !l.TrimStart().StartsWith("FolderTreeOrder", StringComparison.OrdinalIgnoreCase))
+            .Append("CalendarAtEndOfFolderList = on");
+        File.WriteAllLines(Path.Combine(desktop, "config.ini"), lines);
+        var laptop = SeedLaptop();
+
+        Import(Export(desktop, [SettingsCategory.Preferences]), laptop);
+
+        var after = ConfigService.ParseFile(File.ReadAllLines(Path.Combine(laptop, "config.ini")));
+        Assert.Equal("favorites, views, allmail, account, calendar", after.FolderTreeOrder);
+    }
+
+    /// <summary>#1058: favorites travel in accounts.json with their place in Favorites.</summary>
+    [Fact]
+    public void Import_FavoriteFoldersKeepTheirOrder()
+    {
+        var desktop = SeedDesktop();
+        var accounts = ReadJson<AccountModel>(desktop, "accounts.json");
+        var added = new DateTime(2026, 11, 21, 15, 2, 11, DateTimeKind.Utc);
+        var home = accounts.Single(a => a.Id == DesktopImap);
+        home.FavoriteFolders.Add(new FavoriteFolder { FullName = "Lists/Dev", AddedUtc = added, Order = 1 });
+        home.FavoriteFolders.Add(new FavoriteFolder { FullName = "INBOX", AddedUtc = added.AddMinutes(2), Order = 0 });
+        WriteJson(desktop, "accounts.json", accounts);
+        var laptop = SeedLaptop();
+
+        Import(Export(desktop, [SettingsCategory.Accounts]), laptop);
+
+        var imported = ReadJson<AccountModel>(laptop, "accounts.json").Single(a => a.Id == LaptopImap);
+        Assert.Equal(["Lists/Dev", "INBOX"], imported.FavoriteFolders.Select(f => f.FullName));
+        Assert.Equal([1, 0], imported.FavoriteFolders.Select(f => f.Order ?? -1));
+        Assert.Equal(added, imported.FavoriteFolders[0].AddedUtc.ToUniversalTime());
     }
 
     // ── Folder heal (Graph ids, spec R5) ───────────────────────────────────────

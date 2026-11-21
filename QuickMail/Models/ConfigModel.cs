@@ -576,11 +576,13 @@ public class ConfigModel
     public string DefaultCalendarSource { get; set; } = string.Empty;
 
     /// <summary>
-    /// Whether the Calendar node sits at the bottom of the folder tree rather than the top.
-    /// Default off — Calendar is the first root, as it has always been. Set from the Calendar
-    /// node's context menu, for users who arrow the folder tree from the top to reach mail.
+    /// The order of the folder tree's top level (#1058), as written in config.ini: section keys and
+    /// one <c>account</c> placeholder per account, filled in accounts.json order. Empty means the
+    /// default order. Read through <see cref="Models.FolderTreeOrder.Normalize"/>, which makes it whole
+    /// for however many accounts there are. Replaces <c>CalendarAtEndOfFolderList</c>, which is still
+    /// read once to migrate (see <c>ConfigService.ParseFile</c>) and no longer written.
     /// </summary>
-    public bool CalendarAtEndOfFolderList { get; set; } = false;
+    public string FolderTreeOrder { get; set; } = string.Empty;
 
     /// <summary>
     /// Obsolete: the calendar is now a folder in the folder tree, not a toggle pane.

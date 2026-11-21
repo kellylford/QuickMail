@@ -345,6 +345,13 @@
                       AutomationProperties.Name="Clear Startup Folder"
                       Click="FolderContextMenu_ClearStartupFolder_Click"/>
             <Separator/>
+            <!-- #1056. V is free. Checkable: its Loaded handler sets the check each time the menu
+                 opens, so the platform reports whether the folder is a favorite. -->
+            <MenuItem sc:CommandShortcut.Id="folder.toggleFavorite" Header="Fa_vorite Folder"
+                      AutomationProperties.Name="Favorite Folder"
+                      IsCheckable="True"
+                      Loaded="FolderContextMenu_FavoriteItem_Loaded"
+                      Click="FolderContextMenu_ToggleFavorite_Click"/>
             <!-- #963. H is free; "Show All H_idden Folders" takes I, since S (Startup) and H are
                  both taken by then. -->
             <MenuItem sc:CommandShortcut.Id="folder.hide" Header="_Hide Folder"
@@ -374,6 +381,23 @@
             <MenuItem sc:CommandShortcut.Id="folder.collapseAll" Header="Collapse A_ll Folders"
                       AutomationProperties.Name="Collapse All Folders"
                       Click="FolderContextMenu_CollapseAllFolders_Click"/>
+            <Separator/>
+            <!-- #1058. O is free (V went to Favorite Folder). Moves an account, a section or a
+                 favorite; anything else says it cannot be moved. -->
+            <MenuItem Header="Re_order" AutomationProperties.Name="Reorder">
+                <MenuItem sc:CommandShortcut.Id="account.moveUp" Header="Move _Up"
+                          AutomationProperties.Name="Move Up"
+                          Click="FolderTreeReorder_MoveUp_Click"/>
+                <MenuItem sc:CommandShortcut.Id="account.moveDown" Header="Move Do_wn"
+                          AutomationProperties.Name="Move Down"
+                          Click="FolderTreeReorder_MoveDown_Click"/>
+                <MenuItem sc:CommandShortcut.Id="account.moveToStart" Header="Move to Sta_rt"
+                          AutomationProperties.Name="Move to Start"
+                          Click="FolderTreeReorder_MoveToStart_Click"/>
+                <MenuItem sc:CommandShortcut.Id="account.moveToEnd" Header="Move to E_nd"
+                          AutomationProperties.Name="Move to End"
+                          Click="FolderTreeReorder_MoveToEnd_Click"/>
+            </MenuItem>
         </ContextMenu>
 
         <!-- Calendar context menu — replaces FolderContextMenu on the Calendar node and its
@@ -381,8 +405,7 @@
              of them silently did nothing there. Same Window.Resources rule as above: a ContextMenu
              with Click handlers must not be declared inside a Style setter. -->
         <ContextMenu x:Key="CalendarContextMenu"
-                     AutomationProperties.Name="Calendar actions"
-                     Opened="CalendarContextMenu_Opened">
+                     AutomationProperties.Name="Calendar actions">
             <MenuItem sc:CommandShortcut.Id="calendar.setDefaultCalendar" Header="Use as _Default Calendar for New Appointments"
                       AutomationProperties.Name="Use as Default Calendar for New Appointments"
                       Click="CalendarContextMenu_SetDefault_Click"/>
@@ -409,20 +432,22 @@
                       AutomationProperties.Name="Collapse All Folders"
                       Click="FolderContextMenu_CollapseAllFolders_Click"/>
             <Separator/>
-            <!-- Where Calendar sits among the folder roots. Checkable so the current choice is
-                 reported by the platform on open — no custom announcement for state that a menu
-                 item's own check already carries. Tag is what CalendarContextMenu_Opened matches
-                 on: a ContextMenu in Window.Resources has its own name scope, so x:Name here does
-                 not give the code-behind a field to reach. Access keys D, C, X, P, E and L are
-                 taken by the items above, leaving T and B. -->
-            <MenuItem sc:CommandShortcut.Id="calendar.calendarAtTopOfFolderList" Header="Calendar at _Top of Folder List"
-                      AutomationProperties.Name="Calendar at Top of Folder List"
-                      Tag="calendarFirst" IsCheckable="True"
-                      Click="CalendarContextMenu_CalendarFirst_Click"/>
-            <MenuItem sc:CommandShortcut.Id="calendar.calendarAtBottomOfFolderList" Header="Calendar at _Bottom of Folder List"
-                      AutomationProperties.Name="Calendar at Bottom of Folder List"
-                      Tag="calendarLast" IsCheckable="True"
-                      Click="CalendarContextMenu_CalendarLast_Click"/>
+            <!-- #1058: Calendar moves like any other section. Access keys D, C, I, X, P, E and L are
+                 taken by the items above, leaving O. The submenu's items match the folder menu's. -->
+            <MenuItem Header="Re_order" AutomationProperties.Name="Reorder">
+                <MenuItem sc:CommandShortcut.Id="account.moveUp" Header="Move _Up"
+                          AutomationProperties.Name="Move Up"
+                          Click="FolderTreeReorder_MoveUp_Click"/>
+                <MenuItem sc:CommandShortcut.Id="account.moveDown" Header="Move Do_wn"
+                          AutomationProperties.Name="Move Down"
+                          Click="FolderTreeReorder_MoveDown_Click"/>
+                <MenuItem sc:CommandShortcut.Id="account.moveToStart" Header="Move to Sta_rt"
+                          AutomationProperties.Name="Move to Start"
+                          Click="FolderTreeReorder_MoveToStart_Click"/>
+                <MenuItem sc:CommandShortcut.Id="account.moveToEnd" Header="Move to E_nd"
+                          AutomationProperties.Name="Move to End"
+                          Click="FolderTreeReorder_MoveToEnd_Click"/>
+            </MenuItem>
         </ContextMenu>
     </Window.Resources>
 
@@ -655,7 +680,12 @@
                           Click="MenuCollapseAllFolders_Click"
                           AutomationProperties.Name="Collapse All Folders"/>
                 <Separator/>
-                <!-- #963. Same access keys as the folder tree's context menu. -->
+                <!-- #1056 and #963. Same access keys as the folder tree's context menu. -->
+                <MenuItem sc:CommandShortcut.Id="folder.toggleFavorite" Header="Fa_vorite Folder"
+                          IsCheckable="True"
+                          Loaded="MenuFavoriteItem_Loaded"
+                          Click="MenuToggleFavorite_Click"
+                          AutomationProperties.Name="Favorite Folder"/>
                 <MenuItem sc:CommandShortcut.Id="folder.hide" Header="_Hide Folder"
                           Click="MenuHideFolder_Click"
                           AutomationProperties.Name="Hide Folder"/>

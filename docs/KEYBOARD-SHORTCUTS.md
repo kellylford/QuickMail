@@ -95,10 +95,10 @@ A menu item or button names its command with `sc:CommandShortcut.Id` (`Helpers/C
 | *(unassigned)* | `mail.openFlagManager` | Manage Flags… |
 | Alt+Down | `mail.nextUnread` | Next Unread Message — the nearest unread message below the current one, in the flat list or a group tree (message-area focus only) |
 | Alt+Up | `mail.previousUnread` | Previous Unread Message — the nearest unread message above the current one (message-area focus only) |
-| Alt+Up | `account.moveUp` | Move Account Up (account-list focus only) |
-| Alt+Down | `account.moveDown` | Move Account Down (account-list focus only) |
-| Alt+Home | `account.moveToStart` | Move Account to Start (account-list focus only) |
-| Alt+End | `account.moveToEnd` | Move Account to End (account-list focus only) |
+| Alt+Up | `account.moveUp` | Move Up — the selected account, section or favorite (Accounts list or folder tree; #1058) |
+| Alt+Down | `account.moveDown` | Move Down (Accounts list or folder tree) |
+| Alt+Home | `account.moveToStart` | Move to Start (Accounts list or folder tree) |
+| Alt+End | `account.moveToEnd` | Move to End (Accounts list or folder tree) |
 | Shift+, | `mail.jumpToFirstInGroup` | First Message in Group |
 | Shift+. | `mail.jumpToLastInGroup` | Last Message in Group |
 | *(unassigned)* | `mail.acceptInvite` | Accept Invitation |
@@ -141,8 +141,7 @@ A menu item or button names its command with `sc:CommandShortcut.Id` (`Helpers/C
 | *(unassigned)* | `folder.collapseAll` | Collapse All Folders — account headers included |
 | *(unassigned)* | `folder.hide` | Hide Folder — hides the selected folder and everything inside it from the folder tree and Go to Folder |
 | *(unassigned)* | `folder.showHidden` | Show All Hidden Folders |
-| *(unassigned)* | `calendar.calendarAtTopOfFolderList` | Calendar at Top of Folder List |
-| *(unassigned)* | `calendar.calendarAtBottomOfFolderList` | Calendar at Bottom of Folder List |
+| Ctrl+D | `folder.toggleFavorite` | Toggle Favorite Folder — adds the folder to Favorites, or removes it; the tree's selection in the folder tree, otherwise the open folder (#1056) |
 | Ctrl+Shift+C | `view.calendar` | Calendar — opens the calendar view; available when there is a calendar |
 | *(unassigned)* | `calendar.syncNow` | Sync Calendars Now — available when calendar sync is set up |
 | *(unassigned)* | `calendar.search` | Search Appointments — while the calendar is open. Ctrl+Shift+S (`view.search`) routes here in the calendar, so search is one gesture app-wide |
@@ -189,7 +188,8 @@ and they do not all exclude each other today:
   Reading Pane mode with a tab opened by Open in New Tab both are available, and Close Tab wins.
 
 Alt+Up and Alt+Down appear twice above on purpose. `mail.previousUnread` / `mail.nextUnread` are
-scoped to the message area and `account.moveUp` / `account.moveDown` to the account list, and
+scoped to the message area and `account.moveUp` / `account.moveDown` to the Accounts list and the
+folder tree, and
 `FindByGesture` returns whichever of the two is available for the current focus — the same
 arrangement Delete has for `mail.delete` and `folder.delete`. Both scopes must stay focus-based: one
 that can be true in two panes at once makes which command runs depend on registration order.
@@ -205,6 +205,14 @@ Moving an account reorders it everywhere, not just in the account list — the o
 order in `accounts.json`, which the folder tree's account roots and the compose window's From list
 both read straight through. Each move announces what it landed next to ("Moved above Work") as an
 `AnnouncementCategory.Result`, and puts keyboard focus back on the row that moved.
+
+Since #1058 the same four commands arrange the folder tree. Its top level is one list of sections
+(Calendar, Favorites, Views, All Mail) and accounts, and each moves past whatever is beside it;
+favorites move within Favorites. Moving an account past another account reorders `accounts.json`
+as above; moving it past a section changes only where it sits in the tree (config.ini's
+`FolderTreeOrder`). Anything else in the tree says it cannot be moved. The folder tree's context
+menus have the four moves on a Reorder submenu. The ids stay `account.*` so keys people rebound keep
+working.
 
 The folder tree's own Right and Left arrow keys expand and collapse one level. They are
 in-control navigation — the same kind as the arrow keys inside a list box — and are not registered

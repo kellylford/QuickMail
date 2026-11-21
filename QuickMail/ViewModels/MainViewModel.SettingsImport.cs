@@ -105,10 +105,11 @@ public partial class MainViewModel
                 _viewService.Save(views);
                 _configService.Save(cfg);
             }
-            if (archiveChanged || report.HiddenFoldersChanged)
+            if (archiveChanged || report.HiddenFoldersChanged || report.FavoriteFoldersChanged)
                 _accountService.SaveAccounts([.. Accounts]);
-            if (report.HiddenFoldersChanged)
-                BuildFolderTree();   // the account's hidden folders now name this computer's folders (#963)
+            // The account's hidden (#963) and favorite (#1056) folders now name this computer's folders.
+            if (report.HiddenFoldersChanged || report.FavoriteFoldersChanged)
+                BuildFolderTree();
 
             // Shown in the status bar as well as spoken, and logged: the names of rules turned off must
             // not be lost to a muted announcement or to speech at startup.

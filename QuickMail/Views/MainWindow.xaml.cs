@@ -1446,6 +1446,14 @@ public partial class MainWindow : Window
             execute: () => Report(_vm.ShowAllHiddenFolders()),
             description: "Unhide all hidden folders, in every account"));
 
+        // Favorite folders (#1056). Ctrl+D toggles: the browsers' "add favorite" key, bound to nothing
+        // else in QuickMail. Always available, and says why when it cannot act.
+        _registry.Register(new CommandDefinition(
+            id: "folder.toggleFavorite", category: "Mail", title: "Toggle Favorite Folder",
+            execute: ToggleFavoriteFromSelection,
+            defaultKey: Key.D, defaultModifiers: ModifierKeys.Control,
+            description: "Add the folder to Favorites, or remove it from Favorites"));
+
         // ── Pane navigation (Ctrl+Alt+1/2/3 — always work regardless of tab mode) ──
         _registry.Register(new CommandDefinition(
             id: "view.focusAccounts", category: "View", title: "Focus Account List",
@@ -1738,57 +1746,47 @@ public partial class MainWindow : Window
             execute: () => Report(_vm.ClearDefaultCalendar()),
             isAvailable: () => _vm.CalendarVm != null));
 
-        // ── Where Calendar sits in the folder tree ──────────────────────────────
-        // No default key: the Calendar node's context menu is the entry point. Registered so the
-        // choice is also reachable — and rebindable — from the Command Palette, which is the rule a
-        // context-menu-only action broke in #250.
-        _registry.Register(new CommandDefinition(
-            id: "calendar.calendarAtTopOfFolderList", category: "Calendar",
-            title: "Calendar at Top of Folder List",
-            execute: () => ApplyCalendarPosition(false, FolderList.IsKeyboardFocusWithin),
-            isAvailable: () => _vm.CalendarVm != null));
-
-        _registry.Register(new CommandDefinition(
-            id: "calendar.calendarAtBottomOfFolderList", category: "Calendar",
-            title: "Calendar at Bottom of Folder List",
-            execute: () => ApplyCalendarPosition(true, FolderList.IsKeyboardFocusWithin),
-            isAvailable: () => _vm.CalendarVm != null));
-
-        // ── Account order ───────────────────────────────────────────────────────
-        // Alt+arrows are the in-list gestures; they are registered rather than hardcoded in
-        // AccountList_PreviewKeyDown so they show up in keyboard customizations and the palette.
-        // isAvailable scopes each one to the account list: the window-level PreviewKeyDown sees
-        // every keystroke, and an unscoped Alt+Up would reorder accounts from inside a message.
+        // ── Arranging: the Accounts list and the folder tree (#1058) ─────────────
+        // Alt+arrows are the in-list gestures; they are registered rather than hardcoded so they show
+        // up in keyboard customizations and the palette. The ids are still account.* (they began as
+        // the Accounts list's), so keys people rebound keep working; since #1058 they also move an
+        // account, a section or a favorite in the folder tree. isAvailable scopes them to those two
+        // places: the window-level PreviewKeyDown sees every keystroke, and an unscoped Alt+Up would
+        // reorder things from inside a message.
         //
         // Alt+Up and Alt+Down are shared with mail.previousUnread / mail.nextUnread, which are
         // scoped to the message area the same way. That is the registry's documented behaviour for
         // a shared default (as Delete is for mail.delete and folder.delete): FindByGesture returns
-        // whichever command is available for the current focus, and the two scopes never overlap.
-        // Keep both gates focus-based — a scope that can be true in two panes at once makes which
+        // whichever command is available for the current focus, and the scopes never overlap.
+        // Keep the gates focus-based — a scope that can be true in two panes at once makes which
         // command runs depend on registration order.
         _registry.Register(new CommandDefinition(
-            id: "account.moveUp", category: "Account", title: "Move Account Up",
-            execute: () => MoveSelectedAccount(_vm.MoveAccountUp),
+            id: "account.moveUp", category: "View", title: "Move Up",
+            execute: () => MoveSelected(TreeMove.Up, _vm.MoveAccountUp),
             defaultKey: Key.Up, defaultModifiers: ModifierKeys.Alt,
-            isAvailable: () => AccountList.IsKeyboardFocusWithin));
+            isAvailable: IsArrangeScope,
+            description: "Move the selected account, section or favorite up one place"));
 
         _registry.Register(new CommandDefinition(
-            id: "account.moveDown", category: "Account", title: "Move Account Down",
-            execute: () => MoveSelectedAccount(_vm.MoveAccountDown),
+            id: "account.moveDown", category: "View", title: "Move Down",
+            execute: () => MoveSelected(TreeMove.Down, _vm.MoveAccountDown),
             defaultKey: Key.Down, defaultModifiers: ModifierKeys.Alt,
-            isAvailable: () => AccountList.IsKeyboardFocusWithin));
+            isAvailable: IsArrangeScope,
+            description: "Move the selected account, section or favorite down one place"));
 
         _registry.Register(new CommandDefinition(
-            id: "account.moveToStart", category: "Account", title: "Move Account to Start",
-            execute: () => MoveSelectedAccount(_vm.MoveAccountToStart),
+            id: "account.moveToStart", category: "View", title: "Move to Start",
+            execute: () => MoveSelected(TreeMove.ToStart, _vm.MoveAccountToStart),
             defaultKey: Key.Home, defaultModifiers: ModifierKeys.Alt,
-            isAvailable: () => AccountList.IsKeyboardFocusWithin));
+            isAvailable: IsArrangeScope,
+            description: "Move the selected account, section or favorite to the start of its list"));
 
         _registry.Register(new CommandDefinition(
-            id: "account.moveToEnd", category: "Account", title: "Move Account to End",
-            execute: () => MoveSelectedAccount(_vm.MoveAccountToEnd),
+            id: "account.moveToEnd", category: "View", title: "Move to End",
+            execute: () => MoveSelected(TreeMove.ToEnd, _vm.MoveAccountToEnd),
             defaultKey: Key.End, defaultModifiers: ModifierKeys.Alt,
-            isAvailable: () => AccountList.IsKeyboardFocusWithin));
+            isAvailable: IsArrangeScope,
+            description: "Move the selected account, section or favorite to the end of its list"));
 
         // ── Startup folder (#516) ──
         // No default key: the folder-tree context menu and Settings > Startup are the primary
@@ -2864,6 +2862,15 @@ public partial class MainWindow : Window
             FolderList.SelectedItem is FolderTreeNode shown &&
             FlattenVisibleFolderNodes(roots).Contains(shown))
             return SelectTreeViewNode(FolderList, shown, focusNode);
+
+        // The copy the user left from, when it still shows the open folder: a favorite (#1056) or a
+        // saved view's copy, rather than whichever copy comes first in the tree.
+        // Only while it is visible: one inside a collapsed branch has no container to select.
+        var current = FolderList.SelectedItem as FolderTreeNode;
+        if (current != null &&
+            ReferenceEquals(TreeViewFocusHelper.PreferredFolderTreeNode(roots, current, _vm.SelectedFolder), current) &&
+            FlattenVisibleFolderNodes(roots).Contains(current))
+            return SelectTreeViewNode(FolderList, current, focusNode);
 
         if (!FindAndExpandFolderPath(roots, _vm.SelectedFolder))
             return false;
@@ -7154,11 +7161,12 @@ public partial class MainWindow : Window
 
     // ── Folder context menu handlers ─────────────────────────────────────────
 
-    private static FolderTreeNode? GetContextMenuFolderNode(object sender)
+    // Walks up through submenus (Reorder, #1058) to the context menu and the tree item it opened on.
+    internal static FolderTreeNode? GetContextMenuFolderNode(object sender)
     {
-        var item = sender as MenuItem;
-        var menu = item?.Parent as ContextMenu;
-        return (menu?.PlacementTarget as TreeViewItem)?.DataContext as FolderTreeNode;
+        object? current = sender as MenuItem;
+        while (current is MenuItem item) current = item.Parent;
+        return ((current as ContextMenu)?.PlacementTarget as TreeViewItem)?.DataContext as FolderTreeNode;
     }
 
     private async void FolderContextMenu_NewFolder_Click(object sender, RoutedEventArgs e)
@@ -7367,14 +7375,7 @@ public partial class MainWindow : Window
     // focus is put back in the tree depends on whether the user was standing in it — the window's
     // logical focus survives the menu bar and the palette taking keyboard focus for a moment.
     private void HideSelectedFolder()
-    {
-        // The message body is checked first: while the WebView2 has focus WPF reports nothing focused,
-        // and the window's logical focus can still name the tree item the user left (#672).
-        var inTree = !IsMessageBodyFocused &&
-                     (FolderList.IsKeyboardFocusWithin ||
-                      (FocusManager.GetFocusedElement(this) is DependencyObject logical && IsDescendantOf(FolderList, logical)));
-        HideFolderWithFocus(CurrentFolderNode(), inTree);
-    }
+        => HideFolderWithFocus(CurrentFolderNode(), IsFolderTreeLogicallyFocused());
 
     // Hides the folder and, when the user is in the tree, lands focus on the folder above it — the
     // item that had focus is removed with the folder, the same situation as Delete Folder.
@@ -7444,54 +7445,112 @@ public partial class MainWindow : Window
     private void SetDefaultCalendarFromSelection()
         => Report(_vm.SetDefaultCalendar(FolderList.SelectedItem as FolderTreeNode));
 
-    // ── Where Calendar sits in the folder tree ───────────────────────────────────
-    //
-    // The two items are checkable so the current choice is reported by the platform when the menu
-    // opens — state a screen reader already announces, so nothing here announces it a second time.
-    // They are matched by Tag, not by name: the menu lives in Window.Resources, which is its own
-    // name scope, so x:Name there generates no field on this class.
+    // ── Arranging the folder tree (#1058) ─────────────────────────────────────────
 
-    private void CalendarContextMenu_Opened(object sender, RoutedEventArgs e)
-        => SyncCalendarPositionChecks(sender as ContextMenu);
+    // Where the move commands act: the Accounts list, or the folder tree.
+    private bool IsArrangeScope() => AccountList.IsKeyboardFocusWithin || FolderList.IsKeyboardFocusWithin;
 
-    private void CalendarContextMenu_CalendarFirst_Click(object sender, RoutedEventArgs e)
-        => SetCalendarPosition(sender, atEnd: false);
+    // The folder tree has keyboard focus, or had it when the menu bar or the Command Palette took it
+    // for a moment: the window's logical focus survives both. The message body is checked first:
+    // while the WebView2 has focus WPF reports nothing focused, and the window's logical focus can
+    // still name the tree item the user left (#672).
+    private bool IsFolderTreeLogicallyFocused() =>
+        !IsMessageBodyFocused &&
+        (FolderList.IsKeyboardFocusWithin ||
+         (FocusManager.GetFocusedElement(this) is DependencyObject logical && IsDescendantOf(FolderList, logical)));
 
-    private void CalendarContextMenu_CalendarLast_Click(object sender, RoutedEventArgs e)
-        => SetCalendarPosition(sender, atEnd: true);
-
-    private void SetCalendarPosition(object sender, bool atEnd)
+    // The move commands: in the Accounts list, today's account move; in the folder tree (or a palette
+    // opened from it), the tree's selection; anywhere else, the account selected in the Accounts list.
+    private void MoveSelected(TreeMove move, Func<AccountModel?, string> moveAccount)
     {
-        // The menu is opened from the Calendar node, so the tree is where the user is standing even
-        // though the popup holds focus while this runs.
-        ApplyCalendarPosition(atEnd, fromFolderTree: true);
-        // Clicking a checkable item toggles its own check, which for a two-way choice can leave the
-        // chosen item reading "unchecked". Re-derive both from the setting instead.
-        SyncCalendarPositionChecks((sender as MenuItem)?.Parent as ContextMenu);
+        if (!AccountList.IsKeyboardFocusWithin && IsFolderTreeLogicallyFocused())
+            MoveTreeNode(FolderList.SelectedItem as FolderTreeNode, move);
+        else
+            MoveSelectedAccount(moveAccount);
     }
 
-    // Reports the outcome and, when the user is in the folder tree, puts focus back on the Calendar
-    // node. Moving it to the top is a Move of that node inside the live collection, so its
-    // TreeViewItem is regenerated and focus would be left on a container that no longer exists —
-    // the same reason the account list re-focuses its moved row. From the Command Palette the tree
-    // does not have focus and the palette restores its own, so nothing is taken from it.
-    private void ApplyCalendarPosition(bool atEnd, bool fromFolderTree)
-    {
-        Report(_vm.SetCalendarAtEndOfFolderList(atEnd));
+    private void FolderTreeReorder_MoveUp_Click(object sender, RoutedEventArgs e)
+        => MoveTreeNode(GetContextMenuFolderNode(sender), TreeMove.Up);
 
-        if (!fromFolderTree) return;
-        if (_vm.FolderTree?.FirstOrDefault(n => n.IsCalendarNode) is { } calendar)
-            FocusTreeItem(FolderList, calendar);
+    private void FolderTreeReorder_MoveDown_Click(object sender, RoutedEventArgs e)
+        => MoveTreeNode(GetContextMenuFolderNode(sender), TreeMove.Down);
+
+    private void FolderTreeReorder_MoveToStart_Click(object sender, RoutedEventArgs e)
+        => MoveTreeNode(GetContextMenuFolderNode(sender), TreeMove.ToStart);
+
+    private void FolderTreeReorder_MoveToEnd_Click(object sender, RoutedEventArgs e)
+        => MoveTreeNode(GetContextMenuFolderNode(sender), TreeMove.ToEnd);
+
+    // Runs the move, reports where the item landed, and puts keyboard focus back on it. The move is a
+    // Move inside the live collection, which regenerates the item's TreeViewItem, so without the
+    // re-focus the user is left on a container that no longer exists. Queued behind a menu or the
+    // palette closing, which restore focus to where it was taken from.
+    private void MoveTreeNode(FolderTreeNode? node, TreeMove move)
+    {
+        Report(_vm.MoveFolderTreeNode(node, move));
+        if (node == null || !IsInFolderTree(node)) return;
+        Dispatcher.InvokeAsync(() => FocusTreeItem(FolderList, node), DispatcherPriority.Input);
     }
 
-    private void SyncCalendarPositionChecks(ContextMenu? menu)
+    // ── Favorite folders (#1056) ─────────────────────────────────────────────────
+
+    private void FolderContextMenu_ToggleFavorite_Click(object sender, RoutedEventArgs e)
+        => ToggleFavoriteWithFocus(GetContextMenuFolderNode(sender), fromFolderTree: true);
+
+    private void MenuToggleFavorite_Click(object sender, RoutedEventArgs e) => ToggleFavoriteFromSelection();
+
+    // Each time its menu opens, so the platform reports whether the folder is a favorite.
+    private void FolderContextMenu_FavoriteItem_Loaded(object sender, RoutedEventArgs e)
     {
-        if (menu == null) return;
-        foreach (var item in menu.Items.OfType<MenuItem>())
+        if (sender is MenuItem item) item.IsChecked = _vm.IsFavoriteFolder(GetContextMenuFolderNode(item));
+    }
+
+    private void MenuFavoriteItem_Loaded(object sender, RoutedEventArgs e)
+    {
+        if (sender is MenuItem item) item.IsChecked = _vm.IsFavoriteFolder(FavoriteTarget(out _));
+    }
+
+    // The Folder menu, the Command Palette and Ctrl+D act on the tree's selection when the user is in
+    // the tree, and otherwise on the folder whose messages are on screen.
+    private void ToggleFavoriteFromSelection()
+        => ToggleFavoriteWithFocus(FavoriteTarget(out var inTree), inTree);
+
+    private FolderTreeNode? FavoriteTarget(out bool inTree)
+    {
+        inTree = IsFolderTreeLogicallyFocused();
+        if (inTree) return FolderList.SelectedItem as FolderTreeNode;
+        return _vm.SelectedFolder is { } open && _vm.FolderTree is { } tree
+            ? TreeViewFocusHelper.PreferredFolderTreeNode(tree, FolderList.SelectedItem as FolderTreeNode, open)
+            : null;
+    }
+
+    // Toggles the favorite. Removing it while standing on its copy in Favorites takes that item out
+    // of the tree, so focus lands on the item above — the previous favorite, or the heading — or,
+    // when the heading goes with it, the nearest item above that survives: the Hide Folder rule.
+    private void ToggleFavoriteWithFocus(FolderTreeNode? node, bool fromFolderTree)
+    {
+        if (_vm.FavoriteFolderRefusal(node) is { } refusal)
         {
-            if (item.Tag as string == "calendarFirst") item.IsChecked = !_vm.CalendarAtEndOfFolderList;
-            else if (item.Tag as string == "calendarLast") item.IsChecked = _vm.CalendarAtEndOfFolderList;
+            Report(refusal);
+            return;
         }
+
+        var leaving = fromFolderTree && _vm.IsInFavoritesGroup(node!) && _vm.IsFavoriteFolder(node);
+        var visibleBefore = leaving ? FlattenVisibleFolderNodes(_vm.FolderTree).ToList() : [];
+        var index = visibleBefore.FindIndex(n => ReferenceEquals(n, node));
+        var landing = index > 0 ? visibleBefore[index - 1] : null;
+        // Where FolderList_GotKeyboardFocus lands if the removed item still held focus (#719).
+        if (leaving && _folderTreeSpot is { } spot && ReferenceEquals(spot.Node, node))
+            _folderTreeSpot = spot with { Above = landing };
+
+        Report(_vm.ToggleFavoriteFolder(node));
+
+        if (!leaving || IsInFolderTree(node!)) return;
+        if (landing != null && !IsInFolderTree(landing))
+            landing = visibleBefore.Take(Math.Max(0, index)).LastOrDefault(IsInFolderTree);
+        landing ??= _vm.FolderTree?.FirstOrDefault();
+        if (landing == null) return;
+        Dispatcher.InvokeAsync(() => FocusTreeItem(FolderList, landing), DispatcherPriority.Input);
     }
 
     // ── Account order ────────────────────────────────────────────────────────────

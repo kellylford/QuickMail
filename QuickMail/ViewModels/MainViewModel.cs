@@ -437,41 +437,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
     // through CalendarFilterFor with no second parser to keep in step. Empty = no preference.
     private string _defaultCalendarSource = string.Empty;
 
-    // ── Where Calendar sits in the folder tree ───────────────────────────────────
-    //
-    // False (the default) keeps Calendar as the first root, where it has always been. True moves it
-    // below the accounts, for someone who arrows down from the top of the tree to reach mail and
-    // does not want to pass the calendar every time.
-    private bool _calendarAtEndOfFolderList;
-
-    /// <summary>True when the Calendar node is pinned to the bottom of the folder tree.</summary>
-    public bool CalendarAtEndOfFolderList => _calendarAtEndOfFolderList;
-
-    /// <summary>
-    /// Moves the Calendar node to the top or the bottom of the folder tree and remembers the
-    /// choice. Returns the sentence the View reports (status bar plus a Result announcement), the
-    /// pairing every folder/calendar context-menu outcome uses.
-    /// </summary>
-    public string SetCalendarAtEndOfFolderList(bool atEnd)
-    {
-        if (CalendarVm == null)
-            return "The calendar is not available, so it has no place in the folder list.";
-
-        var already = _calendarAtEndOfFolderList == atEnd;
-        _calendarAtEndOfFolderList = atEnd;
-
-        var cfg = _configService.Load();
-        cfg.CalendarAtEndOfFolderList = atEnd;
-        _configService.Save(cfg);
-
-        if (!already) BuildFolderTree();
-
-        var where = atEnd ? "end" : "start";
-        return already
-            ? $"Calendar is already at the {where} of the folder list."
-            : $"Calendar moved to the {where} of the folder list.";
-    }
-
     /// <summary>The chosen default calendar as a filter, or null when the user has set no default.</summary>
     private CalendarFilter? DefaultCalendarFilter =>
         string.IsNullOrEmpty(_defaultCalendarSource)
@@ -1974,7 +1939,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _rememberViewPerFolder = cfg.RememberViewPerFolder;
         _defaultListState      = DefaultListStateFrom(cfg);
         _announceFlagStatus = cfg.AnnounceFlagStatus;
-        _calendarAtEndOfFolderList = cfg.CalendarAtEndOfFolderList;
+        // Before the first tree is built, so the arranged tree shows from the first paint (#1058).
+        _folderTreeOrderStored = FolderTreeOrder.Parse(cfg.FolderTreeOrder);
 
         // Calendar — only when a calendar service is wired (skipped in tests).
         if (_calendarService != null)
@@ -2147,16 +2113,18 @@ public partial class MainViewModel : ObservableObject, IDisposable
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { rules = null; }
         var views = _viewService.Load();
         var cfg = _configService.Load();
-        // Hidden folders (#963) hold IMAP paths until now; rewrite them to the Graph ids too.
+        // Hidden (#963) and favorite (#1056) folders hold IMAP paths until now; rewrite them to the
+        // Graph ids too.
         var account = Accounts.FirstOrDefault(a => a.Id == accountId);
-        report = FolderReferenceRemapper.Remap(accountId, graphFolders, rules ?? [], views, cfg, account?.HiddenFolders);
+        report = FolderReferenceRemapper.Remap(accountId, graphFolders, rules ?? [], views, cfg,
+                                               account?.HiddenFolders, account?.FavoriteFolders);
         if (report.AnythingChanged)
         {
             if (rules is not null) _ruleService.SaveRules(rules);
             _viewService.Save(views);
             _configService.Save(cfg);
         }
-        if (report.HiddenFoldersChanged)
+        if (report.HiddenFoldersChanged || report.FavoriteFoldersChanged)
         {
             _accountService.SaveAccounts([.. Accounts]);
             BuildFolderTree();
@@ -5449,14 +5417,19 @@ public partial class MainViewModel : ObservableObject, IDisposable
         var expansion = new Dictionary<string, bool>(StringComparer.Ordinal);
         if (FolderTree != null)
             foreach (var n in FlattenAllNodes(FolderTree))
-                expansion[NodeKey(n)] = n.IsExpanded;
+            {
+                // A favorite (#1056) or a saved view's copy of a folder shares the folder's key but has
+                // no children, so its state says nothing; it must not overwrite the real folder's.
+                var key = NodeKey(n);
+                if (n.Children.Count > 0 || !expansion.ContainsKey(key))
+                    expansion[key] = n.IsExpanded;
+            }
 
-        var roots = new List<FolderTreeNode>();
+        // Each top-level item is built on its own and then laid out in the user's order (#1058).
+        var sections = new Dictionary<string, FolderTreeNode>(StringComparer.Ordinal);
 
         // "Calendar" — top-level virtual folder that opens the event list.
         // Shown only when a calendar service is wired (skipped in tests / online-only builds).
-        // Built here either way; where it lands is the user's choice, applied at the end.
-        FolderTreeNode? calendarRoot = null;
         if (CalendarVm != null)
         {
             var calNode = new FolderTreeNode
@@ -5464,6 +5437,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 Folder = CalendarFolder,
                 Label  = CalendarFolder.DisplayName,
                 IsCalendarNode = true,
+                SectionKey = FolderTreeOrder.Calendar,
             };
             calNode.Children.Add(new FolderTreeNode
             {
@@ -5509,9 +5483,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
                 calNode.Children.Add(acctNode);
             }
-            calendarRoot = calNode;
-            if (!_calendarAtEndOfFolderList) roots.Add(calNode);
+            sections[FolderTreeOrder.Calendar] = calNode;
         }
+
+        // "Favorites" (#1056) — shown only while at least one favorite's folder is loaded.
+        if (BuildFavoritesGroup() is { } favorites)
+            sections[FolderTreeOrder.Favorites] = favorites;
 
         // "Views" group — shown only when the user has saved at least one view.
         if (SavedViews.Count > 0)
@@ -5519,8 +5496,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
             var viewsGroup = new FolderTreeNode
             {
                 IsHeader   = true,
-                Label      = "Views",
+                Label      = ViewsLabel,
                 IsExpanded = true,
+                SectionKey = FolderTreeOrder.Views,
             };
             foreach (var view in SavedViews)
             {
@@ -5556,15 +5534,16 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 }
                 viewsGroup.Children.Add(viewNode);
             }
-            roots.Add(viewsGroup);
+            sections[FolderTreeOrder.Views] = viewsGroup;
         }
 
         // "All Mail" is a top-level group header with 7 virtual sub-folder children.
         var allMailGroup = new FolderTreeNode
         {
             IsHeader   = true,
-            Label      = "All Mail",
+            Label      = AllMailLabel,
             IsExpanded = true,
+            SectionKey = FolderTreeOrder.AllMail,
         };
         allMailGroup.Children.Add(new FolderTreeNode { Folder = AllMailFolder,    Label = AllMailFolder.DisplayName });
         allMailGroup.Children.Add(new FolderTreeNode { Folder = AllInboxesFolder, Label = AllInboxesFolder.DisplayName });
@@ -5576,8 +5555,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
         allMailGroup.Children.Add(new FolderTreeNode { Folder = AllWatchedFolder, Label = AllWatchedFolder.DisplayName });
         if (ShowOutboxFolder)
             allMailGroup.Children.Add(new FolderTreeNode { Folder = OutboxFolder, Label = OutboxFolder.DisplayName });
-        roots.Add(allMailGroup);
+        sections[FolderTreeOrder.AllMail] = allMailGroup;
 
+        var accountRootsInOrder = new List<FolderTreeNode>();
         foreach (var account in Accounts)
         {
             if (_cachedFolders.TryGetValue(account.Id, out var folders) && folders.Count > 0)
@@ -5596,14 +5576,15 @@ public partial class MainViewModel : ObservableObject, IDisposable
                     });
                 }
 
-                roots.AddRange(accountRoots);
+                // Build wraps everything under the one account node it returns.
+                accountRootsInOrder.Add(accountRoots[0]);
             }
             else
             {
                 // Placeholder node for accounts that have not yet loaded folders. A shared mailbox (#31)
                 // stays here through PR 1 (no backend access yet) — a navigable top-level node with no
                 // children — so it must carry the account id + shared flag for the node key and name.
-                roots.Add(new FolderTreeNode
+                accountRootsInOrder.Add(new FolderTreeNode
                 {
                     IsHeader = true,
                     Label    = account.AccountLabel,
@@ -5614,9 +5595,20 @@ public partial class MainViewModel : ObservableObject, IDisposable
             }
         }
 
-        // Calendar last, when the user asked for it there — after every account root, so arrowing
-        // down from the top of the tree reaches mail without passing the calendar first.
-        if (calendarRoot != null && _calendarAtEndOfFolderList) roots.Add(calendarRoot);
+        // Lay the top level out in the user's order (#1058): each section where its key is, and the
+        // accounts, in accounts.json order, where the account placeholders are. A section that is not
+        // showing keeps its place for when it comes back.
+        var roots = new List<FolderTreeNode>();
+        var nextAccount = 0;
+        foreach (var token in CurrentFolderTreeOrder())
+        {
+            if (token == FolderTreeOrder.Account)
+            {
+                if (nextAccount < accountRootsInOrder.Count) roots.Add(accountRootsInOrder[nextAccount++]);
+            }
+            else if (sections.TryGetValue(token, out var section))
+                roots.Add(section);
+        }
 
         // Restore the state captured above. A node the tree has not seen before keeps the default
         // it was built with (header groups expanded, folders collapsed).
@@ -9560,6 +9552,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
         var removed = new List<AccountModel> { account };
         removed.AddRange(sharedChildren);
+        // While the accounts are still in the list, so their placeholders can be found (#1058).
+        DropAccountsFromFolderTreeOrder(removed);
 
         foreach (var a in removed)
         {
@@ -9988,6 +9982,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
             // Hidden folders inside it now have other names; drop the old ones before the refresh
             // builds the tree, so they cannot hide a folder created at the old path later (#963).
             ForgetHiddenFolders(node.Folder.AccountId, node.Folder.FullName);
+            // Favorites the same way (#1056): a favorite does not follow its folder through a move.
+            ForgetFavoriteFolders(node.Folder.AccountId, node.Folder.FullName);
             await RefreshFolderListAsync(node.Folder.AccountId);
             StatusText = destination == null
                 ? $"Folder '{node.Label}' moved to the top level."
@@ -10073,6 +10069,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
             RemoveFolderFromCacheOptimistically(node.Folder.AccountId, node.Folder);
             RemoveNodeFromTree(node);
             ForgetHiddenFolders(node.Folder.AccountId, node.Folder.FullName);
+            // The splice above takes out only the node deleted from, so when the folder was a
+            // favorite (#1056) its other copy — in Favorites, or under its account — goes in a rebuild,
+            // which the cache, already without the folder, makes correct.
+            if (ForgetFavoriteFolders(node.Folder.AccountId, node.Folder.FullName))
+                BuildFolderTree();
             // The folder's mail went to Trash, whose badge — part of its spoken name — would
             // otherwise keep the old count until the next full folder fetch (#794).
             ScheduleFolderCountRefresh(node.Folder.AccountId);

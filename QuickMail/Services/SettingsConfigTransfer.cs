@@ -125,7 +125,7 @@ public static class SettingsConfigTransfer
         nameof(ConfigModel.Windowing),
         nameof(ConfigModel.ShowDeclinedEvents),
         nameof(ConfigModel.DefaultCalendarSource),
-        nameof(ConfigModel.CalendarAtEndOfFolderList),
+        nameof(ConfigModel.FolderTreeOrder),
         nameof(ConfigModel.CalendarPaneOpen),
         nameof(ConfigModel.Features),
         nameof(ConfigModel.Accounts),
