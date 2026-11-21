@@ -6,4 +6,4 @@ The copies here are byte-identical to what that script produces. To change a sou
 
 `suggest.wav` ("Address suggestions appeared") and `inserted.wav` ("Address inserted from suggestions"), issue #1048, come from that script as of [app-kit PR 48](https://github.com/TheIdeaPlace/app-kit/pull/48) (commit 4475250), byte-identical.
 
-`edge.wav` (issue #923, "Reached the end of a list") is ahead of app-kit: it was made by that script with one entry added, which app-kit should take so the two match again. In `SOUNDS`: `"edge": [(A4, 0.00, 1.0)]`, one soft, short middle note; in `SOFT`: `"edge": {"peak": 0.30, "tail": 0.15}`, since it plays often and sits under speech. Every other file the script wrote with that change was unchanged.
+`edge.wav` (issue #923, "Reached the end of a list") was made here first and then taken into app-kit in [PR 43](https://github.com/TheIdeaPlace/app-kit/pull/43), so it too matches what the script produces.
