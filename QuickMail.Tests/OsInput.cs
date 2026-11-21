@@ -67,6 +67,9 @@ internal static class OsInput
             throw new InvalidOperationException($"SendInput sent {sent} of {inputs.Length} events (error {Marshal.GetLastWin32Error()}).");
     }
 
+    public const ushort VK_MENU = 0x12;   // Alt
+    public const ushort VK_UP = 0x26;
+
     /// <summary>Presses and releases <paramref name="vk"/>, holding Shift around it if asked.</summary>
     public static void PressKey(ushort vk, bool shift = false)
     {
@@ -75,6 +78,10 @@ internal static class OsInput
         else
             Send(Key(vk, false), Key(vk, true));
     }
+
+    /// <summary>Presses and releases <paramref name="vk"/> with Alt held around it.</summary>
+    public static void PressAltKey(ushort vk) =>
+        Send(Key(VK_MENU, false), Key(vk, false), Key(vk, true), Key(VK_MENU, true));
 
     /// <summary>Moves the pointer to <paramref name="screen"/> (physical pixels).</summary>
     public static void MoveTo(Point screen)

@@ -141,6 +141,9 @@ public class ConfigService : IConfigService
         string? soundSection    = null;
         var legacySounds   = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         var schemeSections = new Dictionary<string, Dictionary<string, string>>(StringComparer.OrdinalIgnoreCase);
+        // Folder tree order (#1058), and the setting it replaced, migrated after the loop.
+        var  sawFolderTreeOrder  = false;
+        bool? legacyCalendarAtEnd = null;
 
         foreach (var raw in lines)
         {
@@ -418,7 +421,11 @@ public class ConfigService : IConfigService
                     case "showdeclinedevents": config.ShowDeclinedEvents = ParseBool(value); break;
                     case "defaultcalendarsource": config.DefaultCalendarSource = value; break;
                     case "calendarpaneopen":   config.CalendarPaneOpen   = ParseBool(value); break;
-                    case "calendaratendoffolderlist": config.CalendarAtEndOfFolderList = ParseBool(value); break;
+                    case "calendaratendoffolderlist": legacyCalendarAtEnd = ParseBool(value); break;
+                    case "foldertreeorder":
+                        config.FolderTreeOrder = FolderTreeOrder.Format(FolderTreeOrder.Parse(value));
+                        sawFolderTreeOrder = true;
+                        break;
                 }
             }
             else if (section == "windowing")
@@ -488,6 +495,11 @@ public class ConfigService : IConfigService
         }
 
         ApplySoundSections(config, soundSchemeId, legacySoundPack, legacySounds, schemeSections);
+        // #1058: CalendarAtEndOfFolderList (0.8.75 and earlier) migrates to FolderTreeOrder, but only
+        // when this file does not also say FolderTreeOrder, which then wins. A file saying neither
+        // leaves FolderTreeOrder as it was (the default, or this computer's on a settings import).
+        if (!sawFolderTreeOrder && legacyCalendarAtEnd is { } atEnd)
+            config.FolderTreeOrder = FolderTreeOrder.FromCalendarAtEnd(atEnd);
         return config;
     }
 
@@ -1024,9 +1036,14 @@ public class ConfigService : IConfigService
             sb.AppendLine("# \"Use as Default Calendar for New Appointments\". Remove this line to go");
             sb.AppendLine("# back to the local calendar.");
         }
-        sb.AppendLine($"CalendarAtEndOfFolderList = {(config.CalendarAtEndOfFolderList ? "on" : "off")}");
-        sb.AppendLine("# Where the Calendar sits in the folder tree: off puts it first, on puts it");
-        sb.AppendLine("# last. Set it from the Calendar node's context menu.");
+        if (!string.IsNullOrWhiteSpace(config.FolderTreeOrder))
+        {
+            sb.AppendLine($"FolderTreeOrder = {config.FolderTreeOrder}");
+            sb.AppendLine("# The order of the folder tree's top level: calendar, favorites, views and");
+            sb.AppendLine("# allmail, and one \"account\" for each account, in the order of the accounts.");
+            sb.AppendLine("# Arrange it in the folder tree with Alt+Up, Alt+Down, Alt+Home and Alt+End.");
+            sb.AppendLine("# Remove this line to go back to the default order.");
+        }
         sb.AppendLine();
 
         // ── Startup (#516) ───────────────────────────────────────────────────────

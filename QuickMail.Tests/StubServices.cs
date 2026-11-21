@@ -871,8 +871,13 @@ sealed class StubCommandRegistry : ICommandRegistry
     public CommandDefinition? FindById(string id)
         => _commands.TryGetValue(id, out var cmd) ? cmd : null;
 
+    // As the real registry does: of the commands sharing a gesture (Alt+Up is Previous Unread in the
+    // message area and Move Up in the folder tree), the one available for the current focus.
     public CommandDefinition? FindByGesture(Key key, ModifierKeys modifiers)
-        => _commands.Values.FirstOrDefault(c => c.DefaultKey == key && c.DefaultModifiers == modifiers);
+    {
+        var matches = _commands.Values.Where(c => c.DefaultKey == key && c.DefaultModifiers == modifiers).ToList();
+        return matches.FirstOrDefault(c => c.IsAvailable?.Invoke() ?? true) ?? matches.FirstOrDefault();
+    }
 
     public void Unregister(string id) => _commands.Remove(id);
     public void ApplyUserOverrides(IEnumerable<HotkeyBinding> bindings) { }

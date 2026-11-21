@@ -474,6 +474,41 @@ the order of the **From** list when you compose a message, so putting the accoun
 top puts it first everywhere. The four moves are also in the Command Palette (**Ctrl+Shift+P**), and
 you can give them different keys in **File → Settings → Keyboard Shortcuts**.
 
+The same keys arrange the folder tree too; see [Arranging the folder tree](#arranging-the-folder-tree).
+
+### Arranging the folder tree
+
+The top of the folder tree is one list: **Calendar**, **Favorites**, **Views**, **All Mail**, and each
+of your accounts. You can put them in any order. In the folder tree, move to one of them and press a
+key, or open the context menu (**Shift+F10**, the Applications key, or right-click) and choose
+**Reorder**:
+
+| Key | Action |
+|---|---|
+| `Alt+Up` | Move Up |
+| `Alt+Down` | Move Down |
+| `Alt+Home` | Move to Start |
+| `Alt+End` | Move to End |
+
+Each item moves past whatever is beside it, section or account, so an account can sit above
+Calendar, or below All Mail, wherever you put it. Each move says where the item landed — "Moved above
+Views" — and leaves you on it, so you can press the key again. At the top or bottom, QuickMail says
+so. A section that is not showing (Favorites with no favorites, Views with no saved views) is passed
+over and keeps its place for when it comes back.
+
+- **Accounts:** moving an account past another account also changes the order of your accounts in
+  the Accounts list and the compose **From** list. Moving it past a section only changes where it
+  sits in the folder tree.
+- **Favorites:** inside Favorites, the same keys move a favorite up and down the list.
+- **What stays put:** the folders inside an account (Inbox, Drafts, Sent, Deleted and Junk come
+  first, then the rest alphabetically), the saved views inside Views, and what is inside All Mail and
+  Calendar. Pressing the keys on one of those says it cannot be moved.
+
+The order is remembered, and it goes with your settings when you export them to another computer.
+
+In the Accounts list (**Ctrl+1**) and in the message list the keys keep doing what they did before:
+moving an account there, and moving to the previous or next unread message here.
+
 ### Removing an account
 
 Select the account and press **Delete**. For an ordinary account there is no confirmation step, and the removal happens at once: QuickMail forgets the account's password from Windows Credential Manager, deletes the mail it had cached, removes any contacts synced from it, and for Microsoft and Google accounts signs out as well. You hear "Account deleted. Cleaning up…", then "Account deleted." when the tidying has finished. (Deleting an account that a shared mailbox reads through does ask first, because it removes the shared mailbox too — see [Shared mailboxes](#shared-mailboxes).)
@@ -649,6 +684,46 @@ If collapsing hides the folder you were on, the selection moves up to the neares
 
 How you leave the tree is how you find it: a folder you collapse stays collapsed while QuickMail refreshes its folder list, and coming back to the tree with **F6** or **Ctrl+2** leaves it collapsed rather than re-opening the branch holding the folder you are reading. Go to a different folder and the tree opens up to show it again, as it always has. Expansion is not remembered between runs — QuickMail starts each account open, and opens whatever it needs to reach the folder it lands in.
 
+### Favorite Folders
+
+Put the folders you use most in one place, whichever account they belong to. **Favorites** is a
+section near the top of the folder tree that holds the folders you choose.
+
+To add a folder, select it and press **Ctrl+D**. Press **Ctrl+D** on a favorite to remove it. The
+same toggle is in three other places:
+
+- **Favorite Folder** on the folder tree's context menu (**Shift+F10**). It is checked when the folder
+  is already a favorite.
+- **Folder → Favorite Folder** on the menu bar, also checked when the folder is a favorite.
+- **Toggle Favorite Folder** in the Command Palette (**Ctrl+Shift+P**).
+
+In the folder tree they act on the folder you are on. Anywhere else, such as the message list, they
+act on the folder whose messages you are reading. QuickMail says what it did: "Lists - Work added to
+Favorites."
+
+How favorites work:
+
+- **Where:** Favorites appears after Calendar and before Views. You can move it anywhere at the top
+  of the tree; see [Arranging the folder tree](#arranging-the-folder-tree). With no favorites there is
+  no Favorites heading.
+- **The real folder:** a favorite is the folder itself, not a copy. Opening it opens the folder, with
+  its remembered sort and filter, and its unread count is the folder's count. Its subfolders stay
+  under its account.
+- **Names:** with more than one account, every favorite says whose it is, for example "GitHub - Kelly".
+- **Order:** a new favorite goes at the end. Use **Alt+Up**, **Alt+Down**, **Alt+Home** and
+  **Alt+End** on a favorite to move it.
+- **Removing one while you are in Favorites** moves you to the item above.
+- **Other folder actions** on a favorite act on the real folder. **Delete Folder** deletes the folder
+  itself, after confirming, and the favorite goes with it.
+- **Hiding:** a hidden folder stays in Favorites.
+- **What cannot be a favorite:** accounts, calendars, saved views, and combined folders such as All
+  Mail and All Inboxes. QuickMail says why if you try. The Inbox can be a favorite.
+- **Moving a folder** in QuickMail takes it out of Favorites; add it again in its new place. A folder
+  renamed or deleted on the server stops showing.
+
+Favorites are stored with each account, so they go with the account when you export your settings,
+and go away when you remove the account.
+
 ### Hiding Folders
 
 Some accounts come with folders you never use: Conversation History, RSS Feeds, Notes, or a server's own housekeeping folders. You can take them out of the folder tree.
@@ -663,6 +738,7 @@ Hiding only changes what the folder list shows:
 - A hidden folder still syncs, and its mail still appears in **All Mail**, **All Inboxes** and the other combined folders.
 - You can still move or copy messages into a hidden folder, and rules can still file mail there: the folder pickers for **Move to Folder**, **Copy to Folder**, moving and copying folders, and rules list every folder.
 - A folder you added to a saved view stays in that view, because the view lists it by name.
+- A favorite folder stays in Favorites, and QuickMail says so when you hide it.
 
 Some things cannot be hidden, and QuickMail says why if you try: an account, the **Inbox** (on some servers every other folder lives inside it), calendars, saved views, and combined folders such as All Mail. To bring back a single folder, choose **Show All Hidden Folders** and hide the others again.
 
@@ -1943,17 +2019,14 @@ Selecting a source filters the list to it. "All Calendars" is the usual choice f
 
 ### Where Calendar sits in the folder list
 
-**Calendar** is the first thing in the folder tree. If you reach your mail by arrowing down from the
-top of the tree, that puts the calendar in your way every time, so you can move it to the bottom
-instead.
+**Calendar** starts as the first thing in the folder tree. If you reach your mail by arrowing down
+from the top of the tree, you can move it out of the way: it moves like any other section at the top
+of the tree. Move to the **Calendar** node and press **Alt+End** to put it at the bottom, or use
+**Alt+Up** and **Alt+Down**, or **Reorder** on its context menu. See
+[Arranging the folder tree](#arranging-the-folder-tree).
 
-1. In the folder tree, move to the **Calendar** node.
-2. Open the context menu with **Shift+F10** or the Applications key (or right-click).
-3. Choose **Calendar at Top of Folder List** or **Calendar at Bottom of Folder List**.
-
-Both are checkable, so opening the menu also tells you where the calendar is now. At the bottom it
-sits after your accounts — the last root in the tree. The choice is remembered between sessions, and
-both are in the Command Palette (**Ctrl+Shift+P**) if you would rather not go through the menu.
+If you had chosen Calendar at Bottom of Folder List in an earlier version, Calendar stays at the
+bottom.
 
 ### Choosing a default calendar for new appointments
 
@@ -3017,6 +3090,9 @@ Every announcement is optional and controlled by the settings above. No custom s
 | `F1` | User Guide |
 | `Alt+Down` | Next unread message |
 | `Alt+Up` | Previous unread message |
+| `Ctrl+D` | Add the folder to Favorites, or remove it |
+| `Alt+Up` / `Alt+Down` | Move the selected account, section or favorite (folder tree or Accounts list) |
+| `Alt+Home` / `Alt+End` | Move it to the start / end |
 | `Shift+,` | First message in group |
 | `Shift+.` | Last message in group |
 | `Escape` | Close contact mail results (message list focus) |

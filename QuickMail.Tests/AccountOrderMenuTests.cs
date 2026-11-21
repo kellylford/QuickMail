@@ -12,8 +12,8 @@ using Xunit;
 namespace QuickMail.Tests;
 
 /// <summary>
-/// The menu entry points for the two ordering features: the account list's reorder items and the
-/// Calendar node's position items.
+/// The menu entry points for ordering: the account list's reorder items, and the folder tree's
+/// Reorder submenu (#1058), which replaced the Calendar node's position items.
 /// </summary>
 // Loads a real MainWindow, so it belongs in the collection that serializes window-loading tests:
 // two of them constructing a MainWindow at once race inside XAML loading (#590).
@@ -92,25 +92,60 @@ public class AccountOrderMenuTests
         finally { window.Close(); }
     }
 
-    [StaFact]
-    public void TheCalendarMenuOffersBothPositions_AsCheckableItems()
+    /// <summary>
+    /// #1058: both folder-tree menus have one Reorder submenu with the four moves, and the Calendar
+    /// position items it replaced are gone. Every access key in each menu, and in the submenu, is
+    /// unique — WPF cycles between duplicates instead of invoking.
+    /// </summary>
+    [StaTheory]
+    [InlineData("FolderContextMenu")]
+    [InlineData("CalendarContextMenu")]
+    public void BothTreeMenusHaveAReorderSubmenu_WithTheFourMoves(string menuKey)
     {
-        // Checkable so the platform reports the current choice on open. QuickMail announces nothing
-        // extra for it: a menu item's own check state is already spoken.
         var window = MakeWindow();
         try
         {
-            var menu = window.FindResource("CalendarContextMenu") as ContextMenu;
+            var menu = window.FindResource(menuKey) as ContextMenu;
             Assert.NotNull(menu);
-            var items = menu!.Items.OfType<MenuItem>()
-                .Where(i => i.Tag as string is "calendarFirst" or "calendarLast").ToList();
+            var items = menu!.Items.OfType<MenuItem>().ToList();
 
-            Assert.Equal(2, items.Count);
-            Assert.All(items, i => Assert.True(i.IsCheckable));
-            Assert.Contains("Calendar at Top of Folder List", items.Select(AutomationProperties.GetName));
-            Assert.Contains("Calendar at Bottom of Folder List", items.Select(AutomationProperties.GetName));
+            var reorder = Assert.Single(items, i => AutomationProperties.GetName(i) == "Reorder");
+            Assert.Equal("o", AccessKeyOf(reorder.Header as string), ignoreCase: true);
+            var moves = reorder.Items.OfType<MenuItem>().ToList();
+            Assert.Equal(["account.moveUp", "account.moveDown", "account.moveToStart", "account.moveToEnd"],
+                         moves.Select(m => CommandShortcut.GetId(m)));
+            Assert.Equal(["Move Up", "Move Down", "Move to Start", "Move to End"],
+                         moves.Select(AutomationProperties.GetName));
+
+            Assert.All(new[] { items, moves }, level =>
+            {
+                var keys = level.Select(i => AccessKeyOf(i.Header as string)).Where(k => k != null).ToList();
+                Assert.Equal(keys.Count, keys.Distinct(StringComparer.OrdinalIgnoreCase).Count());
+            });
+
+            Assert.DoesNotContain(items, i => (AutomationProperties.GetName(i) ?? "").StartsWith("Calendar at", StringComparison.Ordinal));
         }
         finally { window.Close(); }
+    }
+
+    /// <summary>
+    /// The Reorder items sit one level down, in a submenu, so the context-menu lookup has to walk up
+    /// through it to the tree item the menu opened on.
+    /// </summary>
+    [StaFact]
+    public void AReorderItemFindsTheTreeNodeItsMenuOpenedOn()
+    {
+        var node = new QuickMail.Models.FolderTreeNode { Label = "Views", IsHeader = true };
+        var item = new TreeViewItem { DataContext = node };
+        var inner = new MenuItem();
+        var submenu = new MenuItem();
+        submenu.Items.Add(inner);
+        var menu = new ContextMenu { PlacementTarget = item };
+        menu.Items.Add(submenu);
+
+        Assert.Same(node, MainWindow.GetContextMenuFolderNode(inner));
+        Assert.Same(node, MainWindow.GetContextMenuFolderNode(submenu));
+        Assert.Null(MainWindow.GetContextMenuFolderNode(new MenuItem()));
     }
 
     /// <summary>The letter after the first single underscore, or null when the header has none.</summary>
@@ -156,32 +191,47 @@ public class AccountOrderCommandRegistrationTests
     [InlineData("account.moveDown", "Key.Down")]
     [InlineData("account.moveToStart", "Key.Home")]
     [InlineData("account.moveToEnd", "Key.End")]
-    public void EveryMoveIsRegistered_InTheAccountCategory_OnItsAltGesture(string id, string key)
+    public void EveryMoveIsRegistered_InTheViewCategory_OnItsAltGesture(string id, string key)
     {
+        // #1058: View, since they now arrange the folder tree as well as the Accounts list.
         var source = MainWindowSource();
 
-        Assert.Contains($"id: \"{id}\", category: \"Account\"", source, StringComparison.Ordinal);
+        Assert.Contains($"id: \"{id}\", category: \"View\"", source, StringComparison.Ordinal);
         Assert.Contains($"defaultKey: {key}, defaultModifiers: ModifierKeys.Alt", source, StringComparison.Ordinal);
     }
 
-    [Fact]
-    public void TheMoveKeysAreScopedToTheAccountList()
+    [Theory]
+    [InlineData("account.moveUp", "Move Up")]
+    [InlineData("account.moveDown", "Move Down")]
+    [InlineData("account.moveToStart", "Move to Start")]
+    [InlineData("account.moveToEnd", "Move to End")]
+    public void EveryMoveHasTheMenuItemsName(string id, string title)
     {
-        // The window's PreviewKeyDown sees every keystroke, so an unscoped Alt+Up would reorder
-        // accounts while the user was reading a message.
         var source = MainWindowSource();
 
-        var scoped = source.Split("isAvailable: () => AccountList.IsKeyboardFocusWithin").Length - 1;
-        Assert.Equal(4, scoped);
+        Assert.Contains($"id: \"{id}\", category: \"View\", title: \"{title}\"", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void TheMoveKeysAreScopedToTheAccountListAndTheFolderTree()
+    {
+        // The window's PreviewKeyDown sees every keystroke, so an unscoped Alt+Up would reorder
+        // things while the user was reading a message.
+        var source = MainWindowSource();
+
+        Assert.Equal(4, source.Split("isAvailable: IsArrangeScope").Length - 1);
+        Assert.Contains(
+            "private bool IsArrangeScope() => AccountList.IsKeyboardFocusWithin || FolderList.IsKeyboardFocusWithin;",
+            source, StringComparison.Ordinal);
     }
 
     /// <summary>
     /// Both moves land focus back where the user was standing. The account list is a plain
     /// virtualizing ListBox, so a row scrolled out of sight has no container and the lookup returns
     /// null — Move to End on a list taller than the pane would otherwise strand focus on the
-    /// ListBox itself, which nothing redirects into a row. The Calendar node has the same problem
-    /// for the opposite reason: moving it back to the top is a Move of that node, which regenerates
-    /// its TreeViewItem while the user is standing on it.
+    /// ListBox itself, which nothing redirects into a row. The folder tree has the same problem for
+    /// the opposite reason: a move is a Move of that node, which regenerates its TreeViewItem while
+    /// the user is standing on it.
     /// </summary>
     [Fact]
     public void BothMovesPutFocusBackOnWhatMoved()
@@ -189,16 +239,13 @@ public class AccountOrderCommandRegistrationTests
         var source = MainWindowSource();
 
         Assert.Contains("AccountList.ScrollIntoView(account);", source, StringComparison.Ordinal);
-        Assert.Contains("FocusTreeItem(FolderList, calendar);", source, StringComparison.Ordinal);
+        Assert.Contains("Dispatcher.InvokeAsync(() => FocusTreeItem(FolderList, node), DispatcherPriority.Input);",
+                        source, StringComparison.Ordinal);
     }
 
     [Theory]
     [InlineData("calendar.calendarAtTopOfFolderList")]
     [InlineData("calendar.calendarAtBottomOfFolderList")]
-    public void BothCalendarPositionsAreRegistered_InTheCalendarCategory(string id)
-    {
-        var source = MainWindowSource();
-
-        Assert.Contains($"id: \"{id}\", category: \"Calendar\"", source, StringComparison.Ordinal);
-    }
+    public void TheCalendarPositionCommandsAreRetired(string id)
+        => Assert.DoesNotContain($"\"{id}\"", MainWindowSource(), StringComparison.Ordinal);
 }

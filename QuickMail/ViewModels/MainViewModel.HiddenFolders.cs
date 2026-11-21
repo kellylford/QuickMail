@@ -94,6 +94,9 @@ public partial class MainViewModel
         };
         if (IsInViewsGroup(node))
             what += " It still shows in the saved view, which lists it by name.";
+        // A favorite stays in Favorites (#1056): the user put it there, as they did a saved view's.
+        if (IsFavorite(account, folder.FullName))
+            what += " It still shows in Favorites.";
         return what;
     }
 
@@ -139,11 +142,14 @@ public partial class MainViewModel
     }
 
     /// <summary>True when the node is part of the folder tree's Views group, not of an account.</summary>
-    public bool IsInViewsGroup(FolderTreeNode node)
+    public bool IsInViewsGroup(FolderTreeNode node) => IsInSection(node, FolderTreeOrder.Views);
+
+    /// <summary>True when the node is inside (not the root of) the top-level section with this key.</summary>
+    private bool IsInSection(FolderTreeNode node, string sectionKey)
     {
         if (FolderTree == null) return false;
         foreach (var root in FolderTree)
-            if (root.IsHeader && root.AccountId is null && root.Label == "Views" && Contains(root, node))
+            if (root.SectionKey == sectionKey && Contains(root, node))
                 return true;
         return false;
 

@@ -185,6 +185,7 @@ public class ShortcutExposureTests
             ["Move Down"] = "Alt+Down",
             ["Move to Start"] = "Alt+Home",
             ["Move to End"] = "Alt+End",
+            ["Favorite Folder"] = "Ctrl+D",   // #1056: new, so it showed nothing before
         },
         ["MessageWindow.xaml"] = new()
         {

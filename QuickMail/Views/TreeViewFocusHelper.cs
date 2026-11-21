@@ -138,6 +138,24 @@ public static class TreeViewFocusHelper
     }
 
     /// <summary>
+    /// The node to select for <paramref name="target"/>: <paramref name="current"/> when it already
+    /// shows that folder and is still in the tree, otherwise the first match. A folder can be in the
+    /// tree more than once — under its account, in Favorites (#1056), in a saved view — and returning to
+    /// the tree should land on the copy the user left from, not on whichever comes first.
+    /// </summary>
+    public static FolderTreeNode? PreferredFolderTreeNode(
+        IEnumerable<FolderTreeNode> nodes, FolderTreeNode? current, MailFolderModel target)
+    {
+        var list = nodes as IReadOnlyCollection<FolderTreeNode> ?? [.. nodes];
+        if (current?.Folder is { } shown && FoldersMatch(shown, target) && Contains(list, current))
+            return current;
+        return FindFolderTreeNode(list, target);
+
+        static bool Contains(IEnumerable<FolderTreeNode> level, FolderTreeNode node) =>
+            level.Any(n => ReferenceEquals(n, node) || Contains(n.Children, node));
+    }
+
+    /// <summary>
     /// Expands all ancestor nodes along the path to <paramref name="target"/>
     /// so their children's item containers are generated before selection.
     /// </summary>

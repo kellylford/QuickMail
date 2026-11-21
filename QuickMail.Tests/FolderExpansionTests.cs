@@ -221,7 +221,7 @@ public class FolderExpansionTests
     {
         var match = Regex.Match(
             Source("Views/MainWindow.xaml"),
-            "<MenuItem Header=\"Fol_der\">(?<body>.*?)</MenuItem>\\s*\\r?\\n\\s*<!-- View -->",
+            "<MenuItem Header=\"Fol_der\"[^>]*>(?<body>.*?)</MenuItem>\\s*\\r?\\n\\s*<!-- View -->",
             RegexOptions.Singleline);
         Assert.True(match.Success, "the Folder menu is gone from MainWindow.xaml.");
         return match.Groups["body"].Value;

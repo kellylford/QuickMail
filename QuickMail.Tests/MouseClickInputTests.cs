@@ -158,6 +158,45 @@ public class MouseClickInputTests
         });
     }
 
+    /// <summary>
+    /// #1058: real Alt+Up on an account in the folder tree moves it above the item before it and
+    /// leaves keyboard focus on it. The move is a Move in the live collection, which regenerates the
+    /// item's container, so without the window putting focus back the user would be dropped out of
+    /// the tree after one press. A keyboard test, gated as one, using this file's real-window harness.
+    /// </summary>
+    [StaFact(Skip = InputTests.SkipReason,
+             SkipUnless = nameof(InputTests.Enabled), SkipType = typeof(InputTests))]
+    public void AltUpOnAnAccountInTheFolderTree_MovesIt_AndFocusStaysOnIt()
+    {
+        Run(app =>
+        {
+            // A click first brings the window to the foreground, so the keystrokes go to it.
+            app.ClickFolderLabel(app.Inbox);
+            app.WaitUntil(() => app.SelectedFolderIs(app.Inbox), "the first click did not open Inbox");
+            // Opening a folder finishes on later turns, and may move focus as it does; let it finish
+            // before putting focus where this test needs it.
+            app.Settle();
+
+            app.UseTheRealFolderTree();
+            Assert.Equal(["All Mail", "Work"], app.RootLabels);
+            // Focus arriving from outside the tree is sent to the open folder or the first item
+            // (FolderList_GotKeyboardFocus), so enter the tree first and then move within it, as a
+            // user arrowing to Work does.
+            app.FocusRoot("All Mail");
+            app.Settle();
+            app.FocusRoot("Work");
+            app.Settle();
+            Assert.True(app.FocusedTreeItemLabel == "Work", "setup: focus did not stay on Work; it is on " + app.FocusedTreeItemLabel);
+
+            OsInput.PressAltKey(OsInput.VK_UP);
+
+            app.WaitUntil(() => app.RootLabels.SequenceEqual(["Work", "All Mail"]),
+                          "Alt+Up did not move Work; the roots are " + string.Join(", ", app.RootLabels));
+            app.Settle();
+            Assert.Equal("Work", app.FocusedTreeItemLabel);
+        });
+    }
+
     // -- The message list -----------------------------------------------------
 
     [StaFact(Skip = InputTests.MouseSkipReason,
@@ -623,6 +662,37 @@ public class MouseClickInputTests
         public string TreeSelection => On(() => (FolderTree.SelectedItem as FolderTreeNode)?.Label ?? "none");
 
         public int SelectedMessageCount => On(() => MessageList.SelectedItems.Count);
+
+        // -- The folder tree's own roots (#1058) ------------------------------
+
+        /// <summary>Replaces the seeded tree with the ViewModel's own: All Mail and the account.</summary>
+        public void UseTheRealFolderTree()
+        {
+            On(() =>
+            {
+                _vm.UpdateSavedViews();   // rebuilds the folder tree, merging into the live one
+                _window.UpdateLayout();
+            });
+            Settle();
+        }
+
+        public List<string> RootLabels => On(() => _vm.FolderTree!.Select(n => n.Label).ToList());
+
+        public void FocusRoot(string label) => On(() =>
+        {
+            var node = _vm.FolderTree!.Single(n => n.Label == label);
+            FolderTree.UpdateLayout();
+            var row = FolderTree.ItemContainerGenerator.ContainerFromItem(node) as TreeViewItem;
+            Assert.True(row is not null, $"no row was realized for '{label}'.");
+            row!.IsSelected = true;
+            row.Focus();
+        });
+
+        /// <summary>The label of the tree item with keyboard focus, or what has focus instead.</summary>
+        public string FocusedTreeItemLabel => On(() =>
+            System.Windows.Input.Keyboard.FocusedElement is TreeViewItem { DataContext: FolderTreeNode node }
+                ? node.Label
+                : System.Windows.Input.Keyboard.FocusedElement?.GetType().Name ?? "nothing");
 
         // -- Clicking ---------------------------------------------------------
 

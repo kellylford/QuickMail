@@ -225,6 +225,14 @@ public partial class AccountModel : ObservableObject
     /// </summary>
     public List<string> HiddenFolders { get; set; } = [];
 
+    /// <summary>
+    /// The folders of this account the user put in the folder tree's Favorites section (#1056).
+    /// Kept on the account, like <see cref="HiddenFolders"/>, so they go with it through settings
+    /// export and import and disappear when it is removed. The section lists every account's
+    /// favorites together, in <see cref="FavoriteFolder.Order"/> (#1058), then in the order added.
+    /// </summary>
+    public List<FavoriteFolder> FavoriteFolders { get; set; } = [];
+
     // ── Shared mailbox linkage (#31) ─────────────────────────────────────────────
 
     /// <summary>
