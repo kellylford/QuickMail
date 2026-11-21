@@ -686,8 +686,13 @@ How you leave the tree is how you find it: a folder you collapse stays collapsed
 
 ### Favorite Folders
 
-Put the folders you use most in one place, whichever account they belong to. **Favorites** is a
-section near the top of the folder tree that holds the folders you choose.
+**Favorites** is a section near the top of the folder tree that shows the folders you mark as
+favorites with **Ctrl+D**, whichever account they belong to.
+
+**Favorites is not in the folder tree until you add your first favorite.** If you go looking for it
+before then, you will not find it; it appears as soon as you add a folder. If you later remove every
+favorite, the Favorites section disappears again. Add a folder and it comes back, in the place you
+last put it.
 
 To add a folder, select it and press **Ctrl+D**. Press **Ctrl+D** on a favorite to remove it. The
 same toggle is in three other places:
@@ -705,7 +710,7 @@ How favorites work:
 
 - **Where:** Favorites appears after Calendar and before Views. You can move it anywhere at the top
   of the tree; see [Arranging the folder tree](#arranging-the-folder-tree). With no favorites there is
-  no Favorites heading.
+  no Favorites heading at all.
 - **The real folder:** a favorite is the folder itself, not a copy. Opening it opens the folder, with
   its remembered sort and filter, and its unread count is the folder's count. Its subfolders stay
   under its account.
@@ -723,6 +728,21 @@ How favorites work:
 
 Favorites are stored with each account, so they go with the account when you export your settings,
 and go away when you remove the account.
+
+#### Favorites or a saved view?
+
+Both put things near the top of the folder tree, but they do different jobs:
+
+- **A favorite is a shortcut to a folder.** It opens that folder exactly as it is, the same as
+  opening it under its account: every message in it, with the sort and filter you last used there.
+  It shows the folder's unread count. You add one with **Ctrl+D** and nothing else to set up.
+- **A [saved view](#saved-views) is a way of looking at mail.** It remembers a filter, a sort and a
+  view mode, and can limit mail to the last so many days, such as "Unread, last 7 days". It can
+  cover several folders at once, from different accounts. You make one in the View Manager, can give
+  it its own shortcut key, and leaving it puts the folder back the way it was.
+
+Use a favorite when you want to get to a folder quickly. Use a saved view when you want the same
+filtered or combined set of messages each time.
 
 ### Hiding Folders
 
@@ -1887,6 +1907,8 @@ A server-side rule that already marks messages as read, whether an earlier versi
 ## Saved Views
 
 A saved view is a named filter you can return to instantly — for example, "Unread from work" or "Flagged in the last 7 days."
+
+If all you want is a quick way to a folder, a favorite is simpler; see [Favorites or a saved view?](#favorites-or-a-saved-view).
 
 Open the **View Manager** from the **View** menu or the command palette. Create a view by choosing a folder (or All Inboxes), a message filter, and optionally a date limit. Assign a hotkey to jump to it directly.
 
