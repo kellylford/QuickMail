@@ -13,7 +13,7 @@ Favorites are stored on each account, the way Hide Folder stores hidden folders,
 ## Decisions made by Kelly
 
 - **Key:** Ctrl+D. Nothing in QuickMail binds it, and it is the browsers' "add favorite/bookmark" key. It is Delete in Outlook. An Outlook habit would favorite the folder, but QuickMail says so, and a second press undoes it.
-- **Order:** strictly the order added, across all accounts.
+- **Order:** strictly the order added, across all accounts. #1058 then lets you rearrange them, with new ones still added last.
 - **Account name:** every favorite shows its account name whenever more than one account exists, in the form `Folder - Account` (for example, "GitHub - Kelly").
 
 ## Decisions
@@ -52,7 +52,7 @@ Favorites are stored on each account, the way Hide Folder stores hidden folders,
 **D7. Order: strictly the order added, across accounts.**
 - `BuildFavoritesGroup` collects every account's favorites that resolve to a loaded folder and sorts them by `AddedUtc`, using account-list order and then list position to break ties.
 - Re-adding a removed folder puts it at the end.
-- Moving favorites up and down is out of scope.
+- Moving favorites up and down comes with #1058 (`docs/planning/arrange-folder-tree-pm-dev-spec.md`, D10). It adds an `Order` field to `FavoriteFolder` and sorts by it before `AddedUtc`. A new favorite still goes last. If #1058 is built at the same time, add `Order` here directly.
 
 **D8. Stale entries.**
 - An entry with no matching folder in `_cachedFolders` is skipped and kept, because a folder can be missing for a while (an account connecting, Graph being eventually consistent).
@@ -229,7 +229,7 @@ New `QuickMail.Tests/FavoriteFoldersTests.cs`, using the `HiddenFoldersTests` fi
 
 ## Out of scope
 
-- Reordering favorites, or renaming a favorite.
+- Renaming a favorite. (Reordering favorites, and moving the Favorites section itself, are #1058.)
 - Virtual folders, saved views, accounts or calendars as favorites.
 - Showing a favorite's subfolders under it.
 - A favorite following its folder through a move or a server-side rename.
