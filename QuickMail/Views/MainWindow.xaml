@@ -313,7 +313,8 @@
              The WPF XAML compiler generates incorrect type casts for Click handlers inside
              Style setters (it emits GridSplitter instead of MenuItem), causing an APPCRASH. -->
         <ContextMenu x:Key="FolderContextMenu"
-                     AutomationProperties.Name="Folder actions">
+                     AutomationProperties.Name="Folder actions"
+                     Opened="FolderContextMenu_Opened">
             <MenuItem sc:CommandShortcut.Id="folder.new" Header="_New Folder…"
                       AutomationProperties.Name="New Folder"
                       Click="FolderContextMenu_NewFolder_Click"/>
@@ -345,12 +346,13 @@
                       AutomationProperties.Name="Clear Startup Folder"
                       Click="FolderContextMenu_ClearStartupFolder_Click"/>
             <Separator/>
-            <!-- #1056. V is free. Checkable: its Loaded handler sets the check each time the menu
-                 opens, so the platform reports whether the folder is a favorite. -->
+            <!-- #1056. V is free. Checkable: the menu's Opened handler sets the check each time it
+                 opens, so the platform reports whether the folder is a favorite. Matched by Tag: a
+                 ContextMenu in Window.Resources is its own name scope. -->
             <MenuItem sc:CommandShortcut.Id="folder.toggleFavorite" Header="Fa_vorite Folder"
                       AutomationProperties.Name="Favorite Folder"
                       IsCheckable="True"
-                      Loaded="FolderContextMenu_FavoriteItem_Loaded"
+                      Tag="favoriteFolder"
                       Click="FolderContextMenu_ToggleFavorite_Click"/>
             <!-- #963. H is free; "Show All H_idden Folders" takes I, since S (Startup) and H are
                  both taken by then. -->
@@ -660,7 +662,7 @@
             </MenuItem>
 
             <!-- Folder -->
-            <MenuItem Header="Fol_der">
+            <MenuItem Header="Fol_der" SubmenuOpened="FolderMenu_SubmenuOpened">
                 <MenuItem sc:CommandShortcut.Id="folder.new" Header="_New Folder…"
                           Click="MenuNewFolder_Click"
                           AutomationProperties.Name="New Folder"/>
@@ -683,7 +685,7 @@
                 <!-- #1056 and #963. Same access keys as the folder tree's context menu. -->
                 <MenuItem sc:CommandShortcut.Id="folder.toggleFavorite" Header="Fa_vorite Folder"
                           IsCheckable="True"
-                          Loaded="MenuFavoriteItem_Loaded"
+                          x:Name="MenuFavoriteFolderItem"
                           Click="MenuToggleFavorite_Click"
                           AutomationProperties.Name="Favorite Folder"/>
                 <MenuItem sc:CommandShortcut.Id="folder.hide" Header="_Hide Folder"

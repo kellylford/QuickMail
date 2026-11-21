@@ -336,6 +336,34 @@ public class FolderTreeArrangeTests
     }
 
     [Fact]
+    public async Task RemovingAnAccountInManageAccounts_AlsoKeepsEveryOtherItemInItsPlace()
+    {
+        var (vm, accounts, config) = await MakeAsync();
+        vm.MoveFolderTreeNode(Root(vm, "Work"), TreeMove.ToStart);   // Work, Calendar, All Mail, Home
+        // Manage Accounts removed Work and saved; the main window reads accounts.json back.
+        accounts.ToLoad = [vm.Accounts.Single(a => a.Id == Home)];
+
+        vm.RefreshAccountList();
+
+        Assert.Equal(["Calendar", "All Mail", "Home"], RootLabels(vm));
+        Assert.Equal("calendar, favorites, views, allmail, account", config.Load().FolderTreeOrder);
+    }
+
+    [Fact]
+    public async Task AccountsPassingEachOther_LeaveAHiddenSectionBetweenThemWhereItWas()
+    {
+        // Work, then Views (no saved views, so hidden), then Home.
+        var config = new StubConfigService();
+        config.Save(new ConfigModel { FolderTreeOrder = "calendar, favorites, allmail, account, views, account" });
+        var (vm, _, _) = await MakeAsync(config: config);
+
+        Assert.Equal("Moved above Work.", vm.MoveFolderTreeNode(Root(vm, "Home"), TreeMove.Up));
+
+        Assert.Equal([Home, Work], vm.Accounts.Select(a => a.Id));
+        Assert.Equal("calendar, favorites, allmail, account, views, account", config.Load().FolderTreeOrder);
+    }
+
+    [Fact]
     public async Task ANewAccount_AppearsAfterTheLastAccount()
     {
         var (vm, _, _) = await MakeAsync();

@@ -11641,7 +11641,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     public void RefreshAccountList()
     {
+        var before = Accounts.ToList();
         LoadAccountList();
+        // An account removed in Manage Accounts leaves its place in the folder tree order, so the
+        // accounts after it keep theirs (#1058).
+        DropRemovedAccountsFromFolderTreeOrder(before);
 
         // Rebuild the folder tree from what's already cached so per-account changes that don't need a
         // reconnect are reflected immediately — notably a calendar-sync opt-in/out (#282), which

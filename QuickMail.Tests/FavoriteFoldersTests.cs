@@ -443,9 +443,11 @@ public class FavoriteFoldersTests
     public void BothMenusHaveACheckableFavoriteItem_WithItsHandlers()
     {
         var xaml = Source(Path.Combine("QuickMail", "Views", "MainWindow.xaml"));
-        Assert.Contains("Loaded=\"FolderContextMenu_FavoriteItem_Loaded\"", xaml, StringComparison.Ordinal);
+        // The check is set when each menu opens (Opened / SubmenuOpened), not once at Loaded.
+        Assert.Contains("Opened=\"FolderContextMenu_Opened\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Tag=\"favoriteFolder\"", xaml, StringComparison.Ordinal);
         Assert.Contains("Click=\"FolderContextMenu_ToggleFavorite_Click\"", xaml, StringComparison.Ordinal);
-        Assert.Contains("Loaded=\"MenuFavoriteItem_Loaded\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("SubmenuOpened=\"FolderMenu_SubmenuOpened\"", xaml, StringComparison.Ordinal);
         Assert.Contains("Click=\"MenuToggleFavorite_Click\"", xaml, StringComparison.Ordinal);
         Assert.Equal(2, xaml.Split("sc:CommandShortcut.Id=\"folder.toggleFavorite\" Header=\"Fa_vorite Folder\"").Length - 1);
     }

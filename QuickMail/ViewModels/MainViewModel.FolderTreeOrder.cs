@@ -45,7 +45,8 @@ public partial class MainViewModel
     {
         var slots = new List<TopLevelSlot>();
         var nextAccount = 0;
-        foreach (var token in CurrentFolderTreeOrder())
+        var tokensBefore = CurrentFolderTreeOrder();
+        foreach (var token in tokensBefore)
             slots.Add(token == FolderTreeOrder.Account
                 ? new TopLevelSlot(null, Accounts[nextAccount++])
                 : new TopLevelSlot(token, null));
@@ -76,7 +77,12 @@ public partial class MainViewModel
             _accountService.SaveAccounts([.. Accounts]);
         }
 
-        SaveFolderTreeOrder(slots.Select(s => s.Section ?? FolderTreeOrder.Account));
+        // An account passing the account beside it changes only accounts.json: the placeholders stay
+        // where they were, so a hidden section between the two keeps its place rather than shifting.
+        var accountPassedAccount = node.SectionKey == null && (move is TreeMove.Up or TreeMove.Down) &&
+                                   result.Neighbour!.Account != null;
+        if (!accountPassedAccount)
+            SaveFolderTreeOrder(slots.Select(s => s.Section ?? FolderTreeOrder.Account));
 
         // The flat folder list follows account order too, so a change there rebuilds both, as an
         // account move from the Accounts list does. Either way the live tree is merged, not
@@ -113,14 +119,29 @@ public partial class MainViewModel
     /// would shift up a place. A default order stays default.
     /// </summary>
     private void DropAccountsFromFolderTreeOrder(IReadOnlyCollection<AccountModel> removed)
+        => DropAccountsFromFolderTreeOrder([.. Accounts], removed.Select(a => a.Id).ToHashSet());
+
+    /// <summary>
+    /// The same, for accounts removed elsewhere — Manage Accounts — found by comparing the list from
+    /// before it opened with the one read back afterwards.
+    /// </summary>
+    private void DropRemovedAccountsFromFolderTreeOrder(IReadOnlyList<AccountModel> before)
+    {
+        var now = Accounts.Select(a => a.Id).ToHashSet();
+        var removed = before.Where(a => !now.Contains(a.Id)).Select(a => a.Id).ToHashSet();
+        if (removed.Count > 0) DropAccountsFromFolderTreeOrder(before, removed);
+    }
+
+    // `order` is the account list the stored placeholders were filled from.
+    private void DropAccountsFromFolderTreeOrder(IReadOnlyList<AccountModel> order, HashSet<Guid> removed)
     {
         if (_folderTreeOrderStored.Count == 0) return;
-        var tokens = CurrentFolderTreeOrder();
+        var tokens = FolderTreeOrder.Normalize(_folderTreeOrderStored, order.Count);
         var accountIndex = 0;
         var kept = new List<string>();
         foreach (var token in tokens)
         {
-            if (token == FolderTreeOrder.Account && removed.Contains(Accounts[accountIndex++])) continue;
+            if (token == FolderTreeOrder.Account && removed.Contains(order[accountIndex++].Id)) continue;
             kept.Add(token);
         }
         SaveFolderTreeOrder(kept);

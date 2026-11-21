@@ -22,7 +22,9 @@ internal static class FolderTreeFixture
     {
         public int Saves { get; private set; }
         public List<AccountModel> LastSaved { get; private set; } = [];
-        public List<AccountModel> LoadAccounts() => [];
+        /// <summary>What LoadAccounts returns, standing in for accounts.json after Manage Accounts.</summary>
+        public List<AccountModel>? ToLoad { get; set; }
+        public List<AccountModel> LoadAccounts() => ToLoad is { } list ? [.. list] : [];
         public void SaveAccounts(List<AccountModel> accounts)
         {
             Saves++;

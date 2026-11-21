@@ -7499,15 +7499,22 @@ public partial class MainWindow : Window
 
     private void MenuToggleFavorite_Click(object sender, RoutedEventArgs e) => ToggleFavoriteFromSelection();
 
-    // Each time its menu opens, so the platform reports whether the folder is a favorite.
-    private void FolderContextMenu_FavoriteItem_Loaded(object sender, RoutedEventArgs e)
+    // Each time the menu opens, so the platform reports whether the folder is a favorite. Clicking a
+    // checkable item toggles its own check even when the toggle is refused, so the state is always
+    // re-derived here rather than left from last time.
+    private void FolderContextMenu_Opened(object sender, RoutedEventArgs e)
     {
-        if (sender is MenuItem item) item.IsChecked = _vm.IsFavoriteFolder(GetContextMenuFolderNode(item));
+        if (sender is not ContextMenu menu) return;
+        var node = (menu.PlacementTarget as TreeViewItem)?.DataContext as FolderTreeNode;
+        foreach (var item in menu.Items.OfType<MenuItem>())
+            if (item.Tag as string == "favoriteFolder") item.IsChecked = _vm.IsFavoriteFolder(node);
     }
 
-    private void MenuFavoriteItem_Loaded(object sender, RoutedEventArgs e)
+    private void FolderMenu_SubmenuOpened(object sender, RoutedEventArgs e)
     {
-        if (sender is MenuItem item) item.IsChecked = _vm.IsFavoriteFolder(FavoriteTarget(out _));
+        // Raised for nested submenus too; only the Folder menu's own opening matters.
+        if (!ReferenceEquals(e.OriginalSource, sender)) return;
+        MenuFavoriteFolderItem.IsChecked = _vm.IsFavoriteFolder(FavoriteTarget(out _));
     }
 
     // The Folder menu, the Command Palette and Ctrl+D act on the tree's selection when the user is in
@@ -7581,12 +7588,17 @@ public partial class MainWindow : Window
         FocusAccountRow(account);
     }
 
-    // Deletes the folder and lands focus on the folder above. The VM splices the node out of the
-    // tree in place (no rebuild), so the captured neighbour reference stays valid for FocusTreeItem.
+    // Deletes the folder and lands focus on the folder above. The VM usually splices the node out of
+    // the tree in place, so the captured neighbour stays valid; but deleting a favorite (#1056)
+    // rebuilds the tree to take out its other copy, which can remove the neighbour too — the
+    // Favorites heading when the last favorite goes, or a favorite inside the deleted folder. Then
+    // land on the nearest item above that survived, else the first item in the tree.
     private async Task DeleteFolderWithFocusAsync(FolderTreeNode node)
     {
         if (node.Folder is { } target && !CanManageFolder(target, "deleted")) return;
 
+        var visibleBefore = FlattenVisibleFolderNodes(_vm.FolderTree).ToList();
+        var index = visibleBefore.FindIndex(n => ReferenceEquals(n, node));
         var above = FindVisibleFolderNodeAbove(node);
         // Where FolderList_GotKeyboardFocus lands when the node's item is removed with focus on it
         // (#719). Refreshed here so both land on this node, not on one taken when focus arrived.
@@ -7594,7 +7606,11 @@ public partial class MainWindow : Window
             _folderTreeSpot = spot with { Above = above };
         // Only move focus if the delete actually happened — a cancelled confirmation must leave the
         // user where they were.
-        if (await _vm.DeleteFolderAsync(node) && above != null)
+        if (!await _vm.DeleteFolderAsync(node)) return;
+        if (above != null && !IsInFolderTree(above))
+            above = visibleBefore.Take(Math.Max(0, index)).LastOrDefault(IsInFolderTree)
+                    ?? _vm.FolderTree?.FirstOrDefault();
+        if (above != null)
             FocusTreeItem(FolderList, above);
     }
 
