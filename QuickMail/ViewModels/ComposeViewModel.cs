@@ -186,6 +186,31 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
     /// <summary>The compose mode stored in the draft when it was last saved; PlainText for new composes.</summary>
     public ComposeMode SeededMode => _seededMode;
 
+    /// <summary>
+    /// The editing mode this compose window should open in. Drafts restore their saved mode, an
+    /// HTML forward opens in HTML, templates stay plain text, a reply to a message that has HTML
+    /// opens in HTML when <paramref name="replyInHtmlToHtmlMessages"/> is on (#1050), and
+    /// everything else uses <paramref name="defaultMode"/>. Call once, before the first
+    /// <see cref="SetMode"/>: the reply's quoted HTML is consumed when the editor loads it.
+    /// </summary>
+    public ComposeMode InitialMode(ComposeMode defaultMode, bool replyInHtmlToHtmlMessages) =>
+        ResolveInitialMode(ComposeKind, _seededMode, _seededHtmlBody != null, defaultMode, replyInHtmlToHtmlMessages);
+
+    /// <summary>The decision behind <see cref="InitialMode"/>, kept pure so it can be tested directly.</summary>
+    public static ComposeMode ResolveInitialMode(
+        ComposeKind kind, ComposeMode seededMode, bool hasQuotedHtml,
+        ComposeMode defaultMode, bool replyInHtmlToHtmlMessages)
+    {
+        if (kind is ComposeKind.EditDraft or ComposeKind.NewDraft
+            || (kind == ComposeKind.Forward && seededMode == ComposeMode.Html))
+            return seededMode;
+        if (kind == ComposeKind.EditTemplate)
+            return ComposeMode.PlainText;
+        if ((kind is ComposeKind.Reply or ComposeKind.ReplyAll) && hasQuotedHtml && replyInHtmlToHtmlMessages)
+            return ComposeMode.Html;
+        return defaultMode;
+    }
+
     public event Action? CloseRequested;
 
     /// <summary>

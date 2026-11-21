@@ -383,6 +383,9 @@ public class ConfigService : IConfigService
                             _          => Models.ComposeMode.PlainText,
                         };
                         break;
+                    case "replyinhtmltohtmlmessages":
+                        config.ReplyInHtmlToHtmlMessages = ParseBool(value);
+                        break;
                     case "checkspellingasyoutype":
                         config.CheckSpellingAsYouType = ParseBool(value);
                         break;
@@ -959,6 +962,12 @@ public class ConfigService : IConfigService
         sb.AppendLine("# Editing mode new compose windows start in.");
         sb.AppendLine("# Drafts and templates always reopen in plain text.");
         sb.AppendLine("# Values: plain, markdown, html.");
+        sb.AppendLine();
+
+        sb.AppendLine($"ReplyInHtmlToHtmlMessages = {(config.ReplyInHtmlToHtmlMessages ? "on" : "off")}");
+        sb.AppendLine("# A reply to a message that has HTML opens in HTML, quoting the original as a");
+        sb.AppendLine("# quote block instead of lines starting \"> \", whatever DefaultComposeMode says.");
+        sb.AppendLine("# Replies to plain-text messages use DefaultComposeMode. Values: on, off.");
         sb.AppendLine();
 
         sb.AppendLine($"CheckSpellingAsYouType = {(config.CheckSpellingAsYouType ? "on" : "off")}");

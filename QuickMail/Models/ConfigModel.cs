@@ -336,6 +336,14 @@ public class ConfigModel
     public ComposeMode DefaultComposeMode { get; set; } = ComposeMode.PlainText;
 
     /// <summary>
+    /// A reply to a message that has HTML opens in HTML mode whatever <see cref="DefaultComposeMode"/>
+    /// says, so the original is quoted as a real quote block rather than as lines starting "&gt; "
+    /// (#1050). Forwards of HTML messages already open in HTML. Replies to plain-text messages
+    /// still use the default mode. On by default.
+    /// </summary>
+    public bool ReplyInHtmlToHtmlMessages { get; set; } = true;
+
+    /// <summary>
     /// Spell-check compose text in the background as it is typed or pasted. Off, compose windows
     /// don't turn WPF's spell checker on until Check Spelling (F7) or Next/Previous Misspelling
     /// (Ctrl+F7 / Ctrl+Shift+F7) asks for it: WPF's background check of a long pasted text with

@@ -30,6 +30,24 @@ public class ConfigServiceSaveTests
 
     // #883: the setting must survive a restart, and a config.ini written before it existed
     // must still mean "on".
+    // #1050: on unless turned off, and a config.ini written before it existed still means "on".
+    [Fact]
+    public void ReplyInHtmlToHtmlMessages_DefaultsOn_AndRoundTripsOff()
+    {
+        var profile = MakeTempProfile();
+        var service = new ConfigService(profile);
+
+        var config = service.Load();
+        Assert.True(config.ReplyInHtmlToHtmlMessages);
+
+        config.ReplyInHtmlToHtmlMessages = false;
+        service.Save(config);
+
+        Assert.False(new ConfigService(profile).Load().ReplyInHtmlToHtmlMessages);
+        Assert.Contains("ReplyInHtmlToHtmlMessages = off",
+            File.ReadAllText(Path.Combine(profile.ProfileDir, "config.ini")));
+    }
+
     [Fact]
     public void CheckSpellingAsYouType_DefaultsOn_AndRoundTripsOff()
     {
