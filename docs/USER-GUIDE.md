@@ -686,8 +686,8 @@ How you leave the tree is how you find it: a folder you collapse stays collapsed
 
 ### Favorite Folders
 
-Put the folders you use most in one place, whichever account they belong to. **Favorites** is a
-section near the top of the folder tree that holds the folders you choose.
+**Favorites** is a section near the top of the folder tree that shows the folders you mark as
+favorites with **Ctrl+D**, whichever account they belong to.
 
 **Favorites is not in the folder tree until you add your first favorite.** If you go looking for it
 before then, you will not find it; it appears as soon as you add a folder. If you later remove every
