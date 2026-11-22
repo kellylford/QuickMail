@@ -297,11 +297,12 @@ public class GraphMailServiceTests
               "id":"m1","subject":"Hello",
               "from":{"emailAddress":{"name":"Alice","address":"alice@x.com"}},
               "toRecipients":[{"emailAddress":{"address":"me@x.com"}}],
+              "ccRecipients":[{"emailAddress":{"name":"Team","address":"team@x.com"}}],
               "receivedDateTime":"2024-01-02T03:04:05Z","isRead":false,
               "bodyPreview":"hi there","hasAttachments":true
             }]}
             """;
-        var (svc, _) = Make(url => url.Contains("/me?") ? (HttpStatusCode.OK, MeJson) : (HttpStatusCode.OK, msgs));
+        var (svc, h) = Make(url => url.Contains("/me?") ? (HttpStatusCode.OK, MeJson) : (HttpStatusCode.OK, msgs));
 
         var account = GraphAccount();
         await svc.ConnectAsync(account, ct: TestContext.Current.CancellationToken);
@@ -313,6 +314,9 @@ public class GraphMailServiceTests
         Assert.Equal("Alice", m.From);
         Assert.Equal("alice@x.com", m.FromEmail);
         Assert.Equal("me@x.com", m.To);
+        // The Cc line, which a rule's "Sent to" condition reads; it has to be asked for in the $select.
+        Assert.Contains("team@x.com", m.Cc, StringComparison.Ordinal);
+        Assert.Contains(h.HeaderCalls, c => c.Url.Contains("/messages") && c.Url.Contains("ccRecipients"));
         Assert.Equal("Hello", m.Subject);
         Assert.False(m.IsRead);
         Assert.Equal("hi there", m.Preview);

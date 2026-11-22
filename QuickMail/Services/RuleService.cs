@@ -333,6 +333,34 @@ public class RuleService : IRuleService
             : msg.FromEmail.Contains(trimmed, StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>
+    /// Whether a "Sent to" condition's <paramref name="value"/> names one of <paramref name="msg"/>'s recipients, on the
+    /// To line or the Cc line: Outlook's "Sent to" condition, which is what a Microsoft server rule's
+    /// <c>sentToAddresses</c> is, looks at both, so a client rule means the same. A whole address or domain
+    /// ("me@example.com", "@example.com") is matched on address boundaries, as a sender's is, so "bob@example.com" does
+    /// not match "jimbob@example.com"; a "Name &lt;address&gt;" is matched on its address. Anything else, a name or a
+    /// fragment such as "@acme", is looked for as text in either line, as it always was on the To line.
+    /// </summary>
+    internal static bool RecipientMatches(MailMessageSummary msg, string value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return false;
+        var trimmed = value.Trim();
+        var to = msg.To ?? string.Empty;
+        var cc = msg.Cc ?? string.Empty;
+
+        if (AddressMatch.IsWhole(trimmed))
+        {
+            var address = trimmed;
+            if (trimmed.Contains('<', StringComparison.Ordinal)
+                && MimeKit.MailboxAddress.TryParse(trimmed, out var mailbox))
+                address = mailbox.Address;
+            return AddressMatch.Names(to, address) || AddressMatch.Names(cc, address);
+        }
+
+        return to.Contains(trimmed, StringComparison.OrdinalIgnoreCase)
+               || cc.Contains(trimmed, StringComparison.OrdinalIgnoreCase);
+    }
+
     private static bool MatchesRule(MailRule rule, MailMessageSummary msg)
     {
         // A rule may list several From (or Sent-to) addresses, and matching any one of them is enough
@@ -353,7 +381,7 @@ public class RuleService : IRuleService
             return false;
 
         if (rule.ToValues() is { Count: > 0 } toValues
-            && !toValues.Any(v => msg.To.Contains(v, StringComparison.OrdinalIgnoreCase)))
+            && !toValues.Any(v => RecipientMatches(msg, v)))
             return false;
 
         if (rule.UseSubjectCondition && !string.IsNullOrEmpty(rule.SubjectContains))

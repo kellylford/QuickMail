@@ -984,8 +984,7 @@ public partial class ServerRuleEditorViewModel : ObservableObject
     /// that is switched off but populated is still something they need to be shown.
     /// </summary>
     private bool HasAdvancedContent()
-        => !string.IsNullOrWhiteSpace(SentToAddresses)
-           || !string.IsNullOrWhiteSpace(BodyOrSubjectContains)
+        => !string.IsNullOrWhiteSpace(BodyOrSubjectContains)
            || !string.IsNullOrWhiteSpace(BodyContains)
            || SentToMe || SentOnlyToMe || HasAttachments
            || !string.IsNullOrWhiteSpace(SelectedImportance?.Value)

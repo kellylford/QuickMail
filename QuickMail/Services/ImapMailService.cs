@@ -2197,6 +2197,7 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
             From        = AddressListFormat.Display(s.Envelope?.From),
             FromEmail   = AddressListFormat.Emails(s.Envelope?.From),
             To          = AddressListFormat.Full(s.Envelope?.To),
+            Cc          = AddressListFormat.Full(s.Envelope?.Cc),
             Subject     = s.Envelope?.Subject ?? "(no subject)",
             Date        = s.Envelope?.Date ?? DateTimeOffset.MinValue,
             IsRead         = (s.Flags & MessageFlags.Seen)     != 0,

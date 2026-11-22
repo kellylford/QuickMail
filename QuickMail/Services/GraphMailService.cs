@@ -247,7 +247,7 @@ public class GraphMailService : IMailService, IConnectionProbe
         // and any path that yields a slightly different folder/id representation shows the SAME message
         // twice. Omitting it here is what caused duplicate rows in All Mail (#366).
         var path = $"/me/mailFolders/{folderName}/messages?$top={top}&$orderby=receivedDateTime desc" +
-                   "&$select=id,internetMessageId,subject,from,toRecipients,receivedDateTime,isRead,bodyPreview,hasAttachments,flag";
+                   "&$select=id,internetMessageId,subject,from,toRecipients,ccRecipients,receivedDateTime,isRead,bodyPreview,hasAttachments,flag";
         if (since.HasValue)
             path += $"&$filter=receivedDateTime ge {since.Value.ToUniversalTime():yyyy-MM-ddTHH:mm:ssZ}";
 
@@ -271,7 +271,7 @@ public class GraphMailService : IMailService, IConnectionProbe
         var account = Account(accountId);
         var top = Math.Min(maxResults, 250);
         string? path = "/me/messages?$search=" + Uri.EscapeDataString("\"" + kql + "\"") + $"&$top={top}" +
-                       "&$select=id,internetMessageId,subject,from,toRecipients,receivedDateTime,isRead,bodyPreview,hasAttachments,flag,parentFolderId";
+                       "&$select=id,internetMessageId,subject,from,toRecipients,ccRecipients,receivedDateTime,isRead,bodyPreview,hasAttachments,flag,parentFolderId";
         var found = new List<MailMessageSummary>();
         while (path != null && found.Count < maxResults)
         {
@@ -572,6 +572,7 @@ public class GraphMailService : IMailService, IConnectionProbe
         From = m.From?.EmailAddress?.AsDisplayString() ?? string.Empty,
         FromEmail = m.From?.EmailAddress?.Address ?? string.Empty,
         To = JoinRecipients(m.ToRecipients),
+        Cc = JoinRecipients(m.CcRecipients),
         Subject = m.Subject ?? "(no subject)",
         Date = m.ReceivedDateTime,
         IsRead          = m.IsRead ?? false,

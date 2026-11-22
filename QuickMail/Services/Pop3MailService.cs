@@ -1217,6 +1217,7 @@ public class Pop3MailService : IMailService
             From              = AddressListFormat.Display(msg.From),
             FromEmail         = AddressListFormat.Emails(msg.From),
             To                = AddressListFormat.Full(msg.To),
+            Cc                = AddressListFormat.Full(msg.Cc),
             Subject           = string.IsNullOrEmpty(msg.Subject) ? "(no subject)" : msg.Subject,
             Date              = NormalizeDate(msg.Date),
             IsRead            = isRead,

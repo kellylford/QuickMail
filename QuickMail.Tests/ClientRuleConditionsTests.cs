@@ -923,11 +923,11 @@ public class ClientRuleConditionsTests
     }
 
     [Fact]
-    public void ClientRows_SayFrom_ButKeepToContains()
+    public void ClientRows_SayFromAndSentTo_ForWholeAddresses()
     {
         // Review of #806: a client row said "from contains" where a server row says "from". A From address is
-        // matched as a whole address now, so "contains" was wrong for it. Sent to is still matched as text the
-        // To line contains, so it keeps "to contains" until it matches whole too (review of #858).
+        // matched as a whole address now, so "contains" was wrong for it. Sent to now matches whole too, on the
+        // To and Cc lines, so it reads "sent to" as a server row does (review of #858 left it "to contains").
         var row = UnifiedRuleRow.ForClient(new MailRule
         {
             Name = "Billing",
@@ -940,7 +940,7 @@ public class ClientRuleConditionsTests
             Action = RuleAction.MarkAsRead,
         });
 
-        Assert.Contains("If from 'billing@x.com' and to contains 'me@x.com' →", row.RowText, StringComparison.Ordinal);
+        Assert.Contains("If from 'billing@x.com' and sent to 'me@x.com' →", row.RowText, StringComparison.Ordinal);
         Assert.DoesNotContain("from contains", row.RowText, StringComparison.Ordinal);
     }
 

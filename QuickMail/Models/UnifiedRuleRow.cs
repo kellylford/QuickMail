@@ -122,8 +122,9 @@ public sealed class UnifiedRuleRow
         // A rule may list several addresses, any one of which matches (#682); read through the model's own
         // accessor so the summary can't describe the condition differently from the engine that runs it.
         // "from …" as a server rule's row words it (ServerRuleModel.DescribeConditions): since the review of
-        // #806 an address is matched as a whole address, not as text the From header contains. Sent to is
-        // still matched as text the To line contains (RuleService), so it keeps "to contains" (review of #858).
+        // #806 an address is matched as a whole address, not as text the From header contains. Sent to now matches
+        // the To and Cc lines the same way (RuleService.RecipientMatches), so a whole address reads "sent to", as a
+        // server rule's row does, and a name or fragment reads "to or cc contains".
         // Only a whole address or domain is matched whole (AddressMatch.IsWhole, which SenderMatches uses too); a
         // name, or a fragment such as "@acme", is still matched as text the sender contains, so a row holding any
         // such value keeps saying "from contains".
@@ -131,7 +132,8 @@ public sealed class UnifiedRuleRow
             conditions.Add(from.All(Helpers.AddressMatch.IsWhole) ? $"from {Quoted(from)}" : $"from contains {Quoted(from)}");
         if (r.UseSenderCondition && !string.IsNullOrWhiteSpace(r.SenderContains))
             conditions.Add($"sender contains '{r.SenderContains}'");
-        if (r.ToValues() is { Count: > 0 } to) conditions.Add($"to contains {Quoted(to)}");
+        if (r.ToValues() is { Count: > 0 } to)
+            conditions.Add(to.All(Helpers.AddressMatch.IsWhole) ? $"sent to {Quoted(to)}" : $"to or cc contains {Quoted(to)}");
         if (r.UseSubjectCondition && !string.IsNullOrWhiteSpace(r.SubjectContains))
             conditions.Add(r.SubjectAlsoMatchesBody
                 ? $"subject or body contains '{r.SubjectContains}'"

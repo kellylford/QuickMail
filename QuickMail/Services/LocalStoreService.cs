@@ -316,6 +316,23 @@ public partial class LocalStoreService : ILocalStoreService
         // one-time backfill fills them in. AFTER RunDataMigrations for the same reason as mime_bytes above.
         RunMigration(conn, "ALTER TABLE MessageSummary ADD COLUMN from_email TEXT NOT NULL DEFAULT '';");
 
+        // The Cc line, for a rule's "Sent to" condition, which matches To or Cc as Outlook's does. Rows cached
+        // before the column existed are filled once from any cached body; the rest stay empty until synced again.
+        // AFTER RunDataMigrations for the same reason as mime_bytes above.
+        if (!ColumnExists(conn, "MessageSummary", "cc_addr"))
+        {
+            RunMigration(conn, "ALTER TABLE MessageSummary ADD COLUMN cc_addr TEXT NOT NULL DEFAULT '';");
+            RunMigration(conn, """
+                UPDATE MessageSummary
+                SET cc_addr = COALESCE((
+                    SELECT d.cc FROM MessageDetail d
+                    WHERE d.unique_id = MessageSummary.unique_id
+                      AND d.account_id = MessageSummary.account_id
+                      AND d.folder_name = MessageSummary.folder_name
+                ), '');
+                """);
+        }
+
         // Whether has_attachments has been decided (#931). IMAP summaries carried no attachment flag before then, so
         // the rows already here are unchecked (the default) until the one-time pass asks the server; every row a
         // summary writes from now on is checked. AFTER RunDataMigrations for the same reason as mime_bytes above.
@@ -531,6 +548,17 @@ public partial class LocalStoreService : ILocalStoreService
         catch { /* column already exists — safe to ignore */ }
     }
 
+    private static bool ColumnExists(SqliteConnection conn, string table, string column)
+    {
+        using var cmd = conn.CreateCommand();
+        // table is a compile-time constant at every call site; PRAGMA takes no bound parameters.
+        cmd.CommandText = $"PRAGMA table_info({table});";
+        using var r = cmd.ExecuteReader();
+        while (r.Read())
+            if (string.Equals(r.GetString(1), column, StringComparison.OrdinalIgnoreCase)) return true;
+        return false;
+    }
+
     public async Task UpsertSummariesAsync(IEnumerable<MailMessageSummary> summaries)
     {
         await using var conn = await OpenAsync();
@@ -542,12 +570,13 @@ public partial class LocalStoreService : ILocalStoreService
         // cleared by a later summary once true, since the detail may have found attachments the summary didn't know
         // of. Rules test it on waiting mail read back from here, not only on mail a sync has in hand.
         cmd.CommandText = """
-            INSERT INTO MessageSummary(unique_id, account_id, folder_name, from_disp, from_email, to_addr, subject, date_ticks, is_read, preview_text, is_replied, is_forwarded, is_mailing_list, flag_id, internet_message_id, has_attachments, rules_applied, att_checked)
-            VALUES($uid, $aid, $fn, $from, $fromEmail, $to, $subj, $dt, $read, $preview, $replied, $forwarded, $ml, $flag_id, $imid, $att, 0, $attKnown)
+            INSERT INTO MessageSummary(unique_id, account_id, folder_name, from_disp, from_email, to_addr, cc_addr, subject, date_ticks, is_read, preview_text, is_replied, is_forwarded, is_mailing_list, flag_id, internet_message_id, has_attachments, rules_applied, att_checked)
+            VALUES($uid, $aid, $fn, $from, $fromEmail, $to, $cc, $subj, $dt, $read, $preview, $replied, $forwarded, $ml, $flag_id, $imid, $att, 0, $attKnown)
             ON CONFLICT(unique_id, account_id, folder_name) DO UPDATE SET
                 from_disp       = excluded.from_disp,
                 from_email      = CASE WHEN excluded.from_email = '' THEN from_email ELSE excluded.from_email END,
                 to_addr         = excluded.to_addr,
+                cc_addr         = CASE WHEN excluded.cc_addr = '' THEN cc_addr ELSE excluded.cc_addr END,
                 subject         = excluded.subject,
                 date_ticks      = excluded.date_ticks,
                 is_read         = excluded.is_read,
@@ -574,6 +603,7 @@ public partial class LocalStoreService : ILocalStoreService
         var pFrom      = cmd.Parameters.Add("$from",      SqliteType.Text);
         var pFromEmail = cmd.Parameters.Add("$fromEmail", SqliteType.Text);
         var pTo        = cmd.Parameters.Add("$to",        SqliteType.Text);
+        var pCc        = cmd.Parameters.Add("$cc",        SqliteType.Text);
         var pSubj      = cmd.Parameters.Add("$subj",      SqliteType.Text);
         var pDt        = cmd.Parameters.Add("$dt",        SqliteType.Integer);
         var pRead      = cmd.Parameters.Add("$read",      SqliteType.Integer);
@@ -594,6 +624,7 @@ public partial class LocalStoreService : ILocalStoreService
             pFrom.Value      = s.From;
             pFromEmail.Value = s.FromEmail ?? string.Empty;
             pTo.Value        = s.To;
+            pCc.Value        = s.Cc ?? string.Empty;
             pSubj.Value      = s.Subject;
             pDt.Value        = s.Date.UtcTicks;
             pRead.Value      = s.IsRead          ? 1 : 0;
@@ -618,7 +649,7 @@ public partial class LocalStoreService : ILocalStoreService
         await using var conn = await OpenAsync();
         await using var cmd = conn.CreateCommand();
         cmd.CommandText =
-            "SELECT unique_id, account_id, folder_name, from_disp, to_addr, subject, date_ticks, is_read, preview_text, is_replied, is_forwarded, has_attachments, is_mailing_list, flag_id, internet_message_id, from_email " +
+            "SELECT unique_id, account_id, folder_name, from_disp, to_addr, subject, date_ticks, is_read, preview_text, is_replied, is_forwarded, has_attachments, is_mailing_list, flag_id, internet_message_id, from_email, cc_addr " +
             "FROM MessageSummary ORDER BY date_ticks DESC;";
         return await ReadSummariesAsync(cmd);
     }
@@ -628,7 +659,7 @@ public partial class LocalStoreService : ILocalStoreService
         await using var conn = await OpenAsync();
         await using var cmd = conn.CreateCommand();
         cmd.CommandText =
-            "SELECT unique_id, account_id, folder_name, from_disp, to_addr, subject, date_ticks, is_read, preview_text, is_replied, is_forwarded, has_attachments, is_mailing_list, flag_id, internet_message_id, from_email " +
+            "SELECT unique_id, account_id, folder_name, from_disp, to_addr, subject, date_ticks, is_read, preview_text, is_replied, is_forwarded, has_attachments, is_mailing_list, flag_id, internet_message_id, from_email, cc_addr " +
             "FROM MessageSummary WHERE account_id=$aid ORDER BY date_ticks DESC;";
         cmd.Parameters.AddWithValue("$aid", accountId.ToString());
         return await ReadSummariesAsync(cmd);
@@ -639,7 +670,7 @@ public partial class LocalStoreService : ILocalStoreService
         await using var conn = await OpenAsync();
         await using var cmd = conn.CreateCommand();
         cmd.CommandText =
-            "SELECT unique_id, account_id, folder_name, from_disp, to_addr, subject, date_ticks, is_read, preview_text, is_replied, is_forwarded, has_attachments, is_mailing_list, flag_id, internet_message_id, from_email " +
+            "SELECT unique_id, account_id, folder_name, from_disp, to_addr, subject, date_ticks, is_read, preview_text, is_replied, is_forwarded, has_attachments, is_mailing_list, flag_id, internet_message_id, from_email, cc_addr " +
             "FROM MessageSummary WHERE account_id=$aid AND folder_name=$fn ORDER BY date_ticks DESC" +
             (limit.HasValue ? " LIMIT $limit;" : ";");
         cmd.Parameters.AddWithValue("$aid", accountId.ToString());
@@ -655,7 +686,7 @@ public partial class LocalStoreService : ILocalStoreService
         await using var conn = await OpenAsync();
         await using var cmd = conn.CreateCommand();
         cmd.CommandText =
-            "SELECT unique_id, account_id, folder_name, from_disp, to_addr, subject, date_ticks, is_read, preview_text, is_replied, is_forwarded, has_attachments, is_mailing_list, flag_id, internet_message_id, from_email " +
+            "SELECT unique_id, account_id, folder_name, from_disp, to_addr, subject, date_ticks, is_read, preview_text, is_replied, is_forwarded, has_attachments, is_mailing_list, flag_id, internet_message_id, from_email, cc_addr " +
             "FROM MessageSummary WHERE account_id=$aid AND folder_name=$fn AND date_ticks>=$since ORDER BY date_ticks DESC;";
         cmd.Parameters.AddWithValue("$aid", accountId.ToString());
         cmd.Parameters.AddWithValue("$fn",  folderName);
@@ -1382,7 +1413,7 @@ public partial class LocalStoreService : ILocalStoreService
         await using var conn = await OpenAsync();
         await using var cmd = conn.CreateCommand();
         cmd.CommandText =
-            "SELECT unique_id, account_id, folder_name, from_disp, to_addr, subject, date_ticks, is_read, preview_text, is_replied, is_forwarded, has_attachments, is_mailing_list, flag_id, internet_message_id, from_email " +
+            "SELECT unique_id, account_id, folder_name, from_disp, to_addr, subject, date_ticks, is_read, preview_text, is_replied, is_forwarded, has_attachments, is_mailing_list, flag_id, internet_message_id, from_email, cc_addr " +
             "FROM MessageSummary WHERE account_id=$aid AND folder_name=$fn AND rules_applied=0 ORDER BY date_ticks ASC;";
         cmd.Parameters.AddWithValue("$aid", accountId.ToString());
         cmd.Parameters.AddWithValue("$fn",  folderName);
@@ -1579,6 +1610,7 @@ public partial class LocalStoreService : ILocalStoreService
                 FlagId         = r.IsDBNull(13) ? null : r.GetString(13),
                 InternetMessageId = r.IsDBNull(14) ? string.Empty : r.GetString(14),
                 FromEmail         = r.IsDBNull(15) ? string.Empty : r.GetString(15),
+                Cc                = r.FieldCount > 16 && !r.IsDBNull(16) ? r.GetString(16) : string.Empty,
             });
         }
         return list;
