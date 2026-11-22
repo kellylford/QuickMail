@@ -83,6 +83,14 @@ public partial class MailMessageSummary : ObservableObject
     [ObservableProperty]
     private string _to = string.Empty;
 
+    /// <summary>
+    /// The Cc line, in the same "Name &lt;address&gt;" list form as <see cref="To"/>. Read by a rule's "Sent to"
+    /// condition, which matches To or Cc as Outlook's (and so a Graph server rule's) does. Empty on rows cached
+    /// before this field existed whose body was never cached, until the summary is fetched again (for an IMAP message
+    /// below the sync's high-water mark, when its folder or a view is opened).
+    /// </summary>
+    public string Cc { get; set; } = string.Empty;
+
     [ObservableProperty]
     private string _subject = string.Empty;
 
@@ -195,6 +203,7 @@ public partial class MailMessageSummary : ObservableObject
         From              = fresh.From;
         FromEmail         = fresh.FromEmail;
         To                = fresh.To;
+        Cc                = fresh.Cc;
         Subject           = fresh.Subject;
         Date              = fresh.Date;
         IsRead            = fresh.IsRead;

@@ -144,6 +144,17 @@
                          IsTabStop="{Binding UseFromAddresses}"
                          AutomationProperties.Name="From any of these addresses"/>
 
+                <!-- Who the message was sent to, beside who it was from. It sat in Advanced, collapsed for a new rule,
+                     where it read as missing altogether. It matches the To and Cc lines, as Outlook's "Sent to" does
+                     (and so a Microsoft server rule's), and the label says so. -->
+                <CheckBox Content="Sent to any of these addresses, in To or Cc (comma-separated)" IsChecked="{Binding UseSentToAddresses}"
+                          Style="{StaticResource EditorCheckBox}"/>
+                <TextBox Text="{Binding SentToAddresses, UpdateSourceTrigger=PropertyChanged}"
+                         Style="{StaticResource EditorTextBox}"
+                         IsReadOnly="{Binding UseSentToAddresses, Converter={StaticResource InverseBoolConverter}, FallbackValue=True}"
+                         IsTabStop="{Binding UseSentToAddresses}"
+                         AutomationProperties.Name="Sent to any of these addresses"/>
+
                 <CheckBox Content="Subject contains" IsChecked="{Binding UseSubjectContains}"
                           Style="{StaticResource EditorCheckBox}"/>
                 <TextBox Text="{Binding SubjectContains, UpdateSourceTrigger=PropertyChanged}"
@@ -214,14 +225,6 @@
                           AutomationProperties.Name="Advanced conditions and actions">
                     <StackPanel Margin="0,6,0,0">
                         <TextBlock Text="More conditions" Style="{StaticResource SectionHeader}" Margin="0,0,0,4"/>
-
-                        <CheckBox Content="Sent to any of these addresses (comma-separated)" IsChecked="{Binding UseSentToAddresses}"
-                                  Style="{StaticResource EditorCheckBox}"/>
-                        <TextBox Text="{Binding SentToAddresses, UpdateSourceTrigger=PropertyChanged}"
-                                 Style="{StaticResource EditorTextBox}"
-                                 IsReadOnly="{Binding UseSentToAddresses, Converter={StaticResource InverseBoolConverter}, FallbackValue=True}"
-                                 IsTabStop="{Binding UseSentToAddresses}"
-                                 AutomationProperties.Name="Sent to any of these addresses"/>
 
                         <CheckBox Content="Subject or body contains" IsChecked="{Binding UseBodyOrSubjectContains}"
                                   Style="{StaticResource EditorCheckBox}"/>
