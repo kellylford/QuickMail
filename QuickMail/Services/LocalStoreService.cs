@@ -317,21 +317,13 @@ public partial class LocalStoreService : ILocalStoreService
         RunMigration(conn, "ALTER TABLE MessageSummary ADD COLUMN from_email TEXT NOT NULL DEFAULT '';");
 
         // The Cc line, for a rule's "Sent to" condition, which matches To or Cc as Outlook's does. Rows cached
-        // before the column existed are filled once from any cached body; the rest stay empty until synced again.
-        // AFTER RunDataMigrations for the same reason as mime_bytes above.
+        // before the column existed are filled once from any cached body (every POP3 message has one); the rest stay
+        // empty until the summary is fetched again, which for an IMAP message already below the sync's high-water
+        // mark means its folder or a view being opened. AFTER RunDataMigrations for the same reason as mime_bytes
+        // above. The column and its backfill go in one transaction, so a backfill that fails or is cut short leaves
+        // no column either and is tried again next launch.
         if (!ColumnExists(conn, "MessageSummary", "cc_addr"))
-        {
-            RunMigration(conn, "ALTER TABLE MessageSummary ADD COLUMN cc_addr TEXT NOT NULL DEFAULT '';");
-            RunMigration(conn, """
-                UPDATE MessageSummary
-                SET cc_addr = COALESCE((
-                    SELECT d.cc FROM MessageDetail d
-                    WHERE d.unique_id = MessageSummary.unique_id
-                      AND d.account_id = MessageSummary.account_id
-                      AND d.folder_name = MessageSummary.folder_name
-                ), '');
-                """);
-        }
+            AddCcColumn(conn);
 
         // Whether has_attachments has been decided (#931). IMAP summaries carried no attachment flag before then, so
         // the rows already here are unchecked (the default) until the one-time pass asks the server; every row a
@@ -546,6 +538,40 @@ public partial class LocalStoreService : ILocalStoreService
             cmd.ExecuteNonQuery();
         }
         catch { /* column already exists — safe to ignore */ }
+    }
+
+    private static void AddCcColumn(SqliteConnection conn)
+    {
+        try
+        {
+            using var tx = conn.BeginTransaction();
+            using var cmd = conn.CreateCommand();
+            cmd.Transaction = tx;
+            // Only rows with a cached body that has a Cc are touched: every other row already holds the default ''.
+            cmd.CommandText = """
+                ALTER TABLE MessageSummary ADD COLUMN cc_addr TEXT NOT NULL DEFAULT '';
+                UPDATE MessageSummary
+                SET cc_addr = (
+                    SELECT d.cc FROM MessageDetail d
+                    WHERE d.unique_id = MessageSummary.unique_id
+                      AND d.account_id = MessageSummary.account_id
+                      AND d.folder_name = MessageSummary.folder_name)
+                WHERE EXISTS (
+                    SELECT 1 FROM MessageDetail d
+                    WHERE d.unique_id = MessageSummary.unique_id
+                      AND d.account_id = MessageSummary.account_id
+                      AND d.folder_name = MessageSummary.folder_name
+                      AND d.cc <> '');
+                """;
+            cmd.ExecuteNonQuery();
+            tx.Commit();
+        }
+        catch (Exception ex)
+        {
+            // Rolled back: no column, so every SELECT naming cc_addr would fail. Say so loudly rather than limp on.
+            LogService.Log("LocalStore: adding the cc_addr column failed", ex);
+            throw;
+        }
     }
 
     private static bool ColumnExists(SqliteConnection conn, string table, string column)
@@ -1610,7 +1636,7 @@ public partial class LocalStoreService : ILocalStoreService
                 FlagId         = r.IsDBNull(13) ? null : r.GetString(13),
                 InternetMessageId = r.IsDBNull(14) ? string.Empty : r.GetString(14),
                 FromEmail         = r.IsDBNull(15) ? string.Empty : r.GetString(15),
-                Cc                = r.FieldCount > 16 && !r.IsDBNull(16) ? r.GetString(16) : string.Empty,
+                Cc                = r.IsDBNull(16) ? string.Empty : r.GetString(16),
             });
         }
         return list;

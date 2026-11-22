@@ -323,6 +323,28 @@ public class GraphMailServiceTests
         Assert.True(m.HasAttachments);
     }
 
+    [Fact]
+    public async Task SearchServerAsync_AsksForAndMapsTheCcLine()
+    {
+        // A server search's results are summaries too, and a rule's "Sent to" reads their Cc line (#1065).
+        const string msgs = """
+            {"value":[{
+              "id":"s1","subject":"Found","parentFolderId":"inbox",
+              "ccRecipients":[{"emailAddress":{"address":"me@x.com"}}],
+              "receivedDateTime":"2024-01-02T03:04:05Z","isRead":true
+            }]}
+            """;
+        var (svc, h) = Make(url => url.Contains("/me?") ? (HttpStatusCode.OK, MeJson) : (HttpStatusCode.OK, msgs));
+        var account = GraphAccount();
+        await svc.ConnectAsync(account, ct: TestContext.Current.CancellationToken);
+
+        var list = await svc.SearchServerAsync(account.Id, MessageSearchQuery.Parse("budget"), [], 10,
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal("me@x.com", Assert.Single(list).Cc);
+        Assert.Contains(h.HeaderCalls, c => c.Url.Contains("search=") && c.Url.Contains("ccRecipients"));
+    }
+
     [Theory]
     // No name, or a blank one: the address stands in, so the list never shows or speaks a blank sender.
     [InlineData("""{"address":"news@company.com"}""",                  "news@company.com")]

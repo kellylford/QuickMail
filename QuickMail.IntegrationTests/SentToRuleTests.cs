@@ -27,6 +27,8 @@ public sealed class SentToRuleTests : IDisposable
 
     public void Dispose()
     {
+        // Pooled SQLite connections hold the store's file open; release them so the folder can go.
+        Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
         try { if (Directory.Exists(_profileDir)) Directory.Delete(_profileDir, recursive: true); }
         catch { /* a temp dir left behind is not a test failure */ }
     }

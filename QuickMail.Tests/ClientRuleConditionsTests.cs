@@ -755,8 +755,8 @@ public class ClientRuleConditionsTests
         Assert.False(vm.IsAdvancedExpanded);
 
         // And the list that decides it still matches where the fields actually are: the From address list is
-        // in the main section now, so a rule using it doesn't open Advanced, while one using Sent to (still in
-        // Advanced) does, so editing never hides a field that is in use.
+        // in the main section now, so a rule using it doesn't open Advanced. Sent to moved there too (#1065), so a
+        // rule using it doesn't open Advanced either.
         var withAddresses = ServerRuleEditorViewModel.ForEditClient(new MailRule
         {
             Name = "Billing",
@@ -775,14 +775,14 @@ public class ClientRuleConditionsTests
             ToContains = "me@x.com",
             Action = RuleAction.MarkAsRead,
         });
-        Assert.True(withSentTo.IsAdvancedExpanded);
+        Assert.False(withSentTo.IsAdvancedExpanded);
     }
 
     [Fact]
     public void TheSenderConditions_AreTabbedToAsNameThenAddress_BeforeAdvanced()
     {
-        // The order the editor is read in: Sender contains, then the address list, then Subject, all ahead of the
-        // Advanced section (review of #806). The address list's label says what it means.
+        // The order the editor is read in: Sender contains, then the address list, then Sent to (#1065), then
+        // Subject, all ahead of the Advanced section (review of #806). The address lists' labels say what they mean.
         var root = new DirectoryInfo(AppContext.BaseDirectory);
         while (!Directory.Exists(Path.Combine(root.FullName, "QuickMail", "Views"))) root = root.Parent!;
         var xaml = File.ReadAllText(Path.Combine(root.FullName, "QuickMail", "Views", "ServerRuleEditorWindow.xaml"));
@@ -791,10 +791,10 @@ public class ClientRuleConditionsTests
         var from = xaml.IndexOf("Content=\"From any of these addresses (comma-separated)\"", StringComparison.Ordinal);
         var subject = xaml.IndexOf("Content=\"Subject contains\"", StringComparison.Ordinal);
         var advanced = xaml.IndexOf("<Expander Header=\"Advanced conditions", StringComparison.Ordinal);
-        var sentTo = xaml.IndexOf("Content=\"Sent to any of these addresses (comma-separated)\"", StringComparison.Ordinal);
+        var sentTo = xaml.IndexOf("Content=\"Sent to any of these addresses, in To or Cc (comma-separated)\"", StringComparison.Ordinal);
 
-        Assert.True(sender >= 0 && from > sender && subject > from && advanced > subject && sentTo > advanced,
-            $"Expected Sender contains < From addresses < Subject < Advanced < Sent to; got {sender}, {from}, {subject}, {advanced}, {sentTo}.");
+        Assert.True(sender >= 0 && from > sender && sentTo > from && subject > sentTo && advanced > subject,
+            $"Expected Sender contains < From addresses < Sent to < Subject < Advanced; got {sender}, {from}, {sentTo}, {subject}, {advanced}.");
     }
 
     [Fact]

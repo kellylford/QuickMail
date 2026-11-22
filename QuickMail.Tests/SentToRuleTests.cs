@@ -96,6 +96,11 @@ public class SentToRuleTests
     [InlineData("@exam", "a@example.com", "", true)]
     // A "Name <address>" entry matches on its address.
     [InlineData("Me <me@work.com>", "", "me@work.com", true)]
+    // A whole address is looked for in the real addresses, not in a display name that happens to hold it.
+    [InlineData("me@work.com", "\"me@work.com\" <list@lists.example>", "", false)]
+    [InlineData("me@work.com", "\"me@work.com\" <list@lists.example>, Me <me@work.com>", "", true)]
+    // Several recipients on one line, one of them the address.
+    [InlineData("me@work.com", "", "A <a@x.com>, \"Ford, Kelly\" <me@work.com>, b@y.com", true)]
     public void AddressesMatchWhole_NamesAsText(string value, string to, string cc, bool expected)
         => Assert.Equal(expected, RuleService.RecipientMatches(Msg(to: to, cc: cc), value));
 
@@ -178,7 +183,7 @@ public class SentToRuleTests
             await store.UpsertSummariesAsync([summary]);
             Assert.Equal("Me <me@work.com>", Assert.Single(await store.LoadAllSummariesAsync()).Cc);
 
-            // A path that re-caches a row without its Cc (a flag or read-state refresh) must not blank it.
+            // Defensive: no current path re-caches a row without its Cc, but one that did must not blank it.
             summary.Cc = string.Empty;
             await store.UpsertSummariesAsync([summary]);
             Assert.Equal("Me <me@work.com>", Assert.Single(await store.LoadAllSummariesAsync()).Cc);
@@ -188,5 +193,50 @@ public class SentToRuleTests
             Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
             try { if (Directory.Exists(tempDir)) Directory.Delete(tempDir, true); } catch { /* temp */ }
         }
+    }
+
+    [Fact]
+    public async Task UpgradingAStore_FillsCcFromCachedBodies_Once()
+    {
+        // A store from before the column: rows with a cached body take its Cc, rows without stay empty, and the
+        // backfill never runs again once the column is there.
+        var tempDir = Path.Combine(Path.GetTempPath(), $"QuickMailTests-{Guid.NewGuid():N}");
+        var account = Guid.NewGuid().ToString();
+        try
+        {
+            new LocalStoreService(new ProfileContext(tempDir)).Initialize();
+            var dbPath = Path.Combine(tempDir, "mail.db");
+            Exec(dbPath, "ALTER TABLE MessageSummary DROP COLUMN cc_addr;");
+            Exec(dbPath, $"""
+                INSERT INTO MessageSummary(unique_id, account_id, folder_name, date_ticks) VALUES('1', '{account}', 'INBOX', 1);
+                INSERT INTO MessageSummary(unique_id, account_id, folder_name, date_ticks) VALUES('2', '{account}', 'INBOX', 2);
+                INSERT INTO MessageDetail(unique_id, account_id, folder_name, cc) VALUES('1', '{account}', 'INBOX', 'Me <me@work.com>');
+                """);
+
+            var store = new LocalStoreService(new ProfileContext(tempDir));
+            store.Initialize();
+            var rows = await store.LoadAllSummariesAsync();
+            Assert.Equal("Me <me@work.com>", rows.Single(r => r.MessageId == "1").Cc);
+            Assert.Equal(string.Empty, rows.Single(r => r.MessageId == "2").Cc);
+
+            Exec(dbPath, "UPDATE MessageSummary SET cc_addr = 'changed@work.com' WHERE unique_id = '1';");
+            new LocalStoreService(new ProfileContext(tempDir)).Initialize();
+            Assert.Equal("changed@work.com",
+                (await store.LoadAllSummariesAsync()).Single(r => r.MessageId == "1").Cc);
+        }
+        finally
+        {
+            Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+            try { if (Directory.Exists(tempDir)) Directory.Delete(tempDir, true); } catch { /* temp */ }
+        }
+    }
+
+    private static void Exec(string dbPath, string sql)
+    {
+        using var conn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath}");
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = sql;
+        cmd.ExecuteNonQuery();
     }
 }

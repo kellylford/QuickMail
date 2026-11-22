@@ -354,11 +354,24 @@ public class RuleService : IRuleService
             if (trimmed.Contains('<', StringComparison.Ordinal)
                 && MimeKit.MailboxAddress.TryParse(trimmed, out var mailbox))
                 address = mailbox.Address;
-            return AddressMatch.Names(to, address) || AddressMatch.Names(cc, address);
+            return AddressMatch.Names(RecipientAddresses(to), address) || AddressMatch.Names(RecipientAddresses(cc), address);
         }
 
         return to.Contains(trimmed, StringComparison.OrdinalIgnoreCase)
                || cc.Contains(trimmed, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// The real addresses on a To or Cc line, comma-separated, without the display names: a whole address is looked
+    /// for here so that <c>"me@work.com" &lt;list@lists.example&gt;</c> is not taken for mail sent to me@work.com, as a
+    /// sender's display name is not (review of #806). A line that does not parse is searched whole, as it was before.
+    /// </summary>
+    private static string RecipientAddresses(string line)
+    {
+        if (line.Length == 0) return line;
+        if (!MimeKit.InternetAddressList.TryParse(line, out var list)) return line;
+        var addresses = list.Mailboxes.Select(m => m.Address).Where(a => !string.IsNullOrEmpty(a)).ToList();
+        return addresses.Count == 0 ? line : string.Join(", ", addresses);
     }
 
     private static bool MatchesRule(MailRule rule, MailMessageSummary msg)
