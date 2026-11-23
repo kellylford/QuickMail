@@ -205,6 +205,52 @@ public class SentToRuleTests
     }
 
     [Fact]
+    public void CreateRuleFromMessage_LeavesOutTheMailboxsOwnAddress()
+    {
+        // Review of #1067: nearly every message in a mailbox is sent to its own address, so a list holding it,
+        // turned on untrimmed, would match almost everything. Another account's address stays.
+        var template = MainViewModel.RuleTemplateFrom(
+            FromMessage(to: "Me <ME@work.com>, dev@list.org", cc: "other-account@home.com"),
+            ["me@work.com"]);
+        Assert.Equal("dev@list.org, other-account@home.com", ServerRuleEditorViewModel.ForNewFromTemplate(template).SentToAddresses);
+
+        // Sent only to the mailbox itself: nothing to offer.
+        var onlyMe = MainViewModel.RuleTemplateFrom(FromMessage(to: "me@work.com", cc: ""), ["me@work.com"]);
+        Assert.Equal(string.Empty, ServerRuleEditorViewModel.ForNewFromTemplate(onlyMe).SentToAddresses);
+    }
+
+    [Theory]
+    // A MimeKit group: its members, not "Team: a@x".
+    [InlineData("Team: a@x.com, b@y.com;", "a@x.com, b@y.com")]
+    // A Graph name with an unclosed quote swallows the rest of the line; nothing is better than that text.
+    [InlineData("Kelly \"KF Ford <k@x.com>, bob@y.com", "")]
+    // An unquoted Graph name holding a comma and an '@'.
+    [InlineData("Support, help@acme <x@y.com>", "x@y.com")]
+    public void CreateRuleFromMessage_OnlyRealAddresses_ReachTheBox(string to, string expected)
+        => Assert.Equal(expected,
+            ServerRuleEditorViewModel.ForNewFromTemplate(MainViewModel.RuleTemplateFrom(FromMessage(to: to, cc: ""))).SentToAddresses);
+
+    [Fact]
+    public void CreateRuleFromMessage_SavedAsItOpens_IgnoresThePrefilledRecipients()
+    {
+        // The default form: From on, Sent to filled in and off, a Move action. Saved either way, the recipients
+        // must not become a condition: mail from someone else to those addresses is not this rule's.
+        var vm = ServerRuleEditorViewModel.ForNewFromTemplate(
+            MainViewModel.RuleTemplateFrom(FromMessage(to: "dev@list.org", cc: "boss@work.com")));
+        vm.MoveToFolder = true;
+        vm.MoveToFolderId = "INBOX/Lists";
+
+        var client = vm.ToClientRule(Guid.NewGuid());
+        Assert.False(client.UseToCondition);
+        Assert.Empty(client.ToValues());
+        var other = Msg(to: "dev@list.org");
+        other.FromEmail = "someone@else.com";
+        Assert.False(Matches(client, other));
+
+        Assert.Empty(vm.ToModel().SentToAddresses);
+    }
+
+    [Fact]
     public void CreateRuleFromMessage_NoRecipients_LeavesSentToEmpty()
     {
         var vm = ServerRuleEditorViewModel.ForNewFromTemplate(MainViewModel.RuleTemplateFrom(FromMessage(to: "", cc: "")));
