@@ -1273,7 +1273,9 @@ public partial class MainWindow : Window
         _registry.Register(new CommandDefinition(
             id: "mail.markRead", category: "Mail", title: "Mark as Read",
             execute: async () => await MarkReadCommand(),
-            defaultKey: Key.Q, defaultModifiers: ModifierKeys.Control));
+            defaultKey: Key.Q, defaultModifiers: ModifierKeys.Control,
+            // Not from the calendar, where it marked the last-selected email read (#1014).
+            isAvailable: () => !CalendarHasFocus));
 
         _registry.Register(new CommandDefinition(
             id: "mail.jumpToFirstInGroup", category: "Mail", title: "First Message in Group",
@@ -1346,7 +1348,7 @@ public partial class MainWindow : Window
             id: "mail.pickFlag", category: "Mail", title: "Pick Flag…",
             execute: async () => await PickFlagCommandAsync(),
             defaultKey: Key.K, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift,
-            isAvailable: _vm.CanActOnSelection));
+            isAvailable: CanActOnSelectionOutsideCalendar));
 
         _registry.Register(new CommandDefinition(
             id: "mail.openFlagManager", category: "Mail", title: "Manage Flags…",
@@ -1366,11 +1368,13 @@ public partial class MainWindow : Window
         // handler reads MessageList.SelectedItems and deletes everything.
         // Also bypass when a group tree has focus: those trees have their own PreviewKeyDown
         // handlers that call LandOn* before deleting so focus lands on the next item correctly.
+        // And never in the calendar (#1014): this is registered before calendar.deleteEvent, so
+        // whenever it is available it takes Delete from the appointment list.
         _registry.Register(new CommandDefinition(
             id: "mail.delete", category: "Mail", title: "Delete",
             execute: () => _vm.DeleteMessageCommand.Execute(null),
             defaultKey: Key.Delete, defaultModifiers: ModifierKeys.None,
-            isAvailable: () => _vm.CanActOnSelection()
+            isAvailable: () => CanActOnSelectionOutsideCalendar()
                 && !(IsMessageListFocused() && MessageList.SelectedItems.Count > 1)
                 && !IsGroupTreeFocused()
                 && !FolderList.IsKeyboardFocusWithin)); // folder.delete owns Delete in the folder tree
@@ -1383,7 +1387,7 @@ public partial class MainWindow : Window
             id: "mail.archive", category: "Mail", title: "Move to Archive",
             execute: () => _vm.ArchiveMessageCommand.Execute(null),
             defaultKey: Key.M, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift,
-            isAvailable: () => _vm.CanActOnSelection()
+            isAvailable: () => CanActOnSelectionOutsideCalendar()
                 && !(IsMessageListFocused() && MessageList.SelectedItems.Count > 1)
                 && !IsGroupTreeFocused()
                 && !FolderList.IsKeyboardFocusWithin));
@@ -1584,12 +1588,12 @@ public partial class MainWindow : Window
         _registry.Register(new CommandDefinition(
             id: "mail.openInNewTab", category: "Mail", title: "Open in New Tab",
             execute: () => { if (TargetMessage() is { } msg) _vm.OpenMessageTab(msg); },
-            isAvailable: _vm.CanActOnSelection));
+            isAvailable: CanActOnSelectionOutsideCalendar));
 
         _registry.Register(new CommandDefinition(
             id: "mail.openInWindow", category: "Mail", title: "Open in New Window",
             execute: () => { if (TargetMessage() is { } msg) OpenMessageInNewWindow(msg); },
-            isAvailable: _vm.CanActOnSelection));
+            isAvailable: CanActOnSelectionOutsideCalendar));
 
         // Available on a selected group header too, not just a selected message: gating on
         // HasSelectedMessage alone meant a user's hotkey did nothing at all on a conversation
@@ -1597,12 +1601,12 @@ public partial class MainWindow : Window
         _registry.Register(new CommandDefinition(
             id: "mail.moveToFolder", category: "Mail", title: "Move to Folder…",
             execute: async () => await MoveMessageToFolderAsync(),
-            isAvailable: _vm.CanActOnSelection));
+            isAvailable: CanActOnSelectionOutsideCalendar));
 
         _registry.Register(new CommandDefinition(
             id: "mail.copyToFolder", category: "Mail", title: "Copy to Folder…",
             execute: async () => await CopyMessageToFolderAsync(),
-            isAvailable: _vm.CanActOnSelection));
+            isAvailable: CanActOnSelectionOutsideCalendar));
 
         // Copy, cut and paste messages (#929). Scoped by focus, as Alt+Up/Down are to the account list:
         // Ctrl+C, Ctrl+X and Ctrl+V must keep their ordinary meaning in every text field and in the
@@ -1658,14 +1662,14 @@ public partial class MainWindow : Window
             description: "Save the selected messages in your default format and folder, without asking",
             execute: async () => await SaveSelectedMessagesAsync(chooseLocation: false),
             defaultKey: Key.S, defaultModifiers: ModifierKeys.Control,
-            isAvailable: _vm.CanActOnSelection));
+            isAvailable: CanActOnSelectionOutsideCalendar));
 
         _registry.Register(new CommandDefinition(
             id: "mail.saveAs", category: "Mail", title: "Save As…",
             description: "Choose where to save the selected messages, and in which format",
             execute: async () => await SaveSelectedMessagesAsync(chooseLocation: true),
             defaultKey: Key.F12, defaultModifiers: ModifierKeys.None,
-            isAvailable: _vm.CanActOnSelection));
+            isAvailable: CanActOnSelectionOutsideCalendar));
 
         // Save All Attachments from the message list, without opening the message (#931). Acts on
         // what Save As acts on. No default key: it is on the message context menus and in the palette.
@@ -1673,13 +1677,13 @@ public partial class MainWindow : Window
             id: "mail.saveAttachments", category: "Mail", title: "Save All Attachments…",
             description: "Save every attachment of the selected messages into a folder you choose",
             execute: async () => await SaveSelectedAttachmentsAsync(),
-            isAvailable: _vm.CanActOnSelection));
+            isAvailable: CanActOnSelectionOutsideCalendar));
 
         _registry.Register(new CommandDefinition(
             id: "mail.print", category: "Mail", title: "Print…",
             execute: async () => await PrintSelectedMessageAsync(),
             defaultKey: Key.P, defaultModifiers: ModifierKeys.Control,
-            isAvailable: _vm.CanActOnSelection));
+            isAvailable: CanActOnSelectionOutsideCalendar));
 
         // ── Calendar list commands (T/Enter while the calendar list has focus) ──
         // F5 is not registered separately here: MainViewModel.RefreshAsync (mail.refresh)
@@ -3166,6 +3170,23 @@ public partial class MainWindow : Window
     /// <summary>True when the calendar's main content (event list or Month grid) has focus.</summary>
     private bool CalendarPaneFocused =>
         CalendarList.IsKeyboardFocusWithin || MonthGrid.IsKeyboardFocusWithin;
+
+    /// <summary>
+    /// True when focus is anywhere in the calendar view: the list, the Month grid, the Details pane,
+    /// the search box or the toolbar. Broader than <see cref="CalendarPaneFocused"/>, which scopes the
+    /// calendar's own plain-key gestures.
+    /// </summary>
+    private bool CalendarHasFocus => CalendarPane.IsKeyboardFocusWithin;
+
+    /// <summary>
+    /// The availability of every window command that acts on the mail selection (#1014). The calendar
+    /// shows appointments, so a mail command there would act on whatever email was selected last:
+    /// one the user cannot see. That was the hazard for Delete, which shares its key with Delete
+    /// Appointment and is registered first, so it won the key whenever it was available. Entering
+    /// the calendar clears the selection, but opening an invitation's source message from the
+    /// calendar sets it again while the calendar is still the view.
+    /// </summary>
+    private bool CanActOnSelectionOutsideCalendar() => _vm.CanActOnSelection() && !CalendarHasFocus;
 
     /// <summary>New selection loaded into the Details pane: start reading from the first line.</summary>
     private void CalendarDetails_TextChanged(object sender, TextChangedEventArgs e)
