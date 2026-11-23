@@ -6714,6 +6714,8 @@ public partial class MainWindow : Window
         {
             _vm.IsMessageOpen = false;
             _vm.MessageDetail = null;
+            // Back to a list that is showing the calendar: the message tab's email is not in it (#1014).
+            if (_vm.IsCalendarView) _vm.SelectedMessage = null;
             if (closeInProgress)
                 await Dispatcher.InvokeAsync(FocusActiveTabStripItem, DispatcherPriority.Input);
             else
@@ -6882,8 +6884,10 @@ public partial class MainWindow : Window
         };
         winVm.DeleteAction = () =>
         {
-            _vm.SelectedMessage = winVm.SelectedMessage;
-            _ = _vm.DeleteMessageCommand.ExecuteAsync(null);
+            // The window's own message, directly: not through the main selection, which is what the
+            // Message menu's Delete acts on and which must stay clear while the calendar shows (#1014).
+            if (winVm.SelectedMessage is { } toDelete)
+                _ = _vm.DeleteMessagesAsync([toDelete]);
             win.Close();
         };
         winVm.MarkReadAction = () =>

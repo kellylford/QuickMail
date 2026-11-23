@@ -95,10 +95,65 @@ public class CalendarStaleSelectionTests
     }
 
     /// <summary>
+    /// The Message menu, the toolbar and the Command Palette run Delete and Archive without the
+    /// window's focus gate. A selection that comes back while the calendar shows (returning to the
+    /// list tab from a message tab, or closing an invitation's source message) must not be deleted.
+    /// </summary>
+    [Fact]
+    public async Task DeleteAndArchive_InTheCalendar_DoNotActOnAHiddenSelection()
+    {
+        var accountId = Guid.NewGuid();
+        var msg = new MailMessageSummary
+        {
+            MessageId = "m1", AccountId = accountId, FolderName = "INBOX", Subject = "Hidden",
+        };
+        var mail = new FolderedMailService([], []);
+        var vm = new MainViewModel(mail, new StubAccountService(), new StubCredentialService(),
+            new StubLocalStoreService(), new StubOAuthService(), new StubSyncService(), new StubConfigService(),
+            new StubCommandRegistry(), new StubViewService(), new StubRuleService(), new StubSmtpService(),
+            calendarService: new StubCalendarService());
+        await vm.SelectFolderCommand.ExecuteAsync(MainViewModel.CalendarFolder);
+
+        vm.SelectedMessage = msg;   // as the list tab or a closed invitation leaves it
+        await vm.DeleteMessageCommand.ExecuteAsync(null);
+        Assert.Empty(mail.Trashed);
+        Assert.Null(vm.SelectedMessage);
+        Assert.Equal("No message is selected.", vm.StatusText);
+
+        vm.SelectedMessage = msg;
+        await vm.ArchiveMessageCommand.ExecuteAsync(null);
+        Assert.Null(vm.SelectedMessage);
+    }
+
+    /// <summary>A message open in the reading pane over the calendar is still the user's to delete.</summary>
+    [Fact]
+    public async Task Delete_InTheCalendar_WithTheMessageOpen_StillDeletesIt()
+    {
+        var msg = new MailMessageSummary
+        {
+            MessageId = "m1", AccountId = Guid.NewGuid(), FolderName = "INBOX", Subject = "Opened invitation",
+        };
+        var mail = new FolderedMailService([], []);
+        var vm = new MainViewModel(mail, new StubAccountService(), new StubCredentialService(),
+            new StubLocalStoreService(), new StubOAuthService(), new StubSyncService(), new StubConfigService(),
+            new StubCommandRegistry(), new StubViewService(), new StubRuleService(), new StubSmtpService(),
+            calendarService: new StubCalendarService());
+        await vm.SelectFolderCommand.ExecuteAsync(MainViewModel.CalendarFolder);
+
+        vm.SelectedMessage = msg;
+        vm.IsMessageOpen = true;
+        await vm.DeleteMessageCommand.ExecuteAsync(null);
+
+        Assert.Contains(mail.Trashed, t => t.Id == "m1");
+    }
+
+    /// <summary>
     /// The registry's rule that the fix depends on, with the two commands' real shapes: of the
     /// commands sharing Delete, the first available one wins. With the calendar list focused and a
     /// stale mail selection, the old mail.delete condition was available and was registered first,
     /// so it won; with the calendar exclusion it stands aside and calendar.deleteEvent gets the key.
+    /// <para>This documents the registry rule with stand-in conditions; it does not read MainWindow.
+    /// The window's own registrations are checked by the source test below.</para>
     /// </summary>
     [Theory]
     [InlineData(false, "mail.delete")]          // the condition as it was: the email is deleted

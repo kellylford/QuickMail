@@ -8129,9 +8129,27 @@ public partial class MainViewModel : ObservableObject, IDisposable
         return MessageListFocusNowRequested?.Invoke() == true ? landing : null;
     }
 
+    /// <summary>
+    /// True, after clearing it, when the mail selection is one the user cannot see because the
+    /// calendar is the view and no message is open (#1014). Delete and Archive are reachable from the
+    /// Message menu, the toolbar and the Command Palette, none of which consult the window's focus
+    /// gate, and the selection can come back while the calendar shows: returning to the list tab from
+    /// a message tab, or opening an invitation's source message and closing it. A message window
+    /// deletes through <see cref="DeleteMessagesAsync"/> directly and is not affected.
+    /// </summary>
+    private bool MailSelectionHiddenByCalendar()
+    {
+        if (!IsCalendarView || IsMessageOpen || (SelectedMessage == null && SelectedGroupMessages() == null))
+            return false;
+        SelectedMessage = null;
+        SetStatus("No message is selected.", AnnouncementCategory.Result);
+        return true;
+    }
+
     [RelayCommand]
     private async Task DeleteMessageAsync()
     {
+        if (MailSelectionHiddenByCalendar()) return;
         // A selected group header deletes the whole group, as the group trees' own Delete key and
         // the group context menus already do (issue #566).
         if (SelectedGroupMessages() is { } group) { await DeleteMessagesAsync(group); return; }
@@ -8323,6 +8341,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private async Task ArchiveMessageAsync()
     {
+        if (MailSelectionHiddenByCalendar()) return;
         if (SelectedGroupMessages() is { } group) { await ArchiveMessagesAsync(group); return; }
         if (SelectedMessage == null) return;
         if (IsOutboxRow(SelectedMessage)) { SetStatus(OutboxRowHint, AnnouncementCategory.Result); return; }
