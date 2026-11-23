@@ -2903,11 +2903,20 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
         registry.Register(new CommandDefinition(
             id: "mail.refresh", category: "Mail", title: "Refresh",
+            // Searchable in the palette, so "reload" and "folder" find it as well as its title (#874).
+            description: "Reload the folder or view you are in from the server",
             // RefreshAsync itself delegates to the calendar's refresh while it's the active
             // view, so this single command is correct from every entry point (menu, toolbar,
             // Command Palette, F5) — no isAvailable disambiguation needed here.
             execute: () => RefreshCommand.Execute(null),
             defaultKey: Key.F5, defaultModifiers: ModifierKeys.None));
+
+        // F9, as in other mail programs (#874): send what is waiting, then check every Inbox.
+        registry.Register(new CommandDefinition(
+            id: "mail.sendReceive", category: "Mail", title: "Send and Receive",
+            description: "Send messages waiting in the Outbox and check every account's Inbox for new mail",
+            execute: () => SendAndReceiveCommand.Execute(null),
+            defaultKey: Key.F9, defaultModifiers: ModifierKeys.None));
 
         registry.Register(new CommandDefinition(
             id: "mail.emptyTrash", category: "Mail", title: "Empty Trash",
