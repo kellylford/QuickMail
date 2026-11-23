@@ -60,6 +60,38 @@ public sealed class DeleteWithoutTrashTests(GreenMailFixture greenMail)
         await imap.DisconnectAsync(account.Id, ct);
     }
 
+    /// <summary>
+    /// Deleting permanently in an Inbox must not take with it a message another client only marked
+    /// \Deleted, which that client can still undelete. Needs UID EXPUNGE (UIDPLUS).
+    /// </summary>
+    [Fact]
+    public async Task PermanentDelete_LeavesOtherMessagesMarkedDeletedAlone()
+    {
+        greenMail.RequireServers();
+        var ct = TestContext.Current.CancellationToken;
+        var account = greenMail.CreateAccount("delete-no-trash-others");
+        await AppendAsync(account, "INBOX", "Doomed", ct);
+        await AppendAsync(account, "INBOX", "Marked elsewhere", ct);
+        var uids = await UidsAsync(account, "INBOX", ct);
+
+        using (var other = await RawClientAsync(account, ct))
+        {
+            Assert.SkipUnless(other.Capabilities.Contains(ImapCapability.UidPlus), "The server has no UIDPLUS.");
+            var inbox = await other.GetFolderAsync("INBOX", ct);
+            await inbox.OpenAsync(FolderAccess.ReadWrite, ct);
+            await inbox.AddFlagsAsync(new UniqueId(uint.Parse(uids[1], CultureInfo.InvariantCulture)),
+                                      MessageFlags.Deleted, true, ct);
+            await other.DisconnectAsync(true, ct);
+        }
+
+        using var imap = new ImapMailService(new NoOpOAuthService());
+        await imap.ConnectAsync(account, "pw", ct);
+        await imap.PermanentlyDeleteBatchAsync(account.Id, "INBOX", [uids[0]], ct);
+
+        Assert.Equal(1, await CountAsync(account, "INBOX", ct));
+        await imap.DisconnectAsync(account.Id, ct);
+    }
+
     /// <summary>The ordinary case is unchanged: with a Trash folder, the messages move into it.</summary>
     [Fact]
     public async Task MoveToTrash_WithATrashFolder_MovesTheMessages()

@@ -42,8 +42,8 @@ public class DeleteWithoutTrashTests
         {
             set
             {
-                if (value is not { } answer) { Vm.ConfirmationRequested = null; return; }
-                Vm.ConfirmationRequested = (message, title) => { Asked.Add((message, title)); return answer; };
+                if (value is not { } answer) { Vm.DestructiveConfirmationRequested = null; return; }
+                Vm.DestructiveConfirmationRequested = (message, title) => { Asked.Add((message, title)); return answer; };
             }
         }
 

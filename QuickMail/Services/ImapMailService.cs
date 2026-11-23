@@ -2245,7 +2245,7 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
         var names = candidates
             .SelectMany<SpecialFolder, string>(sf => sf switch
             {
-                SpecialFolder.Trash  => ["Trash", "Deleted Messages"],
+                SpecialFolder.Trash  => ["Trash", "Deleted Messages", "Deleted Items"],
                 SpecialFolder.Junk   => ["Junk", "Spam"],
                 SpecialFolder.Sent   => ["Sent", "Sent Messages"],
                 SpecialFolder.Drafts => ["Drafts"],
@@ -2455,7 +2455,9 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
         if ((attrs & FolderAttributes.Flagged)   != 0) return SpecialFolderKind.Starred;
         // Name-based fallback for servers that don't advertise special-use attributes (e.g. Courier IMAP)
         var leaf = fullName.Split('/', '.').LastOrDefault() ?? fullName;
-        if (leaf.Equals("Trash",  StringComparison.OrdinalIgnoreCase)) return SpecialFolderKind.Trash;
+        if (leaf.Equals("Trash",  StringComparison.OrdinalIgnoreCase) ||
+            leaf.Equals("Deleted Messages", StringComparison.OrdinalIgnoreCase) ||
+            leaf.Equals("Deleted Items",    StringComparison.OrdinalIgnoreCase)) return SpecialFolderKind.Trash;
         if (leaf.Equals("Junk",   StringComparison.OrdinalIgnoreCase) ||
             leaf.Equals("Spam",   StringComparison.OrdinalIgnoreCase)) return SpecialFolderKind.Junk;
         if (leaf.Equals("Sent",   StringComparison.OrdinalIgnoreCase)) return SpecialFolderKind.Sent;
@@ -2499,7 +2501,13 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
             {
                 var uidList = messageIds.Select(ToUid).ToList();
                 await folder.AddFlagsAsync(uidList, MessageFlags.Deleted, true, token);
-                await folder.ExpungeAsync(token);
+                // Only these messages where the server allows it (UID EXPUNGE). A plain EXPUNGE also
+                // removes anything another client marked \Deleted, which mattered little in Trash and
+                // matters in an Inbox, where this now runs for accounts with no Trash (#999).
+                if (client.Capabilities.Contains(ImapCapability.UidPlus))
+                    await folder.ExpungeAsync(uidList, token);
+                else
+                    await folder.ExpungeAsync(token);
             }
             finally { await folder.CloseAsync(false, token); }
         }, ct);

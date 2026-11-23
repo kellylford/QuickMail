@@ -8216,7 +8216,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
         // them permanently (#999). They are still on the server and in the cache, so they go back.
         var kept = new List<MailMessageSummary>();
         var permanentAnswers = new Dictionary<Guid, bool>();   // one question per account per delete
-        var shownWhenDeleted = SelectedFolder;
+        var shownWhenDeleted = _messagesShownFor;
+        var keptRestored = false;
         try
         {
             // Own token per delete — a second Delete keystroke no longer cancels this one's in-flight
@@ -8288,6 +8289,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             if (kept.Count > 0)
             {
                 RestoreKeptRows(kept, shownWhenDeleted);
+                keptRestored = true;
                 ReportKeptForNoTrash(kept, gone.Count);
                 return;
             }
@@ -8345,6 +8347,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
         finally
         {
+            // A later group failing must not take the kept rows with it: they are still on the server.
+            if (kept.Count > 0 && !keptRestored) RestoreKeptRows(kept, shownWhenDeleted);
             IsBusy = false;
         }
     }
@@ -8359,8 +8363,16 @@ public partial class MainViewModel : ObservableObject, IDisposable
         var what = count == 1 ? "this message" : $"these {count} messages";
         var prompt = $"{NoTrashAccountName(accountId)} has no Trash folder, so deleted messages cannot be recovered."
                    + $"\n\nDelete {what} permanently?";
-        return ConfirmationRequested?.Invoke(prompt, "Delete Permanently") == true;
+        return DestructiveConfirmationRequested?.Invoke(prompt, "Delete Permanently") == true;
     }
+
+    /// <summary>
+    /// Set by the View to ask a Yes/No question whose Yes cannot be undone, with No as the default
+    /// button: the question can arrive a server round trip after the key press, while the user is
+    /// already reading the next message, and a reflexive Enter must not destroy mail (#999).
+    /// Parameters: message, title. Returns true when the user chooses Yes.
+    /// </summary>
+    public Func<string, string, bool>? DestructiveConfirmationRequested { get; set; }
 
     private string NoTrashAccountName(Guid accountId) =>
         Accounts.FirstOrDefault(a => a.Id == accountId)?.AccountLabel is { Length: > 0 } label
@@ -8373,18 +8385,22 @@ public partial class MainViewModel : ObservableObject, IDisposable
     /// the unread counts need undoing. If the user has gone to another folder meanwhile, the list is
     /// that folder's now; the rows are left for the cache to show when they come back.
     /// </summary>
-    private void RestoreKeptRows(List<MailMessageSummary> kept, MailFolderModel? shownWhenDeleted)
+    private void RestoreKeptRows(List<MailMessageSummary> kept, (Guid AccountId, string FullName)? shownWhenDeleted)
     {
         UpdateAccountCountsAfterInsert(kept);
-        if (!ReferenceEquals(SelectedFolder, shownWhenDeleted)) return;
+        // The same folder by name, not by object: a folder-list refresh replaces the models.
+        if (shownWhenDeleted == null || _messagesShownFor != shownWhenDeleted) return;
 
-        var present = new HashSet<(string, Guid, string)>(
-            _rawMessages.Select(m => (m.MessageId, m.AccountId, m.FolderName)));
-        _rawMessages.AddRange(kept.Where(m => present.Add((m.MessageId, m.AccountId, m.FolderName))));
-        ApplyFiltersAndSearch();
+        static (string, Guid, string) Key(MailMessageSummary m) => (m.MessageId, m.AccountId, m.FolderName);
+        var present = new HashSet<(string, Guid, string)>(_rawMessages.Select(Key));
+        _rawMessages.AddRange(kept.Where(m => present.Add(Key(m))));
+        // Not ApplyFiltersAndSearch: its "N messages" status would be spoken over the outcome.
+        Messages = new BatchObservableCollection<MailMessageSummary>(ComputeVisibleMessages());
 
-        // Back on the first of them, where the user was when they pressed Delete.
-        if (ViewMode == ViewMode.Messages && kept.FirstOrDefault(Messages.Contains) is { } first)
+        // Back on the first of them, where the user was when they pressed Delete. By key: if the user
+        // went away and came back meanwhile, the list holds fresh objects for the same messages.
+        var firstKey = Key(kept[0]);
+        if (ViewMode == ViewMode.Messages && Messages.FirstOrDefault(m => Key(m) == firstKey) is { } first)
         {
             SelectedMessage = first;
             MessageListFocusRequested?.Invoke();
@@ -8405,9 +8421,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
 
         _sounds?.Play(SoundEvent.MessageDeleted);
-        var accounts = string.Join(", ", kept.Select(m => m.AccountId).Distinct().Select(NoTrashAccountName));
+        var names = kept.Select(m => m.AccountId).Distinct().Select(NoTrashAccountName).ToList();
+        var accounts = names.Count == 1 ? $"{names[0]} has" : $"{string.Join(", ", names)} have";
         var keptText = kept.Count == 1 ? "1 message was not deleted" : $"{kept.Count} messages were not deleted";
-        SetStatus($"{deleted} {(deleted == 1 ? "message" : "messages")} deleted. {keptText}, because {accounts} has no Trash folder.",
+        SetStatus($"{deleted} {(deleted == 1 ? "message" : "messages")} deleted. {keptText}, because {accounts} no Trash folder.",
             AnnouncementCategory.Result);
     }
 
