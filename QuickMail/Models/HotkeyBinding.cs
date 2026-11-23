@@ -12,8 +12,19 @@ public sealed class HotkeyBinding
 {
     public string CommandId { get; set; } = string.Empty;
 
-    /// <summary>Human-readable gesture, e.g. "Ctrl+Shift+8" or "Ctrl+Alt+F5".</summary>
+    /// <summary>
+    /// The <see cref="Gesture"/> of an explicit "no key" override: the command has no shortcut at all,
+    /// not even its default. Written when the user gives a command's default key to another command
+    /// (#1044). Older versions cannot parse it and drop the entry, which restores the default there.
+    /// </summary>
+    public const string NoKeyGesture = "None";
+
+    /// <summary>Human-readable gesture, e.g. "Ctrl+Shift+8" or "Ctrl+Alt+F5", or <see cref="NoKeyGesture"/>.</summary>
     public string Gesture { get; set; } = string.Empty;
+
+    /// <summary>True when this override takes the command's key away rather than giving it one.</summary>
+    [JsonIgnore]
+    public bool IsNoKey => string.Equals(Gesture, NoKeyGesture, System.StringComparison.OrdinalIgnoreCase);
 
     // Legacy fields kept for migrating old hotkeys.json files that stored raw integers.
     // JsonIgnore(WhenWritingDefault) means these are never written when saving (value stays 0).

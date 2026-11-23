@@ -127,6 +127,14 @@ public sealed class CommandRegistry : ICommandRegistry
         {
             if (string.IsNullOrEmpty(b.CommandId)) continue;
 
+            // An explicit "no key" override (#1044): it still suppresses the command's default in
+            // FindByGesture, and a Key.None override never matches a keystroke.
+            if (b.IsNoKey)
+            {
+                _userOverrides.Add(new ParsedOverride(b.CommandId, Key.None, ModifierKeys.None));
+                continue;
+            }
+
             // Prefer the authoritative Gesture string written by current code.
             if (!string.IsNullOrEmpty(b.Gesture)
                 && GestureHelper.TryParse(b.Gesture, out var key, out var mods))
