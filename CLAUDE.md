@@ -71,7 +71,7 @@ All tests use `StubServices.cs` stub implementations to avoid real network and c
   `MessageListTabViewModel` pins index 0, the strip never hides, and it is the fallback when the last
   message tab closes), and conflating them is the likely regression.
 - **ComposeWindowTitleTests** / **WindowingPreferencesTests** — compose window title derivation, and
-  `MessageOpenMode` / `ConfirmCloseTabWithUnsaved` round-tripping through `config.ini`
+  `MessageOpenMode` round-tripping through `config.ini`
 - **ProfileContextTests** — profile directory validation
 - **IcsModelTests**, **MessageFilterTests**, **TutorialViewModelTests**, **SessionFeaturesTests**, **BatchObservableCollectionTests**
 - **TypeAheadWiringTests** — deterministic guards that every WPF `TextSearch` list declares a `TextSearch.TextPath` and that the path resolves to a real property on its item type. Register any new type-ahead list in its `Sites` table; the suite fails if you don't.
