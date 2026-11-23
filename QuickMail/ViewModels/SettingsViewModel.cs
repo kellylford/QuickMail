@@ -278,9 +278,6 @@ public partial class SettingsViewModel : ObservableObject
         set { if (value) MessageOpenMode = "window"; }
     }
 
-    [ObservableProperty]
-    private bool _confirmCloseTabWithUnsaved = true;
-
     // ── Appearance ─────────────────────────────────────────────────────────────────
 
     /// <summary>Sentinel shown in the font ComboBox for "use the theme's font".</summary>
@@ -616,7 +613,6 @@ public partial class SettingsViewModel : ObservableObject
             Models.MessageOpenMode.Window => "window",
             _                             => "readingPane",
         };
-        ConfirmCloseTabWithUnsaved = cfg.Windowing.ConfirmCloseTabWithUnsaved;
 
         foreach (var cmd in registry.GetAll())
         {
@@ -744,7 +740,6 @@ public partial class SettingsViewModel : ObservableObject
             "window" => Models.MessageOpenMode.Window,
             _        => Models.MessageOpenMode.ReadingPane,
         };
-        cfg.Windowing.ConfirmCloseTabWithUnsaved = ConfirmCloseTabWithUnsaved;
 
         cfg.CustomHotkeys = HotkeyRows
             .Where(r => r.HasCustomBinding)
