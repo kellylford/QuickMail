@@ -623,18 +623,30 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
         finally { await folder.CloseAsync(false, ct); }
     }
 
+    /// <summary>
+    /// Moves the messages to the account's Trash. Throws <see cref="TrashFolderNotFoundException"/>,
+    /// having changed nothing, when the account has no Trash folder (#999). It used to set \Deleted
+    /// instead and close the folder without expunging, so the messages stayed on the server while
+    /// the caller, told it had worked, removed them from the list and the cache. Whether to delete
+    /// them for good instead is the user's decision, so it is left to the caller to ask.
+    /// </summary>
     public Task MoveToTrashBatchAsync(Guid accountId, string folderName, IList<string> messageIds, CancellationToken ct = default) =>
         // Retry once on a fresh connection if the pooled one was silently dropped (issue #311).
         ExecuteWithReconnectAsync(accountId, ImapLeasePriority.Foreground, async (client, token) =>
         {
+            // Looked up before the source folder is opened, so a missing Trash leaves nothing open.
+            var trash = await FindSpecialFolderAsync(client, token, SpecialFolder.Trash);
+            if (trash == null)
+            {
+                LogService.Log($"MoveToTrash: no Trash folder found for account {accountId}; nothing moved");
+                throw new TrashFolderNotFoundException();
+            }
+
             var folder = await client.GetFolderAsync(folderName, token);
             await folder.OpenAsync(FolderAccess.ReadWrite, token);
             try
             {
-                var uidList = messageIds.Select(ToUid).ToList();
-                var trash   = await FindSpecialFolderAsync(client, token, SpecialFolder.Trash);
-                if (trash != null) await folder.MoveToAsync(uidList, trash, token);
-                else               await folder.AddFlagsAsync(uidList, MessageFlags.Deleted, true, token);
+                await folder.MoveToAsync(messageIds.Select(ToUid).ToList(), trash, token);
             }
             finally { await folder.CloseAsync(false, token); }
         }, ct);

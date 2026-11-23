@@ -8,6 +8,7 @@
 
 ## Fixed
 
+- **Deleting in an account with no Trash folder.** Delete used to take the messages out of the list without saying anything, and the server kept them all. QuickMail now asks whether to delete them permanently. If you choose **No**, they stay in the list. (#999)
 - **The Sent to condition is easier to find.** In the rule editor, **Sent to any of these addresses** used to be in the **Advanced conditions & actions** section, which starts collapsed, below the actions. It is now in the main conditions, right after **From any of these addresses**. (#1065)
 - **Sent to now checks Cc as well as To.** Rules that QuickMail runs itself checked only the To line, so a rule never matched mail that only copied you. That covers every IMAP and POP3 rule, and Microsoft 365 rules that use **Mark as read** or **Play a sound**. These rules now check both To and Cc, the same as Outlook's "Sent to" condition, for every kind of account. (#1065)
 - **Sent to matches whole addresses.** `bob@example.com` no longer matches `jimbob@example.com`, and an address that appears only in someone's display name doesn't count. `@example.com` still matches any address at that domain. (#1065)
