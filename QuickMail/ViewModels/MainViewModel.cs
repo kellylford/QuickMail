@@ -2402,7 +2402,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
         var commandId = $"view.saved.{view.Id}";
         var cfg       = _configService.Load();
         var binding   = cfg.CustomHotkeys.FirstOrDefault(h => h.CommandId == commandId);
-        var gesture   = binding?.Gesture ?? view.Hotkey;
+        // A "no key" override (#1044) means no key at all, not the view's own hotkey.
+        var gesture   = binding?.IsNoKey == true ? null : binding?.Gesture ?? view.Hotkey;
 
         Key defaultKey         = Key.None;
         ModifierKeys defaultMods = ModifierKeys.None;
@@ -2461,7 +2462,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             var binding = cfg.CustomHotkeys.FirstOrDefault(h => h.CommandId == commandId);
             Key defaultKey = Key.None;
             ModifierKeys defaultMods = ModifierKeys.None;
-            if (!string.IsNullOrEmpty(binding?.Gesture))
+            if (!string.IsNullOrEmpty(binding?.Gesture) && !binding.IsNoKey)   // "no key" (#1044) leaves it unbound
                 _ = GestureHelper.TryParse(binding.Gesture, out defaultKey, out defaultMods);
 
             var capturedId = theme.Id;

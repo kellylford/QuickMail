@@ -656,6 +656,7 @@ public partial class ViewManagerViewModel : ObservableObject
         var commandId = $"view.saved.{view.Id}";
         var cfg       = _configService.Load();
         var binding   = cfg.CustomHotkeys.FirstOrDefault(h => h.CommandId == commandId);
+        if (binding?.IsNoKey == true) return string.Empty;   // its key was given to another command (#1044)
         return binding?.Gesture ?? view.Hotkey ?? string.Empty;
     }
 

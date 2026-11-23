@@ -116,8 +116,9 @@ public class ConfigService : IConfigService
             if (string.IsNullOrEmpty(h.Gesture) && h.Key != 0)
                 h.Gesture = GestureHelper.MigrateFromLegacyIntegers(h.Key, h.Modifiers) ?? string.Empty;
 
-            // Skip entries whose gesture string can't be parsed into a valid key combination
-            if (!GestureHelper.TryParse(h.Gesture, out _, out _))
+            // Skip entries whose gesture string can't be parsed into a valid key combination.
+            // An explicit "no key" override is kept: it is how a default key given away stays gone (#1044).
+            if (!h.IsNoKey && !GestureHelper.TryParse(h.Gesture, out _, out _))
                 continue;
 
             result.Add(h);

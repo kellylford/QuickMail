@@ -334,6 +334,29 @@ public sealed class SettingsTransferTests : IDisposable
         Assert.Equal(DesktopImap.ToString(), cfg.StartupFolderAccount);
     }
 
+    [Fact]
+    public void Import_KeepsAShortcutTakenAwayFromItsDefault()
+    {
+        // #1044: a command whose default key was given to another command has an explicit "no key"
+        // entry in hotkeys.json. It has to arrive as one, or the default comes back on the laptop.
+        var desktop = SeedDesktop();
+        var desktopConfig = new ConfigService(new ProfileContext(desktop));
+        var cfg = desktopConfig.Load();
+        cfg.CustomHotkeys =
+        [
+            new HotkeyBinding { CommandId = "mail.sendOutboxNow", Gesture = "Ctrl+Shift+B" },
+            new HotkeyBinding { CommandId = "contacts.openAddressBook", Gesture = HotkeyBinding.NoKeyGesture },
+        ];
+        desktopConfig.Save(cfg);
+
+        var laptop = NewDir("laptop");
+        Assert.True(Import(Export(desktop), laptop).Succeeded);
+
+        var imported = new ConfigService(new ProfileContext(laptop)).Load().CustomHotkeys;
+        Assert.True(imported.Single(h => h.CommandId == "contacts.openAddressBook").IsNoKey);
+        Assert.Equal("Ctrl+Shift+B", imported.Single(h => h.CommandId == "mail.sendOutboxNow").Gesture);
+    }
+
     // ── Import into a profile that already has the accounts (the #507 case) ─────
 
     private string SeedLaptop()
