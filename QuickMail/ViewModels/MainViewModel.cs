@@ -8728,11 +8728,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         {
             // Load detail if not already open (detail may already be in MessageDetail
             // when the reading pane is open for this message).
-            var detail = (MessageDetail?.MessageId == msg.MessageId
-                          && MessageDetail?.AccountId == msg.AccountId
-                          && MessageDetail?.FolderName == msg.FolderName)
-                ? MessageDetail
-                : await LoadDetailForPropertiesAsync(msg);
+            var detail = LoadedDetailFor(msg) ?? await LoadDetailForPropertiesAsync(msg);
 
             var accountName = Accounts.FirstOrDefault(a => a.Id == msg.AccountId)?.AccountLabel
                               ?? "Unknown";
@@ -8801,6 +8797,28 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
         var ownAddress = Accounts.FirstOrDefault(a => a.Id == accountId)?.Username ?? string.Empty;
         ComposeRequested?.Invoke(ComposeViewModel.CreateReplyAll(detail, accountId, ownAddress));
+    }
+
+    /// <summary>
+    /// Reply or Reply All from a message window: to the window's own message, <paramref name="detail"/>
+    /// if it has loaded, otherwise <paramref name="summary"/>'s detail fetched now.
+    /// <para>Neither <see cref="SelectedMessage"/> nor <see cref="MessageDetail"/> is touched. The window
+    /// used to write its message into both and run <see cref="ReplyCommand"/>, which left that message in
+    /// <see cref="MessageDetail"/> for every later message window to open showing (#1016), and let a
+    /// conversation header selected in the list retarget the reply to the conversation's newest message
+    /// rather than the one the window was on.</para>
+    /// </summary>
+    public async Task ReplyFromWindowAsync(MailMessageSummary? summary, MailMessageDetail? detail, bool all)
+    {
+        detail ??= summary == null ? null : await EnsureDetailAsync(summary);
+        if (detail != null) ReplyToMessage(detail, all);
+    }
+
+    /// <summary>Forward from a message window, on the same terms as <see cref="ReplyFromWindowAsync"/>.</summary>
+    public async Task ForwardFromWindowAsync(MailMessageSummary? summary, MailMessageDetail? detail)
+    {
+        detail ??= summary == null ? null : await EnsureDetailAsync(summary);
+        if (detail != null) await ForwardMessageAsync(detail);
     }
 
     /// <summary>
@@ -8990,13 +9008,13 @@ public partial class MainViewModel : ObservableObject, IDisposable
             ? detail
             : null;
 
-    // Returns MessageDetail if already loaded for the selected message,
-    // otherwise fetches it (cache then IMAP) so compose can always proceed.
+    // Returns MessageDetail if already loaded for the message (the selected one unless another is
+    // given), otherwise fetches it (cache then IMAP) so compose can always proceed.
     // Deliberately bypasses SelectMessageCommand to avoid concurrent-execution
     // guards on that command and to avoid opening the reading pane as a side-effect.
-    private async Task<MailMessageDetail?> EnsureDetailAsync()
+    private async Task<MailMessageDetail?> EnsureDetailAsync(MailMessageSummary? message = null)
     {
-        var summary = SelectedMessage;
+        var summary = message ?? SelectedMessage;
         if (summary == null) return null;
         if (IsOutboxRow(summary))
         {
@@ -10783,7 +10801,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     [RelayCommand]
     private Task CopyAllAttachments() =>
-        CopyAttachmentsToClipboardAsync(MessageDetail, MessageDetail?.Attachments.ToList() ?? []);
+        // The open message's only: MessageDetail with nothing open is no message the user is looking at (#1016).
+        IsMessageOpen && MessageDetail is { } open
+            ? CopyAttachmentsToClipboardAsync(open, open.Attachments.ToList())
+            : Task.CompletedTask;
 
     /// <summary>
     /// Puts attachments on the Windows clipboard as files, downloading any not yet fetched, so they
@@ -11533,11 +11554,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         return await _imap.PrefetchMessageDetailAsync(message.AccountId, message.FolderName, message.MessageId, cts.Token);
     }
 
-    private bool IsOpenMessage(MailMessageSummary message) =>
-        MessageDetail is { } open
-        && open.MessageId == message.MessageId
-        && open.AccountId == message.AccountId
-        && open.FolderName == message.FolderName;
+    private bool IsOpenMessage(MailMessageSummary message) => LoadedDetailFor(message) != null;
 
     /// <summary>
     /// Downloads what is not yet loaded and writes every attachment of <paramref name="details"/>
