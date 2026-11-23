@@ -1641,7 +1641,8 @@
                          When / Status) on top, a read-only Details pane below. Up/Down to browse,
                          Enter to open (edit an appointment, or the source invite), N new, E edit,
                          Delete to remove, T today, F5 refresh, Escape to return to the folder tree. -->
-                    <Grid Visibility="{Binding IsCalendarView, Converter={StaticResource BoolToVisibilityConverter}}">
+                    <Grid x:Name="CalendarPane"
+                          Visibility="{Binding IsCalendarView, Converter={StaticResource BoolToVisibilityConverter}}">
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto"/>
                             <RowDefinition Height="Auto"/>
