@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Threading.Tasks;
 using QuickMail.Models;
@@ -22,11 +23,19 @@ public class MessageWindowStaleDetailTests
 {
     private static readonly Guid Account = Guid.NewGuid();
 
-    private static MainViewModel CreateVm() =>
-        new(new StubImapMailService(), new StubAccountService(), new StubCredentialService(),
-            new StubLocalStoreService(), new StubOAuthService(), new StubSyncService(),
+    private static MainViewModel CreateVm(StubLocalStoreService? store = null)
+    {
+        var vm = new MainViewModel(new StubImapMailService(), new StubAccountService(), new StubCredentialService(),
+            store ?? new StubLocalStoreService(), new StubOAuthService(), new StubSyncService(),
             new StubConfigService(), new StubCommandRegistry(), new StubViewService(),
             new StubRuleService(), new StubSmtpService());
+        // The account the test messages are in, so a detail can be fetched for one.
+        vm.LoadAccountList(new List<AccountModel>
+        {
+            new() { Id = Account, AccountName = "Test", Username = "test@example.com", ImapHost = "h" },
+        });
+        return vm;
+    }
 
     private static MailMessageSummary Summary(string id, string subject, string folder = "INBOX", Guid? account = null) =>
         new() { AccountId = account ?? Account, FolderName = folder, MessageId = id, Subject = subject };
@@ -124,6 +133,64 @@ public class MessageWindowStaleDetailTests
 
         Assert.NotNull(composed);
         Assert.Equal("<1@example.com>", composed.InReplyToMessageId);
+    }
+
+    [Fact]
+    public async Task ReplyingWhileTheWindowStillShowsThePreviousMessage_RepliesToTheWindowsMessage()
+    {
+        // Next in the window changes its message at once, but its detail stays the previous message's until
+        // the new one has loaded (and for good if that load fails). A reply in that gap is to the new message.
+        var store = new StubLocalStoreService { SeededDetail = Detail("2", "Bug Report") };
+        var vm = CreateVm(store);
+        ComposeModel? composed = null;
+        vm.ComposeRequested += m => composed = m;
+
+        await vm.ReplyFromWindowAsync(Summary("2", "Bug Report"), Detail("1", "Testing"), all: false);
+
+        Assert.NotNull(composed);
+        Assert.Equal("<2@example.com>", composed.InReplyToMessageId);
+    }
+
+    [Fact]
+    public async Task ReplyingBeforeTheWindowHasLoadedAnything_FetchesTheWindowsMessage()
+    {
+        var store = new StubLocalStoreService { SeededDetail = Detail("2", "Bug Report") };
+        var vm = CreateVm(store);
+        ComposeModel? composed = null;
+        vm.ComposeRequested += m => composed = m;
+
+        await vm.ReplyFromWindowAsync(Summary("2", "Bug Report"), detail: null, all: true);
+
+        Assert.NotNull(composed);
+        Assert.Equal("<2@example.com>", composed.InReplyToMessageId);
+        Assert.Null(vm.MessageDetail);
+    }
+
+    [Fact]
+    public async Task SavingAllAttachmentsFromAWindow_KeepsWhatTheWindowDownloaded()
+    {
+        // Save All dropped the bytes of any message that was not MainViewModel.MessageDetail, which a
+        // window's message no longer is: the window's attachment list would have to download them again,
+        // and offline could not.
+        var vm = CreateVm();
+        var folder = Path.Combine(Path.GetTempPath(), "QuickMailTests-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(folder);
+        try
+        {
+            vm.SaveFolderPathRequested = _ => folder;
+            var content = new byte[] { 1, 2, 3 };
+            var detail = Detail("1", "Testing");
+            detail.Attachments = [new AttachmentModel { FileName = "a.txt", PartSpecifier = "2", Content = content }];
+
+            await vm.SaveAllAttachmentsOfAsync(detail);
+
+            Assert.Same(content, detail.Attachments[0].Content);
+            Assert.True(File.Exists(Path.Combine(folder, "a.txt")));
+        }
+        finally
+        {
+            Directory.Delete(folder, recursive: true);
+        }
     }
 
     [Fact]

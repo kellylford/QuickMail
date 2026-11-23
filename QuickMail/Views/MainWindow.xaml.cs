@@ -8303,8 +8303,13 @@ public partial class MainWindow : Window
     {
         // The reading pane's (or tab's) message only. A message window has its own Grab Addresses, and
         // MessageDetail with nothing open is no message the user is looking at (#1016). Checked here, not
-        // only in the command's availability: the Message menu item runs this on Enter however it is styled.
-        if (!_vm.IsMessageOpen || _vm.MessageDetail is not { } detail) return;
+        // only in the command's availability: the Message menu item runs this on Enter however it is styled,
+        // and says why it did nothing, as Load Pictures does.
+        if (!_vm.IsMessageOpen || _vm.MessageDetail is not { } detail)
+        {
+            AccessibilityHelper.Announce(this, "No message is open.", interrupt: true, category: AnnouncementCategory.Result);
+            return;
+        }
 
         var list = new InternetAddressList();
         AddressParser.AddAddresses(list, detail.From);
