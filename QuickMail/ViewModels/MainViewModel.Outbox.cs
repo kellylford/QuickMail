@@ -245,35 +245,46 @@ public partial class MainViewModel
     [RelayCommand]
     private Task SendOutboxNowAsync() => DrainOutboxNowAsync(sayWhenEmpty: true);
 
-    /// <param name="sayWhenEmpty">False for Send and Receive (#874), which does not report an empty
-    /// Outbox: there is nearly always nothing waiting, and it would be said on every press.</param>
     private async Task DrainOutboxNowAsync(bool sayWhenEmpty)
     {
         if (!ShowOutboxFolder) return;
         SetStatus("Sending Outbox…", AnnouncementCategory.Status);
+        if (await ForceDrainAsync(sayWhenEmpty) is { } text)
+            SetStatus(text, AnnouncementCategory.Result);
+    }
 
+    /// <summary>
+    /// The forced drain behind Send Outbox Now and Send and Receive. Returns what to say when the drain
+    /// reached no outcome (waiting for sign-in, unreachable, busy, empty), or null when the FlushCompleted
+    /// handler has the outcome to say.
+    /// </summary>
+    /// <param name="sayWhenEmpty">False for Send and Receive (#874), which does not report an empty
+    /// Outbox: there is nearly always nothing waiting, and it would be said on every press.</param>
+    private async Task<string?> ForceDrainAsync(bool sayWhenEmpty)
+    {
         OutboxFlushResult result;
         _manualOutboxDrain = true;
         try { result = await _outbox!.FlushAsync(force: true); }
         catch (Exception ex)
         {
             LogService.Log("Outbox: Send Outbox Now", ex);
-            SetStatus($"Outbox: {ex.Message}", AnnouncementCategory.Result);
-            return;
+            return $"Outbox: {ex.Message}";
         }
         finally { _manualOutboxDrain = false; }
 
-        // Anything that reached an outcome is announced by the FlushCompleted handler, once.
-        if (result.Any) return;
-        var text =
-            result.AwaitingSignIn > 0 ? "A message in the Outbox is waiting for its account to be signed in. Reconnect the account from the Accounts list."
+        if (result.Any) return null;
+        return result.AwaitingSignIn > 0 ? "A message in the Outbox is waiting for its account to be signed in. Reconnect the account from the Accounts list."
             : result.Deferred > 0 ? "Could not reach the server. The Outbox will try again when you're online."
             : result.Skipped > 0 ? "Outbox is busy: a drain is already running, or every item is open in a compose window."
             : sayWhenEmpty ? "Outbox is empty."
             : null;
-        if (text != null)
-            SetStatus(text, AnnouncementCategory.Result);
     }
+
+    // Set while Send and Receive drains the Outbox (#874). The drain's outcome is then kept here rather
+    // than said: Send and Receive says it in its one closing sentence, with what arrived. Said on its
+    // own, the next status line replaced it before it was spoken.
+    private bool _sendReceiveDrain;
+    private string? _sendReceiveDrainSummary;
 
     /// <summary>The fallback sync tick's drain: never lets a queue problem stop the sweep.</summary>
     private async Task DrainOutboxQuietlyAsync(CancellationToken ct)
@@ -300,6 +311,12 @@ public partial class MainViewModel
         // so it's what is left in the ear. Only Send Outbox Now answers something the person just did.
         if (result.Sent > 0) _sounds?.Play(SoundEvent.MessageSent, background: !_manualOutboxDrain);
         if (result.FailedSends > 0) _sounds?.Play(SoundEvent.SendFailed, background: !_manualOutboxDrain);
+        if (_sendReceiveDrain)
+        {
+            _sendReceiveDrainSummary = SummariseFlush(result);
+            _ui.Post(() => RefreshOutboxCountAsync().LogFaults("Outbox count"));
+            return;
+        }
         _ui.Post(() =>
         {
             SetStatus(SummariseFlush(result), category);

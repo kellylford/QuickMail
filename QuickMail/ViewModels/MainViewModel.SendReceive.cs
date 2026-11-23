@@ -21,12 +21,15 @@ public partial class MainViewModel
     /// <summary>How long one Inbox check may take before it is reported as not reached.</summary>
     private static readonly TimeSpan SendReceiveInboxTimeout = TimeSpan.FromSeconds(60);
 
-    [RelayCommand]
+    // Concurrent executions allowed so the menu item stays enabled while one runs (the app's convention:
+    // dimmed, never disabled), and a second press is answered rather than ignored.
+    [RelayCommand(AllowConcurrentExecutions = true)]
     private async Task SendAndReceiveAsync()
     {
+        // EvenIfUnchanged: pressing F9 again must be answered again, even with the same words.
         if (_sendReceiveRunning)
         {
-            SetStatus("Send and Receive is already running.", AnnouncementCategory.Result);
+            SetStatusEvenIfUnchanged("Send and Receive is already running.", AnnouncementCategory.Result);
             return;
         }
         _sendReceiveRunning = true;
@@ -34,35 +37,46 @@ public partial class MainViewModel
         {
             if (Accounts.Count == 0)
             {
-                SetStatus("There are no accounts to send or receive mail for.", AnnouncementCategory.Result);
+                SetStatusEvenIfUnchanged("There are no accounts to send or receive mail for.", AnnouncementCategory.Result);
                 return;
             }
 
-            // Send. Only when something is waiting: an empty Outbox is the usual case and not news.
-            // Its outcome is announced as a result by the drain's own completion handler.
-            if (ShowOutboxFolder)
-            {
-                int waiting;
-                try { waiting = await _outbox!.CountAsync(); }
-                catch (Exception ex) { LogService.Log("Send and Receive: Outbox count", ex); waiting = 0; }
-                if (waiting > 0)
-                    await DrainOutboxNowAsync(sayWhenEmpty: false);
-            }
+            SetStatus("Sending and receiving…", AnnouncementCategory.Status);
+            var sent = await SendWaitingMailAsync();
 
             // Receive. Known offline, the server would only time out; say so instead, as F5 does.
-            if (IsKnownOffline)
-            {
-                SetStatus("You're offline. QuickMail will check for new mail when you're back online.", AnnouncementCategory.Result);
-                return;
-            }
+            var received = IsKnownOffline
+                ? "You're offline, so QuickMail could not check for new mail."
+                : await CheckInboxesForNewMailAsync();
 
-            SetStatus("Checking for new mail…", AnnouncementCategory.Status);
-            SetStatus(await CheckInboxesForNewMailAsync(), AnnouncementCategory.Result);
+            // One closing sentence with both halves: said separately, the send outcome was replaced by the
+            // next status line before it could be spoken.
+            SetStatusEvenIfUnchanged(sent is null ? received : $"{sent} {received}", AnnouncementCategory.Result);
         }
         finally
         {
             _sendReceiveRunning = false;
         }
+    }
+
+    /// <summary>
+    /// Drains the Outbox when anything is waiting and returns what to say about it, or null when nothing
+    /// was waiting: an empty Outbox is the usual case and not news.
+    /// </summary>
+    private async Task<string?> SendWaitingMailAsync()
+    {
+        if (!ShowOutboxFolder) return null;
+        int waiting;
+        try { waiting = await _outbox!.CountAsync(); }
+        catch (Exception ex) { LogService.Log("Send and Receive: Outbox count", ex); return null; }
+        if (waiting == 0) return null;
+
+        _sendReceiveDrainSummary = null;
+        _sendReceiveDrain = true;
+        string? noOutcome;
+        try { noOutcome = await ForceDrainAsync(sayWhenEmpty: false); }
+        finally { _sendReceiveDrain = false; }
+        return noOutcome ?? _sendReceiveDrainSummary;
     }
 
     /// <summary>
@@ -93,24 +107,31 @@ public partial class MainViewModel
             using var cts = new CancellationTokenSource(SendReceiveInboxTimeout);
             try
             {
+                // What the Inbox already held, so only mail that wasn't is counted as new. What the sync
+                // returns is not that: Graph and POP3 return the whole sync window once anything changed,
+                // and IMAP's "next UID onward" fetch returns the newest message even when nothing is new.
+                var known = OnlineMode ? null : await KnownMessageIdsAsync(job.Account.Id, job.Inbox.FullName);
+
                 // Off the UI thread, as the IDLE and sweep paths run it.
                 var incoming = await Task.Run(() => OnlineMode
                     ? _syncService.SyncOneFolderOnlineAsync(job.Account, job.Inbox, cts.Token)
                     : _syncService.SyncFolderFullAsync(job.Account, job.Inbox, cts.Token));
-                return (job.Account, Incoming: incoming, Reached: true);
+                var arrived = known is null ? incoming : incoming.Where(m => !known.Contains(m.MessageId)).ToList();
+                return (job.Account, Incoming: incoming, Arrived: arrived, Reached: true);
             }
             catch (Exception ex)
             {
                 LogService.Log($"Send and Receive: {job.Account.AccountLabel} Inbox", ex);
-                return (job.Account, Incoming: (IReadOnlyList<MailMessageSummary>)[], Reached: false);
+                IReadOnlyList<MailMessageSummary> none = [];
+                return (job.Account, Incoming: none, Arrived: none, Reached: false);
             }
         }));
 
         var newCount = 0;
-        foreach (var (account, incoming, reached) in results)
+        foreach (var (account, incoming, arrived, reached) in results)
         {
             if (!reached) { unreachable.Add(account.AccountLabel); continue; }
-            newCount += incoming.Count;
+            newCount += arrived.Count;
             if (incoming.Count == 0) continue;
             // As the sweep does, and in its order: watched first, since the two share a dedup set.
             MaybePlayMailSounds(account, incoming, isInbox: true);
@@ -123,6 +144,20 @@ public partial class MainViewModel
             checkedCount: results.Count(r => r.Reached),
             newCount: OnlineMode ? null : newCount,
             unreachable: unreachable);
+    }
+
+    /// <summary>
+    /// The ids the local store holds for the folder. A store that can't be read gives an empty set, so
+    /// everything fetched counts as new: an overcount is the safer error than no answer at all.
+    /// </summary>
+    private async Task<HashSet<string>> KnownMessageIdsAsync(Guid accountId, string folderName)
+    {
+        try { return await _localStore.GetAllMessageIdsAsync(accountId, folderName); }
+        catch (Exception ex)
+        {
+            LogService.Log("Send and Receive: reading the cached Inbox", ex);
+            return [];
+        }
     }
 
     private static bool IsInboxFolder(MailFolderModel folder) =>

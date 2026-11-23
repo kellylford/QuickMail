@@ -42,7 +42,7 @@ public class SendReceiveTests
         public MainViewModel Vm { get; }
         public List<(string Text, AnnouncementCategory Category)> Said { get; } = [];
 
-        public Fixture(bool onlineMode = false)
+        public Fixture(bool onlineMode = false, StubLocalStoreService? store = null)
         {
             var folders = new Dictionary<Guid, List<MailFolderModel>>
             {
@@ -51,7 +51,7 @@ public class SendReceiveTests
             };
             Vm = new MainViewModel(
                 new FolderedMailService(folders, []), new StubAccountService(), new StubCredentialService(),
-                new StubLocalStoreService(), new StubOAuthService(), Sync,
+                store ?? new StubLocalStoreService(), new StubOAuthService(), Sync,
                 new StubConfigService(), Registry, new StubViewService(),
                 new StubRuleService(), new StubSmtpService(),
                 onlineMode: onlineMode,
@@ -102,8 +102,9 @@ public class SendReceiveTests
         await f.PressF9Async();
 
         Assert.Equal(
-            [("full", Home, "INBOX"), ("full", Work, "INBOX")],
-            f.Sync.FolderSyncs.OrderBy(s => s.AccountId));
+            new HashSet<(string, Guid, string)> { ("full", Home, "INBOX"), ("full", Work, "INBOX") },
+            f.Sync.FolderSyncs.ToHashSet());
+        Assert.Equal(2, f.Sync.FolderSyncs.Count);
         Assert.Equal(("No new messages.", AnnouncementCategory.Result), f.Said[^1]);
     }
 
@@ -129,21 +130,73 @@ public class SendReceiveTests
             CreatedUtc = DateTimeOffset.UtcNow,
         });
         await f.ReadyAsync();
-        var syncsWhenFlushed = -1;
         f.Outbox.NextFlushResult = new OutboxFlushResult(1, 0, 0, 0);
         f.Outbox.RaiseFlushCompletedDuringFlush = true;
-        f.Vm.PropertyChanged += (_, e) =>
-        {
-            if (e.PropertyName == nameof(MainViewModel.StatusText) && f.Vm.StatusText.StartsWith("Outbox:", StringComparison.Ordinal))
-                syncsWhenFlushed = f.Sync.FolderSyncs.Count;
-        };
 
         await f.PressF9Async();
 
         Assert.Equal([true], f.Outbox.Flushes);
-        Assert.Equal(0, syncsWhenFlushed);   // sent before anything was received
-        Assert.Contains(("Outbox: 1 message sent.", AnnouncementCategory.Result), f.Said);
-        Assert.Equal("No new messages.", f.Said[^1].Text);
+        // One closing Result with both halves. Said on its own, the send outcome was overwritten by the
+        // next status line before it could be spoken, so it must not be said separately.
+        Assert.Equal(("Outbox: 1 message sent. No new messages.", AnnouncementCategory.Result), f.Said[^1]);
+        Assert.Single(f.Said, s => s.Text.Contains("message sent", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task MailThatCouldNotGo_IsSaidWithTheReceiveResult()
+    {
+        var f = new Fixture();
+        f.Outbox.Items.Add(new OutboxItem
+        {
+            Id = OutboxItem.NewId(), AccountId = Work, Kind = OutboxKind.Send, Subject = "Lunch", To = "a@example.com",
+            CreatedUtc = DateTimeOffset.UtcNow,
+        });
+        await f.ReadyAsync();
+        f.Outbox.NextFlushResult = new OutboxFlushResult(0, 0, 0, 0, Deferred: 1);
+
+        await f.PressF9Async();
+
+        Assert.Equal(
+            "Could not reach the server. The Outbox will try again when you're online. No new messages.",
+            f.Said[^1].Text);
+    }
+
+    [Fact]
+    public async Task MailTheInboxAlreadyHad_IsNotCountedAsNew()
+    {
+        // The syncs return more than what is new: Graph and POP3 the whole window, IMAP the newest
+        // message even when nothing arrived. Only ids the store did not hold count.
+        var store = new KnownIdsStore();
+        var f = new Fixture(store: store);
+        await f.ReadyAsync();
+        var work = Arrivals(Work, 3);
+        store.Known[(Work, "INBOX")] = [work[0].MessageId, work[1].MessageId];
+        store.Known[(Home, "INBOX")] = [.. Arrivals(Home, 2).Select(m => m.MessageId)];
+        f.Sync.FullSyncArrivals = (account, _) => account.Id == Work ? work : Arrivals(Home, 2);
+
+        await f.PressF9Async();
+
+        Assert.Equal("1 new message.", f.Said[^1].Text);
+    }
+
+    [Fact]
+    public async Task PressingAgain_IsAnsweredAgain()
+    {
+        var f = new Fixture();
+        await f.ReadyAsync();
+        f.Connectivity.IsOnline = false;
+
+        await f.PressF9Async();
+        await f.PressF9Async();
+
+        Assert.Equal(2, f.Said.Count(s => s.Category == AnnouncementCategory.Result && s.Text.StartsWith("You're offline", StringComparison.Ordinal)));
+    }
+
+    private sealed class KnownIdsStore : StubLocalStoreService
+    {
+        public Dictionary<(Guid, string), HashSet<string>> Known { get; } = [];
+        public override Task<HashSet<string>> GetAllMessageIdsAsync(Guid accountId, string folderName) =>
+            Task.FromResult(Known.TryGetValue((accountId, folderName), out var ids) ? new HashSet<string>(ids) : []);
     }
 
     [Fact]
@@ -182,7 +235,7 @@ public class SendReceiveTests
 
         Assert.Empty(f.Sync.FolderSyncs);
         Assert.Equal(AnnouncementCategory.Result, f.Said[^1].Category);
-        Assert.StartsWith("You're offline.", f.Said[^1].Text, StringComparison.Ordinal);
+        Assert.StartsWith("You're offline", f.Said[^1].Text, StringComparison.Ordinal);
     }
 
     [Fact]
