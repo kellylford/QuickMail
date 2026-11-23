@@ -8891,11 +8891,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         {
             // Load detail if not already open (detail may already be in MessageDetail
             // when the reading pane is open for this message).
-            var detail = (MessageDetail?.MessageId == msg.MessageId
-                          && MessageDetail?.AccountId == msg.AccountId
-                          && MessageDetail?.FolderName == msg.FolderName)
-                ? MessageDetail
-                : await LoadDetailForPropertiesAsync(msg);
+            var detail = LoadedDetailFor(msg) ?? await LoadDetailForPropertiesAsync(msg);
 
             var accountName = Accounts.FirstOrDefault(a => a.Id == msg.AccountId)?.AccountLabel
                               ?? "Unknown";
@@ -8965,6 +8961,42 @@ public partial class MainViewModel : ObservableObject, IDisposable
         var ownAddress = Accounts.FirstOrDefault(a => a.Id == accountId)?.Username ?? string.Empty;
         ComposeRequested?.Invoke(ComposeViewModel.CreateReplyAll(detail, accountId, ownAddress));
     }
+
+    /// <summary>
+    /// Reply or Reply All from a message window: to the window's own message, <paramref name="summary"/>.
+    /// <paramref name="detail"/> is used if it is that message's; otherwise the detail is fetched now. A
+    /// window keeps showing the previous message's detail until Next or Previous has loaded the new one,
+    /// and for good if that load fails, so a detail that is not the summary's is the wrong message.
+    /// <para>Neither <see cref="SelectedMessage"/> nor <see cref="MessageDetail"/> is touched. The window
+    /// used to write its message into both and run <see cref="ReplyCommand"/>, which left that message in
+    /// <see cref="MessageDetail"/> for every later message window to open showing (#1016), and let a
+    /// conversation header selected in the list retarget the reply to the conversation's newest message
+    /// rather than the one the window was on.</para>
+    /// </summary>
+    public async Task ReplyFromWindowAsync(MailMessageSummary? summary, MailMessageDetail? detail, bool all)
+    {
+        if (await WindowMessageDetailAsync(summary, detail) is { } target) ReplyToMessage(target, all);
+    }
+
+    /// <summary>Forward from a message window, on the same terms as <see cref="ReplyFromWindowAsync"/>.</summary>
+    public async Task ForwardFromWindowAsync(MailMessageSummary? summary, MailMessageDetail? detail)
+    {
+        if (await WindowMessageDetailAsync(summary, detail) is { } target) await ForwardMessageAsync(target);
+    }
+
+    private async Task<MailMessageDetail?> WindowMessageDetailAsync(MailMessageSummary? summary, MailMessageDetail? detail)
+    {
+        if (summary == null) return detail;
+        if (detail != null && IsDetailOf(detail, summary)) return detail;
+        return await EnsureDetailAsync(summary);
+    }
+
+    /// <summary>True when <paramref name="detail"/> is <paramref name="summary"/>'s message: same account,
+    /// folder and id.</summary>
+    private static bool IsDetailOf(MailMessageDetail detail, MailMessageSummary summary) =>
+        detail.MessageId  == summary.MessageId
+        && detail.AccountId  == summary.AccountId
+        && detail.FolderName == summary.FolderName;
 
     /// <summary>
     /// The account a reply or forward is sent from: the message's own, or for a message not in any
@@ -9134,13 +9166,27 @@ public partial class MainViewModel : ObservableObject, IDisposable
         MailMessageDetail detail, bool background, CancellationToken ct) =>
         DetailFromAddressRepair.RepairAsync(detail, _localStore, _imap, background, ct);
 
-    // Returns MessageDetail if already loaded for the selected message,
-    // otherwise fetches it (cache then IMAP) so compose can always proceed.
+    /// <summary>
+    /// <see cref="MessageDetail"/>, but only if it is <paramref name="summary"/>'s own detail.
+    /// <para>
+    /// <see cref="MessageDetail"/> is not always the selected message. In Window mode nothing loads it
+    /// on selection; a message window writes its own message into it before Reply, Reply All, Forward
+    /// and the attachment commands, and it then stays there while the user moves on in the list.
+    /// Checking <see cref="SelectedMessage"/> against the summary instead, as opening a message window
+    /// once did, therefore matched every message the user went on to open, and each one opened showing
+    /// the message they had replied to, until QuickMail was restarted (#1016).
+    /// </para>
+    /// </summary>
+    public MailMessageDetail? LoadedDetailFor(MailMessageSummary summary) =>
+        MessageDetail is { } detail && IsDetailOf(detail, summary) ? detail : null;
+
+    // Returns MessageDetail if already loaded for the message (the selected one unless another is
+    // given), otherwise fetches it (cache then IMAP) so compose can always proceed.
     // Deliberately bypasses SelectMessageCommand to avoid concurrent-execution
     // guards on that command and to avoid opening the reading pane as a side-effect.
-    private async Task<MailMessageDetail?> EnsureDetailAsync()
+    private async Task<MailMessageDetail?> EnsureDetailAsync(MailMessageSummary? message = null)
     {
-        var summary = SelectedMessage;
+        var summary = message ?? SelectedMessage;
         if (summary == null) return null;
         if (IsOutboxRow(summary))
         {
@@ -9149,11 +9195,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
 
         // Fast path: detail already loaded for this exact message.
-        if (MessageDetail != null &&
-            MessageDetail.MessageId   == summary.MessageId &&
-            MessageDetail.AccountId  == summary.AccountId &&
-            MessageDetail.FolderName == summary.FolderName)
-            return MessageDetail;
+        if (LoadedDetailFor(summary) is { } loaded)
+            return loaded;
 
         // Ensure the correct account is active (important in All-Mail view).
         if (SelectedAccount?.Id != summary.AccountId)
@@ -10930,7 +10973,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     [RelayCommand]
     private Task CopyAllAttachments() =>
-        CopyAttachmentsToClipboardAsync(MessageDetail, MessageDetail?.Attachments.ToList() ?? []);
+        // The open message's only: MessageDetail with nothing open is no message the user is looking at (#1016).
+        IsMessageOpen && MessageDetail is { } open
+            ? CopyAttachmentsToClipboardAsync(open, open.Attachments.ToList())
+            : Task.CompletedTask;
 
     /// <summary>
     /// Puts attachments on the Windows clipboard as files, downloading any not yet fetched, so they
@@ -11610,7 +11656,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
         var folder = SaveFolderPathRequested?.Invoke("Choose folder to save attachments");
         if (folder == null) return;
 
-        await WriteAttachmentsAsync([detail], folder);
+        // One message somebody is looking at, in the reading pane or a window: it keeps what it downloaded.
+        await WriteAttachmentsAsync([detail], folder, keepContent: true);
     }
 
     /// <summary>
@@ -11709,11 +11756,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         return await _imap.PrefetchMessageDetailAsync(message.AccountId, message.FolderName, message.MessageId, cts.Token);
     }
 
-    private bool IsOpenMessage(MailMessageSummary message) =>
-        MessageDetail is { } open
-        && open.MessageId == message.MessageId
-        && open.AccountId == message.AccountId
-        && open.FolderName == message.FolderName;
+    private bool IsOpenMessage(MailMessageSummary message) => LoadedDetailFor(message) != null;
 
     /// <summary>
     /// Downloads what is not yet loaded and writes every attachment of <paramref name="details"/>
@@ -11723,7 +11766,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
     /// problem and is noted against that message's account; a write that fails is the disk's, and
     /// is not. Either way the rest are still saved, and the outcome says what was and was not.
     /// </summary>
-    private async Task WriteAttachmentsAsync(List<MailMessageDetail> details, string folder, int unreadable = 0)
+    /// <param name="keepContent">Keep every message's downloaded bytes, for a message somebody is looking at
+    /// that is not <see cref="MessageDetail"/>: a message window's, whose attachment list uses them (#1016).</param>
+    private async Task WriteAttachmentsAsync(List<MailMessageDetail> details, string folder, int unreadable = 0,
+                                             bool keepContent = false)
     {
         IsBusy = true;
         SetStatus("Saving attachments…", AnnouncementCategory.Status);
@@ -11739,7 +11785,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             {
                 // The open message keeps what it downloaded (its attachment list uses it); any other
                 // message's bytes are dropped once written, so a large selection is not all held at once.
-                var keep = ReferenceEquals(detail, MessageDetail);
+                var keep = keepContent || ReferenceEquals(detail, MessageDetail);
                 foreach (var att in detail.Attachments)
                 {
                     if (!att.IsLoaded)
