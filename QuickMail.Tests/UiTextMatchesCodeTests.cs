@@ -40,7 +40,7 @@ public class UiTextMatchesCodeTests
     public void CtrlEnter_IsOpenInNewWindowsDefaultKey_AsSettingsSays()
     {
         var settings = Source("QuickMail", "Views", "SettingsDialog.xaml");
-        Assert.Contains("Use Ctrl+Enter in any mode to always open in a new window.", settings, StringComparison.Ordinal);
+        Assert.Contains("In the other modes, Ctrl+Enter in the message list opens one in a new window too.", settings, StringComparison.Ordinal);
 
         // The registration, read from source as KeyboardShortcutsDocTests does: MainWindow cannot be stood up here.
         var main = Source("QuickMail", "Views", "MainWindow.xaml.cs");
@@ -50,6 +50,23 @@ public class UiTextMatchesCodeTests
         Assert.True(registration.Success, "mail.openInWindow has no default key.");
         Assert.Equal("Return", registration.Groups[1].Value);
         Assert.Equal("Control", registration.Groups[2].Value);
+    }
+
+    [Fact]
+    public void CtrlEnter_OnlyActsFromTheMessageArea_AndNotOnOutboxOrDraftRows()
+    {
+        // Dispatched by the window before any control sees the key, so without these it took Ctrl+Enter
+        // from the folder tree, the account list and text boxes, and opened Outbox rows in a window.
+        var main = Source("QuickMail", "Views", "MainWindow.xaml.cs");
+        var registration = Regex.Match(main, @"id:\s*""mail\.openInWindow"".*?isAvailable:([^;]*?)\)\);", RegexOptions.Singleline);
+        Assert.True(registration.Success);
+        var available = registration.Groups[1].Value;
+        Assert.Contains("IsMessageAreaFocused()", available, StringComparison.Ordinal);
+        Assert.Contains("!_vm.IsSelectedFolderOutbox", available, StringComparison.Ordinal);
+        Assert.Contains("!_vm.IsSelectedFolderDrafts", available, StringComparison.Ordinal);
+
+        var xaml = Source("QuickMail", "Views", "MainWindow.xaml");
+        Assert.Contains("sc:CommandShortcut.Id=\"mail.openInWindow\"", xaml, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -191,6 +208,13 @@ public class UiTextMatchesCodeTests
     {
         var vm = await ArchiveVmAsync(withArchive: true);
         Assert.Equal(MainViewModel.AlreadyArchivedText, vm.ArchiveRefusalFor(In("Archive")));
+    }
+
+    [Fact]
+    public async Task MessageWindowArchive_RefusesAnOutboxRow()
+    {
+        var vm = await ArchiveVmAsync(withArchive: true);
+        Assert.Equal(MainViewModel.OutboxRowHint, vm.ArchiveRefusalFor(In(MainViewModel.OutboxFolder.FullName)));
     }
 
     [Fact]

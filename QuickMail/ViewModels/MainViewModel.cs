@@ -8508,6 +8508,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     /// </summary>
     internal string? ArchiveRefusalFor(MailMessageSummary message)
     {
+        if (IsOutboxRow(message)) return OutboxRowHint;   // as the main window's Archive says
         if (ResolveArchiveFolder(message.AccountId) is not { } dest) return NoArchiveFolderText;
         return dest.FullName.Equals(message.FolderName, StringComparison.OrdinalIgnoreCase) ? AlreadyArchivedText : null;
     }

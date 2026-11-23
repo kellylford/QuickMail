@@ -8,7 +8,7 @@
 
 ## Fixed
 
-- **Ctrl+Enter opens a message in a new window.** Settings said so, but Ctrl+Enter only opened the message the way Enter does. It now opens the selected message in its own window, whatever **Message Open Mode** is set to. It is the key for **Open in New Window**, so you can change it in **Settings → Keyboard Shortcuts**. (#1010)
+- **Ctrl+Enter opens a message in a new window.** Settings said so, but Ctrl+Enter only opened the message the way Enter does. In the message list, it now opens the selected message in its own window, whatever **Message Open Mode** is set to. It is the key for **Open in New Window**, which is now on the **Message** menu with **Open in New Tab**, so you can change it in **Settings → Keyboard Shortcuts**. On a draft or a message in the Outbox, Ctrl+Enter opens it for editing, as Enter does. (#1010)
 - **Move to Archive in a message window.** A message window now has **Move to Archive** on its **Message** menu, on **Ctrl+Shift+M** as in the main window. The window closes afterward, as it does after Delete. If the account has no Archive folder, the window stays open and tells you. (#1010)
 - **The Flagged filters are in the Command Palette.** **Show Flagged Only** and one **Show Flagged** command for each of your flags are now in the Command Palette, and you can give them keys, like the other filters. (#1010)
 - **A setting that did nothing is gone.** **Confirm before closing a tab with unsaved changes** in **Settings → Windowing** never did anything, because a tab only ever shows a message, which has nothing to save. It has been removed. (#1010)

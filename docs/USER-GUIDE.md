@@ -1117,7 +1117,7 @@ This is one of three ways to report a problem. See **[Reporting Issues](#reporti
 
 ### Opening a Message
 
-Press Enter on a message in the list to open it in the reading pane (or in a new tab or window, depending on the **Message Open Mode** setting in **Settings → Windowing**). Press **Ctrl+Enter** to open it in a new window whatever that setting is. **Open in New Window** and **Open in New Tab** are also in the Command Palette.
+Press Enter on a message in the list to open it in the reading pane (or in a new tab or window, depending on the **Message Open Mode** setting in **Settings → Windowing**). Press **Ctrl+Enter** to open it in a new window whatever that setting is. **Open in New Window** and **Open in New Tab** are also on the **Message** menu and in the Command Palette. A draft, or a message waiting in the Outbox, opens for editing instead, as it does with Enter.
 
 ### Reading Pane
 
