@@ -1235,7 +1235,7 @@ public partial class MainWindow : Window
             id: "contacts.grabAddresses", category: "Contacts", title: "Grab Addresses from Message",
             execute: GrabAddressesFromMessage,
             defaultKey: Key.G, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift,
-            isAvailable: () => _vm.IsMessageOpen || _vm.IsMessageOpenInWindow));
+            isAvailable: () => _vm.IsMessageOpen && _vm.MessageDetail != null));
 
         _registry.Register(new CommandDefinition(
             id: "contacts.openAddressBook", category: "Contacts", title: "Address Book",
@@ -1657,7 +1657,7 @@ public partial class MainWindow : Window
             id: "mail.copyAllAttachments", category: "Mail", title: "Copy All Attachments",
             description: "Copy every attachment of the open message, to paste into Explorer or a message",
             execute: async () => await _vm.CopyAllAttachmentsCommand.ExecuteAsync(null),
-            isAvailable: () => _vm.MessageDetail?.Attachments.Count > 0));
+            isAvailable: () => _vm.IsMessageOpen && _vm.MessageDetail?.Attachments.Count > 0));
 
         // Save, Save As and Print (#728). Registered here rather than in the VM because what they act
         // on — a multi-selection, a group header's messages — is the window's to resolve, as for
@@ -6810,9 +6810,11 @@ public partial class MainWindow : Window
             foreach (var msg in _vm.Messages)
                 winVm.MessageList.Add(msg);
 
-            // Pre-populate detail if already loaded in the reading pane (issue 48).
-            if (_vm.SelectedMessage?.MessageId == summary.MessageId && _vm.MessageDetail != null)
-                winVm.MessageDetail = _vm.MessageDetail;
+            // Pre-populate detail if this message is showing in the reading pane or a tab (issue 48). Only
+            // when it is showing: a window that loads for itself also marks the message read, and
+            // MessageDetail left over from anything else is no reason to skip that (#1016).
+            if (_vm.IsMessageOpen && _vm.LoadedDetailFor(summary) is { } loaded)
+                winVm.MessageDetail = loaded;
 
             // The reading pane must not show while the message is in a separate window.
             _vm.IsMessageOpen = false;
@@ -6860,34 +6862,26 @@ public partial class MainWindow : Window
         };
         _openMessageWindows.Add(win);
 
-        // Wire mail action delegates so the window has full message operations.
-        // Each delegate syncs MainViewModel selection to the window's current message
-        // before invoking the command, so navigation (Prev/Next) in the window doesn't
-        // cause actions to operate on the wrong message.
+        // Wire mail action delegates so the window has full message operations. Each one acts on the
+        // window's own current message, passed in, so Prev/Next in the window cannot make an action land
+        // on the wrong message. None of them writes the main view model's SelectedMessage or
+        // MessageDetail: a window's message left in MessageDetail made every later window open showing
+        // it (#1016), and going through ReplyCommand let a selected conversation header retarget the
+        // reply to that conversation's newest message.
         if (opened != null)
         {
             winVm.ReplyAction    = () => _vm.ReplyToMessage(winVm.MessageDetail ?? opened, all: false);
             winVm.ReplyAllAction = () => _vm.ReplyToMessage(winVm.MessageDetail ?? opened, all: true);
             winVm.ForwardAction  = () => _vm.ForwardMessageAsync(winVm.MessageDetail ?? opened);
         }
-        else winVm.ReplyAction = () =>
+        else
         {
-            _vm.SelectedMessage = winVm.SelectedMessage;
-            if (winVm.MessageDetail != null) _vm.MessageDetail = winVm.MessageDetail;
-            _vm.ReplyCommand.Execute(null);
-        };
-        if (opened == null) winVm.ReplyAllAction = () =>
-        {
-            _vm.SelectedMessage = winVm.SelectedMessage;
-            if (winVm.MessageDetail != null) _vm.MessageDetail = winVm.MessageDetail;
-            _vm.ReplyAllCommand.Execute(null);
-        };
-        if (opened == null) winVm.ForwardAction = async () =>
-        {
-            _vm.SelectedMessage = winVm.SelectedMessage;
-            if (winVm.MessageDetail != null) _vm.MessageDetail = winVm.MessageDetail;
-            await _vm.ForwardCommand.ExecuteAsync(null);
-        };
+            winVm.ReplyAction    = () => _vm.ReplyFromWindowAsync(winVm.SelectedMessage, winVm.MessageDetail, all: false)
+                                        .LogFaults("MessageWindow reply");
+            winVm.ReplyAllAction = () => _vm.ReplyFromWindowAsync(winVm.SelectedMessage, winVm.MessageDetail, all: true)
+                                        .LogFaults("MessageWindow reply all");
+            winVm.ForwardAction  = () => _vm.ForwardFromWindowAsync(winVm.SelectedMessage, winVm.MessageDetail);
+        }
         winVm.DeleteAction = () =>
         {
             // The window's own message, directly: not through the main selection, which is what the
@@ -6939,34 +6933,20 @@ public partial class MainWindow : Window
             if (addresses.Count == 0) return;
             new GrabAddressesDialog(addresses, _contactService) { Owner = win }.Show();
         };
-        if (opened != null)
-        {
-            // Straight to the opened message (#939): writing it into the main view model's MessageDetail,
-            // as the actions below do for mail in an account, would show it in the reading pane.
-            winVm.OpenAttachmentAction = attachment => attachment == null ? Task.CompletedTask
-                : _vm.OpenAttachmentOfAsync(winVm.MessageDetail ?? opened, attachment);
-            winVm.SaveAttachmentAction = attachment => attachment == null ? Task.CompletedTask
-                : _vm.SaveAttachmentOfAsync(winVm.MessageDetail ?? opened, attachment);
-            winVm.SaveAllAttachmentsAction = () => _vm.SaveAllAttachmentsOfAsync(winVm.MessageDetail ?? opened);
-        }
-        else
-        {
-        winVm.OpenAttachmentAction = async (attachment) =>
-        {
-            if (winVm.MessageDetail != null) _vm.MessageDetail = winVm.MessageDetail;
-            await _vm.OpenAttachmentCommand.ExecuteAsync(attachment);
-        };
-        winVm.SaveAttachmentAction = async (attachment) =>
-        {
-            if (winVm.MessageDetail != null) _vm.MessageDetail = winVm.MessageDetail;
-            await _vm.SaveAttachmentCommand.ExecuteAsync(attachment);
-        };
-        winVm.SaveAllAttachmentsAction = async () =>
-        {
-            if (winVm.MessageDetail != null) _vm.MessageDetail = winVm.MessageDetail;
-            await _vm.SaveAllAttachmentsCommand.ExecuteAsync(null);
-        };
-        }
+        // Attachments of this window's message, passed straight in rather than written into the main view
+        // model's MessageDetail: for an opened message (#939) that would show it in the reading pane, and
+        // for any message it would be left there for the next window to pick up (#1016). A window with
+        // no detail yet has no attachments to act on.
+        MailMessageDetail? WindowDetail() => winVm.MessageDetail ?? opened;
+        winVm.OpenAttachmentAction = attachment => attachment == null || WindowDetail() is not { } detail
+            ? Task.CompletedTask
+            : _vm.OpenAttachmentOfAsync(detail, attachment);
+        winVm.SaveAttachmentAction = attachment => attachment == null || WindowDetail() is not { } detail
+            ? Task.CompletedTask
+            : _vm.SaveAttachmentOfAsync(detail, attachment);
+        winVm.SaveAllAttachmentsAction = () => WindowDetail() is { } detail
+            ? _vm.SaveAllAttachmentsOfAsync(detail)
+            : Task.CompletedTask;
         // Copy attachments (#929): this window's message, passed rather than written into the main
         // VM's MessageDetail, and the outcome spoken in this window.
         void CopyReport(string text) =>
@@ -8352,7 +8332,15 @@ public partial class MainWindow : Window
 
     private void GrabAddressesFromMessage()
     {
-        if (_vm.MessageDetail is not { } detail) return;
+        // The reading pane's (or tab's) message only. A message window has its own Grab Addresses, and
+        // MessageDetail with nothing open is no message the user is looking at (#1016). Checked here, not
+        // only in the command's availability: the Message menu item runs this on Enter however it is styled,
+        // and says why it did nothing, as Load Pictures does.
+        if (!_vm.IsMessageOpen || _vm.MessageDetail is not { } detail)
+        {
+            AccessibilityHelper.Announce(this, "No message is open.", interrupt: true, category: AnnouncementCategory.Result);
+            return;
+        }
 
         var list = new InternetAddressList();
         AddressParser.AddAddresses(list, detail.From);
