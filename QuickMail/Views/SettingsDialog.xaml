@@ -849,20 +849,10 @@
                                                  GroupName="MessageOpenMode"
                                                  AutomationProperties.Name="Window"
                                                  AutomationProperties.HelpText="Opens each message in its own window."/>
-                                    <TextBlock Text="Enter opens a message in a new window. Use Ctrl+Enter in any mode to always open in a new window."
+                                    <TextBlock Text="Enter opens a message in a new window. In the other modes, Ctrl+Enter in the message list opens one in a new window too."
                                                TextWrapping="Wrap"
                                                Foreground="{DynamicResource Theme.TextSecondary}" FontSize="{DynamicResource Theme.FontSizeSmall}" Margin="16,2,0,0"/>
                                 </StackPanel>
-                            </StackPanel>
-                        </GroupBox>
-
-                        <!-- Tab behaviour -->
-                        <GroupBox Header="_Tab Behaviour" Padding="10" Margin="0,0,0,0"
-                                  AutomationProperties.Name="Tab behaviour settings">
-                            <StackPanel>
-                                <CheckBox Content="_Confirm before closing a tab with unsaved changes"
-                                          IsChecked="{Binding ConfirmCloseTabWithUnsaved, Mode=TwoWay}"
-                                          AutomationProperties.Name="Show a confirmation dialog before closing a tab that has unsaved draft changes"/>
                             </StackPanel>
                         </GroupBox>
                     </StackPanel>

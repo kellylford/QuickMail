@@ -1598,8 +1598,15 @@ public partial class MainWindow : Window
 
         _registry.Register(new CommandDefinition(
             id: "mail.openInWindow", category: "Mail", title: "Open in New Window",
-            execute: () => { if (TargetMessage() is { } msg) OpenMessageInNewWindow(msg); },
-            isAvailable: CanActOnSelectionOutsideCalendar));
+            execute: OpenTargetInNewWindow,
+            // Ctrl+Enter, which Settings → Windowing has always promised opens a new window in any
+            // mode (#1010). The window's PreviewKeyDown dispatches it before the lists' own Enter, so it
+            // is available only from the message list and group trees: elsewhere (the folder tree, the
+            // account list, a text box, a message being read) Ctrl+Enter keeps doing what Enter does
+            // there. Outbox and Drafts rows reopen in compose instead, as Enter does.
+            defaultKey: Key.Return, defaultModifiers: ModifierKeys.Control,
+            isAvailable: () => CanActOnSelectionOutsideCalendar() && IsMessageAreaFocused()
+                               && !_vm.IsSelectedFolderOutbox && !_vm.IsSelectedFolderDrafts));
 
         // Available on a selected group header too, not just a selected message: gating on
         // HasSelectedMessage alone meant a user's hotkey did nothing at all on a conversation
@@ -3926,6 +3933,25 @@ public partial class MainWindow : Window
         _vm.RefreshWatchTarget();
         _vm.RefreshMessageTarget();
     }
+
+    /// <summary>
+    /// Open in New Window (#1010). An Outbox or Drafts row is not a message to read: it reopens in
+    /// compose, as Enter does, rather than in a window that would find nothing on the server.
+    /// </summary>
+    private void OpenTargetInNewWindow()
+    {
+        if (TargetMessage() is not { } msg) return;
+        if (_vm.IsSelectedFolderOutbox || _vm.IsSelectedFolderDrafts)
+            OpenMessageFromListAsync(msg).LogFaults("Open in New Window: compose");
+        else
+            OpenMessageInNewWindow(msg);
+    }
+
+    private void MenuOpenInWindow_Click(object sender, RoutedEventArgs e) =>
+        _registry.FindById("mail.openInWindow")?.Execute();
+
+    private void MenuOpenInNewTab_Click(object sender, RoutedEventArgs e) =>
+        _registry.FindById("mail.openInNewTab")?.Execute();
 
     private void MenuWatchConversation_Click(object sender, RoutedEventArgs e) =>
         _vm.ToggleWatchConversation();
@@ -6895,6 +6921,22 @@ public partial class MainWindow : Window
             if (winVm.SelectedMessage != null)
                 _ = _vm.MarkMessagesReadAsync([winVm.SelectedMessage]);
         };
+        // Move to Archive (#1010): the window's own message, and the window closes as after Delete. When
+        // there is nothing to do (no Archive folder, or already in it) it says why, here, and stays open.
+        winVm.ArchiveAction = () =>
+        {
+            // The palette offers it even for an opened .eml or attached email, which is in no account.
+            var toArchive = winVm.IsInMailbox ? winVm.SelectedMessage : null;
+            var why = toArchive is null ? "This message is not in any of your accounts."
+                : _vm.ArchiveRefusalFor(toArchive);
+            if (why is not null)
+            {
+                AccessibilityHelper.Announce(win, why, interrupt: true, category: AnnouncementCategory.Result);
+                return;
+            }
+            _ = _vm.ArchiveMessagesAsync([toArchive!]);   // why is set whenever toArchive is null
+            win.Close();
+        };
         winVm.ComposeToAction = address => _vm.ComposeToAddress(address);
 
         // Rules from the message being read: its own message and account, not the main list's
@@ -9118,6 +9160,8 @@ public partial class MainWindow : Window
         {
             var flagId = flag.Id.ToString();
             var item = new MenuItem { Header = flag.Name, IsCheckable = true, Tag = flagId };
+            // The flag's own command (#1010), so a key the user gives it is shown and reported here.
+            CommandShortcut.SetId(item, MainViewModel.FlagFilterCommandPrefix + flagId);
             item.Click += (_, _) => _vm.SetFlagFilterCommand.Execute(flagId);
             FilterFlaggedItem.Items.Add(item);
         }

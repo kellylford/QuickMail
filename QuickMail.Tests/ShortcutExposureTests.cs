@@ -161,6 +161,7 @@ public class ShortcutExposureTests
             ["_Forward"] = "Ctrl+Shift+F",
             ["_Delete"] = "Delete",
             ["Move to Arc_hive"] = "Ctrl+Shift+M",
+            ["Open _in New Window"] = "Ctrl+Enter",   // #1010: new
             ["Empty _Trash"] = "Ctrl+Shift+E",
             ["_Watch Conversation"] = "Ctrl+Shift+W",
             ["_Grab Addresses from Message"] = "Ctrl+Shift+G",
@@ -199,6 +200,7 @@ public class ShortcutExposureTests
             ["Reply All"] = "Ctrl+Shift+R",
             ["Forward"] = "Ctrl+Shift+F",
             ["Delete"] = "Delete",
+            ["Move to Archive"] = "Ctrl+Shift+M",   // #1010: new, so it showed nothing before
             ["Mark as Read"] = "Ctrl+Q",
             ["Grab Addresses from Message"] = "Ctrl+Shift+G",
             ["Create Rule from Message"] = "Ctrl+Shift+T",
