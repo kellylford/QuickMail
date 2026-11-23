@@ -32,7 +32,7 @@ public sealed class ShortcutConflictTests : IDisposable
             registry.Register(new CommandDefinition(id, category, title, () => { }, key, mods));
 
         Add("contacts.openAddressBook", "Contacts", "Address Book", Key.B, ModifierKeys.Control | ModifierKeys.Shift);
-        Add("view.toggleFavoriteFolder", "View", "Toggle Favorite Folder");   // no default key
+        Add("mail.sendOutboxNow", "Mail", "Send Outbox Now");   // no default key
         Add("mail.delete", "Mail", "Delete", Key.Delete);
         Add("folder.delete", "Mail", "Delete Folder", Key.Delete);
         Add("mail.previousUnread", "Mail", "Previous Unread", Key.Up, ModifierKeys.Alt);
@@ -51,9 +51,9 @@ public sealed class ShortcutConflictTests : IDisposable
     public void ADefaultKey_IsAConflict()
     {
         var vm = new SettingsViewModel(new StubConfigService(), Registry());
-        var favorite = Row(vm, "view.toggleFavoriteFolder");
+        var outboxNow = Row(vm, "mail.sendOutboxNow");
 
-        var conflict = vm.FindConflict(Key.B, CtrlShift, favorite);
+        var conflict = vm.FindConflict(Key.B, CtrlShift, outboxNow);
 
         Assert.NotNull(conflict);
         Assert.Equal("contacts.openAddressBook", conflict!.CommandId);
@@ -127,17 +127,17 @@ public sealed class ShortcutConflictTests : IDisposable
     public void Reassigning_ADefault_LeavesTheOtherCommandWithNoKey()
     {
         var vm = new SettingsViewModel(new StubConfigService(), Registry());
-        var favorite = Row(vm, "view.toggleFavoriteFolder");
+        var outboxNow = Row(vm, "mail.sendOutboxNow");
         var book = Row(vm, "contacts.openAddressBook");
 
-        vm.AssignShortcut(favorite, Key.B, CtrlShift);
+        vm.AssignShortcut(outboxNow, Key.B, CtrlShift);
 
         Assert.True(book.IsNoKey);
         Assert.True(book.HasCustomBinding);           // saved, and Restore Default undoes it
         Assert.Equal(string.Empty, book.ActiveGesture);
         Assert.Equal("Address Book, Contacts, no shortcut", book.AccessibleName);
         Assert.Equal(HotkeyBinding.NoKeyGesture, book.ToBinding().Gesture);
-        Assert.Equal("Ctrl+Shift+B", favorite.ActiveGesture);
+        Assert.Equal("Ctrl+Shift+B", outboxNow.ActiveGesture);
 
         // Restore Default gives it back.
         book.ClearCustomBinding();
@@ -164,7 +164,7 @@ public sealed class ShortcutConflictTests : IDisposable
         var vm = new SettingsViewModel(new StubConfigService(), Registry());
         var reply = Row(vm, "mail.reply");
         reply.SetCustomBinding(Key.K, ModifierKeys.Control);
-        Row(vm, "view.toggleFavoriteFolder").SetCustomBinding(Key.R, ModifierKeys.Control);   // reply's default
+        Row(vm, "mail.sendOutboxNow").SetCustomBinding(Key.R, ModifierKeys.Control);   // reply's default
 
         vm.AssignShortcut(Row(vm, "mail.archive"), Key.K, ModifierKeys.Control);
 
@@ -176,7 +176,7 @@ public sealed class ShortcutConflictTests : IDisposable
     {
         var profile = new ProfileContext(_dir);
         var vm = new SettingsViewModel(new ConfigService(profile), Registry());
-        vm.AssignShortcut(Row(vm, "view.toggleFavoriteFolder"), Key.B, CtrlShift);
+        vm.AssignShortcut(Row(vm, "mail.sendOutboxNow"), Key.B, CtrlShift);
         vm.SaveCommand.Execute(null);
 
         // A fresh start: the file read again, by a new service, into a new registry and dialog.
@@ -186,12 +186,12 @@ public sealed class ShortcutConflictTests : IDisposable
 
         var registry = Registry();
         registry.ApplyUserOverrides(cfg.CustomHotkeys);
-        Assert.Equal("view.toggleFavoriteFolder", registry.FindByGesture(Key.B, CtrlShift)?.Id);
+        Assert.Equal("mail.sendOutboxNow", registry.FindByGesture(Key.B, CtrlShift)?.Id);
         Assert.Equal(string.Empty, registry.GetGestureText("contacts.openAddressBook"));
 
         var reopened = new SettingsViewModel(new ConfigService(profile), registry);
         Assert.True(Row(reopened, "contacts.openAddressBook").IsNoKey);
-        Assert.Equal("Ctrl+Shift+B", Row(reopened, "view.toggleFavoriteFolder").ActiveGesture);
+        Assert.Equal("Ctrl+Shift+B", Row(reopened, "mail.sendOutboxNow").ActiveGesture);
     }
 
     [Fact]
@@ -213,6 +213,104 @@ public sealed class ShortcutConflictTests : IDisposable
         Assert.Null(local.FindByGesture(Key.R, ModifierKeys.Control));
         Assert.Equal(string.Empty, local.GetGestureText("message.reply"));
     }
+
+    [Fact]
+    public void ASavedViewWhoseDefaultCameFromItsBinding_StillConflictsWithABuiltInKey()
+    {
+        // Saved views register with the key from hotkeys.json as their "default", so after a restart a
+        // view given Ctrl+Shift+B looks like it shares Address Book's default by design. It doesn't.
+        var registry = Registry();
+        registry.Register(new CommandDefinition("view.saved.11111111-1111-1111-1111-111111111111", "Views", "Unread work",
+            () => { }, Key.B, CtrlShift));
+        var vm = new SettingsViewModel(new StubConfigService(), registry);
+        var book = Row(vm, "contacts.openAddressBook");
+
+        var conflict = vm.FindConflict(Key.B, CtrlShift, book);
+
+        Assert.Equal("view.saved.11111111-1111-1111-1111-111111111111", conflict?.CommandId);
+    }
+
+    [Fact]
+    public void AThemeWhoseDefaultCameFromItsBinding_StillConflictsWithABuiltInKey()
+    {
+        var registry = Registry();
+        registry.Register(new CommandDefinition("theme.apply.dark", "Settings", "Theme: Dark", () => { }, Key.R, ModifierKeys.Control));
+        var vm = new SettingsViewModel(new StubConfigService(), registry);
+
+        Assert.Equal("theme.apply.dark", vm.FindConflict(Key.R, ModifierKeys.Control, Row(vm, "mail.reply"))?.CommandId);
+    }
+
+    [Fact]
+    public void RestoreDefault_WhenAnotherCommandHoldsTheKey_IsAConflict_AndTakesItBack()
+    {
+        var vm = new SettingsViewModel(new StubConfigService(), Registry());
+        var book = Row(vm, "contacts.openAddressBook");
+        var outboxNow = Row(vm, "mail.sendOutboxNow");
+        vm.AssignShortcut(outboxNow, Key.B, CtrlShift);
+
+        Assert.Equal(["mail.sendOutboxNow"], vm.FindRestoreConflicts(book).Select(r => r.CommandId));
+
+        var changes = vm.RestoreDefault(book);
+
+        Assert.Equal("Ctrl+Shift+B", book.ActiveGesture);
+        Assert.False(book.HasCustomBinding);
+        Assert.Equal(string.Empty, outboxNow.ActiveGesture);
+        Assert.Equal(["Send Outbox Now now has no shortcut"], changes);
+    }
+
+    [Fact]
+    public void RestoreDefault_WhenTheKeyIsFree_ChangesNothingElse()
+    {
+        var vm = new SettingsViewModel(new StubConfigService(), Registry());
+        var reply = Row(vm, "mail.reply");
+        reply.SetCustomBinding(Key.K, ModifierKeys.Control);
+
+        Assert.Empty(vm.FindRestoreConflicts(reply));
+        Assert.Empty(vm.RestoreDefault(reply));
+        Assert.Equal("Ctrl+R", reply.ActiveGesture);
+    }
+
+    [Fact]
+    public void RestoreDefault_OnAFocusSharedDefault_IsNotAConflict()
+    {
+        var vm = new SettingsViewModel(new StubConfigService(), Registry());
+        var mailDelete = Row(vm, "mail.delete");
+        mailDelete.SetNoKey();
+
+        Assert.Empty(vm.FindRestoreConflicts(mailDelete));   // folder.delete still has Delete, by design
+    }
+
+    [Fact]
+    public void Reassigning_SaysWhatHappenedToTheOtherCommand()
+    {
+        var vm = new SettingsViewModel(new StubConfigService(), Registry());
+        Row(vm, "mail.reply").SetCustomBinding(Key.K, ModifierKeys.Control);
+
+        Assert.Equal(["Address Book now has no shortcut"], vm.AssignShortcut(Row(vm, "mail.archive"), Key.B, CtrlShift));
+        Assert.Equal(["Reply is back on Ctrl+R"], vm.AssignShortcut(Row(vm, "mail.archive"), Key.K, ModifierKeys.Control));
+        Assert.Empty(vm.AssignShortcut(Row(vm, "mail.archive"), Key.F11, ModifierKeys.Control));
+    }
+
+    [Fact]
+    public void ACommandWithNoDefault_ThatLosesItsKey_IsSimplyCleared()
+    {
+        var vm = new SettingsViewModel(new StubConfigService(), Registry());
+        var outboxNow = Row(vm, "mail.sendOutboxNow");
+        outboxNow.SetCustomBinding(Key.F11, ModifierKeys.Control);
+
+        vm.AssignShortcut(Row(vm, "mail.reply"), Key.F11, ModifierKeys.Control);
+
+        Assert.False(outboxNow.HasCustomBinding);   // no redundant "None" entry in hotkeys.json
+        Assert.False(outboxNow.IsNoKey);
+    }
+
+    [Theory]
+    [InlineData(new string[0], "")]
+    [InlineData(new[] { "Delete" }, "Delete")]
+    [InlineData(new[] { "Delete", "Delete Folder" }, "Delete and Delete Folder")]
+    [InlineData(new[] { "Delete", "Delete Folder", "Delete Appointment" }, "Delete, Delete Folder and Delete Appointment")]
+    public void ConflictingTitles_ReadAsAList(string[] titles, string expected) =>
+        Assert.Equal(expected, SettingsViewModel.JoinTitles(titles));
 
     private static CommandRegistry MessageWindowKeys(params HotkeyBinding[] mainBindings)
     {

@@ -344,7 +344,7 @@ public sealed class SettingsTransferTests : IDisposable
         var cfg = desktopConfig.Load();
         cfg.CustomHotkeys =
         [
-            new HotkeyBinding { CommandId = "view.toggleFavoriteFolder", Gesture = "Ctrl+Shift+B" },
+            new HotkeyBinding { CommandId = "mail.sendOutboxNow", Gesture = "Ctrl+Shift+B" },
             new HotkeyBinding { CommandId = "contacts.openAddressBook", Gesture = HotkeyBinding.NoKeyGesture },
         ];
         desktopConfig.Save(cfg);
@@ -354,7 +354,7 @@ public sealed class SettingsTransferTests : IDisposable
 
         var imported = new ConfigService(new ProfileContext(laptop)).Load().CustomHotkeys;
         Assert.True(imported.Single(h => h.CommandId == "contacts.openAddressBook").IsNoKey);
-        Assert.Equal("Ctrl+Shift+B", imported.Single(h => h.CommandId == "view.toggleFavoriteFolder").Gesture);
+        Assert.Equal("Ctrl+Shift+B", imported.Single(h => h.CommandId == "mail.sendOutboxNow").Gesture);
     }
 
     // ── Import into a profile that already has the accounts (the #507 case) ─────

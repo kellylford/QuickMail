@@ -772,13 +772,39 @@ public partial class SettingsViewModel : ObservableObject
     internal IReadOnlyList<HotkeyRowViewModel> FindConflicts(Key key, ModifierKeys modifiers, HotkeyRowViewModel? forRow = null)
     {
         if (key == Key.None) return [];
-        var sharedDefault = forRow?.HasDefault(key, modifiers) == true;
+        var sharedDefault = forRow?.SharesDefaultByDesign(key, modifiers) == true;
         return HotkeyRows
             .Where(r => r != forRow
                      && r.MatchesBinding(key, modifiers)
-                     && !(sharedDefault && r.HasDefault(key, modifiers)))
+                     && !(sharedDefault && r.SharesDefaultByDesign(key, modifiers)))
             .ToList();
     }
+
+    /// <summary>
+    /// The commands that hold <paramref name="row"/>'s default key now, which Restore Default would
+    /// otherwise silently share it with (#1044). Empty when the default is free or the row has none.
+    /// </summary>
+    internal IReadOnlyList<HotkeyRowViewModel> FindRestoreConflicts(HotkeyRowViewModel row) =>
+        row.HasAnyDefault ? FindConflicts(row.DefaultKey, row.DefaultModifiers, row) : [];
+
+    /// <summary>
+    /// Restore Default: gives <paramref name="row"/> back its default key, taking it from any command
+    /// that holds it now, exactly as assigning it would. Returns what happened to those commands.
+    /// </summary>
+    internal IReadOnlyList<string> RestoreDefault(HotkeyRowViewModel row)
+    {
+        var changes = row.HasAnyDefault ? TakeKey(row.DefaultKey, row.DefaultModifiers, row) : [];
+        row.ClearCustomBinding();
+        return changes;
+    }
+
+    /// <summary>"A", "A and B", "A, B and C": how the conflict warning names the commands.</summary>
+    internal static string JoinTitles(IReadOnlyList<string> titles) => titles.Count switch
+    {
+        0 => string.Empty,
+        1 => titles[0],
+        _ => $"{string.Join(", ", titles.Take(titles.Count - 1))} and {titles[^1]}",
+    };
 
     /// <summary>The first of <see cref="FindConflicts"/>, or null when the key is free.</summary>
     internal HotkeyRowViewModel? FindConflict(Key key, ModifierKeys modifiers, HotkeyRowViewModel? forRow = null)
@@ -793,22 +819,44 @@ public partial class SettingsViewModel : ObservableObject
     /// default, or whose default is in use, is left with no key, saved as an explicit "no key"
     /// override (#1044). Clearing back to the default would hand it the very key it just lost.
     /// </summary>
-    internal void AssignShortcut(HotkeyRowViewModel row, Key key, ModifierKeys modifiers)
+    /// <returns>What happened to the commands that lost the key, for the announcement:
+    /// "Address Book now has no shortcut", "Reply is back on Ctrl+R".</returns>
+    internal IReadOnlyList<string> AssignShortcut(HotkeyRowViewModel row, Key key, ModifierKeys modifiers)
     {
+        var changes = TakeKey(key, modifiers, row);
+        row.SetCustomBinding(key, modifiers);
+        return changes;
+    }
+
+    private List<string> TakeKey(Key key, ModifierKeys modifiers, HotkeyRowViewModel row)
+    {
+        var changes = new List<string>();
         foreach (var other in FindConflicts(key, modifiers, row))
         {
             LogService.Debug($"[Settings] Reassigning {GestureHelper.Format(key, modifiers)} from '{other.CommandId}'");
-            var defaultIsFree = other.HasAnyDefault
-                && !other.HasDefault(key, modifiers)
-                && !HotkeyRows.Any(r => r != other && r != row
-                                     && r.MatchesBinding(other.DefaultKey, other.DefaultModifiers)
-                                     && !r.HasDefault(other.DefaultKey, other.DefaultModifiers));   // a focus-shared partner is not a conflict
-            if (other.HasCustomBinding && !other.IsNoKey && defaultIsFree)
+            if (!other.HasAnyDefault)
+            {
+                // Nothing to fall back to: clearing the override already leaves it with no key.
                 other.ClearCustomBinding();
+            }
             else
-                other.SetNoKey();
+            {
+                var d = (Key: other.DefaultKey, Mods: other.DefaultModifiers);
+                var defaultIsFree = !other.HasDefault(key, modifiers)
+                    && !HotkeyRows.Any(r => r != other && r != row
+                                         && r.MatchesBinding(d.Key, d.Mods)
+                                         // a focus-shared partner is not a conflict
+                                         && !(r.SharesDefaultByDesign(d.Key, d.Mods) && other.SharesDefaultByDesign(d.Key, d.Mods)));
+                if (other.HasCustomBinding && !other.IsNoKey && defaultIsFree)
+                    other.ClearCustomBinding();
+                else
+                    other.SetNoKey();
+            }
+            changes.Add(string.IsNullOrEmpty(other.ActiveGesture)
+                ? $"{other.Title} now has no shortcut"
+                : $"{other.Title} is back on {other.ActiveGesture}");
         }
-        row.SetCustomBinding(key, modifiers);
+        return changes;
     }
 
     // ── HotkeyRowViewModel ─────────────────────────────────────────────────────────
@@ -921,6 +969,19 @@ public partial class SettingsViewModel : ObservableObject
         /// <summary>True when this key is the command's default, whatever it is bound to now.</summary>
         internal bool HasDefault(Key key, ModifierKeys modifiers)
             => key != Key.None && _command.DefaultKey == key && _command.DefaultModifiers == modifiers;
+
+        /// <summary>
+        /// True when this key is a default QuickMail ships, which other built-in commands may share on
+        /// purpose and be told apart by focus. Saved-view and theme commands are registered with the
+        /// key from hotkeys.json as their "default", so a built-in key the user once gave one would
+        /// otherwise pass as shared by design, and a real conflict would go unreported (#1044).
+        /// </summary>
+        internal bool SharesDefaultByDesign(Key key, ModifierKeys modifiers)
+            => HasDefault(key, modifiers) && !IsRunTimeCommand;
+
+        private bool IsRunTimeCommand =>
+            CommandId.StartsWith("view.saved.", StringComparison.OrdinalIgnoreCase)
+            || CommandId.StartsWith("theme.apply.", StringComparison.OrdinalIgnoreCase);
     }
 
     // ── Start at Windows sign-in (#770) ────────────────────────────────────────

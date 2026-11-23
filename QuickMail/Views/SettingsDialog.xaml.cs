@@ -388,8 +388,7 @@ public partial class SettingsDialog : Window
         }
         else if (e.Key == Key.Delete && _vm.SelectedHotkey.HasCustomBinding)
         {
-            _vm.SelectedHotkey.ClearCustomBinding();
-            UpdateActionButtons();
+            RestoreDefault(_vm.SelectedHotkey);
             e.Handled = true;
         }
     }
@@ -410,7 +409,7 @@ public partial class SettingsDialog : Window
             ConflictChecker = (key, modifiers) =>
             {
                 var conflicts = _vm.FindConflicts(key, modifiers, row);
-                return conflicts.Count > 0 ? string.Join(" and ", conflicts.Select(c => c.Title)) : null;
+                return conflicts.Count > 0 ? SettingsViewModel.JoinTitles([.. conflicts.Select(c => c.Title)]) : null;
             },
         };
 
@@ -426,22 +425,24 @@ public partial class SettingsDialog : Window
         LogService.Debug($"[Settings] Captured: key={key} modifiers={modifiers} gesture='{gesture}'");
 
         // Accepting despite a conflict takes the key from the command that had it, default or not (#1044).
-        _vm.AssignShortcut(row, key, modifiers);
+        var changes = _vm.AssignShortcut(row, key, modifiers);
         UpdateActionButtons();
         LogService.Debug($"[Settings] Assigned '{gesture}' to '{row.Title}' — announcing");
-        AnnounceAssignment(gesture, row.Title);
+        AnnounceChange($"{gesture} assigned to {row.Title}", changes);
     }
 
-    private void AnnounceAssignment(string gesture, string commandTitle)
+    // Says what changed, including what happened to any command that lost the key: the capture dialog
+    // warned before OK, but nothing on screen says it afterward (#1044).
+    private void AnnounceChange(string what, IReadOnlyList<string> sideEffects)
     {
         var source = Keyboard.FocusedElement as UIElement ?? this;
-        var text   = $"{gesture} assigned to {commandTitle}";
+        var text   = sideEffects.Count == 0 ? what : $"{what}. {string.Join(". ", sideEffects)}.";
 
         LogService.Debug($"[Settings] Announce: source={source.GetType().Name} text='{text}'");
 
         try
         {
-            AccessibilityHelper.Announce(source, text, interrupt: true);
+            AccessibilityHelper.Announce(source, text, interrupt: true, category: AnnouncementCategory.Result);
             LogService.Debug("[Settings] Announce returned OK");
         }
         catch (Exception ex)
@@ -460,8 +461,29 @@ public partial class SettingsDialog : Window
     private void RestoreDefaultButton_Click(object sender, RoutedEventArgs e)
     {
         if (_vm.SelectedHotkey == null) return;
-        _vm.SelectedHotkey.ClearCustomBinding();
+        RestoreDefault(_vm.SelectedHotkey);
+    }
+
+    /// <summary>
+    /// Restore Default, asking first when another command now holds the default key: restoring it
+    /// silently would leave both on one key, and the other would win (#1044).
+    /// </summary>
+    private void RestoreDefault(SettingsViewModel.HotkeyRowViewModel row)
+    {
+        var conflicts = _vm.FindRestoreConflicts(row);
+        if (conflicts.Count > 0)
+        {
+            var holders = SettingsViewModel.JoinTitles([.. conflicts.Select(c => c.Title)]);
+            var answer = MessageBox.Show(this,
+                $"{row.DefaultGesture} is now assigned to {holders}. Give it back to {row.Title} and take it from {holders}?",
+                "Restore Default", MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No);
+            if (answer != MessageBoxResult.Yes) return;
+        }
+
+        var changes = _vm.RestoreDefault(row);
         UpdateActionButtons();
+        if (changes.Count > 0)
+            AnnounceChange($"{row.DefaultGesture} restored to {row.Title}", changes);
     }
 
     private void UpdateActionButtons()
