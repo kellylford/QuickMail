@@ -243,7 +243,11 @@ public partial class MainViewModel
 
     /// <summary>Send Outbox Now: a drain that ignores backoff, retries failed rows, and does not wait for a connectivity signal.</summary>
     [RelayCommand]
-    private async Task SendOutboxNowAsync()
+    private Task SendOutboxNowAsync() => DrainOutboxNowAsync(sayWhenEmpty: true);
+
+    /// <param name="sayWhenEmpty">False for Send and Receive (#874), which does not report an empty
+    /// Outbox: there is nearly always nothing waiting, and it would be said on every press.</param>
+    private async Task DrainOutboxNowAsync(bool sayWhenEmpty)
     {
         if (!ShowOutboxFolder) return;
         SetStatus("Sending Outbox…", AnnouncementCategory.Status);
@@ -261,12 +265,14 @@ public partial class MainViewModel
 
         // Anything that reached an outcome is announced by the FlushCompleted handler, once.
         if (result.Any) return;
-        SetStatus(
+        var text =
             result.AwaitingSignIn > 0 ? "A message in the Outbox is waiting for its account to be signed in. Reconnect the account from the Accounts list."
             : result.Deferred > 0 ? "Could not reach the server. The Outbox will try again when you're online."
             : result.Skipped > 0 ? "Outbox is busy: a drain is already running, or every item is open in a compose window."
-            : "Outbox is empty.",
-            AnnouncementCategory.Result);
+            : sayWhenEmpty ? "Outbox is empty."
+            : null;
+        if (text != null)
+            SetStatus(text, AnnouncementCategory.Result);
     }
 
     /// <summary>The fallback sync tick's drain: never lets a queue problem stop the sweep.</summary>

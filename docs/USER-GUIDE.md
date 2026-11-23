@@ -1045,6 +1045,10 @@ Press `Ctrl+Shift+Y` (or **View → Search Folders…**) for a list of every fol
 
 Press **F5** to refresh the folder you are in. With a saved view active, **F5** refreshes the view, so you stay in it.
 
+### Send and Receive
+
+Press **F9** (or **Message → Send and Receive**) to send and check for mail in one step. QuickMail first sends anything waiting in the Outbox, then checks the Inbox of every account and tells you how many new messages arrived, for example "2 new messages" or "No new messages". New messages appear in the list and play the new-mail sound, as they do when they arrive by themselves. If an account could not be checked, QuickMail names it. When the Outbox is empty, nothing is said about it. While you are offline, **F9** tells you so instead of waiting for the server.
+
 QuickMail also checks for new mail by itself. Most mail servers tell QuickMail the moment a message reaches your inbox, so it appears right away. The **Check for new mail every** setting in **Settings → General** adds a regular check behind that (every 5 minutes unless you change it), which also catches changes made in other mail programs. **Off (server push only)** leaves it to the server.
 
 ### Sync Range
@@ -1544,6 +1548,7 @@ Everything waiting lives in the **Outbox**, the last entry in the All Mail group
 | `Enter` on a row | Reopens it in the compose window, exactly as it was written — recipients, Bcc, attachments, and compose mode included. Saving or sending from there replaces the queued copy. |
 | `Delete` on a row | Asks first, then removes it from the queue. There is no Trash to recover from: the message has never been anywhere but this computer. |
 | **Send Outbox Now** (Message menu, or `Ctrl+Shift+P` → Send Outbox Now) | Tries every queued item right away, including any marked Failed. |
+| `F9` (**Send and Receive**) | Does the same as Send Outbox Now when anything is waiting, then checks every Inbox for new mail. See [Send and Receive](#send-and-receive). |
 
 The Outbox drains on its own when QuickMail connects at startup, when the connection returns, when a shared mailbox connects again, and on each background sync. A message from a shared mailbox whose account is signed out is not marked Failed: once the Outbox has tried it, its row says "Waiting for its account to be signed in", and it goes out once that account is signed in again. A drain is announced once as a whole, for example "Outbox: 2 messages sent, 1 draft uploaded." A message the server refused stays in the Outbox marked "Failed" with the reason, until you reopen and fix it, or remove it. The Outbox is not available in `--online` mode, which runs without the local store.
 
@@ -3100,6 +3105,7 @@ Every announcement is optional and controlled by the settings above. No custom s
 | `Ctrl+C` / `Ctrl+X` / `Ctrl+V` | Copy, cut, and paste messages |
 | `Alt+Enter` | Message properties |
 | `F5` | Refresh |
+| `F9` | Send and Receive (send the Outbox, then check every Inbox) |
 | `Ctrl+Shift+E` | Empty Trash |
 | `Ctrl+Shift+W` | Watch / unwatch the selected message's conversation |
 | `K` | Toggle flag |
