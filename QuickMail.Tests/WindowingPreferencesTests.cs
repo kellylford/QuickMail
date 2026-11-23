@@ -42,12 +42,11 @@ public class WindowingPreferencesTests
     // ── Defaults ─────────────────────────────────────────────────────────────────
 
     [Fact]
-    public void Defaults_AreReadingPaneAndConfirmOn()
+    public void Default_IsReadingPane()
     {
         var config = new ConfigModel();
 
         Assert.Equal(MessageOpenMode.ReadingPane, config.Windowing.MessageOpenMode);
-        Assert.True(config.Windowing.ConfirmCloseTabWithUnsaved);
     }
 
     // ── MessageOpenMode round trip ───────────────────────────────────────────────
@@ -97,43 +96,36 @@ public class WindowingPreferencesTests
         Assert.Equal(MessageOpenMode.ReadingPane, config.Windowing.MessageOpenMode);
     }
 
-    // ── ConfirmCloseTabWithUnsaved round trip ────────────────────────────────────
+    // ── The removed tab-close confirmation (#1010) ───────────────────────────────
 
-    [Theory]
-    [InlineData(true)]
-    [InlineData(false)]
-    public void ConfirmCloseTabWithUnsaved_RoundTrips(bool value)
+    [Fact]
+    public void AnOlderFilesTabCloseConfirmationLine_IsIgnored_AndNotWrittenBack()
     {
-        var reloaded = SaveThenReload(c => c.Windowing.ConfirmCloseTabWithUnsaved = value);
+        // "Confirm before closing a tab with unsaved changes" was saved and shown but read by nothing:
+        // tabs only ever hold messages, which have nothing to save. An older config.ini still carries
+        // the key. It must load cleanly, leave its neighbours alone, and be gone after the next save.
+        var profile = MakeTempProfile();
+        var ini = Path.Combine(profile.ProfileDir, "config.ini");
+        File.WriteAllText(ini, "[windowing]\nMessageOpenMode = window\nConfirmCloseTabWithUnsaved = off\n");
 
-        Assert.Equal(value, reloaded.Windowing.ConfirmCloseTabWithUnsaved);
+        var config = new ConfigService(profile).Load();
+        Assert.Equal(MessageOpenMode.Window, config.Windowing.MessageOpenMode);
+
+        new ConfigService(profile).Save(config);
+        var written = File.ReadAllText(ini);
+        Assert.DoesNotContain("ConfirmCloseTabWithUnsaved", written, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Confirm before closing a tab", written, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(MessageOpenMode.Window, new ConfigService(profile).Load().Windowing.MessageOpenMode);
     }
 
     [Fact]
-    public void ConfirmCloseTabWithUnsaved_OffSurvivesReload()
+    public void TheSettingIsGoneFromTheModel()
     {
-        // Turning a confirmation OFF is the direction that matters: if it silently resets to on,
-        // the user is re-prompted forever and reasonably concludes the setting does nothing.
-        var reloaded = SaveThenReload(c => c.Windowing.ConfirmCloseTabWithUnsaved = false);
-
-        Assert.False(reloaded.Windowing.ConfirmCloseTabWithUnsaved);
+        Assert.Null(typeof(WindowingPreferences).GetProperty("ConfirmCloseTabWithUnsaved"));
+        Assert.Null(typeof(QuickMail.ViewModels.SettingsViewModel).GetProperty("ConfirmCloseTabWithUnsaved"));
     }
 
     // ── Whole-section integrity ──────────────────────────────────────────────────
-
-    [Fact]
-    public void WindowingSettings_RoundTripTogether()
-    {
-        // Guards a writer that emits one key and drops its neighbour.
-        var reloaded = SaveThenReload(c =>
-        {
-            c.Windowing.MessageOpenMode             = MessageOpenMode.Window;
-            c.Windowing.ConfirmCloseTabWithUnsaved  = false;
-        });
-
-        Assert.Equal(MessageOpenMode.Window, reloaded.Windowing.MessageOpenMode);
-        Assert.False(reloaded.Windowing.ConfirmCloseTabWithUnsaved);
-    }
 
     [Fact]
     public void WindowingSettings_SurviveASecondSaveLoadCycle()
@@ -143,7 +135,6 @@ public class WindowingPreferencesTests
         var profile = MakeTempProfile();
         var first = new ConfigService(profile).Load();
         first.Windowing.MessageOpenMode            = MessageOpenMode.Tab;
-        first.Windowing.ConfirmCloseTabWithUnsaved = false;
         new ConfigService(profile).Save(first);
 
         var second = new ConfigService(profile).Load();
@@ -151,7 +142,6 @@ public class WindowingPreferencesTests
         var third = new ConfigService(profile).Load();
 
         Assert.Equal(MessageOpenMode.Tab, third.Windowing.MessageOpenMode);
-        Assert.False(third.Windowing.ConfirmCloseTabWithUnsaved);
     }
 
     [Fact]

@@ -440,9 +440,8 @@ public class ConfigService : IConfigService
                             _        => Models.MessageOpenMode.ReadingPane,
                         };
                         break;
-                    case "confirmclosetabwithunsaved":
-                        config.Windowing.ConfirmCloseTabWithUnsaved = ParseBool(value);
-                        break;
+                    // "confirmclosetabwithunsaved" was a setting nothing read (#1010). An older file's
+                    // line is ignored, like any unknown key, and is not written back.
                     case "tabsrememberacrossrestart":
                         config.Windowing.TabsRememberAcrossRestart = ParseBool(value);
                         break;
@@ -1096,11 +1095,6 @@ public class ConfigService : IConfigService
         sb.AppendLine($"MessageOpenMode = {modeStr}");
         sb.AppendLine("# Where Enter / click on a message opens it.");
         sb.AppendLine("# Values: readingPane (default), tab, window.");
-        sb.AppendLine();
-
-        sb.AppendLine($"ConfirmCloseTabWithUnsaved = {(config.Windowing.ConfirmCloseTabWithUnsaved ? "on" : "off")}");
-        sb.AppendLine("# Confirm before closing a tab with unsaved changes.");
-        sb.AppendLine("# Values: on, off.");
         sb.AppendLine();
 
         // ── [account:guid] overrides ─────────────────────────────────────────────

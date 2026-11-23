@@ -106,6 +106,7 @@ public partial class MessageWindow : Window
             ["message.replyAll"]        = "mail.replyAll",
             ["message.forward"]         = "mail.forward",
             ["message.delete"]          = "mail.delete",
+            ["message.archive"]         = "mail.archive",
             ["message.markRead"]        = "mail.markRead",
             ["message.copyAttachment"]  = "mail.copyAttachment",
             ["message.copyAllAttachments"] = "mail.copyAllAttachments",
@@ -169,6 +170,13 @@ public partial class MessageWindow : Window
             id: "message.delete", category: "Mail", title: "Delete",
             execute: () => _vm.DeleteMessageCommand.Execute(null),
             defaultKey: Key.Delete, defaultModifiers: ModifierKeys.None,
+            isAvailable: () => _vm.IsInMailbox));
+
+        // The main window's Move to Archive, on this window's message (#1010).
+        _localRegistry.Register(new CommandDefinition(
+            id: "message.archive", category: "Mail", title: "Move to Archive",
+            execute: () => _vm.ArchiveMessageCommand.Execute(null),
+            defaultKey: Key.M, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift,
             isAvailable: () => _vm.IsInMailbox));
 
         _localRegistry.Register(new CommandDefinition(

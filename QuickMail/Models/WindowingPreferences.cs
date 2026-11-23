@@ -19,8 +19,8 @@ public class WindowingPreferences
     /// <summary>Where Enter / click on a message opens it.</summary>
     public MessageOpenMode MessageOpenMode { get; set; } = MessageOpenMode.ReadingPane;
 
-    /// <summary>Confirm before closing a tab whose content is a draft or unsent reply.</summary>
-    public bool ConfirmCloseTabWithUnsaved { get; set; } = true;
+    // ConfirmCloseTabWithUnsaved was removed in #1010: tabs only ever show messages, which have
+    // nothing to save, so nothing read it. ConfigService ignores the key in an older config.ini.
 
     /// <summary>Reserved for v2. v1 always resets tabs at restart.</summary>
     public bool TabsRememberAcrossRestart { get; set; } = false;

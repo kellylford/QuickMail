@@ -28,7 +28,7 @@ A menu item or button names its command with `sc:CommandShortcut.Id` (`Helpers/C
 | Ctrl+Shift+R | `mail.replyAll` | Reply All |
 | Ctrl+Shift+F | `mail.forward` | Forward |
 | Delete | `mail.delete` | Delete |
-| Ctrl+Shift+M | `mail.archive` | Move to Archive (the account's Archive folder) |
+| Ctrl+Shift+M | `mail.archive` | Move to Archive (the account's Archive folder). Message window: `message.archive`, which closes the window as Delete does (#1010) |
 | Ctrl+Q | `mail.markRead` | Mark as Read |
 | Ctrl+S | `mail.save` | Save — the selection (or a group header's messages) in the default format, into the save folder, without asking (#728). The message window registers `message.save` on the same key |
 | F12 | `mail.saveAs` | Save As… — the Save dialog, with a type list; several messages ask for a folder and format for all (#728). Message window: `message.saveAs` |
@@ -48,6 +48,8 @@ A menu item or button names its command with `sc:CommandShortcut.Id` (`Helpers/C
 | Ctrl+Shift+W | `mail.toggleWatch` | Watch Conversation — watches the selected message's conversation, or unwatches it if already watched. On a Conversations group header it acts on that group; on a From/To group header it is unavailable (a sender group spans many conversations) |
 | *(unassigned)* | `mail.watchManager` | Watched Conversations… (review, rename, stop watching) |
 | *(unassigned)* | `view.filterWatched` | Show Watched Conversations Only |
+| *(unassigned)* | `view.filterFlagged` | Show Flagged Only — View → Filter → Flagged → All Flagged (#1010) |
+| *(unassigned)* | `view.filterFlag.{id}` | Show Flagged: [flag name] — one per flag, registered as the flags load and again when they change (#1010) |
 | *(unassigned)* | `view.filterAll` | Show All Messages |
 | *(unassigned)* | `view.filterUnread` | Show Unread Only |
 | *(unassigned)* | `view.filterRead` | Show Read Only |
@@ -122,7 +124,7 @@ A menu item or button names its command with `sc:CommandShortcut.Id` (`Helpers/C
 | *(unassigned)* | `tabs.moveRight` | Move Tab Right |
 | *(unassigned)* | `tabs.promote` | Move Tab to New Window |
 | *(unassigned)* | `mail.openInNewTab` | Open in New Tab |
-| *(unassigned)* | `mail.openInWindow` | Open in New Window |
+| Ctrl+Enter | `mail.openInWindow` | Open in New Window — in every Message Open Mode (#1010) |
 | *(unassigned)* | `mail.moveToFolder` | Move to Folder… — the selection, or a group header's messages |
 | *(unassigned)* | `mail.copyToFolder` | Copy to Folder… — as Move to Folder |
 | *(unassigned)* | `theme.manager.open` | Manage Themes |
@@ -229,7 +231,7 @@ register (`RegisterCommands`, `RegisterThemeCommands`, `RegisterOneViewCommand`,
 `MainViewModel.SettingsImport.cs`). `KeyboardShortcutsDocTests` fails when a registered id has no row
 of its own (the Command ID column), when a row names an id nothing registers, or when a row's key
 disagrees with the code's default key. Add the row in the same change as the registration. Ids built
-at run time (`theme.apply.{id}`, `view.saved.{id}`) are covered by one row per family.
+at run time (`theme.apply.{id}`, `view.saved.{id}`, `view.filterFlag.{id}`) are covered by one row per family.
 
 `MessageWindow` keeps its own registry, but takes the user's main-window key changes for its matching
 commands: `MessageWindow.MainCommandIds` maps each of them (`message.reply` to `mail.reply`,

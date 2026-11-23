@@ -558,6 +558,12 @@
                           Command="{Binding ForwardCommand}"
                           sc:CommandShortcut.Id="mail.forward"/>
                 <Separator/>
+                <!-- #1010: Ctrl+Enter had nowhere to be found but the palette. -->
+                <MenuItem sc:CommandShortcut.Id="mail.openInWindow" Header="Open _in New Window"
+                          Click="MenuOpenInWindow_Click"/>
+                <MenuItem sc:CommandShortcut.Id="mail.openInNewTab" Header="Open in New Ta_b"
+                          Click="MenuOpenInNewTab_Click"/>
+                <Separator/>
                 <MenuItem Header="_Delete"
                           Command="{Binding DeleteMessageCommand}"
                           sc:CommandShortcut.Id="mail.delete"/>
@@ -786,7 +792,7 @@
                     <MenuItem x:Name="FilterFlaggedItem"
                               Header="Fla_gged"
                               IsChecked="{Binding IsFilterFlagged, Mode=OneWay}">
-                        <MenuItem Header="All Fla_gged"
+                        <MenuItem sc:CommandShortcut.Id="view.filterFlagged" Header="All Fla_gged"
                                   IsCheckable="True"
                                   IsChecked="{Binding IsFilterAllFlagged, Mode=OneWay}"
                                   Command="{Binding SetFilterCommand}"
