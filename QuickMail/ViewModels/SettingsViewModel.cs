@@ -621,8 +621,12 @@ public partial class SettingsViewModel : ObservableObject
         foreach (var cmd in registry.GetAll())
         {
             var row = new HotkeyRowViewModel(cmd);
-            var customBinding = cfg.CustomHotkeys.FirstOrDefault(h => h.CommandId == cmd.Id);
-            if (customBinding != null &&
+            var customBinding = cfg.CustomHotkeys.FirstOrDefault(h => string.Equals(h.CommandId, cmd.Id, StringComparison.OrdinalIgnoreCase));
+            if (customBinding?.IsNoKey == true)
+            {
+                row.SetNoKey();
+            }
+            else if (customBinding != null &&
                 GestureHelper.TryParse(customBinding.Gesture, out var key, out var mods))
             {
                 row.SetCustomBinding(key, mods);
@@ -757,10 +761,54 @@ public partial class SettingsViewModel : ObservableObject
         row?.ClearCustomBinding();
     }
 
-    internal HotkeyRowViewModel? FindConflict(Key key, ModifierKeys modifiers)
+    /// <summary>
+    /// The commands that already answer to <paramref name="key"/>+<paramref name="modifiers"/>, by a key
+    /// the user chose or by their default (#1044), other than <paramref name="forRow"/> itself.
+    /// Commands that deliberately share a default key and are told apart by focus (Delete for
+    /// mail.delete and folder.delete, Alt+Up/Down for the unread jumps and the account moves) do not
+    /// conflict with each other: when the key is <paramref name="forRow"/>'s own default too, a command
+    /// whose default it also is stays out of the list.
+    /// </summary>
+    internal IReadOnlyList<HotkeyRowViewModel> FindConflicts(Key key, ModifierKeys modifiers, HotkeyRowViewModel? forRow = null)
     {
-        if (key == Key.None) return null;
-        return HotkeyRows.FirstOrDefault(r => r.HasCustomBinding && r.MatchesBinding(key, modifiers));
+        if (key == Key.None) return [];
+        var sharedDefault = forRow?.HasDefault(key, modifiers) == true;
+        return HotkeyRows
+            .Where(r => r != forRow
+                     && r.MatchesBinding(key, modifiers)
+                     && !(sharedDefault && r.HasDefault(key, modifiers)))
+            .ToList();
+    }
+
+    /// <summary>The first of <see cref="FindConflicts"/>, or null when the key is free.</summary>
+    internal HotkeyRowViewModel? FindConflict(Key key, ModifierKeys modifiers, HotkeyRowViewModel? forRow = null)
+    {
+        var conflicts = FindConflicts(key, modifiers, forRow);
+        return conflicts.Count > 0 ? conflicts[0] : null;
+    }
+
+    /// <summary>
+    /// Gives <paramref name="row"/> the key, taking it from every command it conflicts with. A command
+    /// that loses a key it was given goes back to its default when that is free; one that loses its
+    /// default, or whose default is in use, is left with no key, saved as an explicit "no key"
+    /// override (#1044). Clearing back to the default would hand it the very key it just lost.
+    /// </summary>
+    internal void AssignShortcut(HotkeyRowViewModel row, Key key, ModifierKeys modifiers)
+    {
+        foreach (var other in FindConflicts(key, modifiers, row))
+        {
+            LogService.Debug($"[Settings] Reassigning {GestureHelper.Format(key, modifiers)} from '{other.CommandId}'");
+            var defaultIsFree = other.HasAnyDefault
+                && !other.HasDefault(key, modifiers)
+                && !HotkeyRows.Any(r => r != other && r != row
+                                     && r.MatchesBinding(other.DefaultKey, other.DefaultModifiers)
+                                     && !r.HasDefault(other.DefaultKey, other.DefaultModifiers));   // a focus-shared partner is not a conflict
+            if (other.HasCustomBinding && !other.IsNoKey && defaultIsFree)
+                other.ClearCustomBinding();
+            else
+                other.SetNoKey();
+        }
+        row.SetCustomBinding(key, modifiers);
     }
 
     // ── HotkeyRowViewModel ─────────────────────────────────────────────────────────
@@ -782,8 +830,8 @@ public partial class SettingsViewModel : ObservableObject
         [NotifyPropertyChangedFor(nameof(AccessibleName))]
         private string _customGesture = string.Empty;
 
-        /// <summary>The binding currently in effect — custom if set, otherwise the default.</summary>
-        public string ActiveGesture => HasCustomBinding ? CustomGesture : DefaultGesture;
+        /// <summary>The binding currently in effect — custom if set, nothing if the key was taken away, otherwise the default.</summary>
+        public string ActiveGesture => IsNoKey ? string.Empty : HasCustomBinding ? CustomGesture : DefaultGesture;
 
         /// <summary>Screen-reader label: "Title, Category, shortcut" (or "no shortcut").</summary>
         public string AccessibleName
@@ -795,7 +843,19 @@ public partial class SettingsViewModel : ObservableObject
             }
         }
 
-        public bool HasCustomBinding => _customKey != Key.None;
+        /// <summary>
+        /// True when the user has overridden the default: with a key of their own, or by taking the
+        /// key away (<see cref="IsNoKey"/>). Either way it is saved, and Restore Default undoes it.
+        /// </summary>
+        public bool HasCustomBinding => _customKey != Key.None || _noKey;
+
+        /// <summary>True when the command has an explicit "no key" override: not even its default works (#1044).</summary>
+        public bool IsNoKey => _noKey;
+        private bool _noKey;
+
+        internal Key DefaultKey => _command.DefaultKey;
+        internal ModifierKeys DefaultModifiers => _command.DefaultModifiers;
+        internal bool HasAnyDefault => _command.DefaultKey != Key.None;
 
         public HotkeyRowViewModel(CommandDefinition command)
         {
@@ -806,24 +866,42 @@ public partial class SettingsViewModel : ObservableObject
         {
             _customKey      = key;
             _customModifiers = modifiers;
+            _noKey          = false;
             UpdateCustomGesture();
-            OnPropertyChanged(nameof(HasCustomBinding));
-            OnPropertyChanged(nameof(ActiveGesture));
+            RaiseBindingChanged();
+        }
+
+        /// <summary>Takes every key away from the command, its default included (#1044).</summary>
+        public void SetNoKey()
+        {
+            _customKey      = Key.None;
+            _customModifiers = ModifierKeys.None;
+            _noKey          = true;
+            CustomGesture   = string.Empty;
+            RaiseBindingChanged();
         }
 
         public void ClearCustomBinding()
         {
             _customKey      = Key.None;
             _customModifiers = ModifierKeys.None;
+            _noKey          = false;
             CustomGesture   = string.Empty;
+            RaiseBindingChanged();
+        }
+
+        private void RaiseBindingChanged()
+        {
             OnPropertyChanged(nameof(HasCustomBinding));
+            OnPropertyChanged(nameof(IsNoKey));
             OnPropertyChanged(nameof(ActiveGesture));
+            OnPropertyChanged(nameof(AccessibleName));
         }
 
         public HotkeyBinding ToBinding() => new()
         {
             CommandId = CommandId,
-            Gesture   = GestureHelper.Format(_customKey, _customModifiers),
+            Gesture   = _noKey ? HotkeyBinding.NoKeyGesture : GestureHelper.Format(_customKey, _customModifiers),
         };
 
         private void UpdateCustomGesture()
@@ -831,8 +909,18 @@ public partial class SettingsViewModel : ObservableObject
             CustomGesture = GestureHelper.Format(_customKey, _customModifiers);
         }
 
+        /// <summary>True when this key is what runs the command now: the user's key, or the default when there is no override.</summary>
         internal bool MatchesBinding(Key key, ModifierKeys modifiers)
-            => _customKey == key && _customModifiers == modifiers;
+        {
+            if (key == Key.None || _noKey) return false;
+            return _customKey != Key.None
+                ? _customKey == key && _customModifiers == modifiers
+                : HasDefault(key, modifiers);
+        }
+
+        /// <summary>True when this key is the command's default, whatever it is bound to now.</summary>
+        internal bool HasDefault(Key key, ModifierKeys modifiers)
+            => key != Key.None && _command.DefaultKey == key && _command.DefaultModifiers == modifiers;
     }
 
     // ── Start at Windows sign-in (#770) ────────────────────────────────────────

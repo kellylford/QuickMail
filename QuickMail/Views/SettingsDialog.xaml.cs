@@ -409,8 +409,8 @@ public partial class SettingsDialog : Window
             Owner = this,
             ConflictChecker = (key, modifiers) =>
             {
-                var conflict = _vm.FindConflict(key, modifiers);
-                return (conflict != null && conflict != row) ? conflict.Title : null;
+                var conflicts = _vm.FindConflicts(key, modifiers, row);
+                return conflicts.Count > 0 ? string.Join(" and ", conflicts.Select(c => c.Title)) : null;
             },
         };
 
@@ -425,18 +425,8 @@ public partial class SettingsDialog : Window
         var gesture   = GestureHelper.Format(key, modifiers);
         LogService.Debug($"[Settings] Captured: key={key} modifiers={modifiers} gesture='{gesture}'");
 
-        // If the user accepted despite a conflict, clear the conflicting binding first.
-        if (captureDialog.HasConflict)
-        {
-            var conflict = _vm.FindConflict(key, modifiers);
-            if (conflict != null && conflict != row)
-            {
-                LogService.Debug($"[Settings] Reassigning from '{conflict.CommandId}'");
-                conflict.ClearCustomBinding();
-            }
-        }
-
-        row.SetCustomBinding(key, modifiers);
+        // Accepting despite a conflict takes the key from the command that had it, default or not (#1044).
+        _vm.AssignShortcut(row, key, modifiers);
         UpdateActionButtons();
         LogService.Debug($"[Settings] Assigned '{gesture}' to '{row.Title}' — announcing");
         AnnounceAssignment(gesture, row.Title);
