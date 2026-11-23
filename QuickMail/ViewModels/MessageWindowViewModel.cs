@@ -33,6 +33,8 @@ public sealed partial class MessageWindowViewModel : ObservableObject
     public Action? ReplyAllAction    { get; set; }
     public Func<Task>? ForwardAction  { get; set; }
     public Action? DeleteAction      { get; set; }
+    /// <summary>Move to Archive (#1010): the main window's Ctrl+Shift+M, on this window's message.</summary>
+    public Action? ArchiveAction     { get; set; }
     public Action? MarkReadAction    { get; set; }
     public Action? GrabAddressesAction { get; set; }
 
@@ -112,6 +114,9 @@ public sealed partial class MessageWindowViewModel : ObservableObject
 
     [RelayCommand]
     private void DeleteMessage() => DeleteAction?.Invoke();
+
+    [RelayCommand]
+    private void ArchiveMessage() => ArchiveAction?.Invoke();
 
     [RelayCommand]
     private void MarkRead() => MarkReadAction?.Invoke();

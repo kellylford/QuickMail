@@ -306,12 +306,12 @@ public class SoundCatalogTests
         var service = new ConfigService(profile);
         var config = service.Load();
         config.ActiveSoundEvents()["NewMail"] = "none";
-        config.Windowing.ConfirmCloseTabWithUnsaved = !config.Windowing.ConfirmCloseTabWithUnsaved;
+        config.Windowing.MessageOpenMode = MessageOpenMode.Tab;
         config.ShowDeclinedEvents = true;
         service.Save(config);
 
         var reloaded = new ConfigService(profile).Load();
-        Assert.Equal(config.Windowing.ConfirmCloseTabWithUnsaved, reloaded.Windowing.ConfirmCloseTabWithUnsaved);
+        Assert.Equal(MessageOpenMode.Tab, reloaded.Windowing.MessageOpenMode);
         Assert.True(reloaded.ShowDeclinedEvents);
         Assert.Equal("none", reloaded.ActiveSoundEvents()["NewMail"]);
     }

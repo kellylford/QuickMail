@@ -1599,6 +1599,9 @@ public partial class MainWindow : Window
         _registry.Register(new CommandDefinition(
             id: "mail.openInWindow", category: "Mail", title: "Open in New Window",
             execute: () => { if (TargetMessage() is { } msg) OpenMessageInNewWindow(msg); },
+            // Ctrl+Enter, which Settings → Windowing has always promised opens a new window in any
+            // mode (#1010). The window's PreviewKeyDown dispatches it before the lists' own Enter.
+            defaultKey: Key.Return, defaultModifiers: ModifierKeys.Control,
             isAvailable: CanActOnSelectionOutsideCalendar));
 
         // Available on a selected group header too, not just a selected message: gating on
@@ -6901,6 +6904,19 @@ public partial class MainWindow : Window
             if (winVm.SelectedMessage != null)
                 _ = _vm.MarkMessagesReadAsync([winVm.SelectedMessage]);
         };
+        // Move to Archive (#1010): the window's own message, and the window closes as after Delete. When
+        // there is nothing to do (no Archive folder, or already in it) it says why, here, and stays open.
+        winVm.ArchiveAction = () =>
+        {
+            if (winVm.SelectedMessage is not { } toArchive) return;
+            if (_vm.ArchiveRefusalFor(toArchive) is { } why)
+            {
+                AccessibilityHelper.Announce(win, why, interrupt: true, category: AnnouncementCategory.Result);
+                return;
+            }
+            _ = _vm.ArchiveMessagesAsync([toArchive]);
+            win.Close();
+        };
         winVm.ComposeToAction = address => _vm.ComposeToAddress(address);
 
         // Rules from the message being read: its own message and account, not the main list's
@@ -9130,6 +9146,8 @@ public partial class MainWindow : Window
         {
             var flagId = flag.Id.ToString();
             var item = new MenuItem { Header = flag.Name, IsCheckable = true, Tag = flagId };
+            // The flag's own command (#1010), so a key the user gives it is shown and reported here.
+            CommandShortcut.SetId(item, MainViewModel.FlagFilterCommandPrefix + flagId);
             item.Click += (_, _) => _vm.SetFlagFilterCommand.Execute(flagId);
             FilterFlaggedItem.Items.Add(item);
         }

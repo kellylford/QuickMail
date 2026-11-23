@@ -65,6 +65,11 @@
                           Visibility="{Binding IsInMailbox, Converter={StaticResource BoolToVisibilityConverter}}"
                           Command="{Binding DeleteMessageCommand}"
                           sc:CommandShortcut.Id="message.delete"/>
+                <MenuItem Header="Move to Arc_hive"
+                          AutomationProperties.Name="Move to Archive"
+                          Visibility="{Binding IsInMailbox, Converter={StaticResource BoolToVisibilityConverter}}"
+                          Command="{Binding ArchiveMessageCommand}"
+                          sc:CommandShortcut.Id="message.archive"/>
                 <MenuItem Header="_Mark as Read"
                           AutomationProperties.Name="Mark as Read"
                           Visibility="{Binding IsInMailbox, Converter={StaticResource BoolToVisibilityConverter}}"

@@ -1117,7 +1117,7 @@ This is one of three ways to report a problem. See **[Reporting Issues](#reporti
 
 ### Opening a Message
 
-Press Enter on a message in the list to open it in the reading pane (or in a new tab or window, depending on the **Message Open Mode** setting in **Settings → Windowing**).
+Press Enter on a message in the list to open it in the reading pane (or in a new tab or window, depending on the **Message Open Mode** setting in **Settings → Windowing**). Press **Ctrl+Enter** to open it in a new window whatever that setting is. **Open in New Window** and **Open in New Tab** are also in the Command Palette.
 
 ### Reading Pane
 
@@ -1158,6 +1158,7 @@ When **Message Open Mode** is set to **Window**, messages open in a separate win
 | `Ctrl+Shift+R` | Reply All |
 | `Ctrl+Shift+F` | Forward |
 | `Delete` | Delete |
+| `Ctrl+Shift+M` | Move to Archive |
 | `Ctrl+Q` | Mark as Read |
 | `Ctrl+Shift+G` | Grab Addresses |
 | `Ctrl+Shift+W` | Watch or unwatch this message's conversation |
@@ -1166,7 +1167,7 @@ When **Message Open Mode** is set to **Window**, messages open in a separate win
 | `F12` | Save As |
 | `Ctrl+P` | Print |
 
-Deleting a message from its window closes the window and returns focus to the originating position in the message list.
+Deleting a message from its window, or moving it to the Archive folder, closes the window and returns focus to the originating position in the message list. If the account has no Archive folder, or the message is already in it, the window stays open and says so.
 
 A message window's status bar says where the message sits in its folder, for example "Message 3 of 47". **Alt+Left** and **Alt+Right** go to the previous and next message, and **F6** cycles the toolbar, the header fields, and the message. **Ctrl+W** or **Escape** closes the window, and focus goes back to that message in the list. **Navigate → Move to Main Window** (also a toolbar button and a palette command) moves the message into a tab in the main window and closes its own window.
 
@@ -1795,7 +1796,7 @@ In the Flag Manager, **Add Flag** creates one, **Rename** and the **Color** sect
 
 ### Filtering by Flag
 
-**View → Filter → Flagged** offers **All Flagged** and each of your named flags, so you can show just "Urgent". With a flag filter on, unflagging a message takes it out of the list right away. On a Microsoft 365 account the built-in flag is Outlook's "Flag for follow-up".
+**View → Filter → Flagged** offers **All Flagged** and each of your named flags, so you can show just "Urgent". They are in the Command Palette too, as **Show Flagged Only** and **Show Flagged: Urgent** and so on, and you can give any of them a key in **Settings → Keyboard Shortcuts**. With a flag filter on, unflagging a message takes it out of the list right away. On a Microsoft 365 account the built-in flag is Outlook's "Flag for follow-up".
 
 ### All Flagged Mail
 
@@ -2844,7 +2845,7 @@ Arrow to a command, press **Enter** (or **Set Shortcut…**) and press the keys 
 
 ### Windowing
 
-- **Message Open Mode** — **Reading pane** (the default), **Tab**, or **Window**: where a message opens when you press **Enter**.
+- **Message Open Mode** — **Reading pane** (the default), **Tab**, or **Window**: where a message opens when you press **Enter**. **Ctrl+Enter** always opens a new window.
 
 ### Appearance
 
@@ -3085,6 +3086,7 @@ Every announcement is optional and controlled by the settings above. No custom s
 | `Ctrl+Shift+P` | Command palette |
 | `Ctrl+/` | Advanced search |
 | `Ctrl+N` | New message |
+| `Ctrl+Enter` | Open the selected message in a new window |
 | `Ctrl+R` | Reply |
 | `Ctrl+Shift+R` | Reply All |
 | `Ctrl+Shift+F` | Forward |

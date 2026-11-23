@@ -784,7 +784,7 @@
                     <MenuItem x:Name="FilterFlaggedItem"
                               Header="Fla_gged"
                               IsChecked="{Binding IsFilterFlagged, Mode=OneWay}">
-                        <MenuItem Header="All Fla_gged"
+                        <MenuItem sc:CommandShortcut.Id="view.filterFlagged" Header="All Fla_gged"
                                   IsCheckable="True"
                                   IsChecked="{Binding IsFilterAllFlagged, Mode=OneWay}"
                                   Command="{Binding SetFilterCommand}"
