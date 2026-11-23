@@ -168,7 +168,7 @@ The same notes are on each version's own page on GitHub, alongside that version'
 
 Adding an account, changing one, testing it, and removing it all happen in **Manage Accounts**. Open it from **File → Manage Accounts…**, from the **Accounts** button on the toolbar, or from the Command Palette (**Ctrl+Shift+P**) by choosing **Manage Accounts**. It has no keyboard shortcut of its own to begin with; you can give it one under **File → Settings → Keyboard Shortcuts**.
 
-Manage Accounts opens with the first account in the **Accounts** list selected and focused — or, when you open it from an account's **Account Settings…**, that account — so **Delete** and **Set Default** act on the account you hear, and you can arrow through the others straight away. **New**, **Delete**, and **Set Default** sit below the list; the settings for whichever account is selected fill the rest of the window; **Save**, **Test Connection**, and **Close** are at the bottom, and Tab reaches them in that order, so **Close** is the last stop in the window. **Enter** in a text field saves, and **Escape** closes the window. Removing an account with **Delete** (**Alt+D**) always asks first, and afterwards the next account in the list is selected. If you delete your last account, there is nothing left to land on, so focus goes to **New** (**Alt+N**). While you have no accounts, the **Accounts** toolbar button, **File → Manage Accounts…** and the Command Palette open Add Account directly instead of this window; on a new install, that is also where **Import Settings…** (**Alt+I**) is, for bringing your settings from another computer (see *Moving Your Settings to Another Computer*).
+Manage Accounts opens with the first account in the **Accounts** list selected and focused — or, when you open it from an account's **Account Settings…**, that account — so **Delete** and **Set Default** act on the account you hear, and you can arrow through the others right away. **New**, **Delete**, and **Set Default** sit below the list; the settings for whichever account is selected fill the rest of the window; **Save**, **Test Connection**, and **Close** are at the bottom, and Tab reaches them in that order, so **Close** is the last stop in the window. **Enter** in a text field saves, and **Escape** closes the window. Removing an account with **Delete** (**Alt+D**) always asks first, and afterwards the next account in the list is selected. If you delete your last account, there is nothing left to land on, so focus goes to **New** (**Alt+N**). While you have no accounts, the **Accounts** toolbar button, **File → Manage Accounts…** and the Command Palette open Add Account directly instead of this window; on a new install, that is also where **Import Settings…** (**Alt+I**) is, for bringing your settings from another computer (see *Moving Your Settings to Another Computer*).
 
 For most accounts you need three things: your provider, your email address, and your password. QuickMail knows the server settings for the providers it lists, and looks them up for the ones it does not.
 
@@ -450,7 +450,7 @@ the Applications key), and choose **Reconnect**. You can also open the Command P
 
 The status bar says how it went: "Work reconnected.", or "Could not reconnect Work." followed by the
 reason, such as no saved password, no network connection, or a server that could not be reached. A
-reconnect you ask for tries once and reports straight away.
+reconnect you ask for tries once and reports right away.
 
 ### Changing the order of your accounts
 
@@ -641,7 +641,7 @@ Press `Ctrl+Shift+W` on any message in the conversation, or choose **Message →
 
 This is what makes watching different from flagging. A flag marks a message you already have, so you have to notice each new one first. A watch is a standing subscription to the conversation, so the ones you have not seen yet are already collected for you.
 
-To stop watching, press `Ctrl+Shift+W` again on any message in the conversation — the same key does both. If you are in the Watched Conversations folder at the time, that conversation's messages leave the list straight away and the selection moves to the next message. Watching changes nothing on the mail server and nothing in other mail programs; it is remembered on this computer only.
+To stop watching, press `Ctrl+Shift+W` again on any message in the conversation — the same key does both. If you are in the Watched Conversations folder at the time, that conversation's messages leave the list right away and the selection moves to the next message. Watching changes nothing on the mail server and nothing in other mail programs; it is remembered on this computer only.
 
 Everything else in the message list works here as usual: view modes, filters, sorting, and the message list fields. **Conversations** view mode is a natural fit — each watched conversation becomes a single group you can expand. You can also save Watched Conversations as one of your own views, the same way you would save any other folder.
 
@@ -789,7 +789,7 @@ Two things the picker leaves out on purpose:
 
 The picker opens on the folder you came from. Since the folder you are moving is not one of the destinations, it opens on the folder that one currently sits under, so you start where you were rather than at the top of the list. For a top-level folder it opens on the first folder instead, not on the account name.
 
-Because it opens there, pressing Enter straight away would put the folder back where it started. QuickMail says so rather than doing it — as it does for messages already in the folder you picked. Choosing the account name for a folder that is already at the top level is reported the same way.
+Because it opens there, pressing Enter right away would put the folder back where it started. QuickMail says so rather than doing it — as it does for messages already in the folder you picked. Choosing the account name for a folder that is already at the top level is reported the same way.
 
 If those two exclusions leave nowhere to go — an account whose only folder is the one you are moving — QuickMail says so instead of opening an empty picker. The same happens if you choose Move or Copy Folder on a view rather than a folder: All Inboxes, All Mail, and the per-account All Mail entries look like folders in the tree but are collections of messages from several folders, so there is nothing to move.
 
@@ -1045,7 +1045,7 @@ Press `Ctrl+Shift+Y` (or **View → Search Folders…**) for a list of every fol
 
 Press **F5** to refresh the folder you are in. With a saved view active, **F5** refreshes the view, so you stay in it.
 
-QuickMail also checks for new mail by itself. Most mail servers tell QuickMail the moment a message reaches your inbox, so it appears straight away. The **Check for new mail every** setting in **Settings → General** adds a regular check behind that (every 5 minutes unless you change it), which also catches changes made in other mail programs. **Off (server push only)** leaves it to the server.
+QuickMail also checks for new mail by itself. Most mail servers tell QuickMail the moment a message reaches your inbox, so it appears right away. The **Check for new mail every** setting in **Settings → General** adds a regular check behind that (every 5 minutes unless you change it), which also catches changes made in other mail programs. **Off (server push only)** leaves it to the server.
 
 ### Sync Range
 
@@ -1793,7 +1793,7 @@ In the Flag Manager, **Add Flag** creates one, **Rename** and the **Color** sect
 
 ### Filtering by Flag
 
-**View → Filter → Flagged** offers **All Flagged** and each of your named flags, so you can show just "Urgent". With a flag filter on, unflagging a message takes it out of the list straight away. On a Microsoft 365 account the built-in flag is Outlook's "Flag for follow-up".
+**View → Filter → Flagged** offers **All Flagged** and each of your named flags, so you can show just "Urgent". With a flag filter on, unflagging a message takes it out of the list right away. On a Microsoft 365 account the built-in flag is Outlook's "Flag for follow-up".
 
 ### All Flagged Mail
 
@@ -1879,7 +1879,7 @@ In the list, **Enter** edits the selected rule, **Space** turns it on or off, an
 
 ### Creating a Rule from a Message
 
-Select a message and choose **Create Rule from Message** (`Ctrl+Shift+T`) from the **Message** menu, the context menu or the command palette. In a message open in its own window it is on that window's **Message** menu, key and command palette, and uses the message the window is showing. QuickMail opens a new rule pre-filled from that message. The sender's email address goes in **From any of these addresses**, **checked**, so the rule matches everything from that address and doesn't also catch someone else using the same name. Their name goes in **Sender contains**, **unchecked**: check it too for a rule that needs both the address and the name, though the name a sender shows can change with the program they write from. If QuickMail doesn't have the sender's address yet, it fills in the name alone, in **Sender contains**, checked. The subject is filled in too, but its condition starts **unchecked** — a rule that has to match one sender *and* one exact subject line matches, in practice, only the conversation you made it from. If you did want the subject as well, check its box; the text is already there. This does not work on a message in a shared mailbox, whose rules are managed in Outlook; see [Shared mailboxes](#shared-mailboxes).
+Select a message and choose **Create Rule from Message** (`Ctrl+Shift+T`) from the **Message** menu, the context menu or the command palette. In a message open in its own window it is on that window's **Message** menu, key and command palette, and uses the message the window is showing. QuickMail opens a new rule pre-filled from that message. The sender's email address goes in **From any of these addresses**, **checked**, so the rule matches everything from that address and doesn't also catch someone else using the same name. Their name goes in **Sender contains**, **unchecked**: check it too for a rule that needs both the address and the name, though the name a sender shows can change with the program they write from. If QuickMail doesn't have the sender's address yet, it fills in the name alone, in **Sender contains**, checked. The subject is filled in too, but its condition starts **unchecked** — a rule that has to match one sender *and* one exact subject line matches, in practice, only the conversation you made it from. If you did want the subject as well, check its box; the text is already there. Everyone else the message was sent to, on its To and Cc lines, goes in **Sent to any of these addresses**, also **unchecked**. The address of the account the message is in is left out, since nearly all of that account's mail is sent to it. To make a rule for mail sent to one of those addresses, such as a mailing list or one of your aliases, delete the addresses you don't want, check the box, and uncheck **From any of these addresses** if the sender shouldn't matter. Any one address in the list is enough to match, so trim the list before you check it. This does not work on a message in a shared mailbox, whose rules are managed in Outlook; see [Shared mailboxes](#shared-mailboxes).
 
 ### Microsoft 365: server-side rules
 
@@ -1991,7 +1991,7 @@ Also under **File → Settings → Startup**, **Startup Sync** controls how much
 - **Every account's inbox** — checks each account's inbox, whichever folder you open in.
 - **Every folder** — checks everything before settling. This is how QuickMail behaved before this setting existed.
 
-New mail still arrives in your inboxes straight away whichever you choose, so notifications are unaffected. Other folders are caught up by the background check — the **Check for new mail every** setting on the **General** tab. If you have set that to **Off**, other folders are only checked when you open them.
+New mail still arrives in your inboxes right away whichever you choose, so notifications are unaffected. Other folders are caught up by the background check — the **Check for new mail every** setting on the **General** tab. If you have set that to **Off**, other folders are only checked when you open them.
 
 ### Start QuickMail when you sign in to Windows
 
@@ -2131,7 +2131,7 @@ Press **Enter** (or the **Save** button) to save, or **Escape** to cancel. If so
 
 ### Inviting people to an appointment
 
-To make an appointment a meeting, type the people's email addresses in the editor's **Invite** field (**Alt+I** moves there), separated by semicolons. You can write a name with an address, as in `Ann Lee <ann@example.com>`. As you type, matching people and groups are suggested, just as in a message's **To** field and following the same settings (see [Choosing what is suggested](#choosing-what-is-suggested)): press **Down** to move into the suggestions and **Enter** to choose one, or press **Enter** or **Tab** straight away to take the first when you are typing towards it, which is the one selected when the list appears; when nothing is selected, **Enter** and **Tab** keep what you typed. A group adds all its members. Save the appointment to an iCloud, Google or Microsoft calendar, and each person gets a meeting invitation in their email that they can accept or decline in their own mail program.
+To make an appointment a meeting, type the people's email addresses in the editor's **Invite** field (**Alt+I** moves there), separated by semicolons. You can write a name with an address, as in `Ann Lee <ann@example.com>`. As you type, matching people and groups are suggested, just as in a message's **To** field and following the same settings (see [Choosing what is suggested](#choosing-what-is-suggested)): press **Down** to move into the suggestions and **Enter** to choose one, or press **Enter** or **Tab** right away to take the first when you are typing towards it, which is the one selected when the list appears; when nothing is selected, **Enter** and **Tab** keep what you typed. A group adds all its members. Save the appointment to an iCloud, Google or Microsoft calendar, and each person gets a meeting invitation in their email that they can accept or decline in their own mail program.
 
 - **Who sends it.** Google and Microsoft send the invitations themselves. iCloud does too when its server offers to; if it does not, QuickMail emails them from your iCloud account. Either way, after you save QuickMail says how many people the invitation went to — or, if it could not be sent, why. The appointment is saved either way.
 - **Changing a meeting.** Edit it as you would any appointment. When you save, the people invited get an update. Anyone you add to **Invite** gets an invitation, and anyone you remove gets a cancellation.
@@ -2200,7 +2200,7 @@ If saving a change to an online account ever fails, QuickMail saves your appoint
 
 Some events on a connected calendar can't be changed from QuickMail, because your account or your provider does not allow it. There are two kinds.
 
-**Events on a calendar you can only read.** A calendar someone shared with you as read-only, or a calendar you subscribe to (such as a holidays calendar), is read-only for your account. Microsoft and Google tell QuickMail which of your calendars are read-only when they sync, so pressing **Delete** or **E** on an event from one tells you straight away — for example, "Your account can only read the Holidays calendar, so this event can't be deleted here." — and nothing is attempted. Change such an event wherever it comes from: the person who shared the calendar, or the subscription. Birthdays on a Microsoft account follow your contacts, so change or clear the birthday on the contact in your Microsoft account.
+**Events on a calendar you can only read.** A calendar someone shared with you as read-only, or a calendar you subscribe to (such as a holidays calendar), is read-only for your account. Microsoft and Google tell QuickMail which of your calendars are read-only when they sync, so pressing **Delete** or **E** on an event from one tells you right away — for example, "Your account can only read the Holidays calendar, so this event can't be deleted here." — and nothing is attempted. Change such an event wherever it comes from: the person who shared the calendar, or the subscription. Birthdays on a Microsoft account follow your contacts, so change or clear the birthday on the contact in your Microsoft account.
 
 **Events your provider manages itself.** Google keeps some events under its own control and restricts what any outside mail or calendar program may change on them:
 
@@ -2271,7 +2271,7 @@ When you create an appointment you can choose which of an account's calendars it
 
 **Turning it on for an account you already have:** open **Manage Accounts**, select the account, and check **Sync calendar from this account**. It applies immediately — a **Calendar → [account]** node appears in the folder tree and the events sync in the background. Unchecking it removes them.
 
-Connected calendars refresh automatically in the background (roughly every 15 minutes, and once shortly after startup), and again whenever you open the calendar, so an appointment you added somewhere else is there when you look. The list opens straight away from what QuickMail already has and folds in anything new when the account answers; opening the calendar again within half a minute reuses what it just fetched rather than asking again. Press **F5** to refresh on demand, or use **Sync Calendars Now** from the command palette. Syncing is a one-directional download plus, for Microsoft and Google, the single-event write-back described above; it never opens a sign-in prompt on its own — if an account needs you to sign in again for calendar access, QuickMail tells you.
+Connected calendars refresh automatically in the background (roughly every 15 minutes, and once shortly after startup), and again whenever you open the calendar, so an appointment you added somewhere else is there when you look. The list opens right away from what QuickMail already has and folds in anything new when the account answers; opening the calendar again within half a minute reuses what it just fetched rather than asking again. Press **F5** to refresh on demand, or use **Sync Calendars Now** from the command palette. Syncing is a one-directional download plus, for Microsoft and Google, the single-event write-back described above; it never opens a sign-in prompt on its own — if an account needs you to sign in again for calendar access, QuickMail tells you.
 
 ### What the calendar does and does not do
 
@@ -2381,7 +2381,7 @@ When you open a folder offline the status bar reads "Offline — showing 12 cach
 
 By default QuickMail keeps the full text of a message only once you have opened it, or when it fetched a few ahead of time. To have more ready before the connection drops, choose a window under **Settings → General → Sync → Download messages for offline reading**: **Off** (the default); the last **7**, **30** or **90** days; the last **6 months** or **year**; or **All mail**.
 
-With a window set, the sync at launch and each background check (**Check for new mail every**) finish by downloading the text of each Inbox message in that window that QuickMail does not have yet, newest first, a few hundred at a time; new mail arriving in the Inbox gets its text straight away. When a pass completes you hear "Downloaded 120 messages for offline reading." once. A few things to know:
+With a window set, the sync at launch and each background check (**Check for new mail every**) finish by downloading the text of each Inbox message in that window that QuickMail does not have yet, newest first, a few hundred at a time; new mail arriving in the Inbox gets its text right away. When a pass completes you hear "Downloaded 120 messages for offline reading." once. A few things to know:
 
 - Inbox only, unless you also check **Include other folders, not just the Inbox**. Then Sent, Archive and your other folders are downloaded too — everything except Trash, Junk and Drafts — Inbox first. Search finds words in the text of those messages only once they are downloaded, so this is what makes searching your sent and archived mail work without opening each message. It can download a great deal more, so it is off by default. Without it, other folders keep working the way they always have: a message is kept once you open it.
 - Never wider than the **Sync range** above it, since QuickMail cannot keep what it has not synced.
@@ -2403,7 +2403,7 @@ If you use QuickMail on more than one computer, or are setting up a new one, you
 
 ### Turning it on
 
-Exporting and importing settings are off until you turn them on, on each computer you use them on: open **Settings**, go to the **Advanced** tab, and check **Allow exporting and importing settings** (**Alt+X**). **Export Settings** and **Import Settings** then appear on the **File** menu and in the Command Palette straight away, and stay there until you turn the setting off. Importing settings never changes this setting, on either computer.
+Exporting and importing settings are off until you turn them on, on each computer you use them on: open **Settings**, go to the **Advanced** tab, and check **Allow exporting and importing settings** (**Alt+X**). **Export Settings** and **Import Settings** then appear on the **File** menu and in the Command Palette right away, and stay there until you turn the setting off. Importing settings never changes this setting, on either computer.
 
 ### Exporting your settings
 
@@ -2510,7 +2510,7 @@ Go to **Settings → Sounds** and check **Play sounds for mail events**. These e
 
 One more event, **Address suggestions appeared**, is set to **None** in the built-in schemes, because screen readers that support suggestion lists play their own sound when the list appears. To hear QuickMail's sound for it as well, or instead, choose it in **Settings → Sounds**; its sound is **Suggest**.
 
-If you delete or file a lot of mail in a row, you may prefer to set those three message sounds to **None**. Repeats of the same sound within a second are dropped, except the end-of-list and address suggestion sounds, which answer each key press. Each of those plays straight away or not at all: it never waits behind another sound, and a new one cuts off the one before.
+If you delete or file a lot of mail in a row, you may prefer to set those three message sounds to **None**. Repeats of the same sound within a second are dropped, except the end-of-list and address suggestion sounds, which answer each key press. Each of those plays right away or not at all: it never waits behind another sound, and a new one cuts off the one before.
 
 ### The Top and Bottom of the Message List
 

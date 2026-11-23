@@ -152,6 +152,112 @@ public class SentToRuleTests
         Assert.False(vm.IsAdvancedExpanded);
     }
 
+    // ── Create Rule from Message ────────────────────────────────────────────
+
+    private static MailMessageSummary FromMessage(string to, string cc) => new()
+    {
+        MessageId = "1",
+        AccountId = Guid.NewGuid(),
+        FolderName = "INBOX",
+        From = "Alice",
+        FromEmail = "alice@example.com",
+        To = to,
+        Cc = cc,
+        Subject = "Status",
+        Date = DateTimeOffset.Now,
+    };
+
+    [Fact]
+    public void CreateRuleFromMessage_FillsSentToWithTheRecipients_SwitchedOff()
+    {
+        // Kelly's report on build 2: the message's recipients were not offered at all. They are now, To then Cc,
+        // addresses only, each once; switched off, so the rule is still "mail from Alice" until turned on.
+        var template = MainViewModel.RuleTemplateFrom(FromMessage(
+            to: "Me <me@work.com>, \"Lists, Dev\" <dev@list.org>",
+            cc: "ME@work.com, Boss <boss@work.com>"));
+        var vm = ServerRuleEditorViewModel.ForNewFromTemplate(template);
+
+        Assert.Equal("me@work.com, dev@list.org, boss@work.com", vm.SentToAddresses);
+        Assert.False(vm.UseSentToAddresses);
+        Assert.True(vm.UseFromAddresses);
+        Assert.Empty(template.ToValues());   // switched off: the template's rule tests nothing on recipients
+        Assert.False(vm.IsAdvancedExpanded);
+    }
+
+    [Fact]
+    public void CreateRuleFromMessage_ASingleRecipient_AndTurningItOn_SavesASentToRule()
+    {
+        var vm = ServerRuleEditorViewModel.ForNewFromTemplate(
+            MainViewModel.RuleTemplateFrom(FromMessage(to: "me@work.com", cc: "")));
+        Assert.Equal("me@work.com", vm.SentToAddresses);
+
+        vm.UseFromAddresses = false;
+        vm.UseSentToAddresses = true;
+        Assert.True(Matches(vm.ToClientRule(Guid.NewGuid()),Msg(to: "x@y.com", cc: "me@work.com")));
+    }
+
+    [Fact]
+    public void CreateRuleFromMessage_PiecesOfAnUnquotedName_AreNotTakenForRecipients()
+    {
+        // A Graph row writes "Ford, Kelly <k@x>" without quotes; the "Ford" before the comma is not an address.
+        var template = MainViewModel.RuleTemplateFrom(FromMessage(to: "Ford, Kelly <kelly@work.com>", cc: ""));
+        Assert.Equal("kelly@work.com", ServerRuleEditorViewModel.ForNewFromTemplate(template).SentToAddresses);
+    }
+
+    [Fact]
+    public void CreateRuleFromMessage_LeavesOutTheMailboxsOwnAddress()
+    {
+        // Review of #1067: nearly every message in a mailbox is sent to its own address, so a list holding it,
+        // turned on untrimmed, would match almost everything. Another account's address stays.
+        var template = MainViewModel.RuleTemplateFrom(
+            FromMessage(to: "Me <ME@work.com>, dev@list.org", cc: "other-account@home.com"),
+            ["me@work.com"]);
+        Assert.Equal("dev@list.org, other-account@home.com", ServerRuleEditorViewModel.ForNewFromTemplate(template).SentToAddresses);
+
+        // Sent only to the mailbox itself: nothing to offer.
+        var onlyMe = MainViewModel.RuleTemplateFrom(FromMessage(to: "me@work.com", cc: ""), ["me@work.com"]);
+        Assert.Equal(string.Empty, ServerRuleEditorViewModel.ForNewFromTemplate(onlyMe).SentToAddresses);
+    }
+
+    [Theory]
+    // A MimeKit group: its members, not "Team: a@x".
+    [InlineData("Team: a@x.com, b@y.com;", "a@x.com, b@y.com")]
+    // A Graph name with an unclosed quote: MimeKit still recovers both real addresses, and none of the name's text.
+    [InlineData("Kelly \"KF Ford <k@x.com>, bob@y.com", "k@x.com, bob@y.com")]
+    // An unquoted Graph name holding a comma and an '@'.
+    [InlineData("Support, help@acme <x@y.com>", "x@y.com")]
+    public void CreateRuleFromMessage_OnlyRealAddresses_ReachTheBox(string to, string expected)
+        => Assert.Equal(expected,
+            ServerRuleEditorViewModel.ForNewFromTemplate(MainViewModel.RuleTemplateFrom(FromMessage(to: to, cc: ""))).SentToAddresses);
+
+    [Fact]
+    public void CreateRuleFromMessage_SavedAsItOpens_IgnoresThePrefilledRecipients()
+    {
+        // The default form: From on, Sent to filled in and off, a Move action. Saved either way, the recipients
+        // must not become a condition: mail from someone else to those addresses is not this rule's.
+        var vm = ServerRuleEditorViewModel.ForNewFromTemplate(
+            MainViewModel.RuleTemplateFrom(FromMessage(to: "dev@list.org", cc: "boss@work.com")));
+        vm.MoveToFolder = true;
+        vm.MoveToFolderId = "INBOX/Lists";
+
+        var client = vm.ToClientRule(Guid.NewGuid());
+        Assert.False(client.UseToCondition);
+        Assert.Empty(client.ToValues());
+        var other = Msg(to: "dev@list.org");
+        other.FromEmail = "someone@else.com";
+        Assert.False(Matches(client, other));
+
+        Assert.Empty(vm.ToModel().SentToAddresses);
+    }
+
+    [Fact]
+    public void CreateRuleFromMessage_NoRecipients_LeavesSentToEmpty()
+    {
+        var vm = ServerRuleEditorViewModel.ForNewFromTemplate(MainViewModel.RuleTemplateFrom(FromMessage(to: "", cc: "")));
+        Assert.Equal(string.Empty, vm.SentToAddresses);
+        Assert.False(vm.UseSentToAddresses);
+    }
+
     // ── Every backend brings the Cc line ────────────────────────────────────
 
     [Fact]

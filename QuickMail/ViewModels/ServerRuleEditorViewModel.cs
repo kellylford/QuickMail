@@ -78,6 +78,10 @@ public partial class ServerRuleEditorViewModel : ObservableObject
             UseFromAddresses = from.UseAddresses && !string.IsNullOrWhiteSpace(from.Addresses),
             SenderContains = from.Sender,
             UseSenderContains = from.UseSender && !string.IsNullOrWhiteSpace(from.Sender),
+            // Who the message went to (To and Cc), switched off like the subject (MainViewModel.RuleTemplateFrom).
+            SentToAddresses = AddressText(template.SentToAddresses, template.ToContains),
+            UseSentToAddresses = template.UseToCondition
+                && !string.IsNullOrWhiteSpace(AddressText(template.SentToAddresses, template.ToContains)),
             SubjectContains = template.SubjectContains ?? string.Empty,
             UseSubjectContains = template.UseSubjectCondition && !string.IsNullOrWhiteSpace(template.SubjectContains),
         };

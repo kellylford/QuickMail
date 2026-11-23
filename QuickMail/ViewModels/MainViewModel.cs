@@ -9078,7 +9078,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         var source = SelectedMessage;
         if (source == null) return;
 
-        CreateRuleFromMessageRequested?.Invoke(this, RuleTemplateFrom(source));
+        CreateRuleFromMessageRequested?.Invoke(this, RuleTemplateFor(source));
     }
 
     /// <summary>
@@ -9098,7 +9098,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             Announce(why, AnnouncementCategory.Result);
             return null;
         }
-        return RuleTemplateFrom(message);
+        return RuleTemplateFor(message);
     }
 
     /// <summary>The account the Rules Manager opens on from a message window: the message's own, unless shared.</summary>
@@ -9107,7 +9107,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
             ? message.AccountId
             : RulesAccountContext;
 
-    internal static MailRule RuleTemplateFrom(MailMessageSummary source)
+    /// <summary>The template for <paramref name="source"/>, leaving its own mailbox's addresses out of Sent to.</summary>
+    private MailRule RuleTemplateFor(MailMessageSummary source)
+        => RuleTemplateFrom(source,
+            ResolveAccountById(source.AccountId) is { } account ? ComposeViewModel.OwnAddresses([account]) : null);
+
+    internal static MailRule RuleTemplateFrom(MailMessageSummary source, IReadOnlyCollection<string>? ownAddresses = null)
     {
         // The subject comes across so it is there to switch on, but the condition starts OFF (#665):
         // "Rule for <sender>" that also has to match one exact subject line matches, in practice, the
@@ -9157,7 +9162,45 @@ public partial class MainViewModel : ObservableObject, IDisposable
             rule.UseFromCondition = sender is not null;
             rule.FromContains = sender;
         }
+
+        // Who the message was sent to, To and Cc, in Sent to — switched OFF, as the subject is: the rule is still
+        // "Rule for <sender>" until the user turns it on, and since any one of the addresses is enough, a list
+        // holding everyone the message went to is one to trim before it is turned on, not after (#1065 follow-up).
+        // The mailbox's own address is left out (review of #1067): nearly every message in it is sent there, so a
+        // list holding it, turned on untrimmed, would match almost all the mail. Another account's address stays,
+        // since mail forwarded from that account is a reason to want it. Addresses alone, as the editor saves them.
+        var exclude = new HashSet<string>(ownAddresses ?? [], StringComparer.OrdinalIgnoreCase);
+        var recipients = RecipientAddresses(source.To)
+            .Concat(RecipientAddresses(source.Cc))
+            .Where(a => !exclude.Contains(a))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        rule.UseToCondition = false;
+        rule.ToContains = recipients.FirstOrDefault();
+        rule.SentToAddresses = recipients.Count > 1 ? recipients : null;
         return rule;
+    }
+
+    /// <summary>
+    /// The real addresses on a To or Cc line. An IMAP or POP3 row's line is a header MimeKit wrote, so it parses
+    /// exactly, groups included. A Graph row's names are not quoted, so "Ford, Kelly &lt;k@x&gt;" does not parse as
+    /// one recipient; the editor's own splitter reads it instead. Either way only an entry that is a valid address on
+    /// its own is kept: the piece of a name before a comma, a group's label, or a run swallowed by an unclosed quote
+    /// is not a recipient and would only put text in the box that the user never typed.
+    /// </summary>
+    private static List<string> RecipientAddresses(string? line)
+    {
+        if (string.IsNullOrWhiteSpace(line)) return [];
+        var candidates = MimeKit.InternetAddressList.TryParse(line, out var list)
+            ? list.Mailboxes.Select(m => m.Address)
+            : RuleRecipient.ParseList(line).Select(r => r.Address);
+        return candidates
+            .Select(a => a?.Trim() ?? string.Empty)
+            // A bare address and nothing else: TryNormalize also accepts "Name <addr>" and hands back the address,
+            // which here would mean a swallowed run of text had been taken for one recipient.
+            .Where(a => EmailAddressValidator.TryNormalize(a, out var bare)
+                        && string.Equals(bare, a, StringComparison.OrdinalIgnoreCase))
+            .ToList();
     }
 
     /// <summary>True when the currently selected folder is a Drafts folder.</summary>

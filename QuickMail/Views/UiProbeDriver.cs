@@ -446,15 +446,17 @@ internal sealed class UiProbeDriver
 
     /// <summary>The rule the editor capture is prefilled from. Fixed text, so two runs are comparable.</summary>
     // Built by the command itself, so the capture shows what Create Rule from Message really fills in: the
-    // address in From any of these addresses (switched on), the name in Sender contains (switched off), and the
-    // subject (switched off), all in the main section. No account: the probe message has none, and a template
-    // naming an account the Rules Manager doesn't list is refused, so the editor opens on the window's own.
+    // address in From any of these addresses (switched on), the name in Sender contains (switched off), the
+    // recipients in Sent to (switched off), and the subject (switched off), all in the main section. No account:
+    // the probe message has none, and a template naming an account the Rules Manager doesn't list is refused, so
+    // the editor opens on the window's own.
     private static MailRule ProbeRuleTemplate()
     {
         var template = MainViewModel.RuleTemplateFrom(new MailMessageSummary
         {
             MessageId = "probe", FolderName = "INBOX",
             From = "Example Newsletter", FromEmail = "newsletter@example.com", Subject = "Weekly digest",
+            To = "Readers <readers@lists.example.com>", Cc = "Team <team@example.com>",
         });
         template.AccountId = null;
         return template;
