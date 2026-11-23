@@ -41,7 +41,8 @@ A menu item or button names its command with `sc:CommandShortcut.Id` (`Helpers/C
 | *(unassigned)* | `mail.copyAllAttachments` | Copy All Attachments — every attachment of the open message, to the clipboard as files (#929). Message window: `message.copyAllAttachments` |
 | Ctrl+Shift+T | `mail.createRuleFromMessage` | Create Rule from Message. Registered before `view.focusTabs`, and always available on a selection so the key stays here (#678). Message window: `message.createRule`, on the window's own message |
 | Ctrl+Shift+L | `mail.rules` | Manage Rules. Message window: `window.manageRules`; the Rules Manager opens on the message's account and returns focus to that window |
-| F5 | `mail.refresh` | Refresh |
+| F5 | `mail.refresh` | Refresh — reloads the folder or view you are in (the calendar, while it is open) |
+| F9 | `mail.sendReceive` | Send and Receive — sends anything waiting in the Outbox, then checks every connected account's Inbox and says how many new messages arrived (#874) |
 | Ctrl+Shift+E | `mail.emptyTrash` | Empty Trash |
 | *(unassigned)* | `mail.sendOutboxNow` | Send Outbox Now — tries every queued message and draft right away, including ones marked Failed (#637) |
 | Ctrl+Shift+W | `mail.toggleWatch` | Watch Conversation — watches the selected message's conversation, or unwatches it if already watched. On a Conversations group header it acts on that group; on a From/To group header it is unavailable (a sender group spans many conversations) |

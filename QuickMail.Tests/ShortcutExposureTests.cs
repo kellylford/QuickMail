@@ -163,6 +163,7 @@ public class ShortcutExposureTests
             ["Move to Arc_hive"] = "Ctrl+Shift+M",
             ["Open _in New Window"] = "Ctrl+Enter",   // #1010: new
             ["Empty _Trash"] = "Ctrl+Shift+E",
+            ["Se_nd and Receive"] = "F9",   // #874
             ["_Watch Conversation"] = "Ctrl+Shift+W",
             ["_Grab Addresses from Message"] = "Ctrl+Shift+G",
             ["_Refresh"] = "F5",

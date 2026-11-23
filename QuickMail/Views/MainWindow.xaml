@@ -573,6 +573,8 @@
                 <MenuItem Header="Empty _Trash"
                           Command="{Binding EmptyTrashCommand}"
                           sc:CommandShortcut.Id="mail.emptyTrash"/>
+                <MenuItem sc:CommandShortcut.Id="mail.sendReceive" Header="Se_nd and Receive"
+                          Command="{Binding SendAndReceiveCommand}"/>
                 <!-- No gesture: the Outbox drains on its own when the connection returns (#637). -->
                 <MenuItem sc:CommandShortcut.Id="mail.sendOutboxNow" Header="Send _Outbox Now"
                           Command="{Binding SendOutboxNowCommand}"/>

@@ -850,9 +850,24 @@ sealed class StubSyncService : ISyncService
     }
     public Task SyncAllAccountsAsync(IEnumerable<AccountModel> accounts, IReadOnlyDictionary<Guid, List<MailFolderModel>> cachedFolders, CancellationToken ct) => Task.CompletedTask;
     public Task<IReadOnlyList<MailMessageSummary>> SyncOneFolderAsync(AccountModel account, MailFolderModel folder, CancellationToken ct) => Task.FromResult<IReadOnlyList<MailMessageSummary>>(Array.Empty<MailMessageSummary>());
-    public Task<IReadOnlyList<MailMessageSummary>> SyncOneFolderOnlineAsync(AccountModel account, MailFolderModel folder, CancellationToken ct) => Task.FromResult<IReadOnlyList<MailMessageSummary>>(Array.Empty<MailMessageSummary>());
+    public Task<IReadOnlyList<MailMessageSummary>> SyncOneFolderOnlineAsync(AccountModel account, MailFolderModel folder, CancellationToken ct)
+    {
+        lock (FolderSyncs) FolderSyncs.Add(("online", account.Id, folder.FullName));
+        return Task.FromResult<IReadOnlyList<MailMessageSummary>>(Array.Empty<MailMessageSummary>());
+    }
     public Task<int> ReconcileFolderAsync(AccountModel account, MailFolderModel folder, CancellationToken ct) => Task.FromResult(0);
-    public Task<IReadOnlyList<MailMessageSummary>> SyncFolderFullAsync(AccountModel account, MailFolderModel folder, CancellationToken ct) => Task.FromResult<IReadOnlyList<MailMessageSummary>>(Array.Empty<MailMessageSummary>());
+
+    /// <summary>What a full folder sync returns as new arrivals; throw from it to fail that folder. Empty when unset.</summary>
+    public Func<AccountModel, MailFolderModel, IReadOnlyList<MailMessageSummary>>? FullSyncArrivals { get; set; }
+
+    /// <summary>Every full and online single-folder sync asked for, in the order asked (Send and Receive, #874).</summary>
+    public List<(string Kind, Guid AccountId, string Folder)> FolderSyncs { get; } = [];
+
+    public Task<IReadOnlyList<MailMessageSummary>> SyncFolderFullAsync(AccountModel account, MailFolderModel folder, CancellationToken ct)
+    {
+        lock (FolderSyncs) FolderSyncs.Add(("full", account.Id, folder.FullName));
+        return Task.FromResult(FullSyncArrivals?.Invoke(account, folder) ?? Array.Empty<MailMessageSummary>());
+    }
     public void SeedRebuildBaseline(IEnumerable<Guid> accountIds) { }
     public Task ApplyPendingRulesAsync(AccountModel account, MailFolderModel folder, CancellationToken ct) => Task.CompletedTask;
     public DateTimeOffset? LastSyncedUtc(Guid accountId) => null;
