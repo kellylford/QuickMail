@@ -222,8 +222,8 @@ public class SentToRuleTests
     [Theory]
     // A MimeKit group: its members, not "Team: a@x".
     [InlineData("Team: a@x.com, b@y.com;", "a@x.com, b@y.com")]
-    // A Graph name with an unclosed quote swallows the rest of the line; nothing is better than that text.
-    [InlineData("Kelly \"KF Ford <k@x.com>, bob@y.com", "")]
+    // A Graph name with an unclosed quote: MimeKit still recovers both real addresses, and none of the name's text.
+    [InlineData("Kelly \"KF Ford <k@x.com>, bob@y.com", "k@x.com, bob@y.com")]
     // An unquoted Graph name holding a comma and an '@'.
     [InlineData("Support, help@acme <x@y.com>", "x@y.com")]
     public void CreateRuleFromMessage_OnlyRealAddresses_ReachTheBox(string to, string expected)
