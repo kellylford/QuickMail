@@ -13,6 +13,7 @@
 - **Sent to matches whole addresses.** `bob@example.com` no longer matches `jimbob@example.com`, and an address that appears only in someone's display name doesn't count. `@example.com` still matches any address at that domain. (#1065)
 - **Create Rule from Message fills in Sent to.** The rule now starts with the message's To and Cc addresses in **Sent to any of these addresses**, except your own address in that account. The box starts unchecked, like the subject. To make a rule for mail sent to a mailing list or one of your aliases, delete the addresses you don't want and check the box. (#1065)
 - **Mail you already had.** New mail works with these changes as soon as you update. For mail QuickMail downloaded before this version, the Cc line is available right away in POP3 accounts and for messages you had opened. Other older mail gets it the next time you open its folder. Until then, **Run on Existing Mail** in the Rules window checks only the To line of that older mail. (#1065)
+- **The right message opens in its own window.** With messages set to open in a new window, replying to a message from its window could leave QuickMail stuck on it: pressing Enter on any other message in the list opened the one you had replied to, until you quit QuickMail. Forwarding or opening an attachment from the window could do the same. Each message now opens in its own window. (#1016)
 
 
 ## Reporting Issues

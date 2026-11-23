@@ -8971,6 +8971,25 @@ public partial class MainViewModel : ObservableObject, IDisposable
         MailMessageDetail detail, bool background, CancellationToken ct) =>
         DetailFromAddressRepair.RepairAsync(detail, _localStore, _imap, background, ct);
 
+    /// <summary>
+    /// <see cref="MessageDetail"/>, but only if it is <paramref name="summary"/>'s own detail.
+    /// <para>
+    /// <see cref="MessageDetail"/> is not always the selected message. In Window mode nothing loads it
+    /// on selection; a message window writes its own message into it before Reply, Reply All, Forward
+    /// and the attachment commands, and it then stays there while the user moves on in the list.
+    /// Checking <see cref="SelectedMessage"/> against the summary instead, as opening a message window
+    /// once did, therefore matched every message the user went on to open, and each one opened showing
+    /// the message they had replied to, until QuickMail was restarted (#1016).
+    /// </para>
+    /// </summary>
+    public MailMessageDetail? LoadedDetailFor(MailMessageSummary summary) =>
+        MessageDetail is { } detail
+        && detail.MessageId  == summary.MessageId
+        && detail.AccountId  == summary.AccountId
+        && detail.FolderName == summary.FolderName
+            ? detail
+            : null;
+
     // Returns MessageDetail if already loaded for the selected message,
     // otherwise fetches it (cache then IMAP) so compose can always proceed.
     // Deliberately bypasses SelectMessageCommand to avoid concurrent-execution
@@ -8986,11 +9005,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
 
         // Fast path: detail already loaded for this exact message.
-        if (MessageDetail != null &&
-            MessageDetail.MessageId   == summary.MessageId &&
-            MessageDetail.AccountId  == summary.AccountId &&
-            MessageDetail.FolderName == summary.FolderName)
-            return MessageDetail;
+        if (LoadedDetailFor(summary) is { } loaded)
+            return loaded;
 
         // Ensure the correct account is active (important in All-Mail view).
         if (SelectedAccount?.Id != summary.AccountId)

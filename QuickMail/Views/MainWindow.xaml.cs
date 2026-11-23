@@ -6781,9 +6781,10 @@ public partial class MainWindow : Window
             foreach (var msg in _vm.Messages)
                 winVm.MessageList.Add(msg);
 
-            // Pre-populate detail if already loaded in the reading pane (issue 48).
-            if (_vm.SelectedMessage?.MessageId == summary.MessageId && _vm.MessageDetail != null)
-                winVm.MessageDetail = _vm.MessageDetail;
+            // Pre-populate detail if already loaded in the reading pane (issue 48). Only this message's
+            // own detail: MessageDetail can be an earlier message window's, left by its Reply (#1016).
+            if (_vm.LoadedDetailFor(summary) is { } loaded)
+                winVm.MessageDetail = loaded;
 
             // The reading pane must not show while the message is in a separate window.
             _vm.IsMessageOpen = false;
