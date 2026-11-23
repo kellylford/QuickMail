@@ -6074,8 +6074,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
         IsMessageOpen       = false;
         // The calendar shows appointments, not mail. Let go of the message that was selected, so no
         // mail command (Delete above all, which shares its key with Delete Appointment) can act on an
-        // email the user can no longer see (#1014). Done here rather than left to the message list's
-        // two-way binding, which is a View detail and does nothing for a message that is not in the list.
+        // email the user can no longer see (#1014). Done here rather than left to whatever the message
+        // list's two-way SelectedItem binding does when the list empties, which is a View detail.
         SelectedMessage     = null;
         // The calendar replaces the message list, so there is no folder presentation to resolve —
         // reset to the plain default. Returning to a mail folder resolves normally.

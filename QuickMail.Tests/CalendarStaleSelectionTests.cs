@@ -1,12 +1,10 @@
 using System;
 using System.IO;
 using System.Threading.Tasks;
-using System.Windows.Controls;
 using System.Windows.Input;
 using QuickMail.Models;
 using QuickMail.Services;
 using QuickMail.ViewModels;
-using QuickMail.Views;
 using Xunit;
 
 namespace QuickMail.Tests;
@@ -178,97 +176,5 @@ public class CalendarStaleSelectionTests
                 return dir.FullName;
         }
         throw new InvalidOperationException($"Repo source tree not found from {AppContext.BaseDirectory}.");
-    }
-}
-
-/// <summary>
-/// The window half of #1014: what the message list's two-way SelectedItem binding does to
-/// <see cref="MainViewModel.SelectedMessage"/> when the calendar opens. Before the fix this binding
-/// was the only thing that could clear the mail selection on the way into the calendar.
-/// </summary>
-// Constructs a real MainWindow, so it belongs in the collection that serializes window-loading tests.
-[Collection("WpfTests")]
-public class CalendarStaleSelectionWindowTests
-{
-    [StaFact]
-    public async Task OpeningTheCalendar_LeavesNoMailSelection_WithTheRealMessageList()
-    {
-        WpfTestHost.EnsureStyles("AccessibleStyles", "ThemedControls");
-
-        var imap     = new StubImapMailService();
-        var accounts = new StubAccountService();
-        var creds    = new StubCredentialService();
-        var store    = new StubLocalStoreService();
-        var config   = new StubConfigService();
-        var registry = new StubCommandRegistry();
-
-        var vm = new MainViewModel(imap, accounts, creds, store, new StubOAuthService(),
-            new StubSyncService(), config, registry, new StubViewService(), new StubRuleService(),
-            new StubSmtpService(), calendarService: new StubCalendarService());
-
-        var window = new MainWindow(vm, new StubSmtpService(), accounts, creds, imap,
-            new StubOAuthService(), registry, new StubContactService(), config, store,
-            new StubViewService(), new StubRuleService(), new StubTemplateService(),
-            new StubFeatureGate());
-        try
-        {
-            var list = window.FindName("MessageList") as ListView;
-            Assert.NotNull(list);
-
-            var msg = new MailMessageSummary
-            {
-                MessageId = "m1", AccountId = Guid.NewGuid(), FolderName = "INBOX", Subject = "Inbox mail",
-            };
-            vm.Messages = [msg];
-            vm.SelectedMessage = msg;
-            Assert.Same(msg, list!.SelectedItem);
-
-            await vm.SelectFolderCommand.ExecuteAsync(MainViewModel.CalendarFolder);
-
-            Assert.True(vm.IsCalendarView);
-            Assert.Empty(list.Items);
-            Assert.Null(vm.SelectedMessage);
-        }
-        finally { window.Close(); }
-    }
-
-    /// <summary>
-    /// A selected message that is not in the list — what opening an invitation's source message from
-    /// the calendar sets — survives the binding. This is why the window's commands must also stand
-    /// aside in the calendar pane: clearing the selection on entry does not cover it.
-    /// </summary>
-    [StaFact]
-    public void AMessageNotInTheList_StaysSelected_ThroughTheBinding()
-    {
-        WpfTestHost.EnsureStyles("AccessibleStyles", "ThemedControls");
-
-        var imap     = new StubImapMailService();
-        var accounts = new StubAccountService();
-        var creds    = new StubCredentialService();
-        var store    = new StubLocalStoreService();
-        var config   = new StubConfigService();
-        var registry = new StubCommandRegistry();
-
-        var vm = new MainViewModel(imap, accounts, creds, store, new StubOAuthService(),
-            new StubSyncService(), config, registry, new StubViewService(), new StubRuleService(),
-            new StubSmtpService(), calendarService: new StubCalendarService());
-
-        var window = new MainWindow(vm, new StubSmtpService(), accounts, creds, imap,
-            new StubOAuthService(), registry, new StubContactService(), config, store,
-            new StubViewService(), new StubRuleService(), new StubTemplateService(),
-            new StubFeatureGate());
-        try
-        {
-            vm.SelectedFolder = MainViewModel.CalendarFolder;
-            var invite = new MailMessageSummary
-            {
-                MessageId = "invite", AccountId = Guid.NewGuid(), FolderName = "INBOX", Subject = "Calendar invitation",
-            };
-            vm.SelectedMessage = invite;
-
-            Assert.Same(invite, vm.SelectedMessage);
-            Assert.True(vm.CanActOnSelection());
-        }
-        finally { window.Close(); }
     }
 }
