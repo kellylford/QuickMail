@@ -1253,6 +1253,8 @@ Press `Ctrl+Q` to mark the selected message or messages as read. Messages are al
 
 Press **Delete**. Deleted messages go to Trash. Press `Ctrl+Shift+E` to empty the Trash for the selected account.
 
+Some mail servers give an account no Trash folder. When you delete in an account like that, QuickMail asks whether to delete the messages permanently, since there is nowhere to recover them from. Choose **Yes** to delete them for good, or **No** to keep them; they go back in the list where they were.
+
 Before emptying, QuickMail tells you how many messages will be permanently deleted and asks you to confirm, since this cannot be undone. To skip the question, clear **Confirm before emptying trash** under **Mail Actions** in **Settings → General**.
 
 ### Archiving Messages

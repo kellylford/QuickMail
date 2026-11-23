@@ -83,9 +83,13 @@ internal sealed class FolderedMailService : IMailService
     /// <summary>When set, putting messages in Trash fails, as a dropped connection to the source would.</summary>
     public bool FailTrash { get; set; }
 
+    /// <summary>Accounts with no Trash folder: putting their messages in Trash throws, as IMAP does (#999).</summary>
+    public HashSet<Guid> NoTrash { get; } = new();
+
     public Task MoveToTrashBatchAsync(Guid accountId, string folderName, IList<string> messageIds, CancellationToken ct = default)
     {
         if (FailTrash) return Task.FromException(new InvalidOperationException("connection lost"));
+        if (NoTrash.Contains(accountId)) return Task.FromException(new TrashFolderNotFoundException());
         foreach (var id in messageIds) Trashed.Add((accountId, folderName, id));
         return Task.CompletedTask;
     }

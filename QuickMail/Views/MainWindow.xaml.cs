@@ -383,6 +383,12 @@ public partial class MainWindow : Window
         vm.ConfirmationRequested = (message, title) =>
             MessageBox.Show(message, title, MessageBoxButton.YesNo, MessageBoxImage.Warning)
             == MessageBoxResult.Yes;
+        // No is the default here, and the box is owned so it cannot open behind another window: the
+        // question can come a server round trip after the key press (#999).
+        vm.DestructiveConfirmationRequested = (message, title) =>
+            MessageBox.Show(this, message, title, MessageBoxButton.YesNo, MessageBoxImage.Warning,
+                            MessageBoxResult.No)
+            == MessageBoxResult.Yes;
         // Win32 file dialogs are View-layer (CLAUDE.md MVVM rules); the VM requests a
         // path and the View owns the dialog.
         vm.SaveFilePathRequested = suggestedName =>
