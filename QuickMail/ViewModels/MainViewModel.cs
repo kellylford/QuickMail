@@ -9157,6 +9157,21 @@ public partial class MainViewModel : ObservableObject, IDisposable
             rule.UseFromCondition = sender is not null;
             rule.FromContains = sender;
         }
+
+        // Who the message was sent to, To and Cc, in Sent to — switched OFF, as the subject is: the rule is still
+        // "Rule for <sender>" until the user turns it on, and since any one of the addresses is enough, a list
+        // holding everyone the message went to is one to trim before it is turned on, not after (#1065 follow-up).
+        // Addresses alone, as the editor saves them; an entry with no '@' is a piece of an unquoted name that held
+        // a comma ("Ford, Kelly <k@x>" from a Graph row), not a recipient.
+        var recipients = RuleRecipient.ParseList(string.Join(", ", new[] { source.To, source.Cc }
+                .Where(s => !string.IsNullOrWhiteSpace(s))))
+            .Select(r => r.Address.Trim())
+            .Where(a => a.Contains('@', StringComparison.Ordinal))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        rule.UseToCondition = false;
+        rule.ToContains = recipients.FirstOrDefault();
+        rule.SentToAddresses = recipients.Count > 1 ? recipients : null;
         return rule;
     }
 

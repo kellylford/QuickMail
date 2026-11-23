@@ -152,6 +152,66 @@ public class SentToRuleTests
         Assert.False(vm.IsAdvancedExpanded);
     }
 
+    // ── Create Rule from Message ────────────────────────────────────────────
+
+    private static MailMessageSummary FromMessage(string to, string cc) => new()
+    {
+        MessageId = "1",
+        AccountId = Guid.NewGuid(),
+        FolderName = "INBOX",
+        From = "Alice",
+        FromEmail = "alice@example.com",
+        To = to,
+        Cc = cc,
+        Subject = "Status",
+        Date = DateTimeOffset.Now,
+    };
+
+    [Fact]
+    public void CreateRuleFromMessage_FillsSentToWithTheRecipients_SwitchedOff()
+    {
+        // Kelly's report on build 2: the message's recipients were not offered at all. They are now, To then Cc,
+        // addresses only, each once; switched off, so the rule is still "mail from Alice" until turned on.
+        var template = MainViewModel.RuleTemplateFrom(FromMessage(
+            to: "Me <me@work.com>, \"Lists, Dev\" <dev@list.org>",
+            cc: "ME@work.com, Boss <boss@work.com>"));
+        var vm = ServerRuleEditorViewModel.ForNewFromTemplate(template);
+
+        Assert.Equal("me@work.com, dev@list.org, boss@work.com", vm.SentToAddresses);
+        Assert.False(vm.UseSentToAddresses);
+        Assert.True(vm.UseFromAddresses);
+        Assert.Empty(template.ToValues());   // switched off: the template's rule tests nothing on recipients
+        Assert.False(vm.IsAdvancedExpanded);
+    }
+
+    [Fact]
+    public void CreateRuleFromMessage_ASingleRecipient_AndTurningItOn_SavesASentToRule()
+    {
+        var vm = ServerRuleEditorViewModel.ForNewFromTemplate(
+            MainViewModel.RuleTemplateFrom(FromMessage(to: "me@work.com", cc: "")));
+        Assert.Equal("me@work.com", vm.SentToAddresses);
+
+        vm.UseFromAddresses = false;
+        vm.UseSentToAddresses = true;
+        Assert.True(Matches(vm.ToClientRule(Guid.NewGuid()),Msg(to: "x@y.com", cc: "me@work.com")));
+    }
+
+    [Fact]
+    public void CreateRuleFromMessage_PiecesOfAnUnquotedName_AreNotTakenForRecipients()
+    {
+        // A Graph row writes "Ford, Kelly <k@x>" without quotes; the "Ford" before the comma is not an address.
+        var template = MainViewModel.RuleTemplateFrom(FromMessage(to: "Ford, Kelly <kelly@work.com>", cc: ""));
+        Assert.Equal("kelly@work.com", ServerRuleEditorViewModel.ForNewFromTemplate(template).SentToAddresses);
+    }
+
+    [Fact]
+    public void CreateRuleFromMessage_NoRecipients_LeavesSentToEmpty()
+    {
+        var vm = ServerRuleEditorViewModel.ForNewFromTemplate(MainViewModel.RuleTemplateFrom(FromMessage(to: "", cc: "")));
+        Assert.Equal(string.Empty, vm.SentToAddresses);
+        Assert.False(vm.UseSentToAddresses);
+    }
+
     // ── Every backend brings the Cc line ────────────────────────────────────
 
     [Fact]
