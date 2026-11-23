@@ -623,18 +623,30 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
         finally { await folder.CloseAsync(false, ct); }
     }
 
+    /// <summary>
+    /// Moves the messages to the account's Trash. Throws <see cref="TrashFolderNotFoundException"/>,
+    /// having changed nothing, when the account has no Trash folder (#999). It used to set \Deleted
+    /// instead and close the folder without expunging, so the messages stayed on the server while
+    /// the caller, told it had worked, removed them from the list and the cache. Whether to delete
+    /// them for good instead is the user's decision, so it is left to the caller to ask.
+    /// </summary>
     public Task MoveToTrashBatchAsync(Guid accountId, string folderName, IList<string> messageIds, CancellationToken ct = default) =>
         // Retry once on a fresh connection if the pooled one was silently dropped (issue #311).
         ExecuteWithReconnectAsync(accountId, ImapLeasePriority.Foreground, async (client, token) =>
         {
+            // Looked up before the source folder is opened, so a missing Trash leaves nothing open.
+            var trash = await FindSpecialFolderAsync(client, token, SpecialFolder.Trash);
+            if (trash == null)
+            {
+                LogService.Log($"MoveToTrash: no Trash folder found for account {accountId}; nothing moved");
+                throw new TrashFolderNotFoundException();
+            }
+
             var folder = await client.GetFolderAsync(folderName, token);
             await folder.OpenAsync(FolderAccess.ReadWrite, token);
             try
             {
-                var uidList = messageIds.Select(ToUid).ToList();
-                var trash   = await FindSpecialFolderAsync(client, token, SpecialFolder.Trash);
-                if (trash != null) await folder.MoveToAsync(uidList, trash, token);
-                else               await folder.AddFlagsAsync(uidList, MessageFlags.Deleted, true, token);
+                await folder.MoveToAsync(messageIds.Select(ToUid).ToList(), trash, token);
             }
             finally { await folder.CloseAsync(false, token); }
         }, ct);
@@ -2233,7 +2245,7 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
         var names = candidates
             .SelectMany<SpecialFolder, string>(sf => sf switch
             {
-                SpecialFolder.Trash  => ["Trash", "Deleted Messages"],
+                SpecialFolder.Trash  => ["Trash", "Deleted Messages", "Deleted Items"],
                 SpecialFolder.Junk   => ["Junk", "Spam"],
                 SpecialFolder.Sent   => ["Sent", "Sent Messages"],
                 SpecialFolder.Drafts => ["Drafts"],
@@ -2443,7 +2455,9 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
         if ((attrs & FolderAttributes.Flagged)   != 0) return SpecialFolderKind.Starred;
         // Name-based fallback for servers that don't advertise special-use attributes (e.g. Courier IMAP)
         var leaf = fullName.Split('/', '.').LastOrDefault() ?? fullName;
-        if (leaf.Equals("Trash",  StringComparison.OrdinalIgnoreCase)) return SpecialFolderKind.Trash;
+        if (leaf.Equals("Trash",  StringComparison.OrdinalIgnoreCase) ||
+            leaf.Equals("Deleted Messages", StringComparison.OrdinalIgnoreCase) ||
+            leaf.Equals("Deleted Items",    StringComparison.OrdinalIgnoreCase)) return SpecialFolderKind.Trash;
         if (leaf.Equals("Junk",   StringComparison.OrdinalIgnoreCase) ||
             leaf.Equals("Spam",   StringComparison.OrdinalIgnoreCase)) return SpecialFolderKind.Junk;
         if (leaf.Equals("Sent",   StringComparison.OrdinalIgnoreCase)) return SpecialFolderKind.Sent;
@@ -2487,7 +2501,13 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
             {
                 var uidList = messageIds.Select(ToUid).ToList();
                 await folder.AddFlagsAsync(uidList, MessageFlags.Deleted, true, token);
-                await folder.ExpungeAsync(token);
+                // Only these messages where the server allows it (UID EXPUNGE). A plain EXPUNGE also
+                // removes anything another client marked \Deleted, which mattered little in Trash and
+                // matters in an Inbox, where this now runs for accounts with no Trash (#999).
+                if (client.Capabilities.Contains(ImapCapability.UidPlus))
+                    await folder.ExpungeAsync(uidList, token);
+                else
+                    await folder.ExpungeAsync(token);
             }
             finally { await folder.CloseAsync(false, token); }
         }, ct);

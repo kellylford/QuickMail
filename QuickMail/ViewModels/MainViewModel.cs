@@ -6072,6 +6072,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
         SelectedFolder      = folder ?? CalendarFolder;
         MessageDetail       = null;
         IsMessageOpen       = false;
+        // The calendar shows appointments, not mail. Let go of the message that was selected, so no
+        // mail command (Delete above all, which shares its key with Delete Appointment) can act on an
+        // email the user can no longer see (#1014). Done here rather than left to whatever the message
+        // list's two-way SelectedItem binding does when the list empties, which is a View detail.
+        SelectedMessage     = null;
         // The calendar replaces the message list, so there is no folder presentation to resolve —
         // reset to the plain default. Returning to a mail folder resolves normally.
         ApplyListState(ListState.Default);
@@ -8124,9 +8129,27 @@ public partial class MainViewModel : ObservableObject, IDisposable
         return MessageListFocusNowRequested?.Invoke() == true ? landing : null;
     }
 
+    /// <summary>
+    /// True, after clearing it, when the mail selection is one the user cannot see because the
+    /// calendar is the view and no message is open (#1014). Delete and Archive are reachable from the
+    /// Message menu, the toolbar and the Command Palette, none of which consult the window's focus
+    /// gate, and the selection can come back while the calendar shows: returning to the list tab from
+    /// a message tab, or opening an invitation's source message and closing it. A message window
+    /// deletes through <see cref="DeleteMessagesAsync"/> directly and is not affected.
+    /// </summary>
+    private bool MailSelectionHiddenByCalendar()
+    {
+        if (!IsCalendarView || IsMessageOpen || (SelectedMessage == null && SelectedGroupMessages() == null))
+            return false;
+        SelectedMessage = null;
+        SetStatus("No message is selected.", AnnouncementCategory.Result);
+        return true;
+    }
+
     [RelayCommand]
     private async Task DeleteMessageAsync()
     {
+        if (MailSelectionHiddenByCalendar()) return;
         // A selected group header deletes the whole group, as the group trees' own Delete key and
         // the group context menus already do (issue #566).
         if (SelectedGroupMessages() is { } group) { await DeleteMessagesAsync(group); return; }
@@ -8212,6 +8235,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
         // ── Step 2: IMAP delete + local store cleanup ────────────────────────────
         var affectedFolders = new List<(Guid AccountId, MailFolderModel Folder)>();
+        // Messages left alone because their account has no Trash and the user chose not to delete
+        // them permanently (#999). They are still on the server and in the cache, so they go back.
+        var kept = new List<MailMessageSummary>();
+        var permanentAnswers = new Dictionary<Guid, bool>();   // one question per account per delete
+        var shownWhenDeleted = _messagesShownFor;
+        var keptRestored = false;
         try
         {
             // Own token per delete — a second Delete keystroke no longer cancels this one's in-flight
@@ -8241,8 +8270,31 @@ public partial class MainViewModel : ObservableObject, IDisposable
                     await _imap.PermanentlyDeleteBatchAsync(
                         group.Key.AccountId, group.Key.FolderName, uids, ct);
                 else
-                    await _imap.MoveToTrashBatchAsync(
-                        group.Key.AccountId, group.Key.FolderName, uids, ct);
+                {
+                    try
+                    {
+                        await _imap.MoveToTrashBatchAsync(
+                            group.Key.AccountId, group.Key.FolderName, uids, ct);
+                    }
+                    catch (TrashFolderNotFoundException)
+                    {
+                        // Nothing has been done to them on the server. Deleting them anyway cannot be
+                        // undone, so it is the user's call (#999).
+                        if (!permanentAnswers.TryGetValue(group.Key.AccountId, out var permanently))
+                        {
+                            permanently = ConfirmPermanentDeleteWithoutTrash(
+                                group.Key.AccountId, toDelete.Count(m => m.AccountId == group.Key.AccountId));
+                            permanentAnswers[group.Key.AccountId] = permanently;
+                        }
+                        if (!permanently)
+                        {
+                            kept.AddRange(group);
+                            continue;
+                        }
+                        await _imap.PermanentlyDeleteBatchAsync(
+                            group.Key.AccountId, group.Key.FolderName, uids, ct);
+                    }
+                }
 
                 if (!OnlineMode)
                     await _localStore.DeleteSummariesAsync(group.Key.AccountId, group.Key.FolderName, uids);
@@ -8252,9 +8304,18 @@ public partial class MainViewModel : ObservableObject, IDisposable
             // unread message actually left a folder (deleting a read message changes no count).
             // Scheduled here, not before the await, so the debounced STATUS sweep can't read a
             // pre-delete count and clobber the optimistic decrement (#227 follow-up).
-            if (toDelete.Any(m => !m.IsRead))
-                foreach (var acctId in toDelete.Select(m => m.AccountId).Distinct())
+            var gone = kept.Count == 0 ? toDelete : toDelete.Except(kept).ToList();
+            if (gone.Any(m => !m.IsRead))
+                foreach (var acctId in gone.Select(m => m.AccountId).Distinct())
                     ScheduleFolderCountRefresh(acctId);
+
+            if (kept.Count > 0)
+            {
+                RestoreKeptRows(kept, shownWhenDeleted);
+                keptRestored = true;
+                ReportKeptForNoTrash(kept, gone.Count);
+                return;
+            }
 
             _sounds?.Play(SoundEvent.MessageDeleted);
             var count = toDelete.Count;
@@ -8309,8 +8370,85 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
         finally
         {
+            // A later group failing must not take the kept rows with it: they are still on the server.
+            if (kept.Count > 0 && !keptRestored) RestoreKeptRows(kept, shownWhenDeleted);
             IsBusy = false;
         }
+    }
+
+    /// <summary>
+    /// Asks whether to delete messages permanently because their account has no Trash folder (#999).
+    /// With nobody to ask (no View wired, as in tests) the answer is no: deleting for good is never
+    /// the default.
+    /// </summary>
+    private bool ConfirmPermanentDeleteWithoutTrash(Guid accountId, int count)
+    {
+        var what = count == 1 ? "this message" : $"these {count} messages";
+        var prompt = $"{NoTrashAccountName(accountId)} has no Trash folder, so deleted messages cannot be recovered."
+                   + $"\n\nDelete {what} permanently?";
+        return DestructiveConfirmationRequested?.Invoke(prompt, "Delete Permanently") == true;
+    }
+
+    /// <summary>
+    /// Set by the View to ask a Yes/No question whose Yes cannot be undone, with No as the default
+    /// button: the question can arrive a server round trip after the key press, while the user is
+    /// already reading the next message, and a reflexive Enter must not destroy mail (#999).
+    /// Parameters: message, title. Returns true when the user chooses Yes.
+    /// </summary>
+    public Func<string, string, bool>? DestructiveConfirmationRequested { get; set; }
+
+    private string NoTrashAccountName(Guid accountId) =>
+        Accounts.FirstOrDefault(a => a.Id == accountId)?.AccountLabel is { Length: > 0 } label
+            ? label
+            : "This account";
+
+    /// <summary>
+    /// Puts back rows Delete took out of the list before the server said there was no Trash and the
+    /// user chose to keep them (#999). They never left the server or the cache, so only the list and
+    /// the unread counts need undoing. If the user has gone to another folder meanwhile, the list is
+    /// that folder's now; the rows are left for the cache to show when they come back.
+    /// </summary>
+    private void RestoreKeptRows(List<MailMessageSummary> kept, (Guid AccountId, string FullName)? shownWhenDeleted)
+    {
+        UpdateAccountCountsAfterInsert(kept);
+        // The same folder by name, not by object: a folder-list refresh replaces the models.
+        if (shownWhenDeleted == null || _messagesShownFor != shownWhenDeleted) return;
+
+        static (string, Guid, string) Key(MailMessageSummary m) => (m.MessageId, m.AccountId, m.FolderName);
+        var present = new HashSet<(string, Guid, string)>(_rawMessages.Select(Key));
+        _rawMessages.AddRange(kept.Where(m => present.Add(Key(m))));
+        // Not ApplyFiltersAndSearch: its "N messages" status would be spoken over the outcome.
+        Messages = new BatchObservableCollection<MailMessageSummary>(ComputeVisibleMessages());
+
+        // Back on the first of them, where the user was when they pressed Delete. By key: if the user
+        // went away and came back meanwhile, the list holds fresh objects for the same messages.
+        var firstKey = Key(kept[0]);
+        if (ViewMode == ViewMode.Messages && Messages.FirstOrDefault(m => Key(m) == firstKey) is { } first)
+        {
+            SelectedMessage = first;
+            MessageListFocusRequested?.Invoke();
+        }
+    }
+
+    /// <summary>
+    /// The outcome when some or all of a delete was declined for want of a Trash folder (#999). All of
+    /// it declined is the status bar only: the user has just answered No, and the rows are back in
+    /// front of them. A partial delete is said, since what went and what stayed cannot be seen.
+    /// </summary>
+    private void ReportKeptForNoTrash(List<MailMessageSummary> kept, int deleted)
+    {
+        if (deleted == 0)
+        {
+            SetStatusSilently(kept.Count == 1 ? "The message was not deleted." : "The messages were not deleted.");
+            return;
+        }
+
+        _sounds?.Play(SoundEvent.MessageDeleted);
+        var names = kept.Select(m => m.AccountId).Distinct().Select(NoTrashAccountName).ToList();
+        var accounts = names.Count == 1 ? $"{names[0]} has" : $"{string.Join(", ", names)} have";
+        var keptText = kept.Count == 1 ? "1 message was not deleted" : $"{kept.Count} messages were not deleted";
+        SetStatus($"{deleted} {(deleted == 1 ? "message" : "messages")} deleted. {keptText}, because {accounts} no Trash folder.",
+            AnnouncementCategory.Result);
     }
 
     // ── Archive (issue #318) ──────────────────────────────────────────────────────
@@ -8318,6 +8456,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private async Task ArchiveMessageAsync()
     {
+        if (MailSelectionHiddenByCalendar()) return;
         if (SelectedGroupMessages() is { } group) { await ArchiveMessagesAsync(group); return; }
         if (SelectedMessage == null) return;
         if (IsOutboxRow(SelectedMessage)) { SetStatus(OutboxRowHint, AnnouncementCategory.Result); return; }

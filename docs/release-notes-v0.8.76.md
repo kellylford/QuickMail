@@ -8,6 +8,7 @@
 
 ## Fixed
 
+- **Deleting in an account with no Trash folder.** Delete used to take the messages out of the list without saying anything, and the server kept them all. QuickMail now asks whether to delete them permanently. If you choose **No**, they stay in the list. (#999)
 - **The Sent to condition is easier to find.** In the rule editor, **Sent to any of these addresses** used to be in the **Advanced conditions & actions** section, which starts collapsed, below the actions. It is now in the main conditions, right after **From any of these addresses**. (#1065)
 - **Sent to now checks Cc as well as To.** Rules that QuickMail runs itself checked only the To line, so a rule never matched mail that only copied you. That covers every IMAP and POP3 rule, and Microsoft 365 rules that use **Mark as read** or **Play a sound**. These rules now check both To and Cc, the same as Outlook's "Sent to" condition, for every kind of account. (#1065)
 - **Sent to matches whole addresses.** `bob@example.com` no longer matches `jimbob@example.com`, and an address that appears only in someone's display name doesn't count. `@example.com` still matches any address at that domain. (#1065)
@@ -15,6 +16,7 @@
 - **Mail you already had.** New mail works with these changes as soon as you update. For mail QuickMail downloaded before this version, the Cc line is available right away in POP3 accounts and for messages you had opened. Other older mail gets it the next time you open its folder. Until then, **Run on Existing Mail** in the Rules window checks only the To line of that older mail. (#1065)
 - **Opening a message could show one you had replied to.** With messages set to open in a new window, replying to a message from its window could leave QuickMail stuck on it: every message you opened afterwards, with Enter, the mouse or **Open in New Window**, showed the one you had replied to, until you quit QuickMail. Forwarding, or opening or saving an attachment from that window, could do the same. Opening a message now always shows that message. (#1016)
 - **Reply from a message window goes to that window's message.** After you moved to another message in the window with **Next** or **Previous**, Reply, Reply All and Forward could go to a different message: the newest message of the conversation selected in the message list. (#1016)
+- **Delete in the calendar deletes the appointment.** If an email was still selected from before you opened the calendar, pressing **Delete** on an appointment could move that email to Trash instead. In the calendar, **Delete**, **Ctrl+Q**, **Ctrl+Shift+M**, **Ctrl+P** and the other keys that act on the selected email now do nothing to an email; to act on an email you opened from an appointment, move to the message first. **Delete** and **Move to Archive** on the **Message** menu and the toolbar no longer act on an email you can't see while the calendar is showing. (#1014)
 
 
 ## Reporting Issues
