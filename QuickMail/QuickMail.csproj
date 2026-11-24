@@ -125,7 +125,7 @@
     <!-- Windows toast (app) notifications for unpackaged Win32 apps: ToastNotificationManagerCompat
          auto-registers the AppUserModelID + COM activator, no MSIX manifest required. -->
     <PackageReference Include="Microsoft.Toolkit.Uwp.Notifications" Version="7.1.3" />
-    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4314.35" />
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4370.26" />
     <!-- Sounds (#912). Windows-only playback through Core Audio; see Services/NAudioSoundOutput. -->
     <PackageReference Include="NAudio.Core" Version="3.3.0" />
     <PackageReference Include="NAudio.Wasapi" Version="3.3.0" />
