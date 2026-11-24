@@ -23,6 +23,8 @@ public partial class FlagManagerViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(HasSelection))]
     [NotifyPropertyChangedFor(nameof(CanMoveUp))]
     [NotifyPropertyChangedFor(nameof(CanMoveDown))]
+    [NotifyPropertyChangedFor(nameof(CanChangeColor))]
+    [NotifyPropertyChangedFor(nameof(SelectedColorHex))]
     [NotifyCanExecuteChangedFor(nameof(DeleteFlagCommand))]
     [NotifyCanExecuteChangedFor(nameof(BeginRenameCommand))]
     [NotifyCanExecuteChangedFor(nameof(MoveUpCommand))]
@@ -46,6 +48,43 @@ public partial class FlagManagerViewModel : ObservableObject
     public bool CanDelete    => CanDeleteFlagNow();
     public bool CanMoveUp    => CanMoveUpNow();
     public bool CanMoveDown  => CanMoveDownNow();
+
+    /// <summary>
+    /// False for the built-in flag, whose color is fixed: <c>FlagService</c> resets it on every
+    /// load. The color buttons are disabled then, so arrowing cannot show a color as chosen that
+    /// was never applied (issue #1080).
+    /// </summary>
+    public bool CanChangeColor => SelectedFlag?.IsBuiltIn == false;
+
+    /// <summary>
+    /// The selected flag's color, which the preset color radio buttons bind to (issue #1080).
+    /// Setting it applies the color to a flag the user created and saves; the built-in flag and
+    /// no selection are ignored. Arrowing through the buttons sets this on every press, so the
+    /// saves are serialized by <see cref="SaveAsync"/>.
+    /// </summary>
+    public string? SelectedColorHex
+    {
+        get => SelectedFlag?.ColorHex;
+        set
+        {
+            var flag = SelectedFlag;
+            if (flag == null || flag.IsBuiltIn || string.IsNullOrEmpty(value)) return;
+            if (string.Equals(flag.ColorHex, value, StringComparison.OrdinalIgnoreCase)) return;
+            flag.ColorHex = value;
+            OnPropertyChanged();
+            _ = SaveColorAsync();
+        }
+    }
+
+    private async Task SaveColorAsync()
+    {
+        try { await SaveAsync(); }
+        catch (Exception ex)
+        {
+            LogService.Log("FlagManager: saving a flag color failed", ex);
+            AnnouncementRequested?.Invoke("The flag color could not be saved", AnnouncementCategory.Result);
+        }
+    }
 
     // Track user-flag count so CanAddFlagNow doesn't need a LINQ scan on every check.
     private int _userFlagCount;
@@ -176,15 +215,6 @@ public partial class FlagManagerViewModel : ObservableObject
         RenameError = string.Empty;
     }
 
-    [RelayCommand]
-    private async Task ChangeColor(string hex)
-    {
-        if (SelectedFlag == null || string.IsNullOrEmpty(hex)) return;
-        if (SelectedFlag.IsBuiltIn) return;
-        SelectedFlag.ColorHex = hex;
-        await SaveAsync();
-    }
-
     [RelayCommand(CanExecute = nameof(CanMoveUpNow))]
     private async Task MoveUp()
     {
@@ -228,8 +258,22 @@ public partial class FlagManagerViewModel : ObservableObject
             AnnouncementCategory.Result);
     }
 
-    private async Task SaveAsync()
+    // Saves run one at a time. FlagService writes through a single temp file, so two writes in
+    // flight at once (arrowing through the colors saves on every press) could collide on it.
+    private Task _lastSave = Task.CompletedTask;
+
+    private Task SaveAsync()
     {
-        await _flagService.SaveFlagDefinitionsAsync([.. Flags]);
+        List<FlagDefinition> snapshot = [.. Flags];
+        _lastSave = SaveAfterAsync(_lastSave, snapshot);
+        return _lastSave;
+    }
+
+    private async Task SaveAfterAsync(Task previous, List<FlagDefinition> flags)
+    {
+        // A failure of the previous save was reported to whoever awaited it; this one still runs.
+        try { await previous; }
+        catch (Exception ex) { LogService.Debug($"FlagManager: an earlier save failed ({ex.Message}); saving again."); }
+        await _flagService.SaveFlagDefinitionsAsync(flags);
     }
 }

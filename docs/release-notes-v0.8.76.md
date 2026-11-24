@@ -34,6 +34,9 @@
 - **The Message menu and toolbar don't act on a hidden email.** While the calendar is showing, **Delete** and **Move to Archive** on the **Message** menu and the toolbar no longer act on an email you can't see. (#1014)
 - **Keyboard Shortcuts warns about QuickMail's own keys.** Settings warned you only when a key was one you had assigned yourself. If you chose a built-in key, such as **Ctrl+Shift+B** for the address book, it gave no warning, and the built-in command quietly stopped working. Now the warning names that command. (#1044)
 - **A built-in command can be left with no shortcut.** If you choose **OK** at that warning, the command that had the key is left with no shortcut until you use **Restore Default** on it. This lasts after you restart QuickMail and when you export your settings. (#1044)
+- **The arrow keys choose a flag color.** In the Flag Manager, the arrow keys now choose a color as they move. They used to move between colors without choosing one until you pressed Space. (#1080)
+- **All four arrow keys go through every flag color.** Up and Down used to reach only the color above or below, because the twelve colors sit in two rows. Now all four arrow keys go through the colors in order. (#1080)
+- **The flag's current color is selected.** When you Tab to the colors, you land on the flag's own color. The built-in flag's color can't be changed, so its colors are unavailable when it is selected. (#1080)
 
 
 ## Reporting Issues

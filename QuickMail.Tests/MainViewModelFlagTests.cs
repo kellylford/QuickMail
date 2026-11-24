@@ -211,6 +211,54 @@ public class MainViewModelFlagTests
 
         Assert.Equal(customFlagId, inMemory.FlagId);
     }
+
+    // ── Deferred refresh while the modal Flag Manager is open (#1080) ─────────
+
+    private sealed class ChangingFlagService : IFlagService
+    {
+        public List<FlagDefinition> Flags { get; set; } = [FlagDefinition.CreateBuiltIn()];
+        public int Loads { get; private set; }
+        public event EventHandler? FlagDefinitionsChanged;
+        public void RaiseChanged() => FlagDefinitionsChanged?.Invoke(this, EventArgs.Empty);
+        public FlagDefinition GetBuiltInFlag() => FlagDefinition.CreateBuiltIn();
+        public Task<List<FlagDefinition>> LoadFlagDefinitionsAsync() { Loads++; return Task.FromResult(new List<FlagDefinition>(Flags)); }
+        public Task SaveFlagDefinitionsAsync(List<FlagDefinition> flags) => Task.CompletedTask;
+        public Task<FlagDefinition> GetKDefaultFlagAsync() => Task.FromResult(Flags[0]);
+        public Task SetKDefaultFlagAsync(Guid flagId) => Task.CompletedTask;
+        public Task<FlagDefinition?> SetMessageFlagAsync(MailMessageSummary message, string? flagId, FlagDefinition? resolvedDef = null, CancellationToken ct = default)
+            => Task.FromResult<FlagDefinition?>(null);
+        public Task<FlagDefinition?> ToggleDefaultFlagAsync(MailMessageSummary message, CancellationToken ct = default)
+            => Task.FromResult<FlagDefinition?>(null);
+    }
+
+    [Fact]
+    public async Task FlagDefinitionRefresh_DeferredUntilResumed_ThenRunsOnce()
+    {
+        var svc = new ChangingFlagService();
+        var vm = MakeVm(svc);
+        await vm.InitialLoadAsync();
+        svc.Flags = [FlagDefinition.CreateBuiltIn(), new() { Name = "Urgent", SortOrder = 1 }];
+        var loadsBefore = svc.Loads;
+
+        vm.DeferFlagDefinitionRefresh();
+        svc.RaiseChanged();
+        svc.RaiseChanged();
+        svc.RaiseChanged();
+
+        Assert.Equal(loadsBefore, svc.Loads);
+        Assert.DoesNotContain(vm.FlagDefinitions, d => d.Name == "Urgent");
+
+        await vm.ResumeFlagDefinitionRefresh();
+
+        Assert.Equal(loadsBefore + 1, svc.Loads);
+        Assert.Contains(vm.FlagDefinitions, d => d.Name == "Urgent");
+
+        // Back to refreshing straight away once resumed; nothing pending means no extra load.
+        await vm.ResumeFlagDefinitionRefresh();
+        Assert.Equal(loadsBefore + 1, svc.Loads);
+        svc.RaiseChanged();
+        Assert.Equal(loadsBefore + 2, svc.Loads);
+    }
 }
 
 /// <summary>Local store stub that serves a fixed set of messages for flag filter tests.</summary>

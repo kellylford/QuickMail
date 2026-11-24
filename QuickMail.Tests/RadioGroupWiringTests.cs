@@ -24,6 +24,7 @@ public class RadioGroupWiringTests
         { "SettingsDialog.xaml",    "SpellingSuggestionsVerbosity" },
         { "SettingsDialog.xaml",    "StartupSyncScope" },
         { "EventEditorWindow.xaml", "EditScope" },
+        { "FlagManagerWindow.xaml", "ColorGroup" },   // #1080
     };
 
     [Theory]

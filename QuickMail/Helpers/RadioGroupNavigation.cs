@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Windows;
+using System.Reflection;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 
 namespace QuickMail.Helpers;
@@ -23,15 +25,19 @@ namespace QuickMail.Helpers;
 ///
 /// <para>
 /// Only arrow keys select. Tab still parks on whichever button is already checked without
-/// changing it, so tabbing through a settings page never silently rewrites a setting.
+/// changing it, so tabbing through a settings page never silently rewrites a setting. That holds
+/// even when the checked button changed through a binding rather than the keyboard; see
+/// <see cref="OnContainerChecked"/>.
 /// </para>
 ///
 /// <para>
-/// Do <b>not</b> apply this to a group whose buttons carry a <c>Command</c> (e.g. the FlagManager
-/// colour swatches). <c>ButtonBase</c> invokes the command from <c>OnClick()</c>, which Space,
-/// Enter and the mouse raise but a programmatic <c>IsChecked = true</c> does not — so arrowing
-/// there would show the swatch as chosen while the command that applies the colour never ran.
-/// Quietly doing nothing is worse than not selecting.
+/// Do <b>not</b> apply this to a group whose buttons act through a <c>Command</c>.
+/// <c>ButtonBase</c> invokes the command from <c>OnClick()</c>, which Space, Enter and the mouse
+/// raise but a programmatic <c>IsChecked = true</c> does not — so arrowing there would show the
+/// option as chosen while the command that applies it never ran. Quietly doing nothing is worse
+/// than not selecting. Bind <c>IsChecked</c> to the view model instead, so checking the button is
+/// what applies the choice: the Flag Manager's color buttons did exactly this to get arrow
+/// selection (issue #1080).
 /// </para>
 /// </summary>
 public static class RadioGroupNavigation
@@ -53,9 +59,48 @@ public static class RadioGroupNavigation
         if (d is not UIElement container) return;
 
         container.PreviewKeyDown -= OnContainerPreviewKeyDown;
+        container.RemoveHandler(ToggleButton.CheckedEvent, CheckedHandler);
         if (e.NewValue is true)
+        {
             container.PreviewKeyDown += OnContainerPreviewKeyDown;
+            container.AddHandler(ToggleButton.CheckedEvent, CheckedHandler);
+        }
     }
+
+    private static readonly RoutedEventHandler CheckedHandler = OnContainerChecked;
+
+    /// <summary>
+    /// Keeps Tab arriving at the checked button. A group container is
+    /// <c>TabNavigation="Once"</c>, and WPF enters such a container at the element that last had
+    /// focus inside it, not at the checked button. Those are the same while arrowing (arrows check
+    /// what they focus), but not when the checked button changes some other way — through a
+    /// binding, as when the Flag Manager selects another flag and its color is checked (issue
+    /// #1080). Then Tab would land on the old color while another one was checked.
+    /// </summary>
+    private static void OnContainerChecked(object sender, RoutedEventArgs e)
+    {
+        // A disabled button cannot take focus, so it is no place for Tab to arrive.
+        if (sender is DependencyObject container && e.OriginalSource is RadioButton { IsEnabled: true } rb)
+            RememberAsTabEntry(container, rb);
+    }
+
+    // WPF records where a TabNavigation="Once" container is entered with an internal
+    // KeyboardNavigation.SetTabOnceActiveElement, and has no public way to set it. Calling it is
+    // what WPF itself does when focus moves inside the container. If a WPF update ever removes
+    // it, Tab simply falls back to WPF's own choice, and
+    // FlagManagerColorRadioTests.TabEntryAccessors_StillExistInWpf fails so we know.
+    internal static readonly MethodInfo? SetTabOnceActiveElementMethod =
+        typeof(KeyboardNavigation).GetMethod(
+            "SetTabOnceActiveElement", BindingFlags.NonPublic | BindingFlags.Static,
+            [typeof(DependencyObject), typeof(DependencyObject)]);
+
+    internal static readonly MethodInfo? GetTabOnceActiveElementMethod =
+        typeof(KeyboardNavigation).GetMethod(
+            "GetTabOnceActiveElement", BindingFlags.NonPublic | BindingFlags.Static,
+            [typeof(DependencyObject)]);
+
+    internal static void RememberAsTabEntry(DependencyObject container, DependencyObject element)
+        => SetTabOnceActiveElementMethod?.Invoke(null, [container, element]);
 
     /// <summary>
     /// Reads the modifier state for a key event. Shipped behaviour asks the event's own keyboard

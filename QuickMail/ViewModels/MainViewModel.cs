@@ -245,6 +245,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     private string? _activeFlagFilterId;
     private EventHandler? _onFlagDefinitionsChanged;
+    private bool _flagRefreshDeferred;
+    private bool _flagRefreshPending;
     private Action<Guid, bool>? _onReachabilityChanged;
 
     // Folder lists per account. Since #516 this is ALSO seeded from the local store at startup, so
@@ -1988,7 +1990,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
         if (_flagService != null)
         {
-            _onFlagDefinitionsChanged = (_, _) => _ = OnFlagDefinitionsChangedAsync();
+            _onFlagDefinitionsChanged = (_, _) =>
+            {
+                if (_flagRefreshDeferred) { _flagRefreshPending = true; return; }
+                _ = OnFlagDefinitionsChangedAsync();
+            };
             _flagService.FlagDefinitionsChanged += _onFlagDefinitionsChanged;
         }
         if (_rowLayoutService != null)
@@ -7691,6 +7697,26 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
         catch (OperationCanceledException) { }
         catch (Exception ex) { LogService.Log("SetGroupFlag failed", ex); }
+    }
+
+    /// <summary>
+    /// Holds back the refresh that a flag definition save triggers, until
+    /// <see cref="ResumeFlagDefinitionRefresh"/>. The Flag Manager is modal and saves on every
+    /// change, including every arrow press in its color group (issue #1080); refreshing
+    /// <see cref="FlagDefinitions"/> rebuilds the main window's flag menus, and rebuilding the
+    /// parent's menus inside a modal dialog's message loop is the re-entrancy CLAUDE.md's Modal
+    /// Dialog Rules forbid.
+    /// </summary>
+    public void DeferFlagDefinitionRefresh() => _flagRefreshDeferred = true;
+
+    /// <summary>Ends <see cref="DeferFlagDefinitionRefresh"/>, refreshing once if any save happened
+    /// in between. Call it after the dialog's <c>ShowDialog()</c> has returned.</summary>
+    public Task ResumeFlagDefinitionRefresh()
+    {
+        _flagRefreshDeferred = false;
+        if (!_flagRefreshPending) return Task.CompletedTask;
+        _flagRefreshPending = false;
+        return OnFlagDefinitionsChangedAsync();
     }
 
     private async Task OnFlagDefinitionsChangedAsync()

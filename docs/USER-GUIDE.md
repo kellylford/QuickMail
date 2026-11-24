@@ -1799,7 +1799,7 @@ Press **Ctrl+Shift+K** to open the flag picker. Arrow to a flag and press Enter 
 
 Open the **Flag Manager** from the command palette (**Ctrl+Shift+P → Manage Flags**). You can create up to 20 named flags, each with an optional color. Use **Set K Default** to make any flag the one that **K** applies.
 
-In the Flag Manager, **Add Flag** creates one, **Rename** and the **Color** section change the selected flag, **Move Up** and **Move Down** set the order the flag picker lists them in, and **Delete** removes one (the built-in flag cannot be deleted). A message carries one flag at a time: picking another replaces it, and **K** on a message that has any flag clears it.
+In the Flag Manager, **Add Flag** creates one, **Rename** and the **Color** section change the selected flag, **Move Up** and **Move Down** set the order the flag picker lists them in, and **Delete** removes one (the built-in flag cannot be deleted). In the **Color** section, Tab lands on the flag's current color, and the arrow keys move through the twelve colors and apply each one as you reach it. The built-in flag's color is fixed, so the colors are unavailable while it is selected. A message carries one flag at a time: picking another replaces it, and **K** on a message that has any flag clears it.
 
 ### Filtering by Flag
 
