@@ -774,6 +774,29 @@ Create a new folder in any of these ways:
 
 The new folder is created under the folder currently selected in the folder tree, or under the account root when a header or nothing is selected.
 
+### Renaming Folders
+
+You can rename any folder you made yourself, in every kind of account. Rename it in any of these ways:
+
+- In the folder tree, select the folder and press **F2**.
+- Press **Shift+F10** on the folder and choose **Rename Folder…** from its context menu.
+- Choose **Folder → Rename Folder…** from the menu bar. From the folder tree, this renames the folder you are on. Anywhere else, it renames the folder whose messages you are reading.
+- Open the Command Palette (**Ctrl+Shift+P**) from the folder tree and choose **Rename Folder…**.
+
+A **Rename Folder** window opens with the current name selected in the **New name** box. Type the new name and press **Enter**, or press **Escape** to leave the name as it was. After the rename, you are back on the folder in the folder tree, with its new name.
+
+If QuickMail can't use the name, the window stays open and says why, so you can change it. A name can't be empty or the same as before. It can't match another folder beside it, even with different capital letters. Some accounts don't allow certain characters in a name, such as **/**.
+
+**Everything that names the folder follows it.** Rules that file mail into the folder, or into a folder inside it, are updated. So are saved views, your startup folder, favorites, hidden folders, the folder you last moved or copied messages to, the Archive folder you chose, and how each folder's list was sorted and filtered. Messages already downloaded stay downloaded. If anything besides the folder itself had to change, QuickMail tells you, for example "2 rules and 1 saved view updated."
+
+If QuickMail can't update something, it says what. For example, if your rules file can't be read, the folder is still renamed, and QuickMail tells you that a rule that files mail into it needs its folder set again.
+
+**Some folders can't be renamed.** These are the standard folders, such as Inbox, Sent, Drafts, Trash, Junk and Archive, and the four built-in folders of a POP3 account. Outlook doesn't rename them either, and other mail programs look for them by what they are. Accounts, the headings in the folder tree, views such as All Inboxes, and calendars can't be renamed either. QuickMail tells you why if you try. To rename a saved view, use **View → Views → Manage Views…**.
+
+**In a folder picker.** You can also rename a folder while you choose one, in **Move to Folder**, **Copy to Folder**, **Move Folder**, **Copy Folder**, a rule's folder, and **Go to Folder**. Press **F2** on the folder, or **Shift+F10** and **Rename Folder…**. A **New name** box opens at the top of the picker. Press **Enter** to rename, or **Escape** to close the box without closing the picker. You then land on the renamed folder, ready to choose it.
+
+Renaming keeps the folder where it is. To put it inside another folder, use **Move Folder…**.
+
 ### Moving and Copying Folders
 
 Select a folder in the folder tree, press **Shift+F10**, and choose **Move Folder…** or **Copy Folder…**. Both open a picker showing the same hierarchical tree used in the folder panel — folders nested under their parent, everything already expanded, with the account name at the top. Arrow to the folder you want the selected folder to live under and press Enter. Copying brings the folder's messages and any subfolders with it.
@@ -799,7 +822,7 @@ Select one or more messages (or a sender/recipient group, or a conversation) and
 
 **The picker opens on the folder you last filed to**, so filing several messages to the same place takes one keystroke after the first: open the picker, press Enter. Move and copy are remembered separately — copying to a reference folder does not change where Move to Folder opens — and each account keeps its own.
 
-Before you have moved anything on that account, and whenever the remembered folder is no longer there — you have deleted or renamed it — the picker opens on the folder the messages are in instead, so you still start somewhere useful. The same applies when the messages you selected come from more than one account: no single remembered folder is right for all of them.
+Before you have moved anything on that account, and whenever the remembered folder is no longer there — you have deleted it, or renamed it in another mail program — the picker opens on the folder the messages are in instead, so you still start somewhere useful. The same applies when the messages you selected come from more than one account: no single remembered folder is right for all of them.
 
 Only the folder you choose in the picker is remembered. Archiving and deleting file messages away too, but they do not change where the picker opens. In a combined view such as All Inboxes that is the message's own folder, not the view. If neither is available the picker opens on the first folder; it never opens with nothing selected.
 

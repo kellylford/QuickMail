@@ -27,6 +27,22 @@ public sealed partial class MessageWindowViewModel : ObservableObject
     public ObservableCollection<MailMessageSummary> MessageList { get; } = [];
     public MailMessageSummary? OriginalSummary { get; init; }
 
+    /// <summary>
+    /// Follows a folder rename (#1083): every message this window holds that is in the renamed
+    /// folder, or a folder inside it, gets the folder's new name, so Delete, Move to Archive and the
+    /// rest still reach it on the server. The messages are usually the main window's own objects,
+    /// already updated, but the window may hold ones the list has since let go of.
+    /// </summary>
+    public void ApplyFolderRename(FolderRename rename)
+    {
+        var held = new System.Collections.Generic.List<MailMessageSummary>(MessageList);
+        if (SelectedMessage is { } selected) held.Add(selected);
+        if (OriginalSummary is { } original) held.Add(original);
+        foreach (var m in held)
+            if (m.AccountId == rename.AccountId && rename.Map(m.FolderName) is { } mapped)
+                m.FolderName = mapped;
+    }
+
     // Action callbacks wired by the window opener (MainWindow) so mail operations
     // execute against the correct MainViewModel state.
     public Action? ReplyAction       { get; set; }

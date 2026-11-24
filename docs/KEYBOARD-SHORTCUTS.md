@@ -136,6 +136,7 @@ A menu item or button names its command with `sc:CommandShortcut.Id` (`Helpers/C
 | *(unassigned)* | `view.rowFields` | Message List Fields… |
 | *(unassigned)* | `folder.new` | New Folder… — under the folder-tree selection, or the selected account's root (#250) |
 | Delete | `folder.delete` | Delete Folder — folder-tree focus on a real folder; shares Delete with `mail.delete` |
+| F2 | `folder.rename` | Rename Folder… — folder-tree focus (the palette and menu bar keep it); the Folder menu's item renames the open folder from anywhere. Refuses, and says why, on standard folders, views, accounts and headings (#1083) |
 | *(unassigned)* | `folder.setStartupFolder` | Set as Startup Folder — the folder selected in the folder tree (#516) |
 | *(unassigned)* | `folder.clearStartupFolder` | Clear Startup Folder |
 | *(unassigned)* | `folder.expand` | Expand Folder — the selected folder and every subfolder in it |
@@ -475,6 +476,21 @@ commands, and they carry no command title to show in the palette. Any other modi
 — `Ctrl+Tab` and friends fall straight through. The flat list presentation ("Go to Folder") is not
 touched by any of this: `ListBoxItem` is a tab stop, so it traverses correctly both ways on its
 own. Covered by `FolderPickerTabOrderTests`.
+
+## Folder picker: F2 renames
+
+In a picker that can rename (every destination picker and Go to Folder; not the Settings startup
+folder picker), `F2` on a folder in the tree or the list opens a **New name** box at the top of the
+picker, as does **Rename Folder…** on the item's context menu (#1083). `Enter` in the box renames,
+`Escape` closes the box without closing the picker, and the picker's own `Alt+N`, `Alt+O` and
+`Alt+C` stand aside while the box is open. The rename happens in the picker rather than in the
+main window's Rename Folder window because a window opened from inside the picker's modal loop is
+the nesting CLAUDE.md's Modal Dialog Rules warn about.
+
+Like the picker's `Alt+N`, `F2` there is wired in `FolderPicker_PreviewKeyDown`, not registered: the
+picker has no command registry, and the key means "rename the folder in focus" only inside it. The
+context menu therefore writes `F2` out as a literal `InputGestureText` with a matching
+`AutomationProperties.AcceleratorKey`.
 
 ## Context-menu gestures: Shift+F10 and the Applications key
 

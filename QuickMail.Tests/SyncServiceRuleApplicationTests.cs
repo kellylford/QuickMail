@@ -188,7 +188,7 @@ public class SyncServiceRuleApplicationTests : IDisposable
         public Task MoveMessagesAsync(Guid a, string f, IList<string> ids, string dest, CancellationToken ct = default) => Task.CompletedTask;
         public Task CreateFolderAsync(Guid a, string? parent, string name, CancellationToken ct = default) => Task.CompletedTask;
         public Task DeleteFolderAsync(Guid a, string f, CancellationToken ct = default) => Task.CompletedTask;
-        public Task RenameFolderAsync(Guid a, string f, string newName, string? newParent, CancellationToken ct = default) => Task.CompletedTask;
+        public Task<string> RenameFolderAsync(Guid a, string f, string newName, string? newParent, CancellationToken ct = default) => Task.FromResult(f);
         public Task CopyFolderAsync(Guid a, string f, string? destParent, CancellationToken ct = default) => Task.CompletedTask;
         public void Dispose() { }
     }

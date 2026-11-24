@@ -352,6 +352,21 @@ public class XamlParseTests
     }
 
     [StaFact]
+    public void RenameFolderWindow_XamlParsesWithoutException()
+    {
+        EnsureApplication();
+        var window = new RenameFolderWindow(new RenameFolderViewModel(
+            "Projects", _ => Task.FromResult(FolderRenameResult.Refused("not used"))));
+        Assert.NotNull(window);
+        Assert.NotNull(window.FindName("NameBox") as System.Windows.Controls.TextBox);
+        // The label names the box, so a screen reader hears which folder is being renamed.
+        var label = window.FindName("NameLabel") as System.Windows.Controls.Label;
+        Assert.NotNull(label);
+        Assert.Same(window.FindName("NameBox"), label!.Target);
+        window.Close();
+    }
+
+    [StaFact]
     public void ServerRuleEditorWindow_XamlParsesWithoutException()
     {
         EnsureApplication();

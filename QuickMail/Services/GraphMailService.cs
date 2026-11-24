@@ -528,7 +528,7 @@ public class GraphMailService : IMailService, IConnectionProbe
         // Graph moves a deleted folder to Deleted Items (recoverable), matching the IMAP safety behaviour.
         => _client.DeleteAsync(Account(accountId), $"/me/mailFolders/{folderName}", ct);
 
-    public async Task RenameFolderAsync(Guid accountId, string folderName, string newName, string? newParentFolderName, CancellationToken ct = default)
+    public async Task<string> RenameFolderAsync(Guid accountId, string folderName, string newName, string? newParentFolderName, CancellationToken ct = default)
     {
         var account = Account(accountId);
         // Rename: set the display name. Only move when a new parent is actually requested — a
@@ -536,6 +536,9 @@ public class GraphMailService : IMailService, IConnectionProbe
         await _client.PatchAsync(account, $"/me/mailFolders/{folderName}", new { displayName = newName }, ct);
         if (!string.IsNullOrEmpty(newParentFolderName))
             await _client.PostAsync(account, $"/me/mailFolders/{folderName}/move", new { destinationId = newParentFolderName }, ct);
+        // A folder's id survives both a rename and a move, so everything that refers to it by id
+        // (rules, the cache, favorites) is still right.
+        return folderName;
     }
 
     public Task MoveFolderAsync(Guid accountId, string folderName, string? newParentFolderName, CancellationToken ct = default)

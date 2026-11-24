@@ -277,6 +277,18 @@ public interface ILocalStoreService
         Guid accountId, string fromFolder, string toFolder, IEnumerable<string> messageIds, bool copy);
 
     /// <summary>
+    /// Follows an IMAP folder rename (#1083): everything cached under <paramref name="oldFullName"/>,
+    /// and under every folder inside it (<paramref name="oldFullName"/> + <paramref name="separator"/>
+    /// + …), is re-filed under the new path — messages, bodies, the search index (by trigger), the
+    /// rule watermark, a calendar invite's link back to its message and a queued message's draft folder.
+    /// Without it the renamed folder
+    /// downloads again from nothing, and its mail is offered as new. Returns how many messages moved.
+    /// A server keeps a renamed mailbox's UIDs, so the ids stay right; one that renumbers is caught
+    /// the way any renumbering is, by the next sync of the folder.
+    /// </summary>
+    Task<int> RenameFolderAsync(Guid accountId, string oldFullName, string newFullName, char separator);
+
+    /// <summary>
     /// Returns the oldest message date stored for the given account, or null if no messages exist.
     /// Used to display the cache window in Account Properties.
     /// </summary>

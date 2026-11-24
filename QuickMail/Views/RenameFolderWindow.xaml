@@ -1,0 +1,46 @@
+<Window x:Class="QuickMail.Views.RenameFolderWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Rename Folder"
+        SizeToContent="Height"
+        Width="400"
+        MinWidth="300"
+        WindowStartupLocation="CenterScreen"
+        ResizeMode="NoResize"
+        PreviewKeyDown="Window_PreviewKeyDown"
+        Background="{DynamicResource Theme.WindowBackground}"
+        Foreground="{DynamicResource Theme.TextPrimary}"
+        FontFamily="{DynamicResource Theme.FontFamily}"
+        FontSize="{DynamicResource Theme.FontSizeBase}">
+
+    <!-- Modeless and unowned (#1083): it has an editable box and opens over the main window's live
+         WebView2, so ShowDialog would risk the screen-reader deadlock in CLAUDE.md's Modal Dialog
+         Rules; and an owned window has its title read as the main window's by some screen readers.
+         Enter commits (IsDefault), Escape is wired in code-behind because a modeless window has no
+         DialogResult. -->
+    <StackPanel Margin="12">
+        <!-- Label + Target, never a TextBlock: the label is the box's accessible name. -->
+        <Label x:Name="NameLabel"
+               Content="{Binding Prompt}"
+
+               Padding="0"
+               Margin="0,0,0,4"/>
+        <TextBox x:Name="NameBox"
+                 Text="{Binding NewName, UpdateSourceTrigger=PropertyChanged}"
+                 IsReadOnly="{Binding IsWorking}"
+                 MaxLength="255"/>
+
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
+            <Button x:Name="RenameButton"
+                    Content="_Rename"
+                    IsDefault="True"
+                    MinWidth="80"
+                    Margin="0,0,6,0"
+                    Command="{Binding RenameCommand}"/>
+            <Button x:Name="CancelButton"
+                    Content="Cancel"
+                    MinWidth="80"
+                    Command="{Binding CancelCommand}"/>
+        </StackPanel>
+    </StackPanel>
+</Window>

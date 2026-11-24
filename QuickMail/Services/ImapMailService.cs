@@ -154,6 +154,7 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
             result.Add(new MailFolderModel
             {
                 FullName     = inbox.FullName,
+                HierarchySeparator = inbox.DirectorySeparator,
                 DisplayName  = "Inbox",
                 UnreadCount  = inbox.Unread,
                 MessageCount = inbox.Count,
@@ -196,6 +197,7 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
                 result.Add(new MailFolderModel
                 {
                     FullName           = folder.FullName,
+                    HierarchySeparator = folder.DirectorySeparator,
                     DisplayName        = folder.Name,
                     UnreadCount        = folder.Unread,
                     MessageCount       = folder.Count,
@@ -210,6 +212,7 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
                 result.Add(new MailFolderModel
                 {
                     FullName           = folder.FullName,
+                    HierarchySeparator = folder.DirectorySeparator,
                     DisplayName        = folder.Name,
                     UnreadCount        = 0,
                     AccountId          = accountId,
@@ -970,18 +973,26 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
         await folder.DeleteAsync(ct);
     }
 
-    public async Task RenameFolderAsync(Guid accountId, string folderName, string newName, string? newParentFolderName, CancellationToken ct = default)
+    public async Task<string> RenameFolderAsync(Guid accountId, string folderName, string newName, string? newParentFolderName, CancellationToken ct = default)
     {
         using var lease = await RentClientAsync(accountId, ImapLeasePriority.Foreground, ct);
         var client = lease.Client;
         var folder = await client.GetFolderAsync(folderName, ct);
-        // No app caller since folder moves went to MoveFolderAsync (#954); kept for the interface and
-        // its tests. A null parent goes through the same top-level check, so it can never land a
-        // folder under INBOX on a prefix-namespace server.
+        // Rename Folder (#1083) renames in place: a null parent keeps the folder under the parent it
+        // already has, as Microsoft 365 and POP3 do. That is the folder's own parent rather than the
+        // namespace root, so a folder inside INBOX on a prefix-namespace server ("INBOX.Lists") stays
+        // there. MailKit resolves the parent chain when it looks a folder up; the namespace root is
+        // the fallback only for a server that answered without one.
         IMailFolder parent = string.IsNullOrEmpty(newParentFolderName)
-            ? TopLevelFolder(client)
+            ? folder.ParentFolder
+              ?? (client.PersonalNamespaces.Count > 0
+                  ? client.GetFolder(client.PersonalNamespaces[0])
+                  : throw new NotSupportedException("This mail server did not say where the folder is, so it cannot be renamed."))
             : await client.GetFolderAsync(newParentFolderName, ct);
         await RenameUnderAsync(folder, parent, newName, ct);
+        // MailKit updates the folder's own FullName on a successful RENAME, so this is the server's
+        // path for it now — what everything that names the folder has to be rewritten to.
+        return folder.FullName;
     }
 
     public async Task MoveFolderAsync(Guid accountId, string folderName, string? newParentFolderName, CancellationToken ct = default)
@@ -1040,8 +1051,21 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
             foreach (var old in before) await SubscribeAsync(old, CancellationToken.None);
             throw;
         }
-        foreach (var renamed in await WithDescendantsAsync(folder, ct))
-            await SubscribeAsync(renamed, ct);
+        // Best effort from here: the server has renamed the folder, so nothing after this may make the
+        // rename look as if it failed (#1083) — a caller told "could not rename" would leave every rule
+        // and setting on the old name while the server has the new one. A subscription that cannot be
+        // made is logged, as SubscribeAsync does for a server that refuses one. Its own short timeout,
+        // so the caller's token running out mid-way cannot turn a done rename into a failure either.
+        try
+        {
+            using var subscribe = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+            foreach (var renamed in await WithDescendantsAsync(folder, subscribe.Token))
+                await SubscribeAsync(renamed, subscribe.Token);
+        }
+        catch (Exception ex)
+        {
+            LogService.Log($"IMAP: renamed {folder.FullName}, but could not subscribe to it afresh: {ex.Message}");
+        }
     }
 
     public async Task CopyFolderAsync(Guid accountId, string folderName, string? destinationParentName, CancellationToken ct = default)

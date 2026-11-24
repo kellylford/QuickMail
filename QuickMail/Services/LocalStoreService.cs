@@ -1748,6 +1748,50 @@ public partial class LocalStoreService : ILocalStoreService
         return refiled;
     }
 
+    public async Task<int> RenameFolderAsync(Guid accountId, string oldFullName, string newFullName, char separator)
+    {
+        if (string.IsNullOrEmpty(oldFullName) || string.Equals(oldFullName, newFullName, StringComparison.Ordinal))
+            return 0;
+
+        // The folder itself, and every folder inside it: the old path followed by the separator. The
+        // prefix is compared with substr rather than LIKE, so a '%' or '_' in a folder name is only
+        // itself; the rest of a subfolder's path is carried across as it was.
+        const string inScope = "(folder_name = $old OR substr(folder_name, 1, length($prefix)) = $prefix)";
+        const string renamed = "$new || substr(folder_name, length($old) + 1)";
+
+        await using var conn = await OpenAsync();
+        await using var tx = (SqliteTransaction)await conn.BeginTransactionAsync();
+        await using var cmd = conn.CreateCommand();
+        cmd.Transaction = tx;
+        // Counted first: the summary is the row every cached message has.
+        cmd.CommandText = $"SELECT COUNT(*) FROM MessageSummary WHERE account_id = $aid AND {inScope};";
+        cmd.Parameters.AddWithValue("$aid",    accountId.ToString());
+        cmd.Parameters.AddWithValue("$old",    oldFullName);
+        cmd.Parameters.AddWithValue("$new",    newFullName);
+        cmd.Parameters.AddWithValue("$prefix", oldFullName + separator);
+        var moved = Convert.ToInt32(await cmd.ExecuteScalarAsync() ?? 0);
+
+        // UPDATE OR REPLACE for the keyed tables, as RefileMessagesAsync does: a row already filed
+        // under the new name (a folder of that name that existed once and left rows behind) would
+        // otherwise collide on the primary key and abort the whole rename. The search index follows
+        // MessageSummary through its update trigger.
+        cmd.CommandText = $"""
+            UPDATE OR REPLACE MessageSummary SET folder_name = {renamed} WHERE account_id = $aid AND {inScope};
+            UPDATE OR REPLACE MessageDetail  SET folder_name = {renamed} WHERE account_id = $aid AND {inScope};
+            UPDATE OR REPLACE RulesWatermark SET folder_name = {renamed} WHERE account_id = $aid AND {inScope};
+            UPDATE CalendarEvent SET source_folder = $new || substr(source_folder, length($old) + 1)
+              WHERE account_id = $aid
+                AND (source_folder = $old OR substr(source_folder, 1, length($prefix)) = $prefix);
+            UPDATE Outbox SET draft_folder_name = $new || substr(draft_folder_name, length($old) + 1)
+              WHERE account_id = $aid
+                AND (draft_folder_name = $old OR substr(draft_folder_name, 1, length($prefix)) = $prefix);
+            """;
+        await cmd.ExecuteNonQueryAsync();
+        await tx.CommitAsync();
+        KickSearchIndexer();
+        return moved;
+    }
+
     /// <summary>
     /// <c>INSERT OR REPLACE … SELECT</c> for both message tables, with <c>folder_name</c> swapped for
     /// the destination and every other column carried across verbatim. The column names come from

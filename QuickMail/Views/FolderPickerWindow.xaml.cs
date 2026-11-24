@@ -42,10 +42,22 @@ public partial class FolderPickerWindow : Window
     // picker can rebuild in place and select the new folder (issue #250, move/copy-message flow).
     private readonly Func<Guid, string?, string, Task<IReadOnlyList<MailFolderModel>?>>? _folderCreator;
 
-    // Retained for the tree view so it can be rebuilt after a folder is created. Not needed by the
-    // flat list, which reuses its own ObservableCollection (_items) directly.
+    // Retained for the tree view so it can be rebuilt after a folder is created or renamed.
     private List<AccountModel>? _treeAccounts;
     private Dictionary<Guid, List<MailFolderModel>>? _treeFolders;
+
+    // The same for the flat list, which is rebuilt into _items after a rename (#1083).
+    private List<AccountModel> _listAccounts = [];
+    private Dictionary<Guid, List<MailFolderModel>> _listFolders = new();
+    private List<MailFolderModel> _listVirtualFolders = [];
+    private IReadOnlyDictionary<Guid, MailFolderModel>? _listAccountMailFolders;
+
+    // When non-null, F2 and the items' context menu rename a folder in place (#1083).
+    private readonly FolderRenameSupport? _folderRenamer;
+
+    // The folder whose name is in the rename box, while it is open.
+    private MailFolderModel? _renaming;
+    private bool _renameBusy;
 
     /// <summary>Virtual aggregates offered as tree roots above the accounts (#516). Empty for the
     /// pickers where an aggregate is not a legal destination — move/copy and rule targets.</summary>
@@ -125,16 +137,26 @@ public partial class FolderPickerWindow : Window
         bool useTreeView = false,
         Func<Guid, string?, string, Task<IReadOnlyList<MailFolderModel>?>>? folderCreator = null,
         MailFolderModel? excludeFolder = null,
-        bool accountRootIsDestination = false)
+        bool accountRootIsDestination = false,
+        FolderRenameSupport? folderRenamer = null)
     {
         _initialFolder = initialFolder;
         _useTreeView = useTreeView;
         _folderCreator = folderCreator;
         _excludeFolder = excludeFolder;
         _accountRootIsDestination = accountRootIsDestination;
+        _folderRenamer = folderRenamer;
 
         InitializeComponent();
         Title = title;
+
+        // Rename Folder (#1083) only where the caller can rename: without it there is no context
+        // menu to offer, so the items' DynamicResource finds nothing and they get none.
+        if (folderRenamer == null)
+            Resources.Remove("PickerItemContextMenu");
+        // The rename box's label is its accessible name. Set here rather than bound by ElementName,
+        // which resolves only once the window has loaded.
+        RenameLabel.Target = RenameBox;
 
         // Alt+N → New Folder (see FolderPicker_PreviewKeyDown). Window-level so it fires from the
         // tree, the buttons, or anywhere else in the picker.
@@ -158,47 +180,13 @@ public partial class FolderPickerWindow : Window
             return;
         }
 
-        if (virtualFolders != null)
-        {
-            foreach (var vf in virtualFolders)
-                _items.Add(new FolderPickerItem(vf, null, vf.DisplayName, vf.DisplayName));
-        }
-
-        foreach (var account in accounts)
-        {
-            if (!cachedFolders.TryGetValue(account.Id, out var folders) || folders.Count == 0)
-                continue;
-
-            if (accountMailFolders != null &&
-                accountMailFolders.TryGetValue(account.Id, out var accountMailFolder))
-            {
-                _items.Add(new FolderPickerItem(
-                    accountMailFolder,
-                    account,
-                    accountMailFolder.DisplayName,
-                    $"{account.AccountLabel} - {accountMailFolder.DisplayName}"));
-            }
-
-            // Graph references parents by id, so a folder's FullName is an opaque id — build a
-            // readable path from DisplayNames. IMAP carries a separator path in FullName already and
-            // never consults byId, so don't build it for an all-IMAP account.
-            var byId = folders.Any(f => f.ParentId != null)
-                ? folders.ToDictionary(f => f.FullName, StringComparer.Ordinal)
-                : EmptyFolderById;
-
-            foreach (var (folder, folderPath) in folders
-                         .Where(f => !f.IsHeader)
-                         .Select(f => (Folder: f, Path: BuildFolderPath(f, byId)))
-                         .OrderBy(x => IsInbox(x.Folder) ? 0 : 1)
-                         .ThenBy(x => x.Path, StringComparer.OrdinalIgnoreCase))
-            {
-                _items.Add(new FolderPickerItem(
-                    folder,
-                    account,
-                    folderPath,
-                    $"{account.AccountLabel} - {folderPath}"));
-            }
-        }
+        // Kept so the list can be rebuilt after a rename (#1083), from a private copy rather than the
+        // caller's snapshot.
+        _listAccounts         = accounts.ToList();
+        _listFolders          = cachedFolders.ToDictionary(kv => kv.Key, kv => kv.Value.ToList());
+        _listVirtualFolders   = virtualFolders?.ToList() ?? [];
+        _listAccountMailFolders = accountMailFolders;
+        PopulateFlatList();
 
         _view = CollectionViewSource.GetDefaultView(_items);
         _view.Filter = FilterItem;
@@ -474,7 +462,8 @@ public partial class FolderPickerWindow : Window
         IEnumerable<AccountModel> accounts,
         IReadOnlyDictionary<Guid, List<MailFolderModel>> cachedFolders,
         MailFolderModel source,
-        string title)
+        string title,
+        FolderRenameSupport? folderRenamer = null)
     {
         var picker = new FolderPickerWindow(
             accounts.Where(a => a.Id == source.AccountId),
@@ -483,7 +472,8 @@ public partial class FolderPickerWindow : Window
             title: title,
             useTreeView: true,
             excludeFolder: source,
-            accountRootIsDestination: true);
+            accountRootIsDestination: true,
+            folderRenamer: folderRenamer);
 
         if (picker.HasSelectableFolders)
             return picker;
@@ -526,7 +516,8 @@ public partial class FolderPickerWindow : Window
         Guid? accountId,
         string? currentFolderKey,
         string title,
-        Func<Guid, string?, string, Task<IReadOnlyList<MailFolderModel>?>>? folderCreator = null)
+        Func<Guid, string?, string, Task<IReadOnlyList<MailFolderModel>?>>? folderCreator = null,
+        FolderRenameSupport? folderRenamer = null)
     {
         // Materialized once: read twice below, for the scoping and again for the fallback.
         var allAccounts    = accounts.ToList();
@@ -557,7 +548,10 @@ public partial class FolderPickerWindow : Window
             // fallback above it would make the folder in one mailbox while the rule files into
             // another: worse than the wrong-folder pick that fallback already allows, because the
             // user watches the folder appear and reasonably concludes the target is real.
-            folderCreator: useScoped ? folderCreator : null);
+            folderCreator: useScoped ? folderCreator : null,
+            // Rename (#1083) is offered either way: it renames the folder where it is, in its own
+            // account, so the unscoped fallback cannot misdirect it.
+            folderRenamer: folderRenamer);
     }
 
     /// <summary>
@@ -843,6 +837,21 @@ public partial class FolderPickerWindow : Window
     // so they work whatever picker control has focus.
     private void FolderPicker_PreviewKeyDown(object sender, KeyEventArgs e)
     {
+        // While the rename box is open (#1083) its own Enter and Escape are what count, and the
+        // picker's shortcuts stand aside: Alt+O would open a folder the user is halfway through
+        // renaming.
+        if (_renaming != null) return;
+
+        // F2 renames the folder in focus (#1083), in the tree or the list, as F2 does in the main
+        // window's folder tree. In-control, like the arrow keys: the picker has no command registry.
+        if (e.Key == Key.F2 && _folderRenamer != null && ModifiersOf(e) == ModifierKeys.None &&
+            (FolderTreeView.IsKeyboardFocusWithin || FolderListBox.IsKeyboardFocusWithin))
+        {
+            e.Handled = true;
+            BeginRename(_useTreeView ? FolderTreeView.SelectedItem : FolderListBox.SelectedItem);
+            return;
+        }
+
         if (e.Key == Key.Tab && HandleTreeTab(e)) return;
 
         // With Alt held, the character arrives as a System key; the real key is in SystemKey.
@@ -1042,6 +1051,272 @@ public partial class FolderPickerWindow : Window
         else
         {
             FolderTreeView.Focus();
+        }
+    }
+
+    // ── Rename Folder (#1083) ────────────────────────────────────────────────
+    // In place, in a box at the top of the picker, rather than in a window of its own: the picker is
+    // already modal over the main window's WebView2, and a further window opened from inside that
+    // loop is the nesting CLAUDE.md's Modal Dialog Rules warn about. A text box inside the picker is
+    // no different from its search box.
+
+    /// <summary>Whether the rename box is open. For tests.</summary>
+    internal bool IsRenaming => _renaming != null;
+
+    private void ContextMenu_RenameFolder_Click(object sender, RoutedEventArgs e)
+    {
+        var target = ((sender as MenuItem)?.Parent as ContextMenu)?.PlacementTarget as FrameworkElement;
+        // The menu opens on the item under it, which need not be the selected one (a right-click):
+        // select it, so what is renamed and what the picker shows as chosen agree.
+        switch (target)
+        {
+            case TreeViewItem item: item.IsSelected = true; break;
+            case ListBoxItem item:  item.IsSelected = true; break;
+        }
+        BeginRename(target?.DataContext);
+    }
+
+    /// <summary>
+    /// Opens the rename box on <paramref name="selection"/> — a tree node or a list item — or says why
+    /// it cannot be renamed. Returns whether the box opened.
+    /// </summary>
+    internal bool BeginRename(object? selection)
+    {
+        if (_folderRenamer == null || _renaming != null) return false;
+
+        MailFolderModel folder;
+        string label;
+        switch (selection)
+        {
+            case FolderTreeNode { IsHeader: true } header:
+                Say($"'{header.Label}' is an account, not a folder. To rename an account, use Manage Accounts.");
+                return false;
+            case FolderTreeNode { Folder: null } segment:
+                Say($"'{segment.Label}' is part of a folder path on the server, not a folder, so it cannot be renamed.");
+                return false;
+            case FolderTreeNode { Folder: { } nodeFolder } node:
+                folder = nodeFolder;
+                label  = node.Label;
+                break;
+            case FolderPickerItem item:
+                folder = item.Folder;
+                label  = item.Folder.DisplayName;
+                break;
+            default:
+                Say("Choose a folder to rename.");
+                return false;
+        }
+
+        if (_folderRenamer.RefusalFor(folder) is { } refusal)
+        {
+            Say(refusal);
+            return false;
+        }
+
+        _renaming = folder;
+        // A Label reads a single underscore as an access key, which would swallow it from "to_do".
+        RenameLabel.Content = $"New name for {label.Replace("_", "__", StringComparison.Ordinal)}:";
+        RenameBox.Text = folder.DisplayName;
+        SearchBox.Visibility = Visibility.Collapsed;
+        RenamePanel.Visibility = Visibility.Visible;
+        SetFoldersEnabled(false);
+
+        RenameBox.Focus();
+        Keyboard.Focus(RenameBox);
+        RenameBox.SelectAll();
+        return true;
+    }
+
+    private void RenameBox_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        switch (e.Key)
+        {
+            // Handled here, before the picker's own Open (IsDefault) and Cancel (IsCancel) see them:
+            // Enter renames rather than choosing the folder, and Escape closes the box, not the picker.
+            case Key.Enter:
+                e.Handled = true;
+                _ = CommitRenameAsync();
+                break;
+            case Key.Escape:
+                e.Handled = true;
+                if (!_renameBusy && _renaming is { } folder)
+                    EndRename(folder.AccountId, folder.FullName, announcement: null);
+                break;
+        }
+    }
+
+    /// <summary>
+    /// Renames the folder in the box to what is typed there. On success the picker's folders are
+    /// rebuilt from the account's new list and focus lands on the renamed folder, whose new name is
+    /// read as it does; anything else the rename changed is said after. A refusal keeps the box open,
+    /// says why and selects the name for retyping.
+    /// </summary>
+    internal async Task CommitRenameAsync()
+    {
+        if (_folderRenamer == null || _renaming is not { } folder || _renameBusy) return;
+
+        // While the server works the picker cannot be closed (Cancel is unavailable, and OnClosing
+        // refuses Alt+F4): its caller catches the main window up as soon as the picker closes, and a
+        // rename that finished after that would have nobody left to catch it up.
+        _renameBusy = true;
+        RenameBox.IsReadOnly = true;
+        CancelButton.IsEnabled = false;
+        FolderRenameResult result;
+        try
+        {
+            result = await _folderRenamer.RenameAsync(folder, RenameBox.Text);
+        }
+        catch (Exception ex)
+        {
+            // The renamer reports its own failures; this is for one it did not foresee, which must
+            // still be heard rather than leave the box looking stuck.
+            LogService.Log("FolderPicker: rename", ex);
+            var reason = $"Could not rename {folder.DisplayName}. {ex.Message}";
+            result = new FolderRenameResult(false, reason, reason);
+        }
+        finally
+        {
+            _renameBusy = false;
+            RenameBox.IsReadOnly = false;
+            CancelButton.IsEnabled = true;
+        }
+
+        if (!result.Succeeded)
+        {
+            Say(result.Message);
+            RenameBox.Focus();
+            RenameBox.SelectAll();
+            return;
+        }
+
+        var accountId   = folder.AccountId;
+        var newFullName = result.Rename?.NewFullName ?? folder.FullName;
+        if (result.AccountFolders is { } fresh)
+        {
+            if (_useTreeView && _treeFolders != null && _treeFolders.ContainsKey(accountId))
+            {
+                _treeFolders[accountId] = fresh.ToList();
+                RebuildTreeView();
+            }
+            else if (!_useTreeView && _listFolders.ContainsKey(accountId))
+            {
+                _listFolders[accountId] = fresh.ToList();
+                PopulateFlatList();
+                _view?.Refresh();
+            }
+        }
+
+        EndRename(accountId, newFullName, result.Announcement);
+    }
+
+    /// <summary>
+    /// Closes the rename box and puts focus on the folder named by <paramref name="accountId"/> and
+    /// <paramref name="fullName"/>: the renamed folder, or on Escape the one the box was opened on.
+    /// </summary>
+    private void EndRename(Guid accountId, string fullName, string? announcement)
+    {
+        _renaming = null;
+        RenamePanel.Visibility = Visibility.Collapsed;
+        if (!_useTreeView) SearchBox.Visibility = Visibility.Visible;
+        SetFoldersEnabled(true);
+
+        // Item containers for a rebuilt tree or list exist only after a later layout pass.
+        _ = Dispatcher.InvokeAsync(() =>
+        {
+            FocusFolder(accountId, fullName);
+            // After focus, so it is not cut off by the folder's name being read as focus arrives.
+            if (!string.IsNullOrEmpty(announcement))
+                _ = Dispatcher.InvokeAsync(() => Say(announcement!), DispatcherPriority.ContextIdle);
+        }, DispatcherPriority.Input);
+    }
+
+    private void SetFoldersEnabled(bool enabled)
+    {
+        FolderTreeView.IsEnabled = enabled;
+        FolderListBox.IsEnabled  = enabled;
+        NewFolderButton.IsEnabled = enabled;
+        OpenButton.IsEnabled = enabled &&
+            (!_useTreeView || IsOpenable(FolderTreeView.SelectedItem as FolderTreeNode));
+    }
+
+    private void FocusFolder(Guid accountId, string fullName)
+    {
+        if (_useTreeView)
+        {
+            if (FolderTreeView.ItemsSource is IEnumerable<FolderTreeNode> roots &&
+                FindNodeByFolder(roots, accountId, fullName) is { } node &&
+                TreeViewFocusHelper.SelectTreeViewNode(FolderTreeView, node))
+                return;
+            FocusTreeSelection();
+            return;
+        }
+
+        var item = _items.FirstOrDefault(i => i.Folder.AccountId == accountId &&
+                                              string.Equals(i.Folder.FullName, fullName, StringComparison.Ordinal));
+        if (item != null && (_view == null || _view.Cast<FolderPickerItem>().Contains(item)))
+            FolderListBox.SelectedItem = item;
+        FocusSelectedFolder();
+    }
+
+    private void Say(string text) =>
+        AccessibilityHelper.Announce(this, text, category: AnnouncementCategory.Result);
+
+    protected override void OnClosing(CancelEventArgs e)
+    {
+        // See CommitRenameAsync: not while a rename is on its way to the server.
+        if (_renameBusy)
+        {
+            e.Cancel = true;
+            Say("The folder is being renamed. Wait for it to finish.");
+        }
+        base.OnClosing(e);
+    }
+
+    /// <summary>
+    /// Fills the flat list from the accounts and folders it was given: the virtual folders first,
+    /// then each account's own All Mail and its folders, Inbox first and the rest by path.
+    /// </summary>
+    private void PopulateFlatList()
+    {
+        _items.Clear();
+
+        foreach (var vf in _listVirtualFolders)
+            _items.Add(new FolderPickerItem(vf, null, vf.DisplayName, vf.DisplayName));
+
+        foreach (var account in _listAccounts)
+        {
+            if (!_listFolders.TryGetValue(account.Id, out var folders) || folders.Count == 0)
+                continue;
+
+            if (_listAccountMailFolders != null &&
+                _listAccountMailFolders.TryGetValue(account.Id, out var accountMailFolder))
+            {
+                _items.Add(new FolderPickerItem(
+                    accountMailFolder,
+                    account,
+                    accountMailFolder.DisplayName,
+                    $"{account.AccountLabel} - {accountMailFolder.DisplayName}"));
+            }
+
+            // Graph references parents by id, so a folder's FullName is an opaque id — build a
+            // readable path from DisplayNames. IMAP carries a separator path in FullName already and
+            // never consults byId, so don't build it for an all-IMAP account.
+            var byId = folders.Any(f => f.ParentId != null)
+                ? folders.ToDictionary(f => f.FullName, StringComparer.Ordinal)
+                : EmptyFolderById;
+
+            foreach (var (folder, folderPath) in folders
+                         .Where(f => !f.IsHeader)
+                         .Select(f => (Folder: f, Path: BuildFolderPath(f, byId)))
+                         .OrderBy(x => IsInbox(x.Folder) ? 0 : 1)
+                         .ThenBy(x => x.Path, StringComparer.OrdinalIgnoreCase))
+            {
+                _items.Add(new FolderPickerItem(
+                    folder,
+                    account,
+                    folderPath,
+                    $"{account.AccountLabel} - {folderPath}"));
+            }
         }
     }
 

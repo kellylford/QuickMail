@@ -45,7 +45,7 @@ sealed class StubImapMailService : IMailService
     public Task MoveMessagesAsync(Guid accountId, string folderName, IList<string> messageIds, string destinationFolder, CancellationToken ct = default) => Task.CompletedTask;
     public Task CreateFolderAsync(Guid accountId, string? parentFolderName, string name, CancellationToken ct = default) => Task.CompletedTask;
     public Task DeleteFolderAsync(Guid accountId, string folderName, CancellationToken ct = default) => Task.CompletedTask;
-    public Task RenameFolderAsync(Guid accountId, string folderName, string newName, string? newParentFolderName, CancellationToken ct = default) => Task.CompletedTask;
+    public Task<string> RenameFolderAsync(Guid accountId, string folderName, string newName, string? newParentFolderName, CancellationToken ct = default) => Task.FromResult(folderName);
     public Task MoveFolderAsync(Guid accountId, string folderName, string? newParentFolderName, CancellationToken ct = default) => Task.CompletedTask;
     public Task CopyFolderAsync(Guid accountId, string folderName, string? destinationParentName, CancellationToken ct = default) => Task.CompletedTask;
     public void Dispose() { }
@@ -99,7 +99,7 @@ class StubImapMailServiceBase : IMailService
     public virtual Task MoveMessagesAsync(Guid accountId, string folderName, IList<string> messageIds, string destinationFolder, CancellationToken ct = default) => _inner.MoveMessagesAsync(accountId, folderName, messageIds, destinationFolder, ct);
     public Task CreateFolderAsync(Guid accountId, string? parentFolderName, string name, CancellationToken ct = default) => _inner.CreateFolderAsync(accountId, parentFolderName, name, ct);
     public Task DeleteFolderAsync(Guid accountId, string folderName, CancellationToken ct = default) => _inner.DeleteFolderAsync(accountId, folderName, ct);
-    public Task RenameFolderAsync(Guid accountId, string folderName, string newName, string? newParentFolderName, CancellationToken ct = default) => _inner.RenameFolderAsync(accountId, folderName, newName, newParentFolderName, ct);
+    public Task<string> RenameFolderAsync(Guid accountId, string folderName, string newName, string? newParentFolderName, CancellationToken ct = default) => _inner.RenameFolderAsync(accountId, folderName, newName, newParentFolderName, ct);
     public Task MoveFolderAsync(Guid accountId, string folderName, string? newParentFolderName, CancellationToken ct = default) => _inner.MoveFolderAsync(accountId, folderName, newParentFolderName, ct);
     public Task CopyFolderAsync(Guid accountId, string folderName, string? destinationParentName, CancellationToken ct = default) => _inner.CopyFolderAsync(accountId, folderName, destinationParentName, ct);
     public void Dispose() => _inner.Dispose();
@@ -429,6 +429,19 @@ class StubLocalStoreService : ILocalStoreService
     /// <para>A copy shares the row instance with the source rather than cloning it — the seeded lists
     /// are keyed by folder, so membership is the thing to assert on, not the copy's
     /// <c>FolderName</c>.</para></summary>
+    /// <summary>Each folder rename the store was asked to follow (#1083), in order.</summary>
+    public List<(Guid AccountId, string OldFullName, string NewFullName, char Separator)> FolderRenames { get; } = [];
+
+    /// <summary>Set to make <see cref="RenameFolderAsync"/> fail, as a locked database would.</summary>
+    public Exception? RenameFolderFailure { get; set; }
+
+    public virtual Task<int> RenameFolderAsync(Guid accountId, string oldFullName, string newFullName, char separator)
+    {
+        if (RenameFolderFailure is { } failure) return Task.FromException<int>(failure);
+        FolderRenames.Add((accountId, oldFullName, newFullName, separator));
+        return Task.FromResult(0);
+    }
+
     public virtual Task<int> RefileMessagesAsync(Guid accountId, string fromFolder, string toFolder, IEnumerable<string> messageIds, bool copy)
     {
         // Same-folder is a no-op in the real store. Without this the stub would find source and
@@ -596,6 +609,18 @@ sealed class StubFolderViewStateService : IFolderViewStateService
 
     public void Forget(Guid accountId, string folderFullName) =>
         _states.Remove(Key(accountId, folderFullName));
+
+    public void Rename(Guid accountId, Func<string, string?> rename)
+    {
+        var prefix = $"{accountId:N}|";
+        foreach (var key in _states.Keys.Where(k => k.StartsWith(prefix, StringComparison.Ordinal)).ToList())
+            if (rename(key[prefix.Length..]) is { } renamed)
+            {
+                var state = _states[key];
+                _states.Remove(key);
+                _states[prefix + renamed] = state;
+            }
+    }
 }
 
 /// <summary>In-memory watched conversations — no watches.json, no disk. Matching mirrors the real
