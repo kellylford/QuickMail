@@ -79,14 +79,16 @@ public static class RadioGroupNavigation
     /// </summary>
     private static void OnContainerChecked(object sender, RoutedEventArgs e)
     {
-        if (sender is DependencyObject container && e.OriginalSource is RadioButton rb)
+        // A disabled button cannot take focus, so it is no place for Tab to arrive.
+        if (sender is DependencyObject container && e.OriginalSource is RadioButton { IsEnabled: true } rb)
             RememberAsTabEntry(container, rb);
     }
 
     // WPF records where a TabNavigation="Once" container is entered with an internal
     // KeyboardNavigation.SetTabOnceActiveElement, and has no public way to set it. Calling it is
     // what WPF itself does when focus moves inside the container. If a WPF update ever removes
-    // it, Tab simply falls back to WPF's own choice; RadioGroupNavigationTests fails so we know.
+    // it, Tab simply falls back to WPF's own choice, and
+    // FlagManagerColorRadioTests.TabEntryAccessors_StillExistInWpf fails so we know.
     internal static readonly MethodInfo? SetTabOnceActiveElementMethod =
         typeof(KeyboardNavigation).GetMethod(
             "SetTabOnceActiveElement", BindingFlags.NonPublic | BindingFlags.Static,

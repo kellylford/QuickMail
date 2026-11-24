@@ -290,6 +290,23 @@
                             <RadioButton Tag="#6B46C1" AutomationProperties.Name="Violet"  GroupName="ColorGroup" IsChecked="{Binding SelectedColorHex, Mode=TwoWay, Converter={StaticResource StringEqualsParameterConverter}, ConverterParameter=#6B46C1}"/>
                             <RadioButton Tag="#D53F8C" AutomationProperties.Name="Pink"    GroupName="ColorGroup" IsChecked="{Binding SelectedColorHex, Mode=TwoWay, Converter={StaticResource StringEqualsParameterConverter}, ConverterParameter=#D53F8C}"/>
                         </WrapPanel>
+                        <!-- Why the colors are unavailable, for the built-in flag. -->
+                        <TextBlock x:Name="BuiltInColorNote"
+                                   Text="The built-in flag's color can't be changed."
+                                   TextWrapping="Wrap"
+                                   Margin="0,4,0,0"
+                                   Foreground="{DynamicResource Theme.TextSecondary}">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding SelectedFlag.IsBuiltIn}" Value="True">
+                                            <Setter Property="Visibility" Value="Visible"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
                     </StackPanel>
                 </StackPanel>
             </ScrollViewer>

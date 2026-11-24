@@ -4086,7 +4086,11 @@ public partial class MainWindow : Window
         var prev = Keyboard.FocusedElement as IInputElement;
         var vmFm = new FlagManagerViewModel(_flagService);
         var win  = new FlagManagerWindow(vmFm) { Owner = this };
-        win.ShowDialog();
+        // The Flag Manager saves on every change, arrow presses in its colors included; refresh
+        // this window's flags once, after the modal loop has ended (Modal Dialog Rules, #1080).
+        _vm.DeferFlagDefinitionRefresh();
+        try { win.ShowDialog(); }
+        finally { _ = _vm.ResumeFlagDefinitionRefresh(); }
         (prev ?? MessageList).Focus();
     }
 

@@ -28,7 +28,12 @@ public class FlagManagerViewModelTests
 #pragma warning restore CS0067
         public FlagDefinition GetBuiltInFlag() => FlagDefinition.CreateBuiltIn();
         public Task<List<FlagDefinition>> LoadFlagDefinitionsAsync() => Task.FromResult(new List<FlagDefinition>(_flags));
-        public Task SaveFlagDefinitionsAsync(List<FlagDefinition> flags) { Saved = new List<FlagDefinition>(flags); return Task.CompletedTask; }
+        public bool FailSaves { get; set; }
+        public Task SaveFlagDefinitionsAsync(List<FlagDefinition> flags)
+        {
+            if (FailSaves) return Task.FromException(new System.IO.IOException("disk full"));
+            Saved = new List<FlagDefinition>(flags); return Task.CompletedTask;
+        }
         public Task<FlagDefinition> GetKDefaultFlagAsync() => Task.FromResult(_flags.Find(f => f.Id == KDefaultId) ?? FlagDefinition.CreateBuiltIn());
         public Task SetKDefaultFlagAsync(Guid flagId) { KDefaultId = flagId; return Task.CompletedTask; }
         public Task<FlagDefinition?> SetMessageFlagAsync(MailMessageSummary message, string? flagId, FlagDefinition? resolvedDef = null, CancellationToken ct = default)
@@ -414,6 +419,20 @@ public class FlagManagerViewModelTests
     }
 
     [Fact]
+    public async Task SelectedColorHex_SaveFailure_IsAnnounced()
+    {
+        var (vm, svc) = await MakeVmAsync(BuiltInAndUrgent());
+        vm.SelectedFlag = vm.Flags[1];
+        var said = new List<(string Text, AnnouncementCategory Category)>();
+        vm.AnnouncementRequested += (t, c) => said.Add((t, c));
+        svc.FailSaves = true;
+
+        vm.SelectedColorHex = "#E53E3E";
+
+        Assert.Equal([("The flag color could not be saved", AnnouncementCategory.Result)], said);
+    }
+
+    [Fact]
     public async Task SelectedColorHex_RaisedWhenSelectionChanges()
     {
         var (vm, _) = await MakeVmAsync(BuiltInAndUrgent());
@@ -455,8 +474,8 @@ public class FlagManagerViewModelTests
 
         svc.ReleaseOne();
         // The second save starts from a continuation of the first, on the thread pool.
-        Assert.True(SpinWait.SpinUntil(() => svc.Started == 2, TimeSpan.FromSeconds(5)),
-            "the second save never started after the first finished");
+        await svc.SecondStarted.Task.WaitAsync(TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken);
+        Assert.Equal(2, svc.Started);
         svc.ReleaseOne();
         await svc.LastSave.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
         Assert.Equal(1, svc.MaxInFlight);
@@ -467,7 +486,9 @@ public class FlagManagerViewModelTests
         private readonly List<FlagDefinition> _flags;
         private readonly Queue<TaskCompletionSource> _gates = new();
         private int _inFlight;
-        public int Started { get; private set; }
+        private int _started;
+        public int Started => Volatile.Read(ref _started);
+        public TaskCompletionSource SecondStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public int MaxInFlight { get; private set; }
         public Task LastSave { get; private set; } = Task.CompletedTask;
 
@@ -482,13 +503,14 @@ public class FlagManagerViewModelTests
         public Task<List<FlagDefinition>> LoadFlagDefinitionsAsync() => Task.FromResult(new List<FlagDefinition>(_flags));
         public Task SaveFlagDefinitionsAsync(List<FlagDefinition> flags)
         {
-            // Gate and LastSave are in place before Started moves, since the test waits on Started.
+            // Gate and LastSave are in place before the test hears this save started.
             var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             _gates.Enqueue(gate);
             var inFlight = Interlocked.Increment(ref _inFlight);
             MaxInFlight = Math.Max(MaxInFlight, inFlight);
             LastSave = Finish(gate.Task);
-            Started++;
+            if (Interlocked.Increment(ref _started) == 2)
+                SecondStarted.TrySetResult();
             return LastSave;
         }
         private async Task Finish(Task gate) { await gate; Interlocked.Decrement(ref _inFlight); }

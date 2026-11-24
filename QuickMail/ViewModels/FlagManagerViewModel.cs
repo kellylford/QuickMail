@@ -79,7 +79,11 @@ public partial class FlagManagerViewModel : ObservableObject
     private async Task SaveColorAsync()
     {
         try { await SaveAsync(); }
-        catch (Exception ex) { LogService.Log("FlagManager: saving a flag color failed", ex); }
+        catch (Exception ex)
+        {
+            LogService.Log("FlagManager: saving a flag color failed", ex);
+            AnnouncementRequested?.Invoke("The flag color could not be saved", AnnouncementCategory.Result);
+        }
     }
 
     // Track user-flag count so CanAddFlagNow doesn't need a LINQ scan on every check.
