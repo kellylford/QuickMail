@@ -72,3 +72,5 @@ The regular downloads run on every supported PC, ARM ones included — just not 
 All downloads include the .NET 10 runtime — you do not need to install .NET separately.
 
 You can also install QuickMail with the Windows Package Manager: `winget install quickmail`. It picks the right version for your computer, whether it has an Intel, AMD or ARM processor, and QuickMail keeps itself up to date from then on.
+
+Note: a new release can take a while to appear in winget, because a volunteer moderator approves each one. If you installed QuickMail with winget, its automatic updates, built in and on by default, keep you current. Winget is meant for installing QuickMail the first time, or for scripts that need an unattended install.
