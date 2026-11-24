@@ -346,21 +346,158 @@ public class FlagManagerViewModelTests
         Assert.Equal(customId, svc.KDefaultId);
     }
 
-    // ── ChangeColor ───────────────────────────────────────────────────────────
+    // ── SelectedColorHex (issue #1080) ─────────────────────────────────────────
+
+    private static List<FlagDefinition> BuiltInAndUrgent() =>
+    [
+        FlagDefinition.CreateBuiltIn(),
+        new() { Name = "Urgent", SortOrder = 1, ColorHex = "#3182CE" },
+    ];
 
     [Fact]
-    public async Task ChangeColor_UpdatesSelectedFlagAndSaves()
+    public async Task SelectedColorHex_ReturnsSelectedFlagsColor()
     {
-        var flags = new List<FlagDefinition>
-        {
-            FlagDefinition.CreateBuiltIn(),
-            new() { Name = "Urgent", SortOrder = 1, ColorHex = "#3182CE" },
-        };
-        var (vm, svc) = await MakeVmAsync(flags);
-        vm.SelectedFlag = vm.Flags[1]; // select non-built-in flag
-        await vm.ChangeColorCommand.ExecuteAsync("#E53E3E");
+        var (vm, _) = await MakeVmAsync(BuiltInAndUrgent());
+        vm.SelectedFlag = vm.Flags[1];
+        Assert.Equal("#3182CE", vm.SelectedColorHex);
+    }
+
+    [Fact]
+    public async Task SelectedColorHex_NullWithNoSelection()
+    {
+        var (vm, _) = await MakeVmAsync(BuiltInAndUrgent());
+        vm.SelectedFlag = null;
+        Assert.Null(vm.SelectedColorHex);
+        vm.SelectedColorHex = "#E53E3E";   // ignored, and does not throw
+        Assert.Null(vm.SelectedColorHex);
+    }
+
+    [Fact]
+    public async Task SelectedColorHex_Set_UpdatesFlagAndSaves()
+    {
+        var (vm, svc) = await MakeVmAsync(BuiltInAndUrgent());
+        vm.SelectedFlag = vm.Flags[1];
+        var raised = new List<string?>();
+        vm.PropertyChanged += (_, e) => raised.Add(e.PropertyName);
+
+        vm.SelectedColorHex = "#E53E3E";
+
         Assert.Equal("#E53E3E", vm.SelectedFlag!.ColorHex);
+        Assert.Equal("#E53E3E", vm.SelectedColorHex);
         Assert.Equal("#E53E3E", svc.Saved[1].ColorHex);
+        Assert.Contains(nameof(FlagManagerViewModel.SelectedColorHex), raised);
+    }
+
+    [Fact]
+    public async Task SelectedColorHex_SetSameColorInOtherCase_DoesNotSave()
+    {
+        var (vm, svc) = await MakeVmAsync(BuiltInAndUrgent());
+        vm.SelectedFlag = vm.Flags[1];
+
+        vm.SelectedColorHex = "#3182ce";
+
+        Assert.Empty(svc.Saved);
+        Assert.Equal("#3182CE", vm.SelectedFlag!.ColorHex);
+    }
+
+    [Fact]
+    public async Task SelectedColorHex_Set_IgnoredForBuiltInFlag()
+    {
+        var (vm, svc) = await MakeVmAsync(BuiltInAndUrgent());
+        vm.SelectedFlag = vm.Flags[0];
+
+        vm.SelectedColorHex = "#E53E3E";
+
+        Assert.Equal("#C05621", vm.Flags[0].ColorHex);
+        Assert.Equal("#C05621", vm.SelectedColorHex);
+        Assert.Empty(svc.Saved);
+    }
+
+    [Fact]
+    public async Task SelectedColorHex_RaisedWhenSelectionChanges()
+    {
+        var (vm, _) = await MakeVmAsync(BuiltInAndUrgent());
+        var raised = new List<string?>();
+        vm.PropertyChanged += (_, e) => raised.Add(e.PropertyName);
+
+        vm.SelectedFlag = vm.Flags[1];
+
+        Assert.Contains(nameof(FlagManagerViewModel.SelectedColorHex), raised);
+        Assert.Contains(nameof(FlagManagerViewModel.CanChangeColor), raised);
+        Assert.Equal("#3182CE", vm.SelectedColorHex);
+    }
+
+    [Fact]
+    public async Task CanChangeColor_FalseForBuiltIn_TrueForUserFlag_FalseWithNoSelection()
+    {
+        var (vm, _) = await MakeVmAsync(BuiltInAndUrgent());
+        vm.SelectedFlag = vm.Flags[0];
+        Assert.False(vm.CanChangeColor);
+        vm.SelectedFlag = vm.Flags[1];
+        Assert.True(vm.CanChangeColor);
+        vm.SelectedFlag = null;
+        Assert.False(vm.CanChangeColor);
+    }
+
+    [Fact]
+    public async Task Saves_RunOneAtATime()
+    {
+        // Arrowing through the colors saves on every press; FlagService writes through one temp
+        // file, so a second write must not start until the first has finished.
+        var svc = new GatedFlagService(BuiltInAndUrgent());
+        var vm  = new FlagManagerViewModel(svc);
+        await vm.LoadAsync(TestContext.Current.CancellationToken);
+        vm.SelectedFlag = vm.Flags[1];
+
+        vm.SelectedColorHex = "#E53E3E";
+        vm.SelectedColorHex = "#38A169";
+        Assert.Equal(1, svc.Started);
+
+        svc.ReleaseOne();
+        // The second save starts from a continuation of the first, on the thread pool.
+        Assert.True(SpinWait.SpinUntil(() => svc.Started == 2, TimeSpan.FromSeconds(5)),
+            "the second save never started after the first finished");
+        svc.ReleaseOne();
+        await svc.LastSave.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        Assert.Equal(1, svc.MaxInFlight);
+    }
+
+    private sealed class GatedFlagService : IFlagService
+    {
+        private readonly List<FlagDefinition> _flags;
+        private readonly Queue<TaskCompletionSource> _gates = new();
+        private int _inFlight;
+        public int Started { get; private set; }
+        public int MaxInFlight { get; private set; }
+        public Task LastSave { get; private set; } = Task.CompletedTask;
+
+        public GatedFlagService(List<FlagDefinition> flags) => _flags = flags;
+
+        public void ReleaseOne() => _gates.Dequeue().SetResult();
+
+#pragma warning disable CS0067
+        public event EventHandler? FlagDefinitionsChanged;
+#pragma warning restore CS0067
+        public FlagDefinition GetBuiltInFlag() => FlagDefinition.CreateBuiltIn();
+        public Task<List<FlagDefinition>> LoadFlagDefinitionsAsync() => Task.FromResult(new List<FlagDefinition>(_flags));
+        public Task SaveFlagDefinitionsAsync(List<FlagDefinition> flags)
+        {
+            // Gate and LastSave are in place before Started moves, since the test waits on Started.
+            var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            _gates.Enqueue(gate);
+            var inFlight = Interlocked.Increment(ref _inFlight);
+            MaxInFlight = Math.Max(MaxInFlight, inFlight);
+            LastSave = Finish(gate.Task);
+            Started++;
+            return LastSave;
+        }
+        private async Task Finish(Task gate) { await gate; Interlocked.Decrement(ref _inFlight); }
+        public Task<FlagDefinition> GetKDefaultFlagAsync() => Task.FromResult(_flags[0]);
+        public Task SetKDefaultFlagAsync(Guid flagId) => Task.CompletedTask;
+        public Task<FlagDefinition?> SetMessageFlagAsync(MailMessageSummary message, string? flagId, FlagDefinition? resolvedDef = null, CancellationToken ct = default)
+            => Task.FromResult<FlagDefinition?>(null);
+        public Task<FlagDefinition?> ToggleDefaultFlagAsync(MailMessageSummary message, CancellationToken ct = default)
+            => Task.FromResult<FlagDefinition?>(null);
     }
 
     // ── HasSelection / CanDelete ───────────────────────────────────────────────
