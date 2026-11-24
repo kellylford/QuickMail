@@ -290,14 +290,16 @@ public class EditorTextProviderTests
                 range.MoveEndpointByRange(TextPatternRangeEndpoint.End, range, TextPatternRangeEndpoint.Start);
                 range.ExpandToEnclosingUnit(TextUnit.Line);
                 var read = new List<string> { Spoken(range.GetText(-1)) };
-                // Exactly five moves: WPF's rich editor reports a move of 1 from its last line
-                // without moving, so "until it stops moving" never ends there.
                 for (int i = 0; i < 5; i++)
                 {
                     Assert.Equal(1, range.Move(TextUnit.Line, 1));
                     read.Add(Spoken(range.GetText(-1)));
                 }
                 Assert.Equal(new[] { "Alpha", "blank", "Beta", "blank", "blank", "Gamma" }, read);
+                // From the last line there is nowhere to go. WPF's rich editor reported a move of 1
+                // there without moving, so a screen reader reading to the end never stopped.
+                Assert.Equal(0, range.Move(TextUnit.Line, 1));
+                Assert.Equal("Gamma", Spoken(range.GetText(-1)));
             }
         }
         finally { window.Close(); }

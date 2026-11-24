@@ -89,9 +89,12 @@ internal sealed class EditorTextProvider : ITextProvider
         {
             if (PlainParagraphs(unit)) return MovePlainParagraph(count);
             bool degenerate = IsDegenerate();
+            var before = Inner.Clone();
             int moved = Inner.Move(unit, count);
             if (!degenerate && unit is TextUnit.Line or TextUnit.Paragraph) TrimEmptyLine();
-            return moved;
+            // WPF's RichTextBox says it moved one line from its last line while staying put. A
+            // screen reader reading to the end moves until a move reports 0, so it never stopped.
+            return moved != 0 && Inner.Compare(before) ? 0 : moved;
         }
 
         public int MoveEndpointByUnit(TextPatternRangeEndpoint endpoint, TextUnit unit, int count)
