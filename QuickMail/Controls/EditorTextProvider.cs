@@ -95,7 +95,16 @@ internal sealed class EditorTextProvider : ITextProvider
         }
 
         public int MoveEndpointByUnit(TextPatternRangeEndpoint endpoint, TextUnit unit, int count)
-            => PlainParagraphs(unit) ? MovePlainParagraphEndpoint(endpoint, count) : Inner.MoveEndpointByUnit(endpoint, unit, count);
+        {
+            if (PlainParagraphs(unit)) return MovePlainParagraphEndpoint(endpoint, count);
+            // A line built from the caret by moving End one line on, the other way of asking
+            // for "the line here", gets the same empty-line fix as ExpandToEnclosingUnit.
+            bool lineFromCaret = endpoint == TextPatternRangeEndpoint.End && count == 1
+                && unit is TextUnit.Line or TextUnit.Paragraph && IsDegenerate();
+            int moved = Inner.MoveEndpointByUnit(endpoint, unit, count);
+            if (lineFromCaret) TrimEmptyLine();
+            return moved;
+        }
 
         public void MoveEndpointByRange(TextPatternRangeEndpoint endpoint, ITextRangeProvider targetRange, TextPatternRangeEndpoint targetEndpoint)
             => Inner.MoveEndpointByRange(endpoint, Unwrap(targetRange), targetEndpoint);
@@ -139,25 +148,38 @@ internal sealed class EditorTextProvider : ITextProvider
         }
 
         /// <summary>
-        /// Puts this range at string indexes. WPF's Character unit counts a <c>\r\n</c> as one
-        /// character, so indexes are converted before moving.
+        /// Puts this range at string indexes. Start goes first: if it passes End, UI Automation
+        /// brings End along, and End is then moved from wherever it ended up.
         /// </summary>
         private void SetOffsets(string text, int start, int end)
         {
-            var target = _owner._inner.DocumentRange;
-            target.MoveEndpointByRange(TextPatternRangeEndpoint.End, target, TextPatternRangeEndpoint.Start);
-            target.MoveEndpointByUnit(TextPatternRangeEndpoint.End, TextUnit.Character, Units(text, end));
-            target.MoveEndpointByUnit(TextPatternRangeEndpoint.Start, TextUnit.Character, Units(text, start));
-            Inner.MoveEndpointByRange(TextPatternRangeEndpoint.Start, target, TextPatternRangeEndpoint.Start);
-            Inner.MoveEndpointByRange(TextPatternRangeEndpoint.End, target, TextPatternRangeEndpoint.End);
+            MoveEndpointTo(TextPatternRangeEndpoint.Start, text, start);
+            MoveEndpointTo(TextPatternRangeEndpoint.End, text, end);
         }
 
-        private static int Units(string text, int index)
+        /// <summary>
+        /// Moves one endpoint to a string index, from where it already is. WPF's Character unit
+        /// is slow (a move across 18,000 characters took about a second), so it is only ever asked
+        /// to cross the short distance to the target, never the text before it. Its characters are
+        /// insertion positions, not string indexes: a <c>\r\n</c>, an emoji's surrogate pair and a
+        /// letter with a combining accent are one each, which is what .NET's text elements count.
+        /// Where WPF still disagrees (some joined emoji sequences), it is nudged one character at
+        /// a time, checked against <see cref="Offset"/>.
+        /// </summary>
+        private void MoveEndpointTo(TextPatternRangeEndpoint endpoint, string text, int target)
         {
-            int units = index;
-            for (int i = 1; i < index && i < text.Length; i++)
-                if (text[i] == '\n' && text[i - 1] == '\r') units--;
-            return units;
+            int current = Offset(endpoint);
+            if (current == target) return;
+            int low = Math.Clamp(Math.Min(current, target), 0, text.Length);
+            int high = Math.Clamp(Math.Max(current, target), 0, text.Length);
+            int elements = new System.Globalization.StringInfo(text.Substring(low, high - low)).LengthInTextElements;
+            Inner.MoveEndpointByUnit(endpoint, TextUnit.Character, target > current ? elements : -elements);
+            for (int i = 0; i < 8; i++)
+            {
+                current = Offset(endpoint);
+                if (current == target) return;
+                if (Inner.MoveEndpointByUnit(endpoint, TextUnit.Character, current < target ? 1 : -1) == 0) return;
+            }
         }
 
         private int MovePlainParagraph(int count)

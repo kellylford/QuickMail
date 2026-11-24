@@ -115,7 +115,7 @@ public class EditorTextProviderTests
         {
             var provider = Provider(box);
             box.CaretIndex = 40; // on the wrapped second line of the first paragraph
-            Assert.Equal("First paragraph, long enough to wrap onto more than one line in a narrow box.",
+            Assert.Equal("First paragraph, long enough to wrap onto more than one line in a narrow box.\r\n",
                 Read(provider, TextUnit.Paragraph));
             box.CaretIndex = box.Text.IndexOf("Second", StringComparison.Ordinal);
             Assert.Equal("Second.", Read(provider, TextUnit.Paragraph));
@@ -221,6 +221,97 @@ public class EditorTextProviderTests
         finally { window.Close(); }
     }
 
+    [StaTheory]
+    [InlineData("Hi \U0001F600")]       // an emoji: a surrogate pair, one WPF character
+    [InlineData("Café time")] // e plus a combining accent, one WPF character
+    [InlineData("\U0001F44D\U0001F3FD ok")] // an emoji with a skin-tone modifier
+    public void PlainEditor_ParagraphAfterEmojiOrAccents_IsExact(string first)
+    {
+        var box = new EditorTextBox { AcceptsReturn = true, Text = first + "\r\nSee you\r\nBye" };
+        var window = Host(box);
+        try
+        {
+            var provider = Provider(box);
+            box.CaretIndex = box.Text.IndexOf("See", StringComparison.Ordinal);
+            Assert.Equal("See you\r\n", Read(provider, TextUnit.Paragraph));
+            var range = CaretRange(provider);
+            range.ExpandToEnclosingUnit(TextUnit.Paragraph);
+            Assert.Equal(1, range.Move(TextUnit.Paragraph, 1));
+            Assert.Equal("Bye", range.GetText(-1));
+            Assert.Equal(-2, range.Move(TextUnit.Paragraph, -2));
+            Assert.Equal(first + "\r\n", range.GetText(-1));
+        }
+        finally { window.Close(); }
+    }
+
+    [StaFact]
+    public void PlainEditor_ParagraphNearTheEndOfALongMessage_IsQuick()
+    {
+        // A reply with a long quoted history: each paragraph query used to rebuild its range from
+        // the top, one WPF character at a time, which took seconds on a message this size.
+        var body = string.Concat(Enumerable.Repeat("> A quoted line of an earlier message in the thread.\r\n", 1000)) + "Last line.";
+        var box = new EditorTextBox { AcceptsReturn = true, Text = body };
+        var window = Host(box);
+        try
+        {
+            var provider = Provider(box);
+            box.CaretIndex = body.Length - 3;
+            Read(provider, TextUnit.Paragraph); // warm up
+            var timer = System.Diagnostics.Stopwatch.StartNew();
+            var range = CaretRange(provider);
+            range.ExpandToEnclosingUnit(TextUnit.Paragraph);
+            Assert.Equal("Last line.", range.GetText(-1));
+            Assert.Equal(-1, range.Move(TextUnit.Paragraph, -1));
+            Assert.Equal("> A quoted line of an earlier message in the thread.\r\n", range.GetText(-1));
+            timer.Stop();
+            Assert.True(timer.ElapsedMilliseconds < 2000, $"took {timer.ElapsedMilliseconds} ms");
+        }
+        finally { window.Close(); }
+    }
+
+    [StaFact]
+    public void BothEditors_MoveByLineOnALineRange_ReadsEachLineOnce()
+    {
+        // A screen reader's say-all and line review move a line-sized range rather than the caret.
+        var plain = new EditorTextBox { AcceptsReturn = true, Text = "Alpha\r\n\r\nBeta\r\n\r\n\r\nGamma" };
+        var rich = new EditorRichTextBox();
+        rich.Document.Blocks.Clear();
+        foreach (var text in new[] { "Alpha", "", "Beta", "", "", "Gamma" })
+            rich.Document.Blocks.Add(new Paragraph(new Run(text)));
+        var panel = new StackPanel();
+        panel.Children.Add(plain);
+        panel.Children.Add(rich);
+        var window = Host(panel);
+        try
+        {
+            foreach (UIElement editor in new UIElement[] { plain, rich })
+            {
+                var range = Provider(editor).DocumentRange;
+                range.MoveEndpointByRange(TextPatternRangeEndpoint.End, range, TextPatternRangeEndpoint.Start);
+                range.ExpandToEnclosingUnit(TextUnit.Line);
+                var read = new List<string> { Spoken(range.GetText(-1)) };
+                while (range.Move(TextUnit.Line, 1) == 1) read.Add(Spoken(range.GetText(-1)));
+                Assert.Equal(new[] { "Alpha", "blank", "Beta", "blank", "blank", "Gamma" }, read);
+            }
+        }
+        finally { window.Close(); }
+    }
+
+    [StaFact]
+    public void PlainEditor_LineBuiltFromTheCaretByMovingItsEnd_IsBlankOnAnEmptyLine()
+    {
+        var box = new EditorTextBox { AcceptsReturn = true, Text = "Alpha\r\n\r\nBeta" };
+        var window = Host(box);
+        try
+        {
+            box.CaretIndex = 7; // the empty line
+            var range = CaretRange(Provider(box));
+            range.MoveEndpointByUnit(TextPatternRangeEndpoint.End, TextUnit.Line, 1);
+            Assert.Equal("blank", Spoken(range.GetText(-1)));
+        }
+        finally { window.Close(); }
+    }
+
     [StaFact]
     public void ThroughUiAutomation_TheBlankLineIsBlank()
     {
@@ -249,14 +340,18 @@ public class EditorTextProviderTests
             }) { IsBackground = true };
             client.SetApartmentState(ApartmentState.MTA);
             client.Start();
-            // The provider answers on this thread, so keep its dispatcher running until the client is done.
+            // The provider answers on this thread, so keep its dispatcher running until the client
+            // is done, or 20 seconds have passed: a hung query must fail the test, not hang the run.
             var frame = new System.Windows.Threading.DispatcherFrame();
+            var giveUp = DateTime.UtcNow.AddSeconds(20);
             var poll = new System.Windows.Threading.DispatcherTimer(TimeSpan.FromMilliseconds(20),
-                System.Windows.Threading.DispatcherPriority.Background, (_, _) => { if (!client.IsAlive) frame.Continue = false; },
+                System.Windows.Threading.DispatcherPriority.Background,
+                (_, _) => { if (!client.IsAlive || DateTime.UtcNow > giveUp) frame.Continue = false; },
                 window.Dispatcher);
             poll.Start();
             System.Windows.Threading.Dispatcher.PushFrame(frame);
             poll.Stop();
+            Assert.False(client.IsAlive, "the UI Automation query didn't finish in 20 seconds");
             Assert.Null(failure);
             Assert.Equal("blank", Spoken(line!));
         }

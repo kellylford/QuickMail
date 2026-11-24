@@ -63,15 +63,16 @@ public static class PlainTextParagraphs
 
     /// <summary>
     /// The range a screen reader should be given for the paragraph holding
-    /// <paramref name="index"/>: its text without the line break, or, for an empty paragraph,
-    /// just its line break, which screen readers read as "blank". An empty last paragraph is an
-    /// empty range.
+    /// <paramref name="index"/>: its text and the line break that ends it, so the range runs
+    /// from one paragraph start to the next, the same boundaries endpoint moves use. An empty
+    /// paragraph is just its line break, which screen readers read as "blank"; an empty last
+    /// paragraph is an empty range.
     /// </summary>
     public static (int Start, int End) Enclosing(string text, int index)
     {
         int start = Start(text, index);
         int end = TextEnd(text, start);
-        return end == start ? (start, start + BreakLength(text, start)) : (start, end);
+        return (start, end + BreakLength(text, end));
     }
 
     /// <summary>Where Ctrl+Down puts the caret: the next paragraph's start, or the end of the text.</summary>

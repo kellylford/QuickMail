@@ -26,9 +26,9 @@ public class PlainTextParagraphsTests
         Assert.Equal(expected, PlainTextParagraphs.Start(Text, index));
 
     [Theory]
-    [InlineData(3, 0, 8)]    // a paragraph, without its line break
+    [InlineData(3, 0, 10)]   // a paragraph and the line break that ends it
     [InlineData(10, 10, 12)] // an empty line: just its line break, read as "blank"
-    [InlineData(14, 12, 20)]
+    [InlineData(14, 12, 22)]
     [InlineData(25, 22, 28)] // the last paragraph runs to the end
     public void Enclosing_GivesTheParagraphOrAnEmptyLinesBreak(int index, int start, int end) =>
         Assert.Equal((start, end), PlainTextParagraphs.Enclosing(Text, index));
