@@ -499,8 +499,12 @@
                     <RowDefinition Height="*"/>
                 </Grid.RowDefinitions>
 
-                <TextBox Grid.Row="0"
+                <!-- EditorTextBox / EditorRichTextBox: paragraphs by hard line break, and a text
+                     provider that reads an empty line as blank (#891, #1077). They aren't reached
+                     by the implicit TextBox / RichTextBox styles, so they name them. -->
+                <controls:EditorTextBox Grid.Row="0"
                          x:Name="BodyBox"
+                         Style="{DynamicResource {x:Type TextBox}}"
                          Text="{Binding Body, UpdateSourceTrigger=PropertyChanged}"
                          AutomationProperties.Name="Message body"
                          sc:CommandShortcut.Id="compose.focusBody"
@@ -515,8 +519,9 @@
                          PreviewDrop="Editor_PreviewDrop"
                          PreviewKeyDown="BodyBox_PreviewKeyDown"/>
 
-                <RichTextBox Grid.Row="0"
+                <controls:EditorRichTextBox Grid.Row="0"
                              x:Name="RichBodyBox"
+                             Style="{DynamicResource {x:Type RichTextBox}}"
                              Visibility="Collapsed"
                              AutomationProperties.Name="Message body"
                              sc:CommandShortcut.Id="compose.focusBody"

@@ -3,6 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:controls="clr-namespace:QuickMail.Controls"
         mc:Ignorable="d"
         Title="Manage Accounts"
         Height="660" Width="720"
@@ -375,7 +376,9 @@
                         <!-- Signature -->
                         <TextBlock Text="Email Signature" FontWeight="SemiBold" Margin="0,0,0,6"/>
                         <Label x:Name="LblSignature" Content="Si_gnature (plain text, appended to new messages):" Target="{Binding ElementName=SignatureBox}" Padding="0" Margin="0,4,0,2"/>
-                        <TextBox x:Name="SignatureBox"
+                        <!-- An EditorTextBox for its paragraphs and blank lines (#891, #1077). -->
+                        <controls:EditorTextBox x:Name="SignatureBox"
+                                 Style="{DynamicResource {x:Type TextBox}}"
                                  Text="{Binding Signature, UpdateSourceTrigger=PropertyChanged}"
                                  AutomationProperties.LabeledBy="{Binding ElementName=LblSignature}"
                                  AcceptsReturn="True"

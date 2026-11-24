@@ -3187,6 +3187,7 @@ Every announcement is optional and controlled by the settings above. No custom s
 | `Ctrl+S` | Save draft |
 | `Ctrl+Shift+B` | Address Book (add to To, Cc, Bcc) |
 | `Ctrl+Shift+1/2/3` | Switch to Plain Text / Markdown / HTML mode |
+| `Ctrl+Down` / `Ctrl+Up` | Next paragraph / start of this or the previous paragraph, in the message body. A paragraph is a line ended by Enter; an empty line counts as one |
 | `F7` | Check Spelling (full dialog) |
 | `Ctrl+F7` / `Ctrl+Shift+F7` | Next / previous misspelling (inline) |
 | `Alt+F7` | Repeat the spelling announcement |
