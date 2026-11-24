@@ -1,5 +1,10 @@
 # QuickMail v0.8.77 Release Notes
 
+## Fixed
+
+- **Blank lines in a message you write are read as blank.** Arrowing onto an empty line in the message body read the line after it, so that line was heard twice, once on the blank line and again when you reached it. Screen readers now say "blank" there, in every compose mode and in the signature box. Replies no longer read "On … wrote:" twice either. (#891, #1018, #1042)
+- **Ctrl+Up and Ctrl+Down move by paragraph in Plain Text and Markdown.** They used to jump to the very start or end of the message. Now Ctrl+Down goes to the start of the next paragraph and Ctrl+Up to the start of this one, then the one before, as in Word and Notepad. A paragraph is a line ended by Enter, and an empty line counts as one. Screen readers that read the paragraph as you move now get just that paragraph, not the whole message. (#1077)
+
 
 ## Reporting Issues
 
