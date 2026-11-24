@@ -7,7 +7,6 @@
         MinWidth="300"
         WindowStartupLocation="CenterScreen"
         ResizeMode="NoResize"
-        ShowInTaskbar="False"
         PreviewKeyDown="Window_PreviewKeyDown"
         Background="{DynamicResource Theme.WindowBackground}"
         Foreground="{DynamicResource Theme.TextPrimary}"
@@ -23,7 +22,7 @@
         <!-- Label + Target, never a TextBlock: the label is the box's accessible name. -->
         <Label x:Name="NameLabel"
                Content="{Binding Prompt}"
-               Target="{Binding ElementName=NameBox}"
+
                Padding="0"
                Margin="0,0,0,4"/>
         <TextBox x:Name="NameBox"

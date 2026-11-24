@@ -174,9 +174,21 @@ internal sealed class FolderedMailService : IMailService
     /// separator, and it and every folder inside it get new paths. The listing gets new objects,
     /// as a fresh LIST would, so what the caller already holds is left for it to update.
     /// </summary>
+    /// <summary>
+    /// Set to rename and then fail anyway, as a server does that renames and then times out on what
+    /// comes after (#1083 review): the caller must find the rename happened rather than report it failed.
+    /// </summary>
+    public Exception? FailAfterRenaming { get; set; }
+
     public Task<string> RenameFolderAsync(Guid accountId, string folderName, string newName, string? newParentFolderName, CancellationToken ct = default)
     {
         if (RenameFailure is { } failure) return Task.FromException<string>(failure);
+        if (FailAfterRenaming is { } late)
+        {
+            FailAfterRenaming = null;
+            return RenameFolderAsync(accountId, folderName, newName, newParentFolderName, ct)
+                .ContinueWith<string>(_ => throw late, TaskScheduler.Default);
+        }
         Renames.Add((accountId, folderName, newName));
         if (!_folders.TryGetValue(accountId, out var list)) return Task.FromResult(folderName);
         var index = list.FindIndex(f => string.Equals(f.FullName, folderName, StringComparison.Ordinal));
@@ -186,7 +198,7 @@ internal sealed class FolderedMailService : IMailService
         {
             AccountId = f.AccountId, FullName = fullName, DisplayName = displayName, ParentId = f.ParentId,
             Kind = f.Kind, UnreadCount = f.UnreadCount, MessageCount = f.MessageCount,
-            ExcludeFromAllMail = f.ExcludeFromAllMail, IsHeader = f.IsHeader,
+            ExcludeFromAllMail = f.ExcludeFromAllMail, IsHeader = f.IsHeader, HierarchySeparator = f.HierarchySeparator,
         };
 
         var folder = list[index];

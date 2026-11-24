@@ -346,6 +346,11 @@ public partial class MainWindow : Window
                                          interrupt: false, category: args.Category);
         vm.OpenInviteCardStatus += OnOpenInviteCardStatus;
         vm.FolderRenamed += OnFolderRenamed;   // #1083: message windows and the Rules window follow
+        // #1083: a rename from the modeless Rename Folder window can finish while a modal dialog is
+        // open. The ViewModel then defers the tree rebuild, and it is committed here once the last
+        // modal loop has ended, the way each folder picker's caller commits its own.
+        vm.IsModalDialogOpen = () => ComponentDispatcher.IsThreadModal;
+        ComponentDispatcher.LeaveThreadModal += OnLeaveThreadModal;
         vm.SearchRequested += (_, _) => OpenSearch();
         vm.SaveViewRequested    += (_, _) => OpenViewManager(createMode: true);
         vm.ManageViewsRequested += (_, _) => OpenViewManager(createMode: false);
@@ -938,6 +943,7 @@ public partial class MainWindow : Window
             w.Close();
         _rulesWindow?.Close(); // unowned (#347), so not auto-closed with the main window
         _renameFolderWindow?.Close(); // unowned too (#1083)
+        ComponentDispatcher.LeaveThreadModal -= OnLeaveThreadModal;   // a static event would hold this window
         // A DependencyPropertyDescriptor holds its handlers strongly, so the window would never be collected.
         SenderAddressRegionVisibility.RemoveValueChanged(SenderAddressStatusItem, SenderAddressStatusItem_VisibilityChanged);
         UnwireCalendarColumnFit(); // #547: the same, for the calendar list's font descriptors
@@ -7631,9 +7637,9 @@ public partial class MainWindow : Window
         async (folder, name) =>
         {
             var result = await _vm.RenameFolderAsync(folder, name, insideModal: true);
-            if (visibleOnly && result.Rename is { } rename &&
-                _vm.VisibleCachedFolders.TryGetValue(rename.AccountId, out var visible))
-                result = result with { AccountFolders = visible };
+            if (visibleOnly && result.AccountFolders is { } all && result.Rename is { } rename &&
+                _vm.ResolveAccountById(rename.AccountId) is { } account)
+                result = result with { AccountFolders = FolderTreeBuilder.VisibleFolders(all, account.HiddenFolders) };
             return result;
         });
 
@@ -7646,6 +7652,15 @@ public partial class MainWindow : Window
         _vm.SetStatusWithoutSpeaking(message);
         AccessibilityHelper.Announce(this, message, category: AnnouncementCategory.Result);
     }
+
+    // Queued rather than run in the event: it is raised while the dialog's loop is still unwinding.
+    // Skipped while another modal is still open (a palette over Settings, say); that one's own end
+    // brings it back here.
+    private void OnLeaveThreadModal(object? sender, EventArgs e) =>
+        Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() =>
+        {
+            if (!ComponentDispatcher.IsThreadModal) _vm.CommitPendingFolderTreeRebuild();
+        }));
 
     /// <summary>Follows a folder renamed anywhere (#1083) in the windows that hold folder names of their own.</summary>
     private void OnFolderRenamed(FolderRename rename)

@@ -385,6 +385,23 @@ public class FolderRenameReferencesTests
     }
 
     [Fact]
+    public void Separator_TheServersOwnAnswer_BeatsAGuessFromTheNames()
+    {
+        // A '/' server with no subfolders and a top-level "Projects.old": guessed from the names, '.'
+        // would make "Projects.old" look like a folder inside "Projects" and be renamed with it.
+        var projects = F("Projects", "Projects");
+        projects.HierarchySeparator = '/';
+        List<MailFolderModel> folders = [F("INBOX", "Inbox", kind: SpecialFolderKind.Inbox), projects, F("Projects.old", "Projects.old")];
+
+        Assert.Equal('/', FolderRenameReferences.ImapSeparator(projects, folders));
+        Assert.Equal("v1.2", FolderRenameReferences.ValidateName(projects, "v1.2", folders, BackendKind.ImapSmtp).Name);
+
+        // Recorded on any of the account's folders is as good.
+        var bare = F("Notes", "Notes");
+        Assert.Equal('/', FolderRenameReferences.ImapSeparator(bare, [bare, projects]));
+    }
+
+    [Fact]
     public void Separator_ForATopLevelFolder_FromTheOthers()
     {
         Assert.Equal('/', FolderRenameReferences.ImapSeparator(F("Projects", "Projects"), ImapFolders()));

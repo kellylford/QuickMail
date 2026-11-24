@@ -98,10 +98,10 @@ public class RenameFolderTests
 
         var work = new AccountModel
         {
-            Id = Work, AccountName = "Work", Username = "work@example.com",
+            Id = Work, AccountName = "Work", Username = "work@example.com", AuthType = AuthType.OAuth2Microsoft,
             BackendKind = graphWork ? BackendKind.MicrosoftGraph : BackendKind.ImapSmtp,
         };
-        var home = new AccountModel { Id = Home, AccountName = "Home", Username = "home@example.com" };
+        var home = new AccountModel { Id = Home, AccountName = "Home", Username = "home@example.com", AuthType = AuthType.OAuth2Microsoft };
         arrangeWork?.Invoke(work);
         vm.Accounts.Add(work);
         vm.Accounts.Add(home);
@@ -386,6 +386,59 @@ public class RenameFolderTests
 
         Assert.True(result.Succeeded);
         Assert.Equal("But the messages saved on this computer for it will download again.", result.Announcement);
+    }
+
+    [Fact]
+    public async Task AFailureAfterTheServerRenamed_IsStillASuccess_AndEverythingFollows()
+    {
+        // A timeout after RENAME was sent, or a step after it: the server has the new name, so saying
+        // "could not rename" would leave the rules on a folder that no longer exists.
+        var rule = new MailRule { Name = "File it", AccountId = Work, Action = RuleAction.MoveToFolder, TargetFolder = "Projects/2026" };
+        var rig = await MakeAsync(rules: [rule]);
+        rig.Mail.FailAfterRenaming = new TimeoutException("The operation has timed out.");
+
+        var result = await rig.Vm.RenameFolderAsync(Cached(rig.Vm, Work, "Projects"), "Clients");
+
+        Assert.True(result.Succeeded);
+        Assert.Equal("Clients", result.Rename!.NewFullName);
+        Assert.Equal("Clients/2026", rig.Rules.LoadedRules.Single().TargetFolder);
+        Assert.Single(rig.Store.FolderRenames);
+        Assert.NotNull(NodeFor(rig.Vm, Work, "Clients"));
+    }
+
+    [Fact]
+    public async Task ARenameFinishingWhileAModalIsOpen_WaitsForItToClose()
+    {
+        // From the modeless Rename Folder window the user can open a picker while the server works.
+        var rig = await MakeAsync();
+        var modal = true;
+        rig.Vm.IsModalDialogOpen = () => modal;
+        var renamed = new List<FolderRename>();
+        rig.Vm.FolderRenamed += renamed.Add;
+        var treeBefore = rig.Vm.FolderTree;
+
+        await rig.Vm.RenameFolderAsync(Cached(rig.Vm, Work, "Projects"), "Clients");
+
+        Assert.Same(treeBefore, rig.Vm.FolderTree);
+        Assert.Empty(renamed);
+        modal = false;
+        rig.Vm.CommitPendingFolderTreeRebuild();
+        Assert.Single(renamed);
+        Assert.NotNull(NodeFor(rig.Vm, Work, "Clients"));
+    }
+
+    [Fact]
+    public async Task APickerClosedBeforeTheRenameFinished_DoesNotLeaveTheTreeWaiting()
+    {
+        var rig = await MakeAsync();
+        rig.Vm.IsModalDialogOpen = () => false;   // the picker has gone by the time the server answers
+        var renamed = new List<FolderRename>();
+        rig.Vm.FolderRenamed += renamed.Add;
+
+        await rig.Vm.RenameFolderAsync(Cached(rig.Vm, Work, "Projects"), "Clients", insideModal: true);
+
+        Assert.Single(renamed);
+        Assert.NotNull(NodeFor(rig.Vm, Work, "Clients"));
     }
 
     // ── Inside a modal picker ────────────────────────────────────────────────

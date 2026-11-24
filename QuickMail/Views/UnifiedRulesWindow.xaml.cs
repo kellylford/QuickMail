@@ -145,14 +145,16 @@ public partial class UnifiedRulesWindow : Window
             editorVm, _accounts, _cachedFolders, () => accountId, _folderCreation) { Owner = this };
         // A folder renamed while the editor is open (#1083) is followed in the rule being edited, so
         // saving it cannot write the old name back. Paired with the -= below.
-        Action<FolderRename> followRename = editorVm.ApplyFolderRename;
+        // Only renames in the editor's own account: another account's "Projects" is another folder,
+        // and an editor for a new rule may not carry its account yet.
+        Action<FolderRename> followRename = rename =>
+        {
+            if (accountId is null || accountId == rename.AccountId) editorVm.ApplyFolderRename(rename);
+        };
         _vm.FolderRenamed += followRename;
         // Once the editor has closed, its messages are this window's to say (#701): see ClosedEditorAnnouncements.
-        editor.Closed += (_, _) =>
-        {
-            _vm.FolderRenamed -= followRename;
-            _closedEditors.EditorClosed(editorVm);
-        };
+        editor.Closed += (_, _) => _closedEditors.EditorClosed(editorVm);
+        editor.Closed += (_, _) => _vm.FolderRenamed -= followRename;
         editor.Show();
         editor.Activate();
     }

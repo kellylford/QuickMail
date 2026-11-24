@@ -22,6 +22,13 @@ public class MailFolderModel
     /// <c>FolderTreeBuilder</c> builds the hierarchy from parent IDs instead of the separator.
     /// </summary>
     public string? ParentId { get; set; }
+    /// <summary>
+    /// The IMAP server's hierarchy separator for this folder, as the server reported it when the
+    /// folders were listed; null for Microsoft 365 and POP3, and for a list read back from the cache
+    /// at startup. Rename Folder (#1083) uses it to know which folders are inside a renamed one and
+    /// which characters a name cannot have, rather than guessing from the names.
+    /// </summary>
+    public char? HierarchySeparator { get; set; }
     public string DisplayName { get; set; } = string.Empty;
     public int UnreadCount { get; set; }
     /// <summary>Total number of messages in the folder as reported by the server at connection time.</summary>

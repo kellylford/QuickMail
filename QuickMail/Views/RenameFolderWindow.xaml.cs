@@ -41,9 +41,27 @@ public partial class RenameFolderWindow : Window
             AccessibilityHelper.Announce(this, text, interrupt: category == AnnouncementCategory.Result, category: category);
         _vm.SelectNameRequested += () => Dispatcher.InvokeAsync(FocusName, DispatcherPriority.Input);
 
+        // In code rather than as an ElementName binding in the XAML, which resolves only once the
+        // window is loaded: the label is the box's accessible name from the start.
+        NameLabel.Target = NameBox;
+
         RegisterPaletteCommands();
 
         Loaded += (_, _) => FocusName();
+    }
+
+    protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
+    {
+        // Not while the server is renaming: the rename cannot be called back, and closing now would
+        // only hide how it ended — the opener puts focus on the renamed folder and says what else
+        // changed when this window closes with the result.
+        if (_vm.IsWorking)
+        {
+            e.Cancel = true;
+            AccessibilityHelper.Announce(this, "The folder is being renamed. Wait for it to finish.",
+                                         category: AnnouncementCategory.Result);
+        }
+        base.OnClosing(e);
     }
 
     private void FocusName()

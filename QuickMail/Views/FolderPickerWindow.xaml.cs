@@ -154,6 +154,9 @@ public partial class FolderPickerWindow : Window
         // menu to offer, so the items' DynamicResource finds nothing and they get none.
         if (folderRenamer == null)
             Resources.Remove("PickerItemContextMenu");
+        // The rename box's label is its accessible name. Set here rather than bound by ElementName,
+        // which resolves only once the window has loaded.
+        RenameLabel.Target = RenameBox;
 
         // Alt+N → New Folder (see FolderPicker_PreviewKeyDown). Window-level so it fires from the
         // tree, the buttons, or anywhere else in the picker.
@@ -1152,8 +1155,12 @@ public partial class FolderPickerWindow : Window
     {
         if (_folderRenamer == null || _renaming is not { } folder || _renameBusy) return;
 
+        // While the server works the picker cannot be closed (Cancel is unavailable, and OnClosing
+        // refuses Alt+F4): its caller catches the main window up as soon as the picker closes, and a
+        // rename that finished after that would have nobody left to catch it up.
         _renameBusy = true;
         RenameBox.IsReadOnly = true;
+        CancelButton.IsEnabled = false;
         FolderRenameResult result;
         try
         {
@@ -1171,6 +1178,7 @@ public partial class FolderPickerWindow : Window
         {
             _renameBusy = false;
             RenameBox.IsReadOnly = false;
+            CancelButton.IsEnabled = true;
         }
 
         if (!result.Succeeded)
@@ -1252,6 +1260,17 @@ public partial class FolderPickerWindow : Window
 
     private void Say(string text) =>
         AccessibilityHelper.Announce(this, text, category: AnnouncementCategory.Result);
+
+    protected override void OnClosing(CancelEventArgs e)
+    {
+        // See CommitRenameAsync: not while a rename is on its way to the server.
+        if (_renameBusy)
+        {
+            e.Cancel = true;
+            Say("The folder is being renamed. Wait for it to finish.");
+        }
+        base.OnClosing(e);
+    }
 
     /// <summary>
     /// Fills the flat list from the accounts and folders it was given: the virtual folders first,

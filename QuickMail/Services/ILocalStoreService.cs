@@ -280,7 +280,8 @@ public interface ILocalStoreService
     /// Follows an IMAP folder rename (#1083): everything cached under <paramref name="oldFullName"/>,
     /// and under every folder inside it (<paramref name="oldFullName"/> + <paramref name="separator"/>
     /// + …), is re-filed under the new path — messages, bodies, the search index (by trigger), the
-    /// rule watermark and a calendar invite's link back to its message. Without it the renamed folder
+    /// rule watermark, a calendar invite's link back to its message and a queued message's draft folder.
+    /// Without it the renamed folder
     /// downloads again from nothing, and its mail is offered as new. Returns how many messages moved.
     /// A server keeps a renamed mailbox's UIDs, so the ids stay right; one that renumbers is caught
     /// the way any renumbering is, by the next sync of the folder.

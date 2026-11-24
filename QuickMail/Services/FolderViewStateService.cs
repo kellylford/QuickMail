@@ -116,7 +116,7 @@ public class FolderViewStateService : IFolderViewStateService
 
     public void Rename(Guid accountId, Func<string, string?> rename)
     {
-        var prefix = $"{accountId:N}|";
+        var prefix = Key(accountId, string.Empty);
         var moves = new List<(string From, string To)>();
         foreach (var key in Cache.Keys)
         {

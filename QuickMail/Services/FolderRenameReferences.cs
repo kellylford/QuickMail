@@ -172,12 +172,20 @@ public static class FolderRenameReferences
     // ── Checking a proposed name ─────────────────────────────────────────────
 
     /// <summary>
-    /// The IMAP hierarchy separator for <paramref name="folder"/>'s account. A folder inside another
-    /// says it in its own path — the character just before its name. A top-level folder's path has
-    /// none, so the account's other folders are read the way the folder tree reads them.
+    /// The IMAP hierarchy separator for <paramref name="folder"/>'s account: the one the server
+    /// reported (<see cref="MailFolderModel.HierarchySeparator"/>) when there is one. Otherwise a folder
+    /// inside another says it in its own path — the character just before its name — and for a
+    /// top-level folder the account's other folders are read the way the folder tree reads them.
     /// </summary>
     public static char ImapSeparator(MailFolderModel folder, IReadOnlyList<MailFolderModel> accountFolders)
     {
+        // The server's own answer, recorded when the folders were listed. Guessing is only for a list
+        // read back from the cache, which does not keep it: guessed from names, a top-level
+        // "Projects.old" on a '/' server would read as a folder inside "Projects".
+        if (folder.HierarchySeparator is { } own && own != '\0') return own;
+        if (accountFolders.Select(f => f.HierarchySeparator).FirstOrDefault(s => s is { } c && c != '\0') is { } listed)
+            return listed;
+
         var full = folder.FullName;
         var leaf = folder.DisplayName;
         if (leaf.Length > 0 && full.Length > leaf.Length + 1 && full.EndsWith(leaf, StringComparison.Ordinal))

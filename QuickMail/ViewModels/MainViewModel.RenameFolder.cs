@@ -32,6 +32,50 @@ public partial class MainViewModel
     private bool _folderRenameInProgress;
 
     /// <summary>
+    /// Set by the View: whether a modal dialog's message loop is running on the UI thread now. A
+    /// rename from the modeless Rename Folder window can finish while the user has a picker or
+    /// another dialog open, and then the tree rebuild has to wait for it to close, exactly as for a
+    /// rename made inside a picker. Null (tests, no View) means none is.
+    /// </summary>
+    public Func<bool>? IsModalDialogOpen { get; set; }
+
+    /// <summary>
+    /// After the rename call failed: whether the server renamed the folder anyway — a timeout after
+    /// the command was sent, or a step after the rename itself. Read from a fresh folder list: done
+    /// when the old folder is gone and one with the new name stands where it was (IMAP), or the
+    /// id-named folder now has the new name (Microsoft 365, POP3). Returns its full name now and the
+    /// list read. Any doubt — the list cannot be read, or the old folder is still there — is "not done".
+    /// </summary>
+    private async Task<(bool Done, string? NewFullName, List<MailFolderModel>? Listed)> RenameHappenedAnywayAsync(
+        AccountModel account, string oldFullName, string newName, char? separator)
+    {
+        try
+        {
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+            var listed = await _imap.GetFoldersAsync(account.Id, cts.Token);
+
+            if (account.BackendKind != BackendKind.ImapSmtp || separator is not { } sep)
+            {
+                var same = listed.FirstOrDefault(f => string.Equals(f.FullName, oldFullName, StringComparison.Ordinal));
+                return same is not null && string.Equals(same.DisplayName, newName, StringComparison.Ordinal)
+                    ? (true, oldFullName, listed)
+                    : (false, null, null);
+            }
+
+            var cut = oldFullName.LastIndexOf(sep);
+            var expected = (cut < 0 ? string.Empty : oldFullName[..(cut + 1)]) + newName;
+            var oldGone = listed.All(f => !string.Equals(f.FullName, oldFullName, StringComparison.Ordinal));
+            var newThere = listed.Any(f => string.Equals(f.FullName, expected, StringComparison.Ordinal));
+            return oldGone && newThere ? (true, expected, listed) : (false, null, null);
+        }
+        catch (Exception ex)
+        {
+            LogService.Log("RenameFolder: checking whether the rename happened", ex);
+            return (false, null, null);
+        }
+    }
+
+    /// <summary>
     /// Why the folder tree item <paramref name="node"/> cannot be renamed, or null when it can. Each
     /// reason says what the item is instead, so the user is not left to guess why nothing happened.
     /// </summary>
@@ -88,7 +132,9 @@ public partial class MainViewModel
     /// True when called from a modal folder picker. Files and the cache are updated straight away, but
     /// the folder tree rebuild and <see cref="FolderRenamed"/> wait for
     /// <see cref="CommitPendingFolderTreeRebuild"/>, because rebuilding the main window while the
-    /// picker's message loop runs is the re-entrancy crash in CLAUDE.md's Modal Dialog Rules.
+    /// picker's message loop runs is the re-entrancy crash in CLAUDE.md's Modal Dialog Rules. When the
+    /// View supplies <see cref="IsModalDialogOpen"/>, that is asked instead, at the end, so a rename from
+    /// anywhere waits for whatever modal is open then, and only for that.
     /// </param>
     public async Task<FolderRenameResult> RenameFolderAsync(MailFolderModel folder, string? proposedName, bool insideModal = false)
     {
@@ -98,9 +144,8 @@ public partial class MainViewModel
             return FolderRenameResult.Refused("Another folder is being renamed. Try again when it has finished.");
 
         var account = Accounts.First(a => a.Id == folder.AccountId);
-        var accountFolders = _cachedFolders.TryGetValue(account.Id, out var cached) && cached.Count > 0
-            ? cached
-            : [folder];
+        var hadCachedFolders = _cachedFolders.TryGetValue(account.Id, out var cached) && cached.Count > 0;
+        List<MailFolderModel> accountFolders = hadCachedFolders ? cached! : [folder];
         // The live copy: the caller's may be from a list the cache has since replaced.
         var live = accountFolders.FirstOrDefault(f => string.Equals(f.FullName, folder.FullName, StringComparison.Ordinal));
         if (live is null)
@@ -123,6 +168,7 @@ public partial class MainViewModel
         try
         {
             string newFullName;
+            IReadOnlyList<MailFolderModel>? listedAfterFailure = null;
             try
             {
                 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
@@ -131,11 +177,21 @@ public partial class MainViewModel
             catch (Exception ex)
             {
                 LogService.Log("RenameFolder", ex);
-                // A timeout's own message is "A task was canceled", which tells a listener nothing.
-                var reason = ex is OperationCanceledException ? "The mail server did not answer in time." : ex.Message;
-                var failed = $"Could not rename {oldDisplayName}. {reason}";
-                SetStatus(failed, AnnouncementCategory.Silent);   // the caller says it, in its own window
-                return new FolderRenameResult(false, failed, failed);
+                // A failure, or a timeout, can come after the server has already renamed the folder.
+                // Reporting that as a failure would leave every rule and setting on a name that no
+                // longer exists, and a retry would only be told the folder is gone. So ask the server
+                // what it has now, and carry on as a success if the rename did happen.
+                var (done, renamedTo, listed) = await RenameHappenedAnywayAsync(account, oldFullName, name!, separator);
+                if (!done)
+                {
+                    // A timeout's own message is "A task was canceled", which tells a listener nothing.
+                    var reason = ex is OperationCanceledException ? "The mail server did not answer in time." : ex.Message;
+                    var failed = $"Could not rename {oldDisplayName}. {reason}";
+                    SetStatus(failed, AnnouncementCategory.Silent);   // the caller says it, in its own window
+                    return new FolderRenameResult(false, failed, failed);
+                }
+                newFullName = renamedTo!;
+                listedAfterFailure = listed;
             }
             if (string.IsNullOrEmpty(newFullName)) newFullName = oldFullName;
 
@@ -147,53 +203,79 @@ public partial class MainViewModel
             // From here the folder has its new name on the server, so nothing below may report the
             // rename as failed: what could not be carried across is said, by name, alongside it.
             var problems = new List<string>();
-            var report = UpdateFolderReferences(rename, account, problems);
-
-            if (rename.NamesChange && rename.Separator is { } sep)
-            {
-                try { await _localStore.RenameFolderAsync(account.Id, oldFullName, newFullName, sep); }
-                catch (Exception ex)
-                {
-                    LogService.Log("RenameFolder: local store", ex);
-                    problems.Add("the messages saved on this computer for it will download again");
-                }
-            }
-
-            if (rename.NamesChange)
-            {
-                try { _folderViewState?.Rename(account.Id, rename.Map); }
-                catch (Exception ex) { LogService.Log("RenameFolder: folder views", ex); }
-            }
-
-            RemapLoadedState(rename, accountFolders);
-
-            IReadOnlyList<MailFolderModel> fresh;
+            var report = new FolderRenameReferences.Report();
+            IReadOnlyList<MailFolderModel> fresh = accountFolders;
             try
             {
-                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-                var list = await _imap.GetFoldersAsync(account.Id, cts.Token);
-                SetCachedFolders(account.Id, list);
-                ApplyAccountStatus(account, list, "folder-renamed");
-                fresh = list;
+                report = UpdateFolderReferences(rename, account, problems);
+
+                if (rename.NamesChange && rename.Separator is { } sep)
+                {
+                    // Off the UI thread: Microsoft.Data.Sqlite's async calls run synchronously, and a
+                    // large folder's rows (and the search index trigger on each) take a moment.
+                    try { await Task.Run(() => _localStore.RenameFolderAsync(account.Id, oldFullName, newFullName, sep)); }
+                    catch (Exception ex)
+                    {
+                        LogService.Log("RenameFolder: local store", ex);
+                        problems.Add("the messages saved on this computer for it will download again");
+                    }
+                }
+
+                if (rename.NamesChange)
+                {
+                    try { _folderViewState?.Rename(account.Id, rename.Map); }
+                    catch (Exception ex) { LogService.Log("RenameFolder: folder views", ex); }
+                }
+
+                RemapLoadedState(rename, accountFolders);
+
+                try
+                {
+                    List<MailFolderModel> list;
+                    if (listedAfterFailure is { Count: > 0 })
+                        list = [.. listedAfterFailure];
+                    else
+                    {
+                        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+                        list = await _imap.GetFoldersAsync(account.Id, cts.Token);
+                    }
+                    SetCachedFolders(account.Id, list);
+                    ApplyAccountStatus(account, list, "folder-renamed");
+                    fresh = list;
+                }
+                catch (Exception ex)
+                {
+                    // The list in hand has already been renamed in place (RemapLoadedState), so it is
+                    // right; keep it, and it is what the next launch draws from. Only a real list,
+                    // though: the one-folder stand-in for an account with nothing cached would replace
+                    // the stored folder list with a single folder.
+                    LogService.Log("RenameFolder: refresh after rename", ex);
+                    if (hadCachedFolders) SetCachedFolders(account.Id, [.. accountFolders]);
+                }
+
+                // Decided now, not when the rename started: from the Rename Folder window the user can
+                // open a picker or another dialog while the server works, and rebuilding the tree
+                // inside that dialog's message loop is the re-entrancy crash in CLAUDE.md's Modal
+                // Dialog Rules. The View commits a deferred rebuild when the dialog closes.
+                // Where the View can say, its answer decides, so a picker closed while the server was
+                // still working does not leave the tree waiting for some later dialog to close.
+                if (IsModalDialogOpen?.Invoke() ?? insideModal)
+                {
+                    _folderTreeRebuildPending = true;
+                    _pendingFolderRenames.Add(rename);
+                }
+                else
+                {
+                    RebuildFolderListFromCache();
+                    FolderRenamed?.Invoke(rename);
+                }
             }
             catch (Exception ex)
             {
-                // The list in hand has already been renamed in place (RemapLoadedState), so it is
-                // right; keep it, and it is what the next launch draws from.
-                LogService.Log("RenameFolder: refresh after rename", ex);
-                SetCachedFolders(account.Id, accountFolders);
-                fresh = accountFolders;
-            }
-
-            if (insideModal)
-            {
-                _folderTreeRebuildPending = true;
-                _pendingFolderRenames.Add(rename);
-            }
-            else
-            {
-                RebuildFolderListFromCache();
-                FolderRenamed?.Invoke(rename);
+                // Something unforeseen while catching up. The rename itself stands, so it is reported
+                // as done, with what went wrong, rather than as a rename that failed.
+                LogService.Log("RenameFolder: after the server renamed it", ex);
+                problems.Add("QuickMail could not finish updating everything that names it");
             }
 
             var announcement = report.Summary();

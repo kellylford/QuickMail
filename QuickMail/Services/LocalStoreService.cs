@@ -1782,6 +1782,9 @@ public partial class LocalStoreService : ILocalStoreService
             UPDATE CalendarEvent SET source_folder = $new || substr(source_folder, length($old) + 1)
               WHERE account_id = $aid
                 AND (source_folder = $old OR substr(source_folder, 1, length($prefix)) = $prefix);
+            UPDATE Outbox SET draft_folder_name = $new || substr(draft_folder_name, length($old) + 1)
+              WHERE account_id = $aid
+                AND (draft_folder_name = $old OR substr(draft_folder_name, 1, length($prefix)) = $prefix);
             """;
         await cmd.ExecuteNonQueryAsync();
         await tx.CommitAsync();
