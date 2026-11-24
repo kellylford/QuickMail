@@ -84,7 +84,7 @@ internal sealed class EditorTextProvider : ITextProvider
             if (unit is TextUnit.Line or TextUnit.Paragraph && AtEndOfTextLine())
                 Inner.MoveEndpointByUnit(TextPatternRangeEndpoint.Start, TextUnit.Character, -1);
             Inner.ExpandToEnclosingUnit(unit);
-            if (unit is TextUnit.Line or TextUnit.Paragraph) TrimEmptyLine();
+            if (unit is TextUnit.Line or TextUnit.Paragraph) TrimEmptyLine(mayEmpty: true);
         }
 
         public int Move(TextUnit unit, int count)
@@ -93,9 +93,10 @@ internal sealed class EditorTextProvider : ITextProvider
             bool degenerate = IsDegenerate();
             var before = Inner.Clone();
             int moved = Inner.Move(unit, count);
-            if (!degenerate && unit is TextUnit.Line or TextUnit.Paragraph) TrimEmptyLine();
+            if (!degenerate && unit is TextUnit.Line or TextUnit.Paragraph) TrimEmptyLine(mayEmpty: false);
             // WPF's RichTextBox says it moved one line from its last line while staying put. A
             // screen reader reading to the end moves until a move reports 0, so it never stopped.
+            // Only a move to where it began is corrected; a partial move keeps WPF's count.
             return moved != 0 && Inner.Compare(before) ? 0 : moved;
         }
 
@@ -109,7 +110,7 @@ internal sealed class EditorTextProvider : ITextProvider
             bool lineFromCaret = endpoint == TextPatternRangeEndpoint.End && count == 1
                 && unit is TextUnit.Line or TextUnit.Paragraph && IsDegenerate() && OnEmptyLine();
             int moved = Inner.MoveEndpointByUnit(endpoint, unit, count);
-            if (lineFromCaret) TrimEmptyLine();
+            if (lineFromCaret) TrimEmptyLine(mayEmpty: false);
             return moved;
         }
 
@@ -133,53 +134,71 @@ internal sealed class EditorTextProvider : ITextProvider
 
         private static bool HasBreak(string text) => text.IndexOfAny(['\r', '\n']) >= 0;
 
-        /// <summary>The WPF character just before (-1) or after (1) this range's start, as text.</summary>
-        private string CharacterBesideStart(int direction)
+        /// <summary>
+        /// The WPF character just before (-1) or after (1) this range's start, as text, or null
+        /// when there is none (the start or end of the document). A picture or other embedded
+        /// element is a character with no text.
+        /// </summary>
+        private string? CharacterBesideStart(int direction)
         {
             var probe = Inner.Clone();
             probe.MoveEndpointByRange(TextPatternRangeEndpoint.End, probe, TextPatternRangeEndpoint.Start);
             var endpoint = direction < 0 ? TextPatternRangeEndpoint.Start : TextPatternRangeEndpoint.End;
-            return probe.MoveEndpointByUnit(endpoint, TextUnit.Character, direction) == 0 ? "" : probe.GetText(-1);
+            return probe.MoveEndpointByUnit(endpoint, TextUnit.Character, direction) == 0 ? null : probe.GetText(-1);
         }
+
+        /// <summary>
+        /// A list item's marker, which WPF reports as text ("•\t", "1.\t") at the start of the
+        /// item: not part of the line's own text.
+        /// </summary>
+        private static bool IsListMarker(string text) => text.EndsWith('\t');
+
+        private bool LineBreakAfterStart() => CharacterBesideStart(1) is { Length: > 0 } after && after[0] is '\r' or '\n';
 
         /// <summary>
         /// Whether the start is at the end of a line of text, just before its line break. WPF
         /// expands a position there to the line <i>and the one after it</i> ("Item three" and
         /// "After" as one line; a paragraph and the bulleted item below it). Up and Down keep
-        /// the caret's column, so landing on a shorter line puts it exactly there.
+        /// the caret's column, so landing on a shorter line puts it exactly there. The character
+        /// before is the line's own: text, or a picture; not a line break, and not a list marker,
+        /// which comes before an empty list item.
         /// </summary>
         private bool AtEndOfTextLine()
         {
-            var after = CharacterBesideStart(1);
-            if (after.Length == 0 || after[0] is not ('\r' or '\n')) return false;
+            if (!LineBreakAfterStart()) return false;
             var before = CharacterBesideStart(-1);
-            return before.Length > 0 && !HasBreak(before);
+            return before != null && !HasBreak(before) && !IsListMarker(before);
         }
 
-        /// <summary>Whether the start is on an empty line: a line break before it (or nothing) and one after.</summary>
+        /// <summary>
+        /// Whether the start is on an empty line: a line break after it, and before it a line
+        /// break, a list marker (an empty list item) or the start of the document.
+        /// </summary>
         private bool OnEmptyLine()
         {
-            var after = CharacterBesideStart(1);
-            if (after.Length == 0 || after[0] is not ('\r' or '\n')) return false;
+            if (!LineBreakAfterStart()) return false;
             var before = CharacterBesideStart(-1);
-            return before.Length == 0 || HasBreak(before);
+            return before == null || HasBreak(before) || IsListMarker(before);
         }
 
         /// <summary>
         /// A line that starts with a line break and has text after it is an empty line WPF has
-        /// glued to the next one (#891): keep only the break. Where one WPF character from the
-        /// start takes in more than the break (an empty paragraph or list item before a list
-        /// item, whose "•\t" WPF steps over with the break), keep nothing: an empty line is read
-        /// as blank too, where "•" would be read as a bullet.
+        /// glued to the next one (#891): keep only the break.
+        /// <para>Next to a list, one WPF character from the empty line's start takes in the next
+        /// item's "•\t" along with the break. Reading the line at the caret
+        /// (<paramref name="mayEmpty"/>), that becomes an empty range, read as "blank" where "•"
+        /// would be read as a bullet. A move keeps the break and marker instead: a move must
+        /// leave the range somewhere further on, or a screen reader reading line by line would
+        /// stand still on the blank line.</para>
         /// </summary>
-        private void TrimEmptyLine()
+        private void TrimEmptyLine(bool mayEmpty)
         {
             var text = Inner.GetText(-1);
             if (text.Length == 0 || text[0] is not ('\r' or '\n')) return;
             if (text.TrimStart('\r', '\n').Length == 0) return;
             Inner.MoveEndpointByRange(TextPatternRangeEndpoint.End, Inner, TextPatternRangeEndpoint.Start);
             Inner.MoveEndpointByUnit(TextPatternRangeEndpoint.End, TextUnit.Character, 1);
-            if (Inner.GetText(-1).Trim('\r', '\n').Length > 0)
+            if (mayEmpty && Inner.GetText(-1).Trim('\r', '\n').Length > 0)
                 Inner.MoveEndpointByRange(TextPatternRangeEndpoint.End, Inner, TextPatternRangeEndpoint.Start);
         }
 
@@ -209,22 +228,25 @@ internal sealed class EditorTextProvider : ITextProvider
         /// to cross the short distance to the target, never the text before it. Its characters are
         /// insertion positions, not string indexes: a <c>\r\n</c>, an emoji's surrogate pair and a
         /// letter with a combining accent are one each, which is what .NET's text elements count.
-        /// Where WPF still disagrees (some joined emoji sequences), it is nudged one character at
-        /// a time, checked against <see cref="Offset"/>.
+        /// Where WPF still disagrees (joined emoji sequences, which it may step through piece by
+        /// piece), the step is repeated from where it landed, checked against <see cref="Offset"/>,
+        /// until it arrives, stops moving, or turns back a second time (the target is between two
+        /// of WPF's characters, and the nearer one is as close as it gets).
         /// </summary>
         private void MoveEndpointTo(TextPatternRangeEndpoint endpoint, string text, int target)
         {
-            int current = Offset(endpoint);
-            if (current == target) return;
-            int low = Math.Clamp(Math.Min(current, target), 0, text.Length);
-            int high = Math.Clamp(Math.Max(current, target), 0, text.Length);
-            int elements = new System.Globalization.StringInfo(text.Substring(low, high - low)).LengthInTextElements;
-            Inner.MoveEndpointByUnit(endpoint, TextUnit.Character, target > current ? elements : -elements);
-            for (int i = 0; i < 8; i++)
+            int lastDirection = 0, turns = 0;
+            for (int i = 0; i < 16; i++)
             {
-                current = Offset(endpoint);
+                int current = Offset(endpoint);
                 if (current == target) return;
-                if (Inner.MoveEndpointByUnit(endpoint, TextUnit.Character, current < target ? 1 : -1) == 0) return;
+                int direction = target > current ? 1 : -1;
+                if (lastDirection != 0 && direction != lastDirection && ++turns >= 2) return;
+                lastDirection = direction;
+                int low = Math.Clamp(Math.Min(current, target), 0, text.Length);
+                int high = Math.Clamp(Math.Max(current, target), 0, text.Length);
+                int elements = Math.Max(1, new System.Globalization.StringInfo(text.Substring(low, high - low)).LengthInTextElements);
+                if (Inner.MoveEndpointByUnit(endpoint, TextUnit.Character, direction * elements) == 0) return;
             }
         }
 

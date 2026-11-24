@@ -225,6 +225,8 @@ public class EditorTextProviderTests
     [InlineData("Hi \U0001F600")]       // an emoji: a surrogate pair, one WPF character
     [InlineData("Café time")] // e plus a combining accent, one WPF character
     [InlineData("\U0001F44D\U0001F3FD ok")] // an emoji with a skin-tone modifier
+    // Joined (ZWJ) family emoji, three of them: WPF may step through each in pieces.
+    [InlineData("\U0001F468‍\U0001F469‍\U0001F467\U0001F468‍\U0001F469‍\U0001F467\U0001F468‍\U0001F469‍\U0001F467 hi")]
     public void PlainEditor_ParagraphAfterEmojiOrAccents_IsExact(string first)
     {
         var box = new EditorTextBox { AcceptsReturn = true, Text = first + "\r\nSee you\r\nBye" };
@@ -371,6 +373,96 @@ public class EditorTextProviderTests
                 var paragraph = Spoken(Read(provider, TextUnit.Paragraph));
                 Assert.Equal(i == 5 ? "Line a\r\nLine b" : expected[i], paragraph);
             }
+        }
+        finally { window.Close(); }
+    }
+
+    private static EditorRichTextBox ListDocument()
+    {
+        var box = new EditorRichTextBox { Width = 380 };
+        box.Document.Blocks.Clear();
+        box.Document.Blocks.Add(new Paragraph(new Run("Gamma")));
+        box.Document.Blocks.Add(new Paragraph());
+        box.Document.Blocks.Add(MakeList("Item one", "", "Item three"));
+        box.Document.Blocks.Add(new Paragraph(new Run("After")));
+        return box;
+    }
+
+    [StaFact]
+    public void RichEditor_ReadingToTheEndPastBlankLinesByAList_KeepsMoving()
+    {
+        // The two other ways a screen reader walks a document line by line: move a line-sized
+        // range on, or move End one line on and then start from there. A blank line next to a
+        // list must not turn either into standing still.
+        var box = ListDocument();
+        var window = Host(box);
+        try
+        {
+            var provider = Provider(box);
+
+            var range = provider.DocumentRange;
+            range.MoveEndpointByRange(TextPatternRangeEndpoint.End, range, TextPatternRangeEndpoint.Start);
+            range.ExpandToEnclosingUnit(TextUnit.Line);
+            var byMove = new List<string> { range.GetText(-1) };
+            for (int i = 0; i < 10 && range.Move(TextUnit.Line, 1) == 1; i++) byMove.Add(range.GetText(-1));
+            Assert.Equal(6, byMove.Count);
+            Assert.Equal("After", Spoken(byMove[^1]));
+
+            var start = provider.DocumentRange;
+            start.MoveEndpointByRange(TextPatternRangeEndpoint.End, start, TextPatternRangeEndpoint.Start);
+            var byEnd = new List<string>();
+            for (int i = 0; i < 10; i++)
+            {
+                var line = start.Clone();
+                if (line.MoveEndpointByUnit(TextPatternRangeEndpoint.End, TextUnit.Line, 1) == 0) break;
+                Assert.NotEqual(0, line.CompareEndpoints(TextPatternRangeEndpoint.End, start, TextPatternRangeEndpoint.Start));
+                byEnd.Add(line.GetText(-1));
+                start.MoveEndpointByRange(TextPatternRangeEndpoint.Start, line, TextPatternRangeEndpoint.End);
+                start.MoveEndpointByRange(TextPatternRangeEndpoint.End, start, TextPatternRangeEndpoint.Start);
+            }
+            Assert.Contains(byEnd, text => text.Contains("After", StringComparison.Ordinal));
+        }
+        finally { window.Close(); }
+    }
+
+    [StaFact]
+    public void RichEditor_MessageStartingWithAnEmptyBullet_ReadsBlank()
+    {
+        var box = new EditorRichTextBox { Width = 380 };
+        box.Document.Blocks.Clear();
+        box.Document.Blocks.Add(MakeList("", "Item two"));
+        var window = Host(box);
+        try
+        {
+            var first = AllParagraphs(box.Document.Blocks).First();
+            box.CaretPosition = first.ContentStart.GetInsertionPosition(LogicalDirection.Forward);
+            Assert.Equal("blank", Spoken(Read(Provider(box), TextUnit.Line)));
+        }
+        finally { window.Close(); }
+    }
+
+    [StaFact]
+    public void RichEditor_AtTheEndOfAPictureLineOrBeforeASoftBreak_ReadsThatLineOnly()
+    {
+        var picture = new Paragraph(new Run("Picture "));
+        picture.Inlines.Add(new InlineUIContainer(new Border { Width = 12, Height = 12 }));
+        var soft = new Paragraph(new Run("Line a"));
+        soft.Inlines.Add(new LineBreak());
+        soft.Inlines.Add(new Run("Line b"));
+        var box = new EditorRichTextBox { Width = 380 };
+        box.Document.Blocks.Clear();
+        box.Document.Blocks.Add(picture);
+        box.Document.Blocks.Add(new Paragraph(new Run("Next")));
+        box.Document.Blocks.Add(soft);
+        var window = Host(box);
+        try
+        {
+            var provider = Provider(box);
+            box.CaretPosition = picture.ContentEnd.GetInsertionPosition(LogicalDirection.Backward);
+            Assert.DoesNotContain("Next", Read(provider, TextUnit.Line), StringComparison.Ordinal);
+            // The end of "Line a", just before the soft line break.
+            box.CaretPosition = ((Run)soft.Inlines.FirstInline).ContentEnd;
+            Assert.Equal("Line a", Spoken(Read(provider, TextUnit.Line)));
         }
         finally { window.Close(); }
     }
