@@ -222,7 +222,7 @@ public static class FolderTreeBuilder
         };
     }
 
-    private static char DetectSeparator(List<MailFolderModel> folders)
+    internal static char DetectSeparator(IEnumerable<MailFolderModel> folders)
     {
         foreach (var f in folders)
         {

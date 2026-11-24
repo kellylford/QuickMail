@@ -14,6 +14,10 @@
 - **Calendar at Top of Folder List and Calendar at Bottom of Folder List are gone.** Calendar now moves like any other section: press **Alt+End** on it to put it at the bottom, or use **Reorder** on its context menu. If you had put Calendar at the bottom, it stays there. (#1058)
 - **Send and Receive with F9.** Press **F9**, or choose **Message → Send and Receive**, to send and check for mail in one step. QuickMail sends anything waiting in the Outbox, then checks the Inbox of every account and says how many new messages arrived, for example "2 new messages" or "No new messages". **F5** still refreshes only the folder you are in. (#874)
 - **Open in New Window and Open in New Tab are on the Message menu.** Open in New Window uses **Ctrl+Enter**, and you can give either command a different key in **Settings → Keyboard Shortcuts**. (#1010)
+- **Rename a folder.** Select a folder in the folder tree and press **F2**, type the new name and press **Enter**. **Rename Folder…** is also on the folder tree's context menu, the **Folder** menu and the Command Palette. It works in every kind of account, and you land back on the folder with its new name. (#1083)
+- **Rules and settings follow a renamed folder.** Rules that file mail into the folder, or into a folder inside it, are updated for you. So are saved views, the startup folder, favorites, hidden folders and the folder you last moved messages to, and mail already downloaded stays downloaded. QuickMail says what it updated, and tells you if something couldn't be. (#1083)
+- **Rename a folder in a folder picker.** In **Move to Folder**, **Copy to Folder**, a rule's folder picker and **Go to Folder**, press **F2** on a folder to rename it without leaving the picker. (#1083)
+- **Standard folders keep their names.** Inbox, Sent, Drafts, Trash, Junk, Archive and a POP3 account's four built-in folders can't be renamed, as in Outlook. QuickMail says why if you try. (#1083)
 
 ## Fixed
 

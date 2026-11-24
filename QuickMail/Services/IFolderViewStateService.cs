@@ -20,4 +20,11 @@ public interface IFolderViewStateService
 
     /// <summary>Forgets a folder's state so it goes back to inheriting the global default.</summary>
     void Forget(Guid accountId, string folderFullName);
+
+    /// <summary>
+    /// Moves this account's remembered states to new folder names after a rename (#1083).
+    /// <paramref name="rename"/> returns a folder's new full name, or null for a folder it leaves
+    /// alone.
+    /// </summary>
+    void Rename(Guid accountId, Func<string, string?> rename);
 }

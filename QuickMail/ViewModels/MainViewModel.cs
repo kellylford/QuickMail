@@ -10165,8 +10165,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
-    /// Rebuilds the main-window folder tree from cache if a folder was created via the picker while
-    /// a modal was open. Safe to call unconditionally; a no-op when nothing is pending. Callers must
+    /// Rebuilds the main-window folder tree from cache if a folder was created or renamed via the
+    /// picker while a modal was open. Safe to call unconditionally; a no-op when nothing is pending. Callers must
     /// invoke this only after the modal picker has closed (its message loop is dead).
     /// </summary>
     public void CommitPendingFolderTreeRebuild()
@@ -10174,6 +10174,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
         if (!_folderTreeRebuildPending) return;
         _folderTreeRebuildPending = false;
         RebuildFolderListFromCache();
+        // A folder renamed inside the picker (#1083): the windows that follow renames hear of it now.
+        FlushPendingFolderRenames();
     }
 
     /// <summary>

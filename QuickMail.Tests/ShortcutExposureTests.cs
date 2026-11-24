@@ -140,6 +140,8 @@ public class ShortcutExposureTests
         {
             // Given a key by #849 that they did not show before.
             ["Delete"] = "Delete", ["Delete Folder"] = "Delete", ["View mode"] = "Ctrl+Shift+V",
+            // Rename Folder (#1083), new: the folder tree's context menu and the Folder menu.
+            ["Rename Folder"] = "F2",
             ["Close search results"] = "Escape", ["Change Search"] = "Ctrl+/", ["RulesStatusButton"] = "Ctrl+Shift+L",
             // The group menus' Save As, given F12 by #854.
             ["Save Messages from Sender As"] = "F12", ["Save Messages to Recipient As"] = "F12", ["Save Conversation As"] = "F12",

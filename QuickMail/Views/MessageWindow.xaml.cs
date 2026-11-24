@@ -54,6 +54,9 @@ public partial class MessageWindow : Window
     // Lets the link context menu claim the Escape that dismisses it (issue #671).
     private LinkContextMenuSupport.LinkMenuState? _linkMenu;
 
+    /// <summary>Follows a folder renamed in the main window (#1083); see <see cref="MessageWindowViewModel.ApplyFolderRename"/>.</summary>
+    internal void ApplyFolderRename(FolderRename rename) => _vm.ApplyFolderRename(rename);
+
     public MessageWindow(
         MessageWindowViewModel vm,
         IMailService imap,

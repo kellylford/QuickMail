@@ -644,8 +644,12 @@ public class Pop3MailService : IMailService
     public Task CreateFolderAsync(Guid accountId, string? parentFolderName, string name, CancellationToken ct = default)
         => UnderFolderLockAsync(() => CreateFolderCoreAsync(accountId, parentFolderName, name), ct);
 
-    public Task RenameFolderAsync(Guid accountId, string folderName, string newName, string? newParentFolderName, CancellationToken ct = default)
-        => UnderFolderLockAsync(() => RenameFolderCoreAsync(accountId, folderName, newName, newParentFolderName), ct);
+    // A local folder is named by its id, which a rename keeps (#1083).
+    public async Task<string> RenameFolderAsync(Guid accountId, string folderName, string newName, string? newParentFolderName, CancellationToken ct = default)
+    {
+        await UnderFolderLockAsync(() => RenameFolderCoreAsync(accountId, folderName, newName, newParentFolderName), ct);
+        return folderName;
+    }
 
     public Task MoveFolderAsync(Guid accountId, string folderName, string? newParentFolderName, CancellationToken ct = default)
         => UnderFolderLockAsync(() => MoveFolderCoreAsync(accountId, folderName, newParentFolderName), ct);

@@ -940,6 +940,32 @@ public partial class UnifiedRulesViewModel : ObservableObject
     public void CancelPendingLoad() => _refreshCts?.Cancel();
 
     /// <summary>
+    /// Raised by <see cref="ApplyFolderRenameAsync"/> for each open rule editor to follow, so a rule
+    /// being edited cannot be saved back with the folder's old name (#1083).
+    /// </summary>
+    public event Action<FolderRename>? FolderRenamed;
+
+    /// <summary>
+    /// Follows a folder renamed while this window is open (#1083). rules.json has already been
+    /// rewritten by the rename; this tells any open editor, and reloads the list when it shows that
+    /// account, so each rule reads with the folder's new name. Selection is kept; focus is not moved,
+    /// since the user is most likely in the window the rename was made from.
+    /// </summary>
+    public async Task ApplyFolderRenameAsync(FolderRename rename)
+    {
+        FolderRenamed?.Invoke(rename);
+        if ((_rulesAccountId ?? SelectedAccount?.Id) != rename.AccountId) return;
+
+        var serverId = SelectedRule?.Server?.Id;
+        var clientId = SelectedRule?.Client?.Id;
+        await RefreshCoreAsync(CancellationToken.None);
+        SelectedRule = Rules.FirstOrDefault(r =>
+                           (serverId != null && r.Server?.Id == serverId) ||
+                           (clientId != null && r.Client?.Id == clientId))
+                       ?? SelectedRule;
+    }
+
+    /// <summary>
     /// The human-readable name for a folder id in <paramref name="accountId"/>'s folder cache, or null
     /// when it can't be resolved (no cache for the account, or the id isn't in it). Both a Graph server
     /// rule (<see cref="ServerRuleModel.MoveToFolderId"/>) and a Graph client rule

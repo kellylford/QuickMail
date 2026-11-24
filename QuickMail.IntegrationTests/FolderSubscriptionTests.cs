@@ -63,6 +63,35 @@ public sealed class FolderSubscriptionTests
     }
 
     /// <summary>
+    /// Rename Folder (#1083) renames in place: a folder inside another keeps its parent when no new
+    /// parent is given, and the call hands back the server path it now has, which is what QuickMail
+    /// rewrites its rules, views and cache to. Before #1083 a null parent meant the top level.
+    /// </summary>
+    [Fact]
+    public async Task RenamingANestedFolder_KeepsItWhereItIs_AndReturnsItsNewPath()
+    {
+        _greenMail.RequireServers();
+        var ct = TestContext.Current.CancellationToken;
+        var account = _greenMail.CreateAccount("rename1083a");
+        using var imap = new ImapMailService(new NoOpOAuthService());
+        await imap.ConnectAsync(account, "pw", ct);
+        try
+        {
+            await imap.CreateFolderAsync(account.Id, null, "Projects", ct);
+            var separator = await SeparatorAsync(account, ct);
+            await imap.CreateFolderAsync(account.Id, "Projects", "2026", ct);
+
+            var renamed = await imap.RenameFolderAsync(account.Id, $"Projects{separator}2026", "Done", null, ct);
+
+            Assert.Equal($"Projects{separator}Done", renamed);
+            var names = (await imap.GetFoldersAsync(account.Id, ct)).Select(f => f.FullName).ToList();
+            Assert.Contains($"Projects{separator}Done", names);
+            Assert.DoesNotContain($"Projects{separator}2026", names);
+        }
+        finally { await imap.DisconnectAsync(account.Id, ct); }
+    }
+
+    /// <summary>
     /// Move Folder to the account root (#954) is accepted on a server whose personal namespace is
     /// the root (""), as almost every server's is: the top-level check lets it through and the server
     /// takes the RENAME. Where the folder ends up is not asserted, because GreenMail answers

@@ -362,6 +362,32 @@ public partial class ServerRuleEditorViewModel : ObservableObject
     /// picker scopes to it, whatever the list behind it has moved on to since (#683).</summary>
     public Guid? AccountId { get; set; }
 
+    /// <summary>
+    /// Follows a folder renamed while the editor is open (#1083), so saving the rule cannot write the
+    /// folder's old name back over the one the rename stored. On IMAP the folder, and every folder
+    /// inside it, has a new path; on Microsoft 365 and POP3 the id stays and only the name shown changes.
+    /// </summary>
+    public void ApplyFolderRename(FolderRename rename)
+    {
+        if (AccountId is Guid id && id != rename.AccountId) return;
+        (MoveToFolderId, MoveToFolderName) = Follow(MoveToFolderId, MoveToFolderName);
+        (CopyToFolderId, CopyToFolderName) = Follow(CopyToFolderId, CopyToFolderName);
+
+        (string?, string?) Follow(string? folderId, string? name)
+        {
+            if (string.IsNullOrEmpty(folderId)) return (folderId, name);
+            var isTheFolder = rename.IsTheFolder(folderId);
+            var mapped = rename.Map(folderId);
+            if (mapped is null && !isTheFolder) return (folderId, name);
+            var newId = mapped ?? folderId;
+            // An IMAP rule shows its folder's path, which is its id; the others show the folder's name.
+            var newName = string.Equals(name, folderId, StringComparison.Ordinal) ? newId
+                        : isTheFolder ? rename.NewDisplayName
+                        : name;
+            return (newId, newName);
+        }
+    }
+
     /// <summary>Mark as unread can't run in a server-side rule, so it is turned off while editing one (#684).
     /// A new rule keeps it: ticking it there makes the rule client-side.</summary>
     public bool CanMarkAsUnread => !IsEditingServerRule;

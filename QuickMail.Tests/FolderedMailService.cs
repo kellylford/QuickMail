@@ -162,7 +162,52 @@ internal sealed class FolderedMailService : IMailService
     }
     public Task CreateFolderAsync(Guid accountId, string? parentFolderName, string name, CancellationToken ct = default) => Task.CompletedTask;
     public Task DeleteFolderAsync(Guid accountId, string folderName, CancellationToken ct = default) => Task.CompletedTask;
-    public Task RenameFolderAsync(Guid accountId, string folderName, string newName, string? newParentFolderName, CancellationToken ct = default) => Task.CompletedTask;
+    /// <summary>Folder renames asked for, as (account, folder, new name) (#1083).</summary>
+    public List<(Guid AccountId, string Folder, string NewName)> Renames { get; } = new();
+
+    /// <summary>Set to make <see cref="RenameFolderAsync"/> fail as a server refusal would.</summary>
+    public Exception? RenameFailure { get; set; }
+
+    /// <summary>
+    /// Renames in place, as a server would (#1083). A folder with a <see cref="MailFolderModel.ParentId"/>
+    /// is named by id, as on Microsoft 365, and keeps it; any other is an IMAP path with a '/'
+    /// separator, and it and every folder inside it get new paths. The listing gets new objects,
+    /// as a fresh LIST would, so what the caller already holds is left for it to update.
+    /// </summary>
+    public Task<string> RenameFolderAsync(Guid accountId, string folderName, string newName, string? newParentFolderName, CancellationToken ct = default)
+    {
+        if (RenameFailure is { } failure) return Task.FromException<string>(failure);
+        Renames.Add((accountId, folderName, newName));
+        if (!_folders.TryGetValue(accountId, out var list)) return Task.FromResult(folderName);
+        var index = list.FindIndex(f => string.Equals(f.FullName, folderName, StringComparison.Ordinal));
+        if (index < 0) return Task.FromResult(folderName);
+
+        static MailFolderModel Copy(MailFolderModel f, string fullName, string displayName) => new()
+        {
+            AccountId = f.AccountId, FullName = fullName, DisplayName = displayName, ParentId = f.ParentId,
+            Kind = f.Kind, UnreadCount = f.UnreadCount, MessageCount = f.MessageCount,
+            ExcludeFromAllMail = f.ExcludeFromAllMail, IsHeader = f.IsHeader,
+        };
+
+        var folder = list[index];
+        if (folder.ParentId != null)
+        {
+            list[index] = Copy(folder, folder.FullName, newName);
+            return Task.FromResult(folderName);
+        }
+
+        var cut = folderName.LastIndexOf('/');
+        var newFullName = (cut < 0 ? string.Empty : folderName[..(cut + 1)]) + newName;
+        for (int i = 0; i < list.Count; i++)
+        {
+            var f = list[i];
+            if (string.Equals(f.FullName, folderName, StringComparison.Ordinal))
+                list[i] = Copy(f, newFullName, newName);
+            else if (f.FullName.StartsWith(folderName + "/", StringComparison.Ordinal))
+                list[i] = Copy(f, newFullName + f.FullName[folderName.Length..], f.DisplayName);
+        }
+        return Task.FromResult(newFullName);
+    }
     /// <summary>Folder moves and copies asked for, as (operation, account, folder, new parent).</summary>
     public List<(string Op, Guid AccountId, string Folder, string? Parent)> FolderOps { get; } = new();
 

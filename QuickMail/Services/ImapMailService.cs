@@ -970,18 +970,23 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
         await folder.DeleteAsync(ct);
     }
 
-    public async Task RenameFolderAsync(Guid accountId, string folderName, string newName, string? newParentFolderName, CancellationToken ct = default)
+    public async Task<string> RenameFolderAsync(Guid accountId, string folderName, string newName, string? newParentFolderName, CancellationToken ct = default)
     {
         using var lease = await RentClientAsync(accountId, ImapLeasePriority.Foreground, ct);
         var client = lease.Client;
         var folder = await client.GetFolderAsync(folderName, ct);
-        // No app caller since folder moves went to MoveFolderAsync (#954); kept for the interface and
-        // its tests. A null parent goes through the same top-level check, so it can never land a
-        // folder under INBOX on a prefix-namespace server.
+        // Rename Folder (#1083) renames in place: a null parent keeps the folder under the parent it
+        // already has, as Microsoft 365 and POP3 do. That is the folder's own parent rather than the
+        // namespace root, so a folder inside INBOX on a prefix-namespace server ("INBOX.Lists") stays
+        // there. MailKit resolves the parent chain when it looks a folder up; the namespace root is
+        // the fallback only for a server that answered without one.
         IMailFolder parent = string.IsNullOrEmpty(newParentFolderName)
-            ? TopLevelFolder(client)
+            ? folder.ParentFolder ?? client.GetFolder(client.PersonalNamespaces[0])
             : await client.GetFolderAsync(newParentFolderName, ct);
         await RenameUnderAsync(folder, parent, newName, ct);
+        // MailKit updates the folder's own FullName on a successful RENAME, so this is the server's
+        // path for it now — what everything that names the folder has to be rewritten to.
+        return folder.FullName;
     }
 
     public async Task MoveFolderAsync(Guid accountId, string folderName, string? newParentFolderName, CancellationToken ct = default)

@@ -13,6 +13,23 @@
         FontFamily="{DynamicResource Theme.FontFamily}"
         FontSize="{DynamicResource Theme.FontSizeBase}">
 
+    <Window.Resources>
+        <!-- Rename Folder (#1083), on every folder in the tree and the list. In Window.Resources, not
+             inside a Style setter's value, where the XAML compiler mistypes Click handlers (see
+             MainWindow's FolderContextMenu). Referenced as a DynamicResource so a picker that cannot
+             rename removes the resource and its items get no context menu at all. The picker has no
+             command registry, so F2 is written out: InputGestureText is only drawn, and
+             AcceleratorKey is what a screen reader is told. -->
+        <ContextMenu x:Key="PickerItemContextMenu"
+                     AutomationProperties.Name="Folder actions">
+            <MenuItem Header="_Rename Folder…"
+                      InputGestureText="F2"
+                      AutomationProperties.AcceleratorKey="F2"
+                      AutomationProperties.Name="Rename Folder"
+                      Click="ContextMenu_RenameFolder_Click"/>
+        </ContextMenu>
+    </Window.Resources>
+
     <!-- A Grid, not a DockPanel: tab order follows declaration order, and a DockPanel
          has to declare the filling child last. With the buttons declared before the
          list and tree, Shift+Tab from New Folder walked back through Cancel and Open
@@ -31,6 +48,24 @@
                  TextChanged="SearchBox_TextChanged"
                  PreviewKeyDown="SearchBox_PreviewKeyDown"
                  AutomationProperties.Name="Folder search"/>
+
+        <!-- Rename Folder (#1083) happens here, inside the picker, rather than in a window of its
+             own: the picker is already modal over the main window's WebView2, and a second window
+             opened from inside that modal loop is the nesting CLAUDE.md's Modal Dialog Rules warn
+             about. Shown by F2 or the context menu; Enter renames, Escape closes it without closing
+             the picker. Label + Target, so the label is the box's accessible name. -->
+        <StackPanel x:Name="RenamePanel"
+                    Grid.Row="0"
+                    Margin="0,0,0,8"
+                    Visibility="Collapsed">
+            <Label x:Name="RenameLabel"
+                   Target="{Binding ElementName=RenameBox}"
+                   Padding="0"
+                   Margin="0,0,0,4"/>
+            <TextBox x:Name="RenameBox"
+                     MaxLength="255"
+                     PreviewKeyDown="RenameBox_PreviewKeyDown"/>
+        </StackPanel>
 
         <!-- ListBox text search is enabled by default; TextPath points it at the folder path so
              typing a folder name jumps to it (without this it matched the item's type name). -->
@@ -75,6 +110,7 @@
             <ListBox.ItemContainerStyle>
                 <Style TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
                     <Setter Property="AutomationProperties.Name" Value="{Binding DisplayName}"/>
+                    <Setter Property="ContextMenu" Value="{DynamicResource PickerItemContextMenu}"/>
                 </Style>
             </ListBox.ItemContainerStyle>
         </ListBox>
@@ -115,6 +151,7 @@
                     <Setter Property="IsExpanded"                Value="{Binding IsExpanded, Mode=TwoWay}"/>
                     <Setter Property="AutomationProperties.Name" Value="{Binding AutomationName}"/>
                     <Setter Property="AutomationProperties.ItemStatus" Value="{Binding ItemStatusLabel}"/>
+                    <Setter Property="ContextMenu" Value="{DynamicResource PickerItemContextMenu}"/>
                     <!-- In the folder move/copy picker the account root is a destination, the top
                          level of the account (#954). Its name stays the account's; what choosing it
                          means is help text, not part of the name. -->

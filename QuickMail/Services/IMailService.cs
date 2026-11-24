@@ -219,12 +219,14 @@ public interface IMailService : IDisposable
     Task CreateFolderAsync(Guid accountId, string? parentFolderName, string name, CancellationToken ct = default);
     Task DeleteFolderAsync(Guid accountId, string folderName, CancellationToken ct = default);
     /// <summary>
-    /// Renames a folder and optionally moves it under <paramref name="newParentFolderName"/>. What a
-    /// null parent means differs between backends — Microsoft 365 and POP3 keep the folder where it
-    /// is, IMAP puts it at the top of the personal namespace — so to move a folder, including to the
-    /// top level, use <see cref="MoveFolderAsync"/>, whose null always means the top level.
+    /// Renames a folder and optionally moves it under <paramref name="newParentFolderName"/>. A null
+    /// or empty parent keeps the folder where it is, on every backend (#1083); to move a folder,
+    /// including to the top level, use <see cref="MoveFolderAsync"/>, whose null means the top level.
+    /// <para>Returns the folder's <see cref="Models.MailFolderModel.FullName"/> after the rename. On
+    /// IMAP that is a new path, and the paths of every folder inside it change with it; Microsoft 365
+    /// and POP3 name folders by id, which a rename keeps, so they return <paramref name="folderName"/>.</para>
     /// </summary>
-    Task RenameFolderAsync(Guid accountId, string folderName, string newName, string? newParentFolderName, CancellationToken ct = default);
+    Task<string> RenameFolderAsync(Guid accountId, string folderName, string newName, string? newParentFolderName, CancellationToken ct = default);
 
     /// <summary>
     /// Moves a folder, keeping its name, under <paramref name="newParentFolderName"/>; null moves it

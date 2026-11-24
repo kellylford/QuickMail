@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text.Json;
 using QuickMail.Models;
 
@@ -111,6 +112,26 @@ public class FolderViewStateService : IFolderViewStateService
         if (string.IsNullOrEmpty(folderFullName)) return;
         if (Cache.Remove(Key(accountId, folderFullName)))
             Persist();
+    }
+
+    public void Rename(Guid accountId, Func<string, string?> rename)
+    {
+        var prefix = $"{accountId:N}|";
+        var moves = new List<(string From, string To)>();
+        foreach (var key in Cache.Keys)
+        {
+            if (!key.StartsWith(prefix, StringComparison.Ordinal)) continue;
+            if (rename(key[prefix.Length..]) is { } renamed)
+                moves.Add((key, prefix + renamed));
+        }
+        if (moves.Count == 0) return;
+
+        // Taken out first and put back after, so a folder renamed onto a name another entry is
+        // about to leave cannot overwrite it partway through.
+        var entries = moves.Select(m => (m.To, Entry: Cache[m.From])).ToList();
+        foreach (var (from, _) in moves) Cache.Remove(from);
+        foreach (var (to, entry) in entries) Cache[to] = entry;
+        Persist();
     }
 
     private void Persist()

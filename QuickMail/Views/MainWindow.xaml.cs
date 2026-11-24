@@ -345,6 +345,7 @@ public partial class MainWindow : Window
             AccessibilityHelper.Announce(_announceTarget ?? this, args.Text,
                                          interrupt: false, category: args.Category);
         vm.OpenInviteCardStatus += OnOpenInviteCardStatus;
+        vm.FolderRenamed += OnFolderRenamed;   // #1083: message windows and the Rules window follow
         vm.SearchRequested += (_, _) => OpenSearch();
         vm.SaveViewRequested    += (_, _) => OpenViewManager(createMode: true);
         vm.ManageViewsRequested += (_, _) => OpenViewManager(createMode: false);
@@ -936,6 +937,7 @@ public partial class MainWindow : Window
         foreach (var w in _openMessageWindows.ToList())
             w.Close();
         _rulesWindow?.Close(); // unowned (#347), so not auto-closed with the main window
+        _renameFolderWindow?.Close(); // unowned too (#1083)
         // A DependencyPropertyDescriptor holds its handlers strongly, so the window would never be collected.
         SenderAddressRegionVisibility.RemoveValueChanged(SenderAddressStatusItem, SenderAddressStatusItem_VisibilityChanged);
         UnwireCalendarColumnFit(); // #547: the same, for the calendar list's font descriptors
@@ -1464,6 +1466,18 @@ public partial class MainWindow : Window
             defaultKey: Key.D, defaultModifiers: ModifierKeys.Control,
             description: "Add the folder to Favorites, or remove it from Favorites"));
 
+        // Rename Folder (#1083). F2, as in File Explorer, bound to nothing else in QuickMail. Scoped
+        // to the folder tree — including when the palette or the menu bar has taken focus from it for
+        // a moment — so F2 does nothing in the message list or the reading pane. The Folder menu's
+        // item reaches the open folder from anywhere, and every entry point says why when the folder
+        // cannot be renamed.
+        _registry.Register(new CommandDefinition(
+            id: "folder.rename", category: "Mail", title: "Rename Folder…",
+            execute: RenameSelectedFolder,
+            defaultKey: Key.F2, defaultModifiers: ModifierKeys.None,
+            isAvailable: IsFolderTreeLogicallyFocused,
+            description: "Give the selected folder a new name"));
+
         // ── Pane navigation (Ctrl+Alt+1/2/3 — always work regardless of tab mode) ──
         _registry.Register(new CommandDefinition(
             id: "view.focusAccounts", category: "View", title: "Focus Account List",
@@ -1624,7 +1638,9 @@ public partial class MainWindow : Window
         // Copy, cut and paste messages (#929). Scoped by focus, as Alt+Up/Down are to the account list:
         // Ctrl+C, Ctrl+X and Ctrl+V must keep their ordinary meaning in every text field and in the
         // message body, so each is available only in the message area (and, for paste, the folder
-        // tree), and never while a text box inside either has focus (a folder being renamed in place).
+        // tree), and never while a text box has focus. Rename Folder (#1083) asks for the new name in
+        // a window of its own, so no text box sits inside the folder tree; the text-box check is what
+        // would keep one safe if it ever did.
         _registry.Register(new CommandDefinition(
             id: "mail.copyMessages", category: "Mail", title: "Copy Messages",
             description: "Copy the selected messages, to paste into another folder",
@@ -2676,8 +2692,14 @@ public partial class MainWindow : Window
                 MainViewModel.AllFlaggedFolder, MainViewModel.AllWatchedFolder
             },
             initialFolder: _vm.SelectedFolder,
-            accountMailFolders: acctMailFolders) { Owner = this };
-        if (picker.ShowDialog() == true && picker.SelectedFolder is MailFolderModel folder)
+            accountMailFolders: acctMailFolders,
+            // Rename Folder in the list (#1083). Hidden folders stay out of it after a rename too.
+            folderRenamer: PickerRenameSupport(visibleOnly: true)) { Owner = this };
+        var chose = picker.ShowDialog() == true;
+        // A folder renamed inside the picker: the tree catches up now the picker's loop is gone, and
+        // before the choice is resolved against it, so a renamed folder is found by its new name.
+        _vm.CommitPendingFolderTreeRebuild();
+        if (chose && picker.SelectedFolder is MailFolderModel folder)
         {
             // Resolve to the live instance from the folder list
             var target = _vm.Folders.FirstOrDefault(f =>
@@ -7328,7 +7350,7 @@ public partial class MainWindow : Window
 
         if (_vm.CachedFolders.Count == 0) return;
         var picker = FolderPickerWindow.ForFolderMoveCopy(
-            _vm.Accounts, _vm.CachedFolders, node!.Folder!, "Move Folder To");
+            _vm.Accounts, _vm.CachedFolders, node!.Folder!, "Move Folder To", PickerRenameSupport());
         if (picker == null)
         {
             Report($"There is no other folder in this account to move '{node.Label}' into.");
@@ -7350,7 +7372,7 @@ public partial class MainWindow : Window
 
         if (_vm.CachedFolders.Count == 0) return;
         var picker = FolderPickerWindow.ForFolderMoveCopy(
-            _vm.Accounts, _vm.CachedFolders, node!.Folder!, "Copy Folder To");
+            _vm.Accounts, _vm.CachedFolders, node!.Folder!, "Copy Folder To", PickerRenameSupport());
         if (picker == null)
         {
             Report($"There is no other folder in this account to copy '{node.Label}' into.");
@@ -7483,6 +7505,154 @@ public partial class MainWindow : Window
 
         static bool ContainsNode(FolderTreeNode parent, FolderTreeNode target) =>
             parent.Children.Any(c => ReferenceEquals(c, target) || ContainsNode(c, target));
+    }
+
+    // ── Rename Folder (#1083) ────────────────────────────────────────────────
+
+    // Modeless and unowned (see RenameFolderWindow), so tracked here: one at a time, brought forward
+    // rather than opened twice, and closed with this window.
+    private RenameFolderWindow? _renameFolderWindow;
+
+    private void FolderContextMenu_RenameFolder_Click(object sender, RoutedEventArgs e)
+        => OpenRenameFolder(GetContextMenuFolderNode(sender), fromFolderTree: true);
+
+    private void MenuRenameFolder_Click(object sender, RoutedEventArgs e) => RenameSelectedFolder();
+
+    // F2, the Command Palette and the Folder menu: the tree's selection when the user is in the tree,
+    // otherwise the folder whose messages are showing — the rule Favorite Folder follows.
+    private void RenameSelectedFolder()
+    {
+        var node = FavoriteTarget(out var inTree);
+        OpenRenameFolder(node, inTree);
+    }
+
+    /// <summary>
+    /// Opens the Rename Folder window on <paramref name="node"/>, or says why it cannot be renamed.
+    /// After a rename, focus lands on the renamed folder in the tree when the user came from the
+    /// tree, where its new name is read as focus arrives; otherwise it goes back where it was.
+    /// </summary>
+    private void OpenRenameFolder(FolderTreeNode? node, bool fromFolderTree)
+    {
+        if (_vm.RenameFolderRefusal(node) is { } refusal)
+        {
+            ReportResult(refusal);
+            return;
+        }
+        if (_renameFolderWindow is { } open)
+        {
+            open.Activate();
+            return;
+        }
+
+        var folder = node!.Folder!;
+        var rootKey = FolderTreeRootKeyOf(node);
+        // Logical focus, which survives the menu bar and the palette taking keyboard focus.
+        var previousFocus = FocusManager.GetFocusedElement(this);
+
+        var vm = new RenameFolderViewModel(folder.DisplayName, name => _vm.RenameFolderAsync(folder, name));
+        var window = new RenameFolderWindow(vm);
+        _renameFolderWindow = window;
+        window.Closed += (_, _) =>
+        {
+            _renameFolderWindow = null;
+            var result = window.Result;
+            // Queued behind the folder tree's own catching up after the rebuild (the FolderTree
+            // handler's selection sync), so this has the last word on where focus is.
+            Dispatcher.InvokeAsync(() =>
+            {
+                Activate();
+                if (fromFolderTree)
+                {
+                    var landOn = result?.Rename is { } rename
+                        ? new MailFolderModel { AccountId = rename.AccountId, FullName = rename.NewFullName }
+                        : folder;
+                    if (!FocusFolderInTree(landOn, rootKey)) FolderList.Focus();
+                }
+                else
+                {
+                    (previousFocus is DependencyObject d && GetWindow(d) == this ? previousFocus : MessageList).Focus();
+                }
+
+                // What else changed, after focus, so it is not cut off by the folder's name being read.
+                if (result is { Succeeded: true, Announcement.Length: > 0 } done)
+                    Dispatcher.InvokeAsync(
+                        () => AccessibilityHelper.Announce(this, done.Announcement, category: AnnouncementCategory.Result),
+                        DispatcherPriority.ContextIdle);
+            }, DispatcherPriority.Input);
+        };
+        window.Show();
+        window.Activate();
+    }
+
+    /// <summary>
+    /// Selects and focuses <paramref name="folder"/> in the folder tree, expanding the branch it is in,
+    /// in the same top-level part of the tree the user was in — a favorite's copy in Favorites, say,
+    /// rather than the folder under its account. Returns false when it is not in the tree.
+    /// </summary>
+    private bool FocusFolderInTree(MailFolderModel folder, string? rootKey)
+    {
+        if (_vm.FolderTree is not { } roots) return false;
+        var scope = rootKey == null
+            ? null
+            : roots.FirstOrDefault(r => string.Equals(FolderTreeRootKey(r), rootKey, StringComparison.Ordinal));
+        IEnumerable<FolderTreeNode> search = scope != null ? new[] { scope } : roots;
+        if (TreeViewFocusHelper.FindFolderTreeNode(search, folder) == null) search = roots;
+
+        if (!TreeViewFocusHelper.FindAndExpandFolderPath(search, folder)) return false;
+        FolderList.UpdateLayout();
+        if (TreeViewFocusHelper.FindFolderTreeNode(search, folder) is not { } node) return false;
+        FocusTreeItem(FolderList, node);
+        return true;
+    }
+
+    // Which top-level item of the folder tree holds the node: an account, or a section.
+    private string? FolderTreeRootKeyOf(FolderTreeNode node)
+    {
+        if (_vm.FolderTree is not { } roots) return null;
+        foreach (var root in roots)
+            if (ReferenceEquals(root, node) || ContainsNode(root, node)) return FolderTreeRootKey(root);
+        return null;
+
+        static bool ContainsNode(FolderTreeNode parent, FolderTreeNode target) =>
+            parent.Children.Any(c => ReferenceEquals(c, target) || ContainsNode(c, target));
+    }
+
+    private static string FolderTreeRootKey(FolderTreeNode root) =>
+        root.SectionKey ?? (root.AccountId is { } id ? id.ToString("N") : root.Label);
+
+    /// <summary>
+    /// What a folder picker needs to rename in place (#1083). The picker is modal, so the rename defers
+    /// the main window's catching up until it closes — every picker's caller then runs
+    /// <see cref="MainViewModel.CommitPendingFolderTreeRebuild"/>. <paramref name="visibleOnly"/> keeps
+    /// hidden folders out of a picker that leaves them out (Go to Folder, #963) when it rebuilds.
+    /// </summary>
+    private FolderRenameSupport PickerRenameSupport(bool visibleOnly = false) => new(
+        folder => _vm.RenameFolderRefusal(folder),
+        async (folder, name) =>
+        {
+            var result = await _vm.RenameFolderAsync(folder, name, insideModal: true);
+            if (visibleOnly && result.Rename is { } rename &&
+                _vm.VisibleCachedFolders.TryGetValue(rename.AccountId, out var visible))
+                result = result with { AccountFolders = visible };
+            return result;
+        });
+
+    /// <summary>
+    /// A result in the status bar, said once as a Result. <see cref="Report"/> sets the status text
+    /// the ordinary way, which speaks it as Status as well.
+    /// </summary>
+    private void ReportResult(string message)
+    {
+        _vm.SetStatusWithoutSpeaking(message);
+        AccessibilityHelper.Announce(this, message, category: AnnouncementCategory.Result);
+    }
+
+    /// <summary>Follows a folder renamed anywhere (#1083) in the windows that hold folder names of their own.</summary>
+    private void OnFolderRenamed(FolderRename rename)
+    {
+        foreach (var w in _openMessageWindows.ToList())
+            w.ApplyFolderRename(rename);
+        _rulesVm?.ApplyFolderRenameAsync(rename).LogFaults("Rules window: follow folder rename");
     }
 
     // ── Calendar context menu handlers (issue #497) ──────────────────────────
@@ -8516,9 +8686,10 @@ public partial class MainWindow : Window
         SelectedGroupTarget()?.Messages ?? GetSelectedMessages();
 
     /// <summary>
-    /// True when a text box has focus, so Ctrl+C, Ctrl+X and Ctrl+V edit its text. The pane-level
-    /// scopes alone would not do: a folder being renamed in place has its text box inside the
-    /// folder tree.
+    /// True when a text box has focus, so Ctrl+C, Ctrl+X and Ctrl+V edit its text. A guard on top of
+    /// the pane-level scopes for any text box inside the message area or the folder tree. There is
+    /// none in the folder tree: Rename Folder (#1083) asks for the new name in a window of its own,
+    /// rather than editing the tree item in place.
     /// </summary>
     private static bool IsTextEntryFocused() => Keyboard.FocusedElement is TextBoxBase;
 
@@ -8744,6 +8915,7 @@ public partial class MainWindow : Window
     }
 
     private Window? _rulesWindow;
+    private UnifiedRulesViewModel? _rulesVm;
 
     // Where focus goes when the Rules Manager closes. Fields, not locals captured by its Closed handler:
     // a request that finds it already open (Tools > Rules here, then Ctrl+Shift+T in a message window)
@@ -8841,7 +9013,9 @@ public partial class MainWindow : Window
         var folderCreation = new FolderCreationSupport(
             (accountId, parentFullName, name) =>
                 _vm.CreateFolderReturningFoldersAsync(accountId, parentFullName, name),
-            _vm.CommitPendingFolderTreeRebuild);
+            _vm.CommitPendingFolderTreeRebuild,
+            // Rename Folder in the same picker (#1083), deferred the same way.
+            PickerRenameSupport());
 
         // One rules window for every account (#550). The unified single-list manager (spec §20) is now
         // THE rules UI: an IMAP or personal-Graph account simply shows its client rules — the same set
@@ -8862,6 +9036,9 @@ public partial class MainWindow : Window
         Window dialog = new UnifiedRulesWindow(unifiedVm, accounts, _vm.CachedFolders, template, folderCreation);
 
         _rulesWindow = dialog;
+        // A folder renamed while the window is open (#1083) is followed in its list and its editors:
+        // see OnFolderRenamed. Cleared in the Closed handler below.
+        _rulesVm = unifiedVm;
 
         // Modeless (.Show, NOT .ShowDialog). Opening this window modally over MainWindow's
         // live WebView2 reading pane hard-deadlocks the UI thread when a screen reader focuses
@@ -8873,6 +9050,7 @@ public partial class MainWindow : Window
         dialog.Closed += (_, _) =>
         {
             _rulesWindow = null;
+            _rulesVm = null;
             var returnTo = _rulesReturnTo;
             var previousFocus = _rulesPreviousFocus;
             _rulesReturnTo = null;
@@ -8939,7 +9117,9 @@ public partial class MainWindow : Window
             // Every backend can create folders, POP3 included since #794 (in the store, not on a
             // server), so the picker always offers New Folder.
             folderCreator: (accountId, parentFullName, name) =>
-                _vm.CreateFolderReturningFoldersAsync(accountId, parentFullName, name))
+                _vm.CreateFolderReturningFoldersAsync(accountId, parentFullName, name),
+            // Rename Folder (#1083). Every caller commits the deferred tree rebuild on close.
+            folderRenamer: PickerRenameSupport())
             { Owner = this };
     }
 

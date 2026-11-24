@@ -86,16 +86,18 @@ public partial class ServerRuleEditorWindow : Window
     {
         var picker = FolderPickerWindow.ForRuleTarget(
             _accounts, _cachedFolders, _ruleAccountId?.Invoke(), currentFolderId, title: "Choose Folder",
-            folderCreator: _folderCreation?.CreateAsync);
+            folderCreator: _folderCreation?.CreateAsync,
+            folderRenamer: _folderCreation?.Rename);
         picker.Owner = this;
 
         (string Id, string Name)? chosen = null;
         if (picker.ShowDialog() == true && picker.SelectedFolder is MailFolderModel folder)
             chosen = (folder.FullName, folder.DisplayName);
 
-        // Apply a folder created inside the picker, even on Cancel (a no-op otherwise): it exists on
-        // the server whichever button closed the picker, and the main window's folder tree could not
-        // be rebuilt while that modal loop was running.
+        // Apply a folder created or renamed inside the picker, even on Cancel (a no-op otherwise): it
+        // is done on the server whichever button closed the picker, and the main window's folder tree
+        // could not be rebuilt while that modal loop was running. A rename also reaches this editor
+        // then (#1083), through the Rules window, so the rule's own folder follows it.
         _folderCreation?.PickerClosed();
         return chosen;
     }
