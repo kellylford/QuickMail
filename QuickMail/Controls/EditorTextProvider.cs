@@ -81,6 +81,8 @@ internal sealed class EditorTextProvider : ITextProvider
                 SetOffsets(text, start, end);
                 return;
             }
+            if (unit is TextUnit.Line or TextUnit.Paragraph && AtEndOfTextLine())
+                Inner.MoveEndpointByUnit(TextPatternRangeEndpoint.Start, TextUnit.Character, -1);
             Inner.ExpandToEnclosingUnit(unit);
             if (unit is TextUnit.Line or TextUnit.Paragraph) TrimEmptyLine();
         }
@@ -102,8 +104,10 @@ internal sealed class EditorTextProvider : ITextProvider
             if (PlainParagraphs(unit)) return MovePlainParagraphEndpoint(endpoint, count);
             // A line built from the caret by moving End one line on, the other way of asking
             // for "the line here", gets the same empty-line fix as ExpandToEnclosingUnit.
+            // Only from an empty line: from the end of a line of text, End one line on is
+            // rightly the next line.
             bool lineFromCaret = endpoint == TextPatternRangeEndpoint.End && count == 1
-                && unit is TextUnit.Line or TextUnit.Paragraph && IsDegenerate();
+                && unit is TextUnit.Line or TextUnit.Paragraph && IsDegenerate() && OnEmptyLine();
             int moved = Inner.MoveEndpointByUnit(endpoint, unit, count);
             if (lineFromCaret) TrimEmptyLine();
             return moved;
@@ -127,9 +131,46 @@ internal sealed class EditorTextProvider : ITextProvider
         private bool IsDegenerate()
             => Inner.CompareEndpoints(TextPatternRangeEndpoint.Start, Inner, TextPatternRangeEndpoint.End) == 0;
 
+        private static bool HasBreak(string text) => text.IndexOfAny(['\r', '\n']) >= 0;
+
+        /// <summary>The WPF character just before (-1) or after (1) this range's start, as text.</summary>
+        private string CharacterBesideStart(int direction)
+        {
+            var probe = Inner.Clone();
+            probe.MoveEndpointByRange(TextPatternRangeEndpoint.End, probe, TextPatternRangeEndpoint.Start);
+            var endpoint = direction < 0 ? TextPatternRangeEndpoint.Start : TextPatternRangeEndpoint.End;
+            return probe.MoveEndpointByUnit(endpoint, TextUnit.Character, direction) == 0 ? "" : probe.GetText(-1);
+        }
+
+        /// <summary>
+        /// Whether the start is at the end of a line of text, just before its line break. WPF
+        /// expands a position there to the line <i>and the one after it</i> ("Item three" and
+        /// "After" as one line; a paragraph and the bulleted item below it). Up and Down keep
+        /// the caret's column, so landing on a shorter line puts it exactly there.
+        /// </summary>
+        private bool AtEndOfTextLine()
+        {
+            var after = CharacterBesideStart(1);
+            if (after.Length == 0 || after[0] is not ('\r' or '\n')) return false;
+            var before = CharacterBesideStart(-1);
+            return before.Length > 0 && !HasBreak(before);
+        }
+
+        /// <summary>Whether the start is on an empty line: a line break before it (or nothing) and one after.</summary>
+        private bool OnEmptyLine()
+        {
+            var after = CharacterBesideStart(1);
+            if (after.Length == 0 || after[0] is not ('\r' or '\n')) return false;
+            var before = CharacterBesideStart(-1);
+            return before.Length == 0 || HasBreak(before);
+        }
+
         /// <summary>
         /// A line that starts with a line break and has text after it is an empty line WPF has
-        /// glued to the next one (#891): keep only the break.
+        /// glued to the next one (#891): keep only the break. Where one WPF character from the
+        /// start takes in more than the break (an empty paragraph or list item before a list
+        /// item, whose "•\t" WPF steps over with the break), keep nothing: an empty line is read
+        /// as blank too, where "•" would be read as a bullet.
         /// </summary>
         private void TrimEmptyLine()
         {
@@ -138,6 +179,8 @@ internal sealed class EditorTextProvider : ITextProvider
             if (text.TrimStart('\r', '\n').Length == 0) return;
             Inner.MoveEndpointByRange(TextPatternRangeEndpoint.End, Inner, TextPatternRangeEndpoint.Start);
             Inner.MoveEndpointByUnit(TextPatternRangeEndpoint.End, TextUnit.Character, 1);
+            if (Inner.GetText(-1).Trim('\r', '\n').Length > 0)
+                Inner.MoveEndpointByRange(TextPatternRangeEndpoint.End, Inner, TextPatternRangeEndpoint.Start);
         }
 
         // ---- Plain-text paragraphs. Offsets are string indexes into the editor's text. ----

@@ -320,6 +320,79 @@ public class EditorTextProviderTests
         finally { window.Close(); }
     }
 
+    private static List MakeList(params string[] items)
+    {
+        var list = new List { MarkerStyle = TextMarkerStyle.Disc };
+        foreach (var text in items) list.ListItems.Add(new ListItem(new Paragraph(new Run(text))));
+        return list;
+    }
+
+    private static IEnumerable<Paragraph> AllParagraphs(BlockCollection blocks)
+    {
+        foreach (var block in blocks)
+        {
+            if (block is Paragraph p) yield return p;
+            else if (block is List list)
+                foreach (var item in list.ListItems)
+                    foreach (var inner in AllParagraphs(item.Blocks)) yield return inner;
+        }
+    }
+
+    [StaFact]
+    public void RichEditor_AroundAList_EachLineReadsItself_WhereverTheCaretIs()
+    {
+        // In the test VM with NVDA, Up from a list item onto the paragraph above it read
+        // "Gamma • Item one": with the caret at the end of a line, WPF gives that line and the
+        // next one. Empty lines next to a list kept the list's bullet after the trim.
+        var soft = new Paragraph(new Run("Line a"));
+        soft.Inlines.Add(new LineBreak());
+        soft.Inlines.Add(new Run("Line b"));
+        var box = new EditorRichTextBox { Width = 380 };
+        box.Document.Blocks.Clear();
+        box.Document.Blocks.Add(new Paragraph(new Run("Gamma")));
+        box.Document.Blocks.Add(MakeList("Item one", "", "Item three"));
+        box.Document.Blocks.Add(new Paragraph());
+        box.Document.Blocks.Add(soft);
+        box.Document.Blocks.Add(MakeList("Last item"));
+        var window = Host(box);
+        try
+        {
+            var provider = Provider(box);
+            var expected = new[] { "Gamma", "Item one", "blank", "Item three", "blank", "Line a", "Last item" };
+            var paragraphs = AllParagraphs(box.Document.Blocks).ToList();
+            Assert.Equal(7, paragraphs.Count);
+            for (int i = 0; i < paragraphs.Count; i++)
+            {
+                box.CaretPosition = paragraphs[i].ContentStart.GetInsertionPosition(LogicalDirection.Forward);
+                Assert.Equal(expected[i], Spoken(Read(provider, TextUnit.Line)));
+                // At the end: the paragraph's last line ("Line b" for the soft-broken one).
+                box.CaretPosition = paragraphs[i].ContentEnd.GetInsertionPosition(LogicalDirection.Backward);
+                Assert.Equal(i == 5 ? "Line b" : expected[i], Spoken(Read(provider, TextUnit.Line)));
+                var paragraph = Spoken(Read(provider, TextUnit.Paragraph));
+                Assert.Equal(i == 5 ? "Line a\r\nLine b" : expected[i], paragraph);
+            }
+        }
+        finally { window.Close(); }
+    }
+
+    [StaFact]
+    public void PlainEditor_DownOntoAShorterLine_ReadsThatLineOnly()
+    {
+        // Down keeps the caret's column, so it lands at the end of a shorter line.
+        var box = new EditorTextBox { AcceptsReturn = true, Text = "A much longer first line\r\nShort\r\nThird line here" };
+        var window = Host(box);
+        try
+        {
+            var provider = Provider(box);
+            box.CaretIndex = 20; // well into the first line
+            EditingCommands.MoveDownByLine.Execute(null, box);
+            Assert.Equal("Short", Spoken(Read(provider, TextUnit.Line)));
+            EditingCommands.MoveDownByLine.Execute(null, box);
+            Assert.Equal("Third line here", Spoken(Read(provider, TextUnit.Line)));
+        }
+        finally { window.Close(); }
+    }
+
     [StaFact]
     public void ThroughUiAutomation_TheBlankLineIsBlank()
     {
