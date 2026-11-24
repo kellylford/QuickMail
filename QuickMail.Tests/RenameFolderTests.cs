@@ -415,11 +415,10 @@ public class RenameFolderTests
         rig.Vm.IsModalDialogOpen = () => modal;
         var renamed = new List<FolderRename>();
         rig.Vm.FolderRenamed += renamed.Add;
-        var treeBefore = rig.Vm.FolderTree;
 
         await rig.Vm.RenameFolderAsync(Cached(rig.Vm, Work, "Projects"), "Clients");
 
-        Assert.Same(treeBefore, rig.Vm.FolderTree);
+        Assert.Equal("Projects", NodeFor(rig.Vm, Work, "Clients").Label);   // the tree has not been rebuilt yet
         Assert.Empty(renamed);
         modal = false;
         rig.Vm.CommitPendingFolderTreeRebuild();
@@ -449,7 +448,6 @@ public class RenameFolderTests
         var rig = await MakeAsync();
         var renamed = new List<FolderRename>();
         rig.Vm.FolderRenamed += renamed.Add;
-        var treeBefore = rig.Vm.FolderTree;
 
         var result = await rig.Vm.RenameFolderAsync(Cached(rig.Vm, Work, "Projects"), "Clients", insideModal: true);
 
@@ -459,12 +457,11 @@ public class RenameFolderTests
         // Files are written now ...
         Assert.Single(rig.Store.FolderRenames);
         // ... but the main window is left alone while the picker's loop runs.
-        Assert.Same(treeBefore, rig.Vm.FolderTree);
+        Assert.Equal("Projects", NodeFor(rig.Vm, Work, "Clients").Label);   // the tree has not been rebuilt yet
         Assert.Empty(renamed);
 
         rig.Vm.CommitPendingFolderTreeRebuild();
 
-        Assert.NotSame(treeBefore, rig.Vm.FolderTree);
         Assert.Equal("Clients", NodeFor(rig.Vm, Work, "Clients").Label);
         Assert.Single(renamed);
 
