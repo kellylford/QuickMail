@@ -1,0 +1,107 @@
+# #1099 prototype: the same steps against a WPF TextBox body and a hosted RichEdit body.
+# The prototype opens with the message body focused.
+w 4
+# Give NVDA a focus change in this window before the test (a relaunch can leave it on the old one).
+q +{TAB}
+w 2
+q {TAB}
+w 3
+
+# 1. Typed-word echo (#300, #906): each word as Space ends it, and the last as Enter ends it.
+t one two three
+w 3
+e one
+e two
+k {ENTER}
+w 3
+e three
+
+# The rest of the text, typed without logging.
+Q Alpha line
+q {ENTER}
+q {ENTER}
+Q Beta line
+q {ENTER}
+q {ENTER}
+q {ENTER}
+Q Gamma
+q {ENTER}
+Q A much longer line of text here
+q {ENTER}
+Q Short
+q {ENTER}
+Q End
+w 3
+
+# 2. Down from the top: each line once, blank lines as blank (#891).
+k ^{HOME}
+w 3
+e This line has a bold word
+k {DOWN}
+w 3
+e one two three
+k {DOWN}
+w 3
+e Alpha line
+k {DOWN}
+w 3
+e blank
+e! Beta
+k {DOWN}
+w 3
+e Beta line
+k {DOWN}
+w 3
+e blank
+e! Gamma
+k {DOWN}
+w 3
+e blank
+e! Gamma
+k {DOWN}
+w 3
+e Gamma
+
+# 3. From the end of a long line, Down onto a shorter one: that line alone.
+k {DOWN}
+w 3
+e A much longer line of text here
+k {END}
+w 2
+k {DOWN}
+w 3
+e Short
+e! End
+
+# 4. Ctrl+Down / Ctrl+Up by paragraph (#1077).
+k ^{HOME}
+w 3
+k ^{DOWN}
+w 3
+e one two three
+k ^{DOWN}
+w 3
+e Alpha line
+e! Gamma
+k ^{DOWN}
+w 3
+e blank
+k ^{DOWN}
+w 3
+e Beta line
+e! Gamma
+k ^{UP}
+w 3
+e blank
+k ^{UP}
+w 3
+e Alpha line
+e! Beta
+
+# 5. Focus between the To box and the body.
+k +{TAB}
+w 3
+e To
+k {TAB}
+w 3
+e Message body
