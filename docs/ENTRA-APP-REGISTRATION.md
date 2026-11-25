@@ -110,6 +110,8 @@ declared scopes). Both must still be declared here.
 | `MailboxSettings.ReadWrite` | Server-side Inbox rules (messageRule API). **Superset of `MailboxSettings.Read`** — declare ReadWrite, not Read. |
 | `User.Read` | Resolve the signed-in user's address/profile |
 | `User.ReadBasic.All` | Resolve other users (recipient display names) |
+| `User.Read.All` | **Forward declaration** for the organization address list (#1036). Reads the organization's people from `/users/delta`: names, addresses, job title, department, office, phones. `User.ReadBasic.All` covers names and addresses only and isn't accepted by `/users/delta`. Requires admin consent. Added 2026-11-25. Requested only behind the `GlobalAddressList` feature flag (off by default) until the feature ships. |
+| `GroupMember.Read.All` | **Forward declaration** for the organization address list (#1036). Lists groups from `/groups/delta`, so distribution lists and Microsoft 365 groups can be addressed; the narrowest permission that lists groups. Requires admin consent. Added 2026-11-25, behind the same feature flag. |
 
 **Office 365 Exchange Online (delegated)** — for the IMAP/SMTP backend:
 
@@ -181,6 +183,17 @@ scope that no array requests is simply never acquired. Standard consequences app
 accounts get one re-consent prompt on next interactive sign-in, and admin-consent tenants must
 re-grant admin consent (§4).
 
+**Scopes added (2026-11-25):** `User.Read.All` and `GroupMember.Read.All` (both delegated), declared
+ahead of the organization address list PRs at the request on issue #1036. Entra matches requested
+permissions against the declared list, so the one-screen admin consent (#607) and admins in other
+tenants can approve them only once they're declared here. Both require admin consent in every tenant.
+They were added in the Entra admin center (API permissions → Add a permission → Microsoft Graph →
+Delegated). Admin consent was not granted in the publishing tenant, which has no mailboxes. The
+declared Graph set is now **fourteen** scopes (the twelve above plus these two). The code requests
+them only behind the `GlobalAddressList` feature flag, off by default, so no released build asks
+for them yet. When the flag goes on, already-consented accounts get one re-consent prompt, and
+admin-consent tenants must re-grant admin consent (§4).
+
 **Code audit (2026-07-21):** this list was re-checked against every Graph, IMAP, and SMTP call in
 the codebase (supersedes the 2026-07-14 audit, which predated contact and calendar sync). It is
 **complete** — no code path needs a permission missing here, and every declared scope is either in
@@ -198,7 +211,9 @@ use or a documented forward declaration.
   such call exists; contact sync reaches people via `/me/people` + `/me/contacts`, which are
   governed by `People.Read` / `Contacts.Read`, **not** `/users`); the **write half** of
   `Contacts.ReadWrite` (no code writes contacts yet); and, since 2026-08-20,
-  `Mail.ReadWrite.Shared` / `Mail.Send.Shared` (shared mailboxes — declared, not yet requested).
+  `Mail.ReadWrite.Shared` / `Mail.Send.Shared` (shared mailboxes — declared, not yet requested);
+  and, since 2026-11-25, `User.Read.All` / `GroupMember.Read.All` (organization address list,
+  #1036 — requested only behind the `GlobalAddressList` feature flag).
 
 No POP3 or EWS code exists, so `POP.AccessAsUser.All` and `EWS.AccessAsUser.All` are correctly
 absent. Re-run this audit when a feature adds a new Graph endpoint category.
