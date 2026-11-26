@@ -62,6 +62,11 @@ internal sealed class WinUiEditorHost : HwndHost, IPlainTextEditor
             AllowDrop = true,
         };
         WinUiAutomation.SetName(_editor, accessibleName);
+        // The control's own menus offer Bold, Italic and Underline, which a plain-text body has
+        // no use for and would lose on send. The pop-up over a selection goes; the context menu
+        // (Shift+F10, the Applications key) keeps the clipboard commands only.
+        _editor.SelectionFlyout = null;
+        _editor.ContextFlyout = BuildContextMenu();
         _editor.TextChanging += (_, _) => _text = null;
         _editor.TextChanged += (_, _) =>
         {
@@ -100,6 +105,71 @@ internal sealed class WinUiEditorHost : HwndHost, IPlainTextEditor
 
     /// <summary>Files were dropped on the editor.</summary>
     public event Action<IReadOnlyList<string>>? FilesDropped;
+
+    /// <summary>
+    /// The island could not be created when the window was first laid out, which is after the
+    /// constructor has succeeded. The owner puts its other editor back: this element is empty.
+    /// </summary>
+    public event Action<Exception>? HostingFailed;
+
+    /// <summary>
+    /// Lets go of the owner when its window has closed. WPF disposes an HwndHost only when its
+    /// dispatcher shuts down, so without this every closed message would keep its editor, its
+    /// window and its view model alive until QuickMail exits.
+    ///
+    /// <para>The island itself is released earlier, while the container window is being destroyed
+    /// (<see cref="WndProc"/>, WM_DESTROY). Disposing it here, after the window is gone, ended
+    /// the process with an access violation.</para>
+    /// </summary>
+    public void Close()
+    {
+        TextChanged = null;
+        SelectionChanged = null;
+        FilesDropped = null;
+        HostingFailed = null;
+        TabPressed = null;
+        Dispose();
+    }
+
+    private void ReleaseIsland()
+    {
+        if (_source == null) return;
+        var source = _source;
+        _source = null;
+        source.TakeFocusRequested -= OnTakeFocusRequested;
+        try
+        {
+            source.Dispose();
+        }
+        catch (Exception ex) when (ex is COMException or ObjectDisposedException or InvalidOperationException)
+        {
+            Services.LogService.Debug($"Releasing the editor island: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// True while the editor's context menu is open. WPF sees Escape before the island does and
+    /// knows nothing of a WinUI menu, so the owner asks before treating Escape as "close".
+    /// </summary>
+    public bool IsMenuOpen { get; private set; }
+
+    private MenuFlyout BuildContextMenu()
+    {
+        var menu = new MenuFlyout();
+        menu.Opened += (_, _) => IsMenuOpen = true;
+        menu.Closed += (_, _) => IsMenuOpen = false;
+        void Add(string text, Action run)
+        {
+            var item = new MenuFlyoutItem { Text = text };
+            item.Click += (_, _) => run();
+            menu.Items.Add(item);
+        }
+        Add("Cut", () => _editor.Document.Selection.Cut());
+        Add("Copy", () => _editor.Document.Selection.Copy());
+        Add("Paste", PasteText);
+        Add("Select All", () => Select(0, Text.Length));
+        return menu;
+    }
 
     // ── IPlainTextEditor ─────────────────────────────────────────────────────
 
@@ -243,6 +313,11 @@ internal sealed class WinUiEditorHost : HwndHost, IPlainTextEditor
     private void OnPaste(object sender, TextControlPasteEventArgs e)
     {
         e.Handled = true;
+        PasteText();
+    }
+
+    private void PasteText()
+    {
         string text;
         try
         {
@@ -259,17 +334,24 @@ internal sealed class WinUiEditorHost : HwndHost, IPlainTextEditor
         Select(end, 0);
     }
 
+    /// <summary>
+    /// Files may be dropped (the owner attaches them). Anything else is refused: left to the
+    /// control, dragged text arrives with its formatting and a dragged picture as an object, and
+    /// neither survives in a plain-text body.
+    /// </summary>
     private static void OnDragOver(object sender, Microsoft.UI.Xaml.DragEventArgs e)
     {
-        if (!e.DataView.Contains(Windows.ApplicationModel.DataTransfer.StandardDataFormats.StorageItems)) return;
-        e.AcceptedOperation = Windows.ApplicationModel.DataTransfer.DataPackageOperation.Copy;
+        bool files = e.DataView.Contains(Windows.ApplicationModel.DataTransfer.StandardDataFormats.StorageItems);
+        e.AcceptedOperation = files
+            ? Windows.ApplicationModel.DataTransfer.DataPackageOperation.Copy
+            : Windows.ApplicationModel.DataTransfer.DataPackageOperation.None;
         e.Handled = true;
     }
 
     private async void OnDrop(object sender, Microsoft.UI.Xaml.DragEventArgs e)
     {
-        if (!e.DataView.Contains(Windows.ApplicationModel.DataTransfer.StandardDataFormats.StorageItems)) return;
         e.Handled = true;
+        if (!e.DataView.Contains(Windows.ApplicationModel.DataTransfer.StandardDataFormats.StorageItems)) return;
         var deferral = e.GetDeferral();
         try
         {
@@ -293,23 +375,40 @@ internal sealed class WinUiEditorHost : HwndHost, IPlainTextEditor
     {
         _container = CreateWindowEx(0, "Static", "", WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN,
             0, 0, 100, 100, hwndParent.Handle, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero);
-        _source = new DesktopWindowXamlSource();
-        _source.Initialize(new WindowId((ulong)_container));
-        _source.Content = _editor;
-        _source.TakeFocusRequested += OnTakeFocusRequested;
-        Resize();
+        if (_container == IntPtr.Zero)
+            throw new InvalidOperationException("The message editor's container window could not be created.");
+        try
+        {
+            _source = new DesktopWindowXamlSource();
+            _source.Initialize(new WindowId((ulong)_container));
+            _source.Content = _editor;
+            _source.TakeFocusRequested += OnTakeFocusRequested;
+            Resize();
+        }
+#pragma warning disable CA1031 // whatever WinUI throws here, the window must get its other editor back, not lose its body
+        catch (Exception ex)
+#pragma warning restore CA1031
+        {
+            // This runs at the window's first layout, long after the constructor returned, so the
+            // owner's fallback has to be asked for. The empty container is still a valid child.
+            ReleaseIsland();
+            var failed = HostingFailed;
+            Dispatcher.BeginInvoke(() => failed?.Invoke(ex));
+        }
         return new HandleRef(this, _container);
     }
 
     protected override void DestroyWindowCore(HandleRef hwnd)
     {
-        if (_source != null)
+        // Usually a no-op by now: the window's closing destroyed the container already, and
+        // WM_DESTROY released the island. This is the path for an element removed from a live
+        // window (the fallback after a hosting failure).
+        if (IsWindow(hwnd.Handle))
         {
-            _source.TakeFocusRequested -= OnTakeFocusRequested;
-            _source.Dispose();
-            _source = null;
+            ReleaseIsland();
+            DestroyWindow(hwnd.Handle);
         }
-        DestroyWindow(hwnd.Handle);
+        _source = null;
         _container = IntPtr.Zero;
     }
 
@@ -383,6 +482,9 @@ internal sealed class WinUiEditorHost : HwndHost, IPlainTextEditor
     protected override IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
         if (msg == WM_SETFOCUS && hwnd == _container) FocusEditor();
+        // The container is going (its window is closing). Release the island now, while the
+        // container and the island's own window still exist.
+        else if (msg == WM_DESTROY && hwnd == _container) ReleaseIsland();
         return base.WndProc(hwnd, msg, wParam, lParam, ref handled);
     }
 
@@ -410,7 +512,18 @@ internal sealed class WinUiEditorHost : HwndHost, IPlainTextEditor
     /// </summary>
     protected override void OnKeyDown(KeyEventArgs e)
     {
-        bool editorKey = e.Key is Key.Left or Key.Right or Key.Up or Key.Down
+        // RichEdit's own formatting keys (alignment, line spacing, lists, superscript and
+        // subscript, all caps) are not commands in a plain-text body. Unhandled by QuickMail's
+        // commands by this point, they stop here and never reach the control.
+        if (!e.Handled && IsRichEditFormattingKey(e.Key, Keyboard.Modifiers))
+        {
+            e.Handled = true;
+            return;
+        }
+
+        // With the editor's context menu open, every key is the menu's. Left to bubble, Escape
+        // reached the window's Cancel button (IsCancel) and closed the message.
+        bool editorKey = IsMenuOpen || e.Key is Key.Left or Key.Right or Key.Up or Key.Down
             or Key.Home or Key.End or Key.PageUp or Key.PageDown or Key.Enter;
         if (editorKey && !e.Handled && (Keyboard.Modifiers & ModifierKeys.Alt) == 0)
         {
@@ -423,7 +536,17 @@ internal sealed class WinUiEditorHost : HwndHost, IPlainTextEditor
         base.OnKeyDown(e);
     }
 
+    internal static bool IsRichEditFormattingKey(Key key, ModifierKeys modifiers)
+    {
+        if (modifiers == ModifierKeys.Control)
+            return key is Key.E or Key.L or Key.R or Key.J or Key.D1 or Key.D2 or Key.D5 or Key.OemPlus;
+        if (modifiers == (ModifierKeys.Control | ModifierKeys.Shift))
+            return key is Key.L or Key.A or Key.OemPlus or Key.OemComma or Key.OemPeriod;
+        return false;
+    }
+
     private const int WS_CHILD = 0x40000000, WS_VISIBLE = 0x10000000, WS_CLIPCHILDREN = 0x02000000;
+    private const int WM_DESTROY = 0x0002;
     private const int WM_SETFOCUS = 0x0007, WM_CHAR = 0x0102, WM_DEADCHAR = 0x0103;
 
     [DllImport("user32", CharSet = CharSet.Unicode)]

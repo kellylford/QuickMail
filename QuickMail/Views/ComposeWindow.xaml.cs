@@ -254,7 +254,11 @@ public partial class ComposeWindow : Window
             {
                 Interval = TimeSpan.FromSeconds(Math.Clamp(cfg.AutoSaveIntervalSeconds, 30, 600)),
             };
-            _autoSaveTimer.Tick += (_, _) => _ = _vm.AutoSaveAsync();
+            _autoSaveTimer.Tick += (_, _) =>
+            {
+                FlushNewEditorBody();
+                _ = _vm.AutoSaveAsync();
+            };
             _autoSaveTimer.Start();
             Closed += (_, _) => _autoSaveTimer.Stop();
         }
@@ -422,6 +426,7 @@ public partial class ComposeWindow : Window
 
     private void CommitAllAddressInputs()
     {
+        FlushNewEditorBody();
         foreach (var box in new[] { ToBox, CcBox, BccBox })
             box.CommitPendingInput();
     }
@@ -546,6 +551,7 @@ public partial class ComposeWindow : Window
 
     private async void OnWindowClosing(object? sender, CancelEventArgs e)
     {
+        FlushNewEditorBody();
         _vm.CancelAutoSave();
         _previewWindow?.Close();
         CloseSpellCheckDialogSilently();
@@ -649,6 +655,8 @@ public partial class ComposeWindow : Window
     private async void Window_PreviewKeyDown(object sender, KeyEventArgs e)
     {
         NoteEditingActivity();
+        // Any key may be a command that reads the body (send, save, close).
+        FlushNewEditorBody();
 
         // Ctrl+Shift+P: open the command palette
         if (e.Key == Key.P && Keyboard.Modifiers == (ModifierKeys.Control | ModifierKeys.Shift))
@@ -700,6 +708,7 @@ public partial class ComposeWindow : Window
                 || ModeSelector.IsDropDownOpen
                 || ParagraphStyleCombo.IsDropDownOpen
                 || AutoCompletePopup.IsOpen
+                || _newEditor?.IsMenuOpen == true
                 || _previewWindow != null)
             {
                 _previewWindow?.Close();

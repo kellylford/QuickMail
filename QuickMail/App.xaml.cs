@@ -816,8 +816,8 @@ public partial class App : Application
     }
     protected override void OnExit(ExitEventArgs e)
     {
-        // The WinUI side of the new message editor (#1099); nothing to do if it never started.
-        Controls.WinUiRuntime.Shutdown();
+        // The WinUI side of the new message editor (#1099), if a message ever used it.
+        if (Controls.WinUiRuntime.IsStarted) Controls.WinUiRuntime.Shutdown();
         // Copied messages and attachments. Kept while the clipboard still offers them: Windows holds the
         // paths after QuickMail has gone, and pasting into Explorer afterwards would find nothing. The next
         // start tidies them (DeleteAbandoned). Otherwise nothing can paste them, so they go now.

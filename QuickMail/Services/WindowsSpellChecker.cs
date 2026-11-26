@@ -32,7 +32,7 @@ internal sealed class WindowsSpellChecker : IWordSpeller
                 break;
             }
         }
-        catch (Exception ex) when (ex is COMException or InvalidCastException or UnauthorizedAccessException)
+        catch (Exception ex) when (ex is COMException or InvalidCastException or UnauthorizedAccessException or ArgumentException)
         {
             LogService.Log($"Windows spell checker is not available: {ex.Message}");
         }
@@ -56,7 +56,7 @@ internal sealed class WindowsSpellChecker : IWordSpeller
                     result.Add(((int)error.StartIndex, (int)error.Length));
             }
         }
-        catch (COMException ex)
+        catch (Exception ex) when (ex is COMException or ArgumentException or InvalidCastException)
         {
             LogService.Log($"Windows spell checker failed to check a line: {ex.Message}");
         }
@@ -78,7 +78,7 @@ internal sealed class WindowsSpellChecker : IWordSpeller
                     result.Add(one[0]);
             }
         }
-        catch (COMException ex)
+        catch (Exception ex) when (ex is COMException or ArgumentException or InvalidCastException)
         {
             LogService.Log($"Windows spell checker failed to suggest: {ex.Message}");
         }

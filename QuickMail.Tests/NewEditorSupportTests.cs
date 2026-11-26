@@ -174,6 +174,39 @@ public class NewEditorSupportTests
     public void NormalizeLineBreaks_MakesEveryBreakCrLf(string? text, string expected) =>
         Assert.Equal(expected, ComposeWindow.NormalizeLineBreaks(text));
 
+    // ── Windows' spell checker: the real call, not a fake ────────────────────
+
+    [Fact]
+    public void WindowsSpellChecker_FindsAMisspelling_AndSuggestsTheWord()
+    {
+        var speller = new WindowsSpellChecker("en-US");
+        Assert.SkipUnless(speller.IsAvailable, "Windows has no en-US spell checker on this machine.");
+
+        const string line = "I recieve mail";
+        var errors = speller.Check(line);
+
+        var error = Assert.Single(errors);
+        Assert.Equal("recieve", line.Substring(error.Start, error.Length));
+        Assert.Contains("receive", speller.Suggest("recieve"));
+        Assert.Empty(speller.Check("I receive mail"));
+        Assert.Empty(speller.Check("   "));
+    }
+
+    // ── Keys the hosted editor keeps from RichEdit ───────────────────────────
+
+    [Theory]
+    [InlineData(System.Windows.Input.Key.E, System.Windows.Input.ModifierKeys.Control, true)]       // center
+    [InlineData(System.Windows.Input.Key.R, System.Windows.Input.ModifierKeys.Control, true)]       // right-align
+    [InlineData(System.Windows.Input.Key.D2, System.Windows.Input.ModifierKeys.Control, true)]      // double spacing
+    [InlineData(System.Windows.Input.Key.L, System.Windows.Input.ModifierKeys.Control | System.Windows.Input.ModifierKeys.Shift, true)] // bullets
+    [InlineData(System.Windows.Input.Key.C, System.Windows.Input.ModifierKeys.Control, false)]      // copy stays
+    [InlineData(System.Windows.Input.Key.Z, System.Windows.Input.ModifierKeys.Control, false)]      // undo stays
+    [InlineData(System.Windows.Input.Key.A, System.Windows.Input.ModifierKeys.Control, false)]      // select all stays
+    [InlineData(System.Windows.Input.Key.E, System.Windows.Input.ModifierKeys.None, false)]         // the letter itself
+    public void RichEditFormattingKeys_AreKeptFromTheEditor_AndEditingKeysAreNot(
+        System.Windows.Input.Key key, System.Windows.Input.ModifierKeys modifiers, bool blocked) =>
+        Assert.Equal(blocked, QuickMail.Controls.WinUiEditorHost.IsRichEditFormattingKey(key, modifiers));
+
     // ── The setting ──────────────────────────────────────────────────────────
 
     [Fact]

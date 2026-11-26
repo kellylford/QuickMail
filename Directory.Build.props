@@ -41,6 +41,22 @@
   <PropertyGroup>
     <WindowsPackageType>None</WindowsPackageType>
     <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+    <!-- Self-contained mode would compile a module initializer into every project the SDK's
+         targets reach. It runs before Main: it sets two environment variables that every child
+         process inherits and loads Microsoft.WindowsAppRuntime.dll, and if that DLL is missing the
+         app does not start at all. QuickMail must run no Windows App SDK code while the new editor
+         is off, so the same two steps are done by hand, the first time an editor is hosted
+         (Controls/WinUiRuntime.EnsureStarted), where a failure falls back to the WPF editor. -->
+    <WindowsAppSdkAutoInitialize>false</WindowsAppSdkAutoInitialize>
+    <WindowsAppSdkUndockedRegFreeWinRTInitialize>false</WindowsAppSdkUndockedRegFreeWinRTInitialize>
+    <!-- The SDK's single-file check warns when that initializer is off ("requires
+         MICROSOFT_WINDOWSAPPRUNTIME_BASE_DIRECTORY to be set before program entry"), and the
+         warning has no code to suppress it by, so the whole check is off. What else it checks is
+         set above or by the SDK itself: EnableMsixTooling, WindowsPackageType None,
+         IncludeAllContentForSelfExtract, and both self-contained switches. The variable is set
+         by WinUiRuntime before the first WinUI object is made, which is all the manifest's
+         redirections need; the single-file exe is checked in the test VM. -->
+    <WindowsAppSDKSingleFileVerifyConfiguration>false</WindowsAppSDKSingleFileVerifyConfiguration>
     <!-- Puts WinUI's resource index files (.pri) in the output; its control styles need them. -->
     <EnableMsixTooling>true</EnableMsixTooling>
     <!-- With the Windows App SDK in the project, the WebView2 package switches itself to its

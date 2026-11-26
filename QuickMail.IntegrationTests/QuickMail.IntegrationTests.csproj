@@ -21,11 +21,6 @@
          path resolves correctly and NETSDK1151 is satisfied. -->
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <SelfContained>true</SelfContained>
-    <!-- Editor experiment (#1099): the Windows App SDK compiles its start-up code into every
-         project its targets reach. QuickMail.dll already carries it, and this project sees
-         QuickMail's internals, so a second copy here is a duplicate type (CS0436). -->
-    <WindowsAppSdkAutoInitialize>false</WindowsAppSdkAutoInitialize>
-    <WindowsAppSdkUndockedRegFreeWinRTInitialize>false</WindowsAppSdkUndockedRegFreeWinRTInitialize>
     <WarningsAsErrors>CS8602;CS8604;CS8618</WarningsAsErrors>
     <AnalysisMode>Recommended</AnalysisMode>
   </PropertyGroup>
