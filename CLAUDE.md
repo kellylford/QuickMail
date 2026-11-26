@@ -311,7 +311,7 @@ The compose body is WinUI 3's `RichEditBox` in a XAML island inside the WPF comp
 use), `Controls/RichEditDocument` (a formatted body, for HTML mode), `Helpers/RichBodyModel`
 (the flat form a body takes between the two), and `Views/ComposeWindow.Editor.cs` /
 `ComposeWindow.RichEditor.cs` (the wiring). **Settings → General → Composing → Use the new
-message editor** (`UseNewEditor`, on by default) chooses it; off, the WPF `EditorTextBox` and
+message editor** (`UseNewEditor`; `NewMessageEditor` in `config.ini`; on by default) chooses it; off, the WPF `EditorTextBox` and
 `EditorRichTextBox` run instead, and that path must keep working: it is the user's way back and
 what runs if WinUI cannot start. It was chosen because WPF's text provider is where the
 compose reading bugs were (#891, #1077, #300); do not "fix" a reading problem in the new editor
