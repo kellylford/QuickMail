@@ -27,4 +27,31 @@
     <DefaultItemExcludes>$(DefaultItemExcludes);bin/**;obj/**</DefaultItemExcludes>
   </PropertyGroup>
 
+  <!--
+    Editor experiment (#1099): the WinUI 3 RichEditBox as the compose body, hosted in a XAML
+    island (QuickMail/Controls/WinUiEditorHost). The app is unpackaged and carries its own copy of
+    the Windows App SDK. See Tools/EditorHostSpike/README.md for how each of these failed without it.
+
+    They are here, not in QuickMail.csproj, because the Windows App SDK's build targets also run in
+    every project that references QuickMail (the two test projects and the fixture tool), and
+    without these those builds stop with "A framework package dependent Windows App SDK app
+    requires a package reference to Microsoft.WindowsAppSDK.Runtime". They do nothing in a project
+    with no Windows App SDK reference.
+  -->
+  <PropertyGroup>
+    <WindowsPackageType>None</WindowsPackageType>
+    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+    <!-- Puts WinUI's resource index files (.pri) in the output; its control styles need them. -->
+    <EnableMsixTooling>true</EnableMsixTooling>
+    <!-- With the Windows App SDK in the project, the WebView2 package switches itself to its
+         WinRT projection and drops Microsoft.Web.WebView2.Wpf.dll, and every WebView2 in the
+         app's XAML stops compiling (MC3074). QuickMail's reading pane is the WPF control. -->
+    <WebView2EnableCsWinRTProjection>false</WebView2EnableCsWinRTProjection>
+    <!-- MVVMTK0045: with the Windows App SDK referenced, the MVVM Toolkit warns that every
+         [ObservableProperty] field is not AOT compatible "in WinRT scenarios". QuickMail is a WPF
+         app that is not compiled ahead of time, and none of its view models are bound from WinUI
+         XAML: the hosted editor is the only WinUI object and it is driven from code. -->
+    <NoWarn>$(NoWarn);MVVMTK0045</NoWarn>
+  </PropertyGroup>
+
 </Project>

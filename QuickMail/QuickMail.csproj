@@ -76,6 +76,9 @@
     <DefaultItemExcludes>$(DefaultItemExcludes);bin/**;obj/**</DefaultItemExcludes>
   </PropertyGroup>
 
+  <!-- Editor experiment (#1099): the Windows App SDK's project settings are in
+       Directory.Build.props, because the test projects that reference this one need them too. -->
+
   <ItemGroup>
     <!-- Compile App.xaml as Page instead of ApplicationDefinition so the SDK does not
          generate a Main; the explicit Main in App.xaml.cs (see StartupObject) is used. -->
@@ -134,6 +137,9 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
     <PackageReference Include="Velopack" Version="1.2.161" />
+    <!-- Editor experiment (#1099). Only the WinUI part of the Windows App SDK: the whole SDK adds
+         about 50 MB of AI and ML libraries, and its single-file exe does not start. -->
+    <PackageReference Include="Microsoft.WindowsAppSDK.WinUI" Version="1.8.260803003" />
   </ItemGroup>
 
   <!-- Credential partials (#859). GoogleOAuthService.Credentials.cs and

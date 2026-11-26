@@ -352,6 +352,14 @@ public class ConfigModel
     /// </summary>
     public bool CheckSpellingAsYouType { get; set; } = true;
 
+    /// <summary>
+    /// The editor experiment (#1099): compose windows opened afterwards use the hosted WinUI
+    /// editor (<c>Controls/WinUiEditorHost</c>) for the Plain Text and Markdown body in place of
+    /// the WPF text box. HTML mode keeps its WPF editor. Off by default, and while it is off no
+    /// WinUI code runs at all.
+    /// </summary>
+    public bool UseNewEditor { get; set; }
+
     /// <summary>Automatically save composes as drafts while editing.</summary>
     public bool AutoSaveDrafts { get; set; } = true;
 

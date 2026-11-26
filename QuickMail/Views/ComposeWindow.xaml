@@ -494,7 +494,7 @@
             <!-- Body: plain/Markdown TextBox and rich HTML editor.
                  Only one editor is visible at a time; visibility is swapped in
                  code-behind when the compose mode changes. -->
-            <Grid Grid.Row="9" Grid.ColumnSpan="2">
+            <Grid Grid.Row="9" Grid.ColumnSpan="2" x:Name="BodyEditorGrid">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="*"/>
                 </Grid.RowDefinitions>

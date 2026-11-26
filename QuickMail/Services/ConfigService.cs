@@ -393,6 +393,9 @@ public class ConfigService : IConfigService
                     case "checkspellingasyoutype":
                         config.CheckSpellingAsYouType = ParseBool(value);
                         break;
+                    case "useneweditor":
+                        config.UseNewEditor = ParseBool(value);
+                        break;
                     case "confirmbeforesend":
                         config.ConfirmBeforeSend = ParseBool(value);
                         break;
@@ -987,6 +990,12 @@ public class ConfigService : IConfigService
         sb.AppendLine("# checking starts only when Check Spelling (F7) or Next/Previous Misspelling");
         sb.AppendLine("# (Ctrl+F7/Ctrl+Shift+F7) is used in that message. Turn off if the compose window");
         sb.AppendLine("# stalls after pasting long text. Values: on, off. Default on.");
+        sb.AppendLine();
+
+        sb.AppendLine($"UseNewEditor = {(config.UseNewEditor ? "on" : "off")}");
+        sb.AppendLine("# Experimental: use the new message editor for the Plain Text and Markdown body.");
+        sb.AppendLine("# HTML messages keep the current editor. Applies to messages opened afterwards.");
+        sb.AppendLine("# Values: on, off. Default off.");
         sb.AppendLine();
 
         sb.AppendLine($"ConfirmBeforeSend = {(config.ConfirmBeforeSend ? "on" : "off")}");

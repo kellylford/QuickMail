@@ -254,6 +254,10 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     private bool _checkSpellingAsYouType = true;
 
+    /// <summary>The editor experiment (#1099). Bound to the Composing checkbox; off by default.</summary>
+    [ObservableProperty]
+    private bool _useNewEditor;
+
     // ── Windowing ──────────────────────────────────────────────────────────────────
 
     [ObservableProperty]
@@ -591,6 +595,7 @@ public partial class SettingsViewModel : ObservableObject
         SuggestPeopleEmailed             = cfg.SuggestPeopleEmailed;
         AutoSaveIntervalSeconds          = cfg.AutoSaveIntervalSeconds;
         CheckSpellingAsYouType           = cfg.CheckSpellingAsYouType;
+        UseNewEditor                     = cfg.UseNewEditor;
         ReplyInHtmlToHtmlMessages        = cfg.ReplyInHtmlToHtmlMessages;
         DefaultComposeMode = cfg.DefaultComposeMode switch
         {
@@ -717,6 +722,7 @@ public partial class SettingsViewModel : ObservableObject
         cfg.SuggestPeopleEmailed             = SuggestPeopleEmailed;
         cfg.AutoSaveIntervalSeconds          = AutoSaveIntervalSeconds;
         cfg.CheckSpellingAsYouType           = CheckSpellingAsYouType;
+        cfg.UseNewEditor                     = UseNewEditor;
         cfg.ReplyInHtmlToHtmlMessages        = ReplyInHtmlToHtmlMessages;
         SaveSoundSettings(cfg);
         cfg.DefaultComposeMode = DefaultComposeMode switch

@@ -265,8 +265,8 @@ public partial class ComposeWindow
         if (_vm.CurrentMode == ComposeMode.Markdown)
         {
             var markdown = $"![{result.Alt.Replace("]", @"\]")}]({info.Src})";
-            BodyBox.SelectedText = markdown;
-            BodyBox.Select(BodyBox.SelectionStart + markdown.Length, 0);
+            PlainBody.SelectedText = markdown;
+            PlainBody.Select(PlainBody.SelectionStart + markdown.Length, 0);
         }
         else if (_vm.CurrentMode == ComposeMode.Html)
         {
@@ -389,8 +389,8 @@ public partial class ComposeWindow
     /// <summary>Markdown mode: the <c>![alt](src)</c> the caret is in or next to, re-described in place.</summary>
     private void ShowMarkdownImageProperties()
     {
-        var text = BodyBox.Text;
-        var caret = BodyBox.CaretIndex;
+        var text = PlainBody.Text;
+        var caret = PlainBody.CaretIndex;
         var match = MarkdownImage().Matches(text).FirstOrDefault(m => caret >= m.Index && caret <= m.Index + m.Length);
         if (match is null)
         {
@@ -411,13 +411,13 @@ public partial class ComposeWindow
             FocusActiveEditor();
             if (result is null) return;
             // The text may have changed while the dialog was open; only rewrite what is still there.
-            if (BodyBox.Text.Length < match.Index + match.Length
-                || BodyBox.Text.Substring(match.Index, match.Length) != match.Value)
+            if (PlainBody.Text.Length < match.Index + match.Length
+                || PlainBody.Text.Substring(match.Index, match.Length) != match.Value)
                 return;
             var replacement = result.Remove ? string.Empty : $"![{result.Alt.Replace("]", @"\]")}]({info.Src})";
-            BodyBox.Select(match.Index, match.Length);
-            BodyBox.SelectedText = replacement;
-            BodyBox.Select(match.Index + replacement.Length, 0);
+            PlainBody.Select(match.Index, match.Length);
+            PlainBody.SelectedText = replacement;
+            PlainBody.Select(match.Index + replacement.Length, 0);
             AnnounceFormatting(result.Remove ? "Image removed"
                 : result.Decorative ? "Marked as decorative" : "Description changed");
         };
@@ -461,7 +461,7 @@ public partial class ComposeWindow
     private bool TryPastePicture()
     {
         if (_vm.CurrentMode == ComposeMode.PlainText) return false;
-        if (!(BodyBox.IsKeyboardFocusWithin || RichBodyBox.IsKeyboardFocusWithin)) return false;
+        if (!(PlainBody.IsKeyboardFocusWithin || RichBodyBox.IsKeyboardFocusWithin)) return false;
         try
         {
             if (!Clipboard.ContainsImage() || Clipboard.ContainsText()) return false;
