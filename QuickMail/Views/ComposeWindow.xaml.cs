@@ -709,6 +709,7 @@ public partial class ComposeWindow : Window
                 || ParagraphStyleCombo.IsDropDownOpen
                 || AutoCompletePopup.IsOpen
                 || _newEditor?.IsMenuOpen == true
+                || _newRich?.IsMenuOpen == true
                 || _previewWindow != null)
             {
                 _previewWindow?.Close();
@@ -2030,12 +2031,7 @@ public partial class ComposeWindow : Window
     /// True when the caret is in the body of a Markdown or HTML message: where Ctrl+K inserts a link
     /// (elsewhere it is Check Addresses, #729, as in Outlook) and Alt+Enter opens Image Properties.
     /// </summary>
-    private bool IsInRichBody()
-    {
-        bool inBody = _vm.CurrentMode != ComposeMode.PlainText && AnyBodyHasFocus;
-        LogService.Debug($"[Compose] in the body? {inBody}: mode={_vm.CurrentMode}, focus={Keyboard.FocusedElement?.GetType().Name ?? "none"}");
-        return inBody;
-    }
+    private bool IsInRichBody() => _vm.CurrentMode != ComposeMode.PlainText && AnyBodyHasFocus;
 
     private void RegisterRichComposeCommands()
     {

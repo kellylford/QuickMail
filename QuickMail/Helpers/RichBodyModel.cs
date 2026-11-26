@@ -132,6 +132,9 @@ internal static class RichBody
                     int rowIndex = 0;
                     foreach (var row in table.RowGroups.SelectMany(g => g.Rows))
                     {
+                        // A row with no cells leaves nothing in the editor; counting it would give
+                        // the rows either side of it the same mark, and they would come back as one.
+                        if (row.Cells.Count == 0) continue;
                         foreach (var cell in row.Cells)
                         {
                             var cellParagraph = new RichParagraph { Table = id, Row = rowIndex, QuoteDepth = quote };
@@ -244,7 +247,7 @@ internal static class RichBody
         return sb.ToString();
     }
 
-    private static readonly char[] Reserved = { '\r', '\n', '\v', '\f', '\u0007', (char)0xFFF9, (char)0xFFFA, (char)0xFFFB, (char)0xFFFC };
+    private static readonly char[] Reserved = { '\r', '\n', '\v', '\f', '\0', (char)0x0007, (char)0x2028, (char)0x2029, (char)0xE001, (char)0xFFF9, (char)0xFFFA, (char)0xFFFB, (char)0xFFFC };
 
     private static string PlainText(InlineCollection inlines)
     {

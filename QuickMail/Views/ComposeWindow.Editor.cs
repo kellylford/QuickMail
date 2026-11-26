@@ -212,7 +212,7 @@ public partial class ComposeWindow
         }
         finally { _suppressSpellingAnnouncement = wasSuppressed; }
         ClearSpellingContext();
-        if (NewRich != null) _vm.MarkBodyDirty();
+        if (_vm.CurrentMode == ComposeMode.Html && NewRich != null) _vm.MarkBodyDirty();
         AccessibilityHelper.Announce(this, $"Replaced with {replacement}.", category: AnnouncementCategory.Result);
     }
 
@@ -235,6 +235,7 @@ public partial class ComposeWindow
     /// </summary>
     private void FlushNewEditorBody()
     {
+        FlushNewRichDirty();
         if (_newEditor == null) return;
         var text = _newEditor.Text;
         if (string.Equals(text, _syncedBody, StringComparison.Ordinal)) return;
@@ -264,7 +265,10 @@ public partial class ComposeWindow
     {
         LogService.Log("The new message editor could not be hosted; using the standard editor", ex);
         if (_newEditor is not { } host) return;
-        bool hadFocus = host.IsKeyboardFocusWithin;
+        bool hadFocus = host.HasFocus;
+        // Releasing closes the rich editor too; put HTML mode back on the WPF editor first, or
+        // it would be left with an editor that has been closed.
+        if (_newRich != null) OnNewRichHostingFailed(ex);
         ReleaseNewEditor();
         BodyEditorGrid.Children.Remove(host);
         _newEditor = null;

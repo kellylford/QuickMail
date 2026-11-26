@@ -227,7 +227,7 @@ public class NewEditorSupportTests
             service.Save(config);
 
             Assert.False(new ConfigService(profile).Load().UseNewEditor);
-            Assert.Contains("UseNewEditor = off", File.ReadAllText(Path.Combine(dir, "config.ini")));
+            Assert.Contains("NewMessageEditor = off", File.ReadAllText(Path.Combine(dir, "config.ini")));
         }
         finally
         {

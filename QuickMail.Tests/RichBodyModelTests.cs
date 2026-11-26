@@ -115,7 +115,7 @@ public class RichBodyModelTests
 
         Assert.Equal("no change", RichBody.Clean("no change"));
         Assert.Equal("a b c", RichBody.Clean("a\rb\nc"));
-        foreach (int code in new[] { 0x0007, 0x000B, 0x000C, 0xFFF9, 0xFFFA, 0xFFFB, 0xFFFC })
+        foreach (int code in new[] { 0x0000, 0x0007, 0x000B, 0x000C, 0x2028, 0x2029, 0xE001, 0xFFF9, 0xFFFA, 0xFFFB, 0xFFFC })
             Assert.Equal("before after", RichBody.Clean(With(code)));
     }
 

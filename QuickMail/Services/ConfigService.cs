@@ -393,7 +393,7 @@ public class ConfigService : IConfigService
                     case "checkspellingasyoutype":
                         config.CheckSpellingAsYouType = ParseBool(value);
                         break;
-                    case "useneweditor":
+                    case "newmessageeditor":
                         config.UseNewEditor = ParseBool(value);
                         break;
                     case "confirmbeforesend":
@@ -992,7 +992,7 @@ public class ConfigService : IConfigService
         sb.AppendLine("# stalls after pasting long text. Values: on, off. Default on.");
         sb.AppendLine();
 
-        sb.AppendLine($"UseNewEditor = {(config.UseNewEditor ? "on" : "off")}");
+        sb.AppendLine($"NewMessageEditor = {(config.UseNewEditor ? "on" : "off")}");
         sb.AppendLine("# Use the new message editor for the body of every message. Turn off to go back to");
         sb.AppendLine("# the previous editor. Applies to messages opened afterwards.");
         sb.AppendLine("# Values: on, off. Default on.");

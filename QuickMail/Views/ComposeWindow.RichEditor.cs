@@ -140,10 +140,29 @@ public partial class ComposeWindow
             rich.Load(RichBody.Flatten(RichTextDocumentConverter.FromHtml(_newRichLoadedHtml)));
             _newRichLoadedText = _newRich!.Text;
         }
+        catch (Exception ex) when (ex is COMException or ArgumentException or InvalidOperationException)
+        {
+            // A body half loaded is worse than the other editor: HTML mode goes back to WPF's,
+            // which loads the same HTML.
+            OnNewRichHostingFailed(ex);
+        }
         finally
         {
             _suppressFormattingAnnouncement = false;
         }
+    }
+
+    /// <summary>
+    /// Marks the body edited if the hosted rich editor's text is no longer what was loaded. The
+    /// editor's own report of a change arrives later, so anything about to ask "has this message
+    /// been edited?" (closing, an auto-save) calls this first.
+    /// </summary>
+    private void FlushNewRichDirty()
+    {
+        if (_newRich == null || _newRichLoadedText == null) return;
+        if (string.Equals(_newRich.Text, _newRichLoadedText, StringComparison.Ordinal)) return;
+        _newRichLoadedText = null;
+        _vm.MarkBodyDirty();
     }
 
     /// <summary>
@@ -156,9 +175,9 @@ public partial class ComposeWindow
         // Anything typed in the moment before the control finished loading is an edit, and its
         // report may still be on its way: compare the text, do not trust the flag alone.
         if (!string.Equals(_newRich!.Text, _newRichLoadedText, StringComparison.Ordinal)) return;
-        bool hadFocus = _newRich.IsKeyboardFocusWithin;
+        bool hadFocus = _newRich.HasFocus;
         LoadHtmlIntoNewRich(rich, _newRichLoadedHtml);
-        if (hadFocus) _newRich.FocusEditor();
+        if (hadFocus) _newRich?.FocusEditor(); // null if the load failed and HTML mode fell back
     }
 
     private void OnNewRichTextChanged(object? sender, EventArgs e)
@@ -197,7 +216,7 @@ public partial class ComposeWindow
     {
         LogService.Log("The new message editor could not be hosted for HTML mode; using the standard editor", ex);
         if (_newRich is not { } host) return;
-        bool hadFocus = host.IsKeyboardFocusWithin;
+        bool hadFocus = host.HasFocus;
         host.PreviewKeyDown -= NewRich_PreviewKeyDown;
         host.Close();
         BodyEditorGrid.Children.Remove(host);
@@ -444,12 +463,26 @@ public partial class ComposeWindow
                     QueueImage(ImageProcessing.FromBitmap(bitmap), "Pasted picture");
                 return true;
             }
-            if (!Clipboard.ContainsData(DataFormats.Html)) return false;
-            var html = ClipboardHtml.ExtractFragment(Clipboard.GetData(DataFormats.Html) as string);
-            if (html == null) return false;
-            var paragraphs = RichBody.Flatten(RichTextDocumentConverter.FromHtml(html));
-            // Nothing but empty paragraphs: the clipboard's text is the better copy.
-            if (paragraphs.All(p => p.Runs.Count == 0)) return false;
+            var html = Clipboard.ContainsData(DataFormats.Html)
+                ? ClipboardHtml.ExtractFragment(Clipboard.GetData(DataFormats.Html) as string)
+                : null;
+            var paragraphs = html == null ? null : RichBody.Flatten(RichTextDocumentConverter.FromHtml(html));
+            // No formatted text, or nothing but empty paragraphs: the clipboard's text is the copy
+            // to take. In a table cell its lines go in as lines of the cell, since a paragraph
+            // break there would be a new cell; anywhere else the editor pastes it.
+            if (paragraphs == null || paragraphs.All(p => p.Runs.Count == 0))
+            {
+                if (!rich.BlockAtCaret().InTable || !Clipboard.ContainsText()) return false;
+                var lines = Clipboard.GetText().Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n')
+                    .TrimEnd('\n').Split('\n');
+                if (lines.Length < 2) return false;
+                paragraphs = lines.Select(line =>
+                {
+                    var paragraph = new RichParagraph();
+                    if (line.Length > 0) paragraph.Runs.Add(new RichRun(RichBody.Clean(line)));
+                    return paragraph;
+                }).ToList();
+            }
             rich.InsertAtSelection(paragraphs);
             _vm.MarkBodyDirty();
             return true;
@@ -469,6 +502,7 @@ public partial class ComposeWindow
     {
         if (NewRich is not { } rich || _newRich is not { } host) return false;
         var paragraphs = rich.ReadSelection();
+        LogService.Debug($"New editor: {(cut ? "cut" : "copy")} of {paragraphs.Count} paragraphs.");
         if (paragraphs.Count == 0) return false;
         try
         {
@@ -478,8 +512,9 @@ public partial class ComposeWindow
             data.SetData(DataFormats.UnicodeText, RichTextDocumentConverter.ToPlainText(document));
             Clipboard.SetDataObject(data, copy: true);
         }
-        catch (COMException)
+        catch (COMException ex)
         {
+            LogService.Debug($"New editor: the clipboard could not be written ({ex.Message}).");
             return false; // leave it to the control's own copy
         }
         if (cut)

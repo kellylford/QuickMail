@@ -47,7 +47,7 @@ internal sealed class RichEditDocument
     private const char ImagePlaceholder = (char)0xE001;
     private const char RowStart = (char)0xFFF9;
     private const char RowEnd = (char)0xFFFB;
-    private const char CellEnd = '\u0007';
+    private const char CellEnd = (char)0x0007;
     private const char ObjectChar = (char)0xFFFC;
     private const string CodeFontName = "Consolas";
 
@@ -109,6 +109,27 @@ internal sealed class RichEditDocument
     public void InsertAtSelection(IReadOnlyList<RichParagraph> paragraphs, bool formatLast = true)
     {
         if (paragraphs.Count == 0) return;
+        if (paragraphs.Count > 1)
+        {
+            var block = BlockAt(Doc.Selection.StartPosition);
+            if (block.InTable)
+            {
+                // A paragraph break in a cell would be a new cell: the paragraphs go in as lines.
+                var merged = new RichParagraph();
+                for (int i = 0; i < paragraphs.Count; i++)
+                {
+                    if (i > 0) merged.Runs.Add(new RichRun(RichBody.LineBreak));
+                    merged.Runs.AddRange(paragraphs[i].Runs);
+                }
+                paragraphs = new[] { merged };
+            }
+            else if (Doc.Selection.EndPosition < block.End - 1)
+            {
+                // Text follows the caret on its line. It ends up on the last pasted paragraph's
+                // line and keeps the format it had (its quote, its list), as it would in Word.
+                formatLast = false;
+            }
+        }
         Doc.BeginUndoGroup();
         Doc.BatchDisplayUpdates();
         try
@@ -213,11 +234,18 @@ internal sealed class RichEditDocument
         int regionEnd = Math.Min(raw.Length, start + (raw.Length - lengthBefore + replaced));
         if (wholeDocument) regionEnd = raw.Length;
         var slots = Slots(raw, start, regionEnd);
+        // An empty last paragraph (a blank line copied with the line before it, a template put
+        // in front of other text) is the line the text after the region now starts.
+        if (!wholeDocument && slots.Count == paragraphs.Count - 1 && (text.Length == 0 || text[^1] == (char)13))
+            slots.Add(new Slot(regionEnd, 0, -1, 0));
         if (slots.Count != paragraphs.Count)
         {
             LogService.Log($"New editor: {paragraphs.Count} paragraphs were written but {slots.Count} were found; " +
                            "the text is in place without its formatting.");
-            return regionEnd;
+            // Never leave a picture's stand-in character in a message.
+            for (int i = Math.Min(regionEnd, raw.Length) - 1; i >= start; i--)
+                if (raw[i] == ImagePlaceholder) Doc.GetRange(i, i + 1).SetText(TextSetOptions.None, string.Empty);
+            return Math.Min(Raw().Length, start + (Raw().Length - lengthBefore + replaced));
         }
 
         // 3. Formats, last paragraph first: setting a link puts its address into the text, which
@@ -329,6 +357,13 @@ internal sealed class RichEditDocument
     {
         level = Math.Clamp(level, 0, 6);
         paragraph.ParagraphFormat.Style = level == 0 ? ParagraphStyle.Normal : ParagraphStyle.Heading1 + (level - 1);
+        if (level > 0)
+        {
+            // "Keep with next" and "keep together" mean a table cell and a code block here; a
+            // heading style must not bring either with it.
+            paragraph.ParagraphFormat.KeepWithNext = FormatEffect.Off;
+            paragraph.ParagraphFormat.KeepTogether = FormatEffect.Off;
+        }
         var format = paragraph.CharacterFormat;
         format.Size = level == 0 ? BaseSize : HeadingSize(level);
         format.Bold = level == 0 ? FormatEffect.Off : FormatEffect.On;
@@ -651,7 +686,14 @@ internal sealed class RichEditDocument
         Flush(to);
     }
 
-    /// <summary>Where each remembered picture is now. Forgets the ones that have been deleted.</summary>
+    /// <summary>
+    /// Where each remembered picture is now. A deleted picture leaves its range empty but is not
+    /// forgotten: Undo puts the object back, and the picture must then be in the message that is
+    /// sent, not only on screen. Every object in the body is a picture QuickMail put there, so
+    /// one that no range answers for is a deleted picture come back. It is matched to the nearest
+    /// empty range at or before it (a deleted selection leaves its pictures' ranges at its start),
+    /// in the order the pictures were remembered.
+    /// </summary>
     private Dictionary<int, ComposeImage> PicturePositions(string raw)
     {
         var positions = new Dictionary<int, ComposeImage>();
@@ -660,6 +702,24 @@ internal sealed class RichEditDocument
             int at = range.StartPosition;
             if (range.EndPosition == at + 1 && at < raw.Length && raw[at] == ObjectChar)
                 positions[at] = info;
+        }
+        if (positions.Count == _images.Count) return positions;
+        var orphans = new List<int>();
+        for (int i = raw.IndexOf(ObjectChar); i >= 0; i = raw.IndexOf(ObjectChar, i + 1))
+            if (!positions.ContainsKey(i)) orphans.Add(i);
+        for (int i = 0; i < _images.Count && orphans.Count > 0; i++)
+        {
+            var (range, info) = _images[i];
+            int at = range.StartPosition;
+            if (range.EndPosition == at + 1 && at < raw.Length && raw[at] == ObjectChar) continue;
+            // The first orphan at or after the empty range (one before it, for a range left
+            // just past its picture); failing that, the last one before it.
+            int pick = orphans.FindIndex(o => o >= at - 1);
+            if (pick < 0) pick = orphans.Count - 1;
+            int found = orphans[pick];
+            orphans.RemoveAt(pick);
+            positions[found] = info;
+            _images[i] = (Doc.GetRange(found, found + 1), info);
         }
         return positions;
     }
@@ -703,7 +763,7 @@ internal sealed class RichEditDocument
 
     public void RemoveImage(int position)
     {
-        _images.RemoveAll(i => i.Range.StartPosition == position && i.Range.EndPosition == position + 1);
+        // The record stays, with an empty range: Undo brings the picture back (PicturePositions).
         Doc.GetRange(position, position + 1).SetText(TextSetOptions.None, string.Empty);
         Doc.Selection.SetRange(position, position);
     }
@@ -717,8 +777,13 @@ internal sealed class RichEditDocument
         Doc.BeginUndoGroup();
         try
         {
-            _images.RemoveAll(i => i.Range.StartPosition == position && i.Range.EndPosition == position + 1);
+            // The old record is kept, in front of the new one and with an empty range, so that
+            // Undo, which puts the old object back, finds the picture it was.
+            int old = _images.FindIndex(i => i.Range.StartPosition == position && i.Range.EndPosition == position + 1);
+            var before = old >= 0 ? _images[old].Info : null;
+            if (old >= 0) _images.RemoveAt(old);
             InsertImageAt(position, position + 1, info);
+            if (before is not null) _images.Insert(_images.Count - 1, (Doc.GetRange(position, position), before));
             Doc.Selection.SetRange(position, position);
         }
         finally { Doc.EndUndoGroup(); }
@@ -737,15 +802,6 @@ internal sealed class RichEditDocument
             InsertImageAt(position, position + 1, info);
         }
         Doc.Selection.SetRange(start, end);
-    }
-
-    /// <summary>True when the selection takes in a picture.</summary>
-    public bool SelectionHasPicture()
-    {
-        var selection = Doc.Selection;
-        if (selection.EndPosition <= selection.StartPosition) return false;
-        selection.GetText(TextGetOptions.None, out var text);
-        return text?.Contains(ObjectChar) == true;
     }
 
     // ─────────────────────────── Character formatting ────────────────────────
@@ -926,7 +982,11 @@ internal sealed class RichEditDocument
     public void SetHeadingLevel(int level)
     {
         var blocks = SelectedBlocks().Where(b => !b.InTable).ToList();
-        Edit(() => { foreach (var block in blocks) SetHeading(RangeOf(block), level); });
+        Edit(() =>
+        {
+            foreach (var block in blocks)
+                if (level > 0 || block.Heading > 0) SetHeading(RangeOf(block), level);
+        });
     }
 
     /// <summary>
@@ -969,7 +1029,7 @@ internal sealed class RichEditDocument
             foreach (var block in blocks)
             {
                 var range = RangeOf(block);
-                SetHeading(range, 0);
+                if (block.Heading > 0) SetHeading(range, 0);
                 if (block.Pre)
                 {
                     range.ParagraphFormat.KeepTogether = FormatEffect.Off;

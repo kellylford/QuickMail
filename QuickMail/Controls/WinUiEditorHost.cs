@@ -224,8 +224,10 @@ internal sealed class WinUiEditorHost : HwndHost, IPlainTextEditor
                 foreach (var (text, run) in extra) Add(text, run);
                 menu.Items.Add(new MenuFlyoutSeparator());
             }
-            Add("Cut", () => _editor.Document.Selection.Cut());
-            Add("Copy", () => _editor.Document.Selection.Copy());
+            // The owner's Cut and Copy first, as for Ctrl+X and Ctrl+C: in a formatted body the
+            // control's own would put plain text on the clipboard and lose a picture cut this way.
+            Add("Cut", () => { if (CopyRequested?.Invoke(true) != true) _editor.Document.Selection.Cut(); });
+            Add("Copy", () => { if (CopyRequested?.Invoke(false) != true) _editor.Document.Selection.Copy(); });
             Add("Paste", Paste);
             Add("Select All", () => Select(0, Text.Length));
         }
