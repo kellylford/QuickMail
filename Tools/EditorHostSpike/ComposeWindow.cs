@@ -75,6 +75,7 @@ sealed class ComposeWindow : Window
             doc.GetRange(16, 20).CharacterFormat.Bold = FormatEffect.On;
             doc.GetRange(33, 39).CharacterFormat.Italic = FormatEffect.On;
             doc.Selection.SetRange(46, 46);
+            if (Array.IndexOf(Environment.GetCommandLineArgs(), "--rich") >= 0) RichSample.Load(_body.Editor);
             _to.Focus();
         };
     }
@@ -101,6 +102,7 @@ sealed class ComposeWindow : Window
         else if (mods == ModifierKeys.Control && key == Key.Enter) { Send(); e.Handled = true; }
         else if (mods == ModifierKeys.Control && key == Key.D) { OpenDialog(); e.Handled = true; }
         else if (mods == (ModifierKeys.Control | ModifierKeys.Shift) && key == Key.P) { OpenPalette(); e.Handled = true; }
+        else if (mods == (ModifierKeys.Control | ModifierKeys.Shift) && key == Key.D) { Say("Dumped to " + RichSample.Dump(_body.Editor)); e.Handled = true; }
         // Escape closes an open menu first; only otherwise the window.
         else if (mods == ModifierKeys.None && key == Key.Escape && Keyboard.FocusedElement is not MenuItem) { Close(); e.Handled = true; }
         else if (key == Key.F6 && (mods == ModifierKeys.None || mods == ModifierKeys.Shift))
