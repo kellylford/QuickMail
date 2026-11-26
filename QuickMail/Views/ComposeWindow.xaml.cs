@@ -1957,6 +1957,10 @@ public partial class ComposeWindow : Window
             _                    => "Plain Text",
         };
         AccessibilityHelper.Announce(this, $"Switched to {name} mode.", category: AnnouncementCategory.Result);
+        // The hosted editor reports the caret after this method has returned, when the flag
+        // below no longer holds it back: without this it said "Normal text" after every switch.
+        if (mode == ComposeMode.Html && NewRich is { } hosted)
+            _lastAnnouncedBlockType = BlockLabel(hosted.BlockAtCaretWithTablePosition());
         _suppressFormattingAnnouncement = false;
     }
 

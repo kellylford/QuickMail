@@ -139,6 +139,10 @@ public partial class ComposeWindow
         {
             rich.Load(RichBody.Flatten(RichTextDocumentConverter.FromHtml(_newRichLoadedHtml)));
             _newRichLoadedText = _newRich!.Text;
+            // The editor reports the caret's move to the top later, after the flag below is
+            // down, and "Normal text" was then spoken as every reply opened. The kind of
+            // paragraph the caret starts in is not news; moving to another kind still is.
+            _lastAnnouncedBlockType = BlockLabel(rich.BlockAtCaretWithTablePosition());
         }
         catch (Exception ex) when (ex is COMException or ArgumentException or InvalidOperationException)
         {
