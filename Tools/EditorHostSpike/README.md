@@ -83,6 +83,40 @@ exe), 96 MB and 87 MB (MSIs). So expect QuickMail's exe to grow by roughly 140 t
 installer by roughly 45 to 50 MB. Leaving the Windows projection assemblies out of ReadyToRun
 changed nothing; trimming them is untried.
 
+## What Stages 2 and 3 added (in QuickMail itself)
+
+The rules that came out of these are in the repository's `CLAUDE.md`, under "The Message Editor
+(hosted WinUI)". The history behind them:
+
+- **The whole Windows App SDK does not start as a single-file exe** ("side-by-side configuration
+  is incorrect"). Only the `Microsoft.WindowsAppSDK.WinUI` package is referenced, the SDK's
+  automatic start-up is off, and `WinUiRuntime` loads it on first use.
+- **WPF loses track of focus in the island.** `Keyboard.FocusedElement` is sometimes null while
+  the editor has focus, so focus is asked of Windows (`GetFocus` / `IsChild`), and the window
+  hands keys it receives with no focused element to the editor's handlers.
+- **`TextChanged` arrives later**, after the call that caused it has returned. Flags held across
+  a `SetText` do not work; the code compares against the text it last agreed with the view model.
+- **Disposing the island after the window closed is an access violation.** It is released while
+  the host's window is being destroyed.
+- **The control resets fonts and sizes when it finishes loading**, so a body loaded as the window
+  opens is written again on `Loaded`, unless the user has typed since.
+- **Hidden text is read by NVDA**, and the caret walks through it. Structure is kept in paragraph
+  properties RichEdit stores but does not draw: right indent for quote depth, keep-together for a
+  code block, keep-with-next / no-line-number / widow-control for a table's cells, rows and tables.
+- **RichEdit's own tables read badly with NVDA** (a row at a time, cells run together), so a
+  table is one cell per line and QuickMail says the row and column.
+- **RichEdit's paragraph unit stops at a line break inside a paragraph.** A second line in a
+  table cell counted as another cell, and ending a code block acted on its last line alone.
+  `RichEditDocument.WholeParagraph` widens it.
+- **`\uXXXX` escapes for special characters were saved as raw characters** by the tooling more
+  than once. The sources use `(char)0xFFFC` and the like.
+- **GitHub's runners build with a newer .NET SDK** than this PC, which raised two warnings
+  (CsWinRT1032, NETSDK1244) that fail a `-warnaserror` publish.
+
+NVDA comparisons, same keys against both editors: Plain Text and Markdown, new editor 40 of 40
+and the WPF editor 39 of 40; HTML mode, new 30 of 30 and WPF 29 of 30 (the WPF editor runs two
+words together after Enter). The step files are `compose.steps` and `compose-html.steps`.
+
 ## Not covered here
 
 - Narrator and JAWS: Kelly's check, with build 5.

@@ -281,8 +281,7 @@ internal sealed class RichEditDocument
 
         if (p.IsCell)
         {
-            var cell = Doc.GetRange(start, start);
-            cell.Expand(TextRangeUnit.Paragraph);
+            var cell = WholeParagraph(start);
             if (p.HeaderCell) cell.CharacterFormat.Bold = FormatEffect.On;
             var cellFormat = cell.ParagraphFormat;
             cellFormat.Style = ParagraphStyle.Normal;
@@ -302,8 +301,7 @@ internal sealed class RichEditDocument
             return;
         }
 
-        var paragraph = Doc.GetRange(start, start);
-        paragraph.Expand(TextRangeUnit.Paragraph);
+        var paragraph = WholeParagraph(start);
         // A paragraph being written has its runs' formats already; only a heading adds its own.
         if (p.Heading > 0) SetHeading(paragraph, p.Heading);
         else paragraph.ParagraphFormat.Style = ParagraphStyle.Normal;
@@ -797,8 +795,7 @@ internal sealed class RichEditDocument
 
     private BlockInfo BlockAt(int position)
     {
-        var range = Doc.GetRange(position, position);
-        range.Expand(TextRangeUnit.Paragraph);
+        var range = WholeParagraph(position);
         var format = range.ParagraphFormat;
         var style = format.Style;
         int heading = style is >= ParagraphStyle.Heading1 and <= ParagraphStyle.Heading6 ? style - ParagraphStyle.Heading1 + 1 : 0;
@@ -812,6 +809,39 @@ internal sealed class RichEditDocument
         return new BlockInfo(range.StartPosition, range.EndPosition, heading, format.KeepTogether == FormatEffect.On,
             list, list == RichListKind.None ? 0 : Math.Clamp(format.ListLevelIndex, 0, 8),
             Math.Clamp((int)Math.Round(format.RightIndent), 0, 20), inTable);
+    }
+
+    /// <summary>
+    /// The whole paragraph at a position. RichEdit's own paragraph unit stops at a line break
+    /// inside a paragraph (a second line in a table cell or a code block), which made that line
+    /// count as a cell of its own and ending a code block act on its last line alone.
+    /// </summary>
+    private ITextRange WholeParagraph(int position)
+    {
+        var range = Doc.GetRange(position, position);
+        range.Expand(TextRangeUnit.Paragraph);
+        int start = range.StartPosition, end = range.EndPosition;
+        for (int guard = 0; start > 0 && guard < 10_000 && CharAt(start - 1) == '\v'; guard++)
+        {
+            var before = Doc.GetRange(start - 1, start - 1);
+            before.Expand(TextRangeUnit.Paragraph);
+            if (before.StartPosition >= start) break;
+            start = before.StartPosition;
+        }
+        for (int guard = 0; end > start && guard < 10_000 && CharAt(end - 1) == '\v'; guard++)
+        {
+            var after = Doc.GetRange(end, end);
+            after.Expand(TextRangeUnit.Paragraph);
+            if (after.EndPosition <= end) break;
+            end = after.EndPosition;
+        }
+        return Doc.GetRange(start, end);
+    }
+
+    private char CharAt(int position)
+    {
+        Doc.GetRange(position, position + 1).GetText(TextGetOptions.None, out var text);
+        return string.IsNullOrEmpty(text) ? '\0' : text[0];
     }
 
     /// <summary>
@@ -831,8 +861,7 @@ internal sealed class RichEditDocument
         int at = block.Start;
         for (int guard = 0; at > 0 && guard < 5000; guard++)
         {
-            var previous = Doc.GetRange(at - 1, at - 1);
-            previous.Expand(TextRangeUnit.Paragraph);
+            var previous = WholeParagraph(at - 1);
             var format = previous.ParagraphFormat;
             if (format.KeepWithNext != FormatEffect.On || format.WidowControl != tableMark) break;
             var mark = format.NoLineNumber;
