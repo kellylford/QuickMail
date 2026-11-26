@@ -78,6 +78,15 @@
 
   <!-- Editor experiment (#1099): the Windows App SDK's project settings are in
        Directory.Build.props, because the test projects that reference this one need them too. -->
+  <PropertyGroup>
+    <!-- WinUI finds its control styles through a resource index beside the exe. Unpackaged, the
+         build names that file after the exe (QuickMail.pri), and the runtime looks for one named
+         after the exe it finds itself running as. So a renamed exe (the released Arm64 portable
+         download is QuickMail-arm64.exe) could not start the new editor and fell back to the old
+         one. "resources.pri" is the name the runtime tries first, whatever the exe is called.
+         Only this project: the test projects get this file copied beside their own. -->
+    <ProjectPriFileName>resources.pri</ProjectPriFileName>
+  </PropertyGroup>
 
   <ItemGroup>
     <!-- Compile App.xaml as Page instead of ApplicationDefinition so the SDK does not

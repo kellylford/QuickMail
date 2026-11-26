@@ -80,7 +80,7 @@ internal static class RichBody
     public const string LineBreak = "\v";
 
     /// <summary>Where a picture sits in a paragraph's text.</summary>
-    public const string ObjectChar = "￼";
+    public static readonly string ObjectChar = ((char)0xFFFC).ToString();
 
     public const string RuleText = "──────────";
 
@@ -244,7 +244,7 @@ internal static class RichBody
         return sb.ToString();
     }
 
-    private static readonly char[] Reserved = { '\r', '\n', '\v', '\f', '\u0007', '￹', '￺', '￻', '￼' };
+    private static readonly char[] Reserved = { '\r', '\n', '\v', '\f', '\u0007', (char)0xFFF9, (char)0xFFFA, (char)0xFFFB, (char)0xFFFC };
 
     private static string PlainText(InlineCollection inlines)
     {

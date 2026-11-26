@@ -683,7 +683,7 @@ public partial class ComposeWindow : Window
             e.Handled = true;
             // Pasted into the body of a rich message, pictures go in the body (#729); anything
             // else, and every file pasted anywhere else, is attached as before.
-            if (PlainBody.IsKeyboardFocusWithin || RichBodyBox.IsKeyboardFocusWithin)
+            if (AnyBodyHasFocus)
                 await TakeFilesIntoBodyAsync(files);
             else
                 await AttachFilesAsync(files);
@@ -906,7 +906,7 @@ public partial class ComposeWindow : Window
         // "Check spelling as I type" off (#883): only F7 and Ctrl+F7 / Ctrl+Shift+F7 do.
         if (!_spellCheckEnabled && !_checkSpellingAsYouType) return;
         EnsureSpellCheckEnabled();
-        if (_vm.CurrentMode == ComposeMode.Html)
+        if (UsesWpfRich)
         {
             AnnounceSpellingAtRichPosition();
             return;
@@ -1096,6 +1096,8 @@ public partial class ComposeWindow : Window
     /// </summary>
     private bool HandleBodyTab(bool shift)
     {
+        if (_vm.CurrentMode == ComposeMode.Html && NewRich is { } rich) return NewRichTab(rich, shift);
+
         // On a list line in Markdown mode: indent or dedent.
         if (_vm.CurrentMode == ComposeMode.Markdown)
         {
@@ -1137,6 +1139,11 @@ public partial class ComposeWindow : Window
     /// </summary>
     internal void InsertTextAtCaret(string text)
     {
+        if (_vm.CurrentMode == ComposeMode.Html && NewRich is { } rich)
+        {
+            NewRichInsertText(rich, text);
+            return;
+        }
         if (_vm.CurrentMode != ComposeMode.Html)
         {
             int caret = PlainBody.SelectionStart;
@@ -1579,14 +1586,16 @@ public partial class ComposeWindow : Window
         // that Reply/Forward seeds below it (issue #228). Recomputed each session from the live
         // editor, so user edits above the quote don't invalidate it.
         ISpellCheckSource bodySource;
-        if (_vm.CurrentMode == ComposeMode.Html)
+        if (UsesWpfRich)
         {
             var quoteStart = SpellScan.QuoteBoundaryPointer(RichBodyBox.Document);
             bodySource = new RichTextBoxSpellSource(RichBodyBox, "body", quoteStart);
         }
         else
         {
-            var quoteIdx = SpellScan.QuoteBoundaryIndex(PlainBody.Text);
+            var quoteIdx = _vm.CurrentMode == ComposeMode.Html
+                ? SpellScan.RichQuoteBoundaryIndex(PlainBody.Text)
+                : SpellScan.QuoteBoundaryIndex(PlainBody.Text);
             bodySource = new TextBoxSpellSource(PlainBody, "body", quoteIdx >= 0 ? quoteIdx : null);
         }
         var sources = new List<ISpellCheckSource>
@@ -1691,7 +1700,7 @@ public partial class ComposeWindow : Window
     internal void NavigateSpellingError(bool forward)
     {
         EnsureSpellCheckEnabled();
-        if (_vm.CurrentMode == ComposeMode.Html)
+        if (UsesWpfRich)
         {
             NavigateSpellingErrorInRichBox(forward);
             return;
@@ -1790,7 +1799,9 @@ public partial class ComposeWindow : Window
 
     private void WireRichCompose()
     {
-        _vm.RichBodyProvider = () => RichTextDocumentConverter.Snapshot(RichBodyBox.Document);
+        _vm.RichBodyProvider = () => NewRich is { } rich
+            ? SnapshotNewRich(rich)
+            : RichTextDocumentConverter.Snapshot(RichBodyBox.Document);
         _vm.EditorPictureIdsProvider = EditorPictureIds;
 
         // The editor keeps its original FlowDocument for the window's lifetime.
@@ -1804,6 +1815,11 @@ public partial class ComposeWindow : Window
 
         _vm.LoadHtmlIntoEditorRequested += html =>
         {
+            if (EnsureNewRich() && NewRich is { } rich)
+            {
+                LoadHtmlIntoNewRich(rich, html);
+                return;
+            }
             // Programmatic load is not a user edit — don't mark the draft dirty.
             // finally: a stuck suppress flag would silently stop dirty-tracking
             // for the window's lifetime.
@@ -1859,6 +1875,7 @@ public partial class ComposeWindow : Window
     /// </summary>
     private void OnThemeChangedRefreshRichBody(object? sender, EventArgs e)
     {
+        if (_newRich != null) return; // the hosted editor takes its colors from the theme directly
         if (RichBodyBox.Document.Blocks.Count == 0) return;
 
         var html = RichTextDocumentConverter.ToHtml(RichBodyBox.Document);
@@ -1898,8 +1915,10 @@ public partial class ComposeWindow : Window
 
     private void FocusActiveEditor()
     {
-        if (_vm.CurrentMode == ComposeMode.Html)
+        if (_vm.CurrentMode == ComposeMode.Html && _newRich == null)
             RichBodyBox.Focus();
+        else if (PlainBody is WinUiEditorHost hosted)
+            hosted.FocusWhenReady();
         else
             PlainBody.Focus();
     }
@@ -1908,17 +1927,25 @@ public partial class ComposeWindow : Window
     private void ApplyComposeMode()
     {
         var mode = _vm.CurrentMode;
-        var bodyHadFocus = PlainBody.IsKeyboardFocusWithin || RichBodyBox.IsKeyboardFocusWithin;
+        var bodyHadFocus = AnyBodyHasFocus;
         _suppressFormattingAnnouncement = true;
         _lastAnnouncedBlockType = null;
 
+        // HTML mode is the hosted rich editor's when the new editor is in use (#1099), and
+        // RichBodyBox's otherwise.
+        if (mode == ComposeMode.Html) EnsureNewRich();
         FormattingToolbarTray.Visibility = mode == ComposeMode.Html ? Visibility.Visible : Visibility.Collapsed;
-        RichBodyBox.Visibility           = mode == ComposeMode.Html ? Visibility.Visible : Visibility.Collapsed;
+        RichBodyBox.Visibility           = mode == ComposeMode.Html && _newRich == null ? Visibility.Visible : Visibility.Collapsed;
+        if (_newRich != null)
+            _newRich.Visibility          = mode == ComposeMode.Html ? Visibility.Visible : Visibility.Collapsed;
         SetPlainBodyVisibility(mode != ComposeMode.Html);
         SetPlainBodyFont(mode == ComposeMode.Markdown ? new FontFamily("Consolas") : new FontFamily("Segoe UI"));
 
         SyncModeSelector();
         SyncParagraphStyleCombo();
+        // An editor made or shown a moment ago cannot take focus until it has been laid out,
+        // and what the user types next must not go to the editor that was just hidden.
+        if (UsesNewEditor) BodyEditorGrid.UpdateLayout();
         if (bodyHadFocus)
             FocusActiveEditor();
 
@@ -2003,9 +2030,12 @@ public partial class ComposeWindow : Window
     /// True when the caret is in the body of a Markdown or HTML message: where Ctrl+K inserts a link
     /// (elsewhere it is Check Addresses, #729, as in Outlook) and Alt+Enter opens Image Properties.
     /// </summary>
-    private bool IsInRichBody() =>
-        _vm.CurrentMode != ComposeMode.PlainText
-        && (RichBodyBox.IsKeyboardFocusWithin || PlainBody.IsKeyboardFocusWithin);
+    private bool IsInRichBody()
+    {
+        bool inBody = _vm.CurrentMode != ComposeMode.PlainText && AnyBodyHasFocus;
+        LogService.Debug($"[Compose] in the body? {inBody}: mode={_vm.CurrentMode}, focus={Keyboard.FocusedElement?.GetType().Name ?? "none"}");
+        return inBody;
+    }
 
     private void RegisterRichComposeCommands()
     {
@@ -2195,6 +2225,7 @@ public partial class ComposeWindow : Window
     private void ToggleBold()
     {
         if (_vm.CurrentMode == ComposeMode.Markdown) { ToggleMarkdownInline("**", "Bold"); return; }
+        if (NewRich is { } rich) { NewRichToggle(rich, rich.ToggleBold, "Bold"); return; }
         EnsureRichEditorFocused();
         EditingCommands.ToggleBold.Execute(null, RichBodyBox);
         var on = Equals(RichBodyBox.Selection.GetPropertyValue(TextElement.FontWeightProperty), FontWeights.Bold);
@@ -2204,6 +2235,7 @@ public partial class ComposeWindow : Window
     private void ToggleItalic()
     {
         if (_vm.CurrentMode == ComposeMode.Markdown) { ToggleMarkdownInline("*", "Italic"); return; }
+        if (NewRich is { } rich) { NewRichToggle(rich, rich.ToggleItalic, "Italic"); return; }
         EnsureRichEditorFocused();
         EditingCommands.ToggleItalic.Execute(null, RichBodyBox);
         var on = Equals(RichBodyBox.Selection.GetPropertyValue(TextElement.FontStyleProperty), FontStyles.Italic);
@@ -2218,6 +2250,7 @@ public partial class ComposeWindow : Window
             AnnounceFormatting("Underline is not available in Markdown. Use HTML mode for underline.");
             return;
         }
+        if (NewRich is { } rich) { NewRichToggle(rich, rich.ToggleUnderline, "Underline"); return; }
         EnsureRichEditorFocused();
         EditingCommands.ToggleUnderline.Execute(null, RichBodyBox);
         var on = SelectionHasDecoration(TextDecorationLocation.Underline);
@@ -2227,6 +2260,7 @@ public partial class ComposeWindow : Window
     private void ToggleStrikethrough()
     {
         if (_vm.CurrentMode == ComposeMode.Markdown) { ToggleMarkdownInline("~~", "Strikethrough"); return; }
+        if (NewRich is { } rich) { NewRichToggle(rich, rich.ToggleStrikethrough, "Strikethrough"); return; }
         EnsureRichEditorFocused();
         var selection = RichBodyBox.Selection;
         var current = selection.GetPropertyValue(Inline.TextDecorationsProperty) as TextDecorationCollection;
@@ -2263,6 +2297,7 @@ public partial class ComposeWindow : Window
             AnnounceFormatting(edit.TurnedOn ? $"Heading {level}" : "Normal text");
             return;
         }
+        if (NewRich is { } rich) { NewRichApplyHeading(rich, level); return; }
 
         EnsureRichEditorFocused();
         var paragraphs = GetSelectedParagraphs();
@@ -2291,7 +2326,7 @@ public partial class ComposeWindow : Window
             return;
         }
 
-        EnsureRichEditorFocused();
+        if (NewRich != null) EnsureNewRichFocused(); else EnsureRichEditorFocused();
         ApplyParagraphStyle(ComposeParagraphStyle.Normal);
         AnnounceFormatting("Normal text");
     }
@@ -2309,6 +2344,7 @@ public partial class ComposeWindow : Window
             AnnounceFormatting(edit.TurnedOn ? "Quote on" : "Quote off");
             return;
         }
+        if (NewRich is { } rich) { NewRichToggleQuote(rich); return; }
 
         EnsureRichEditorFocused();
         var paragraphs = GetSelectedParagraphs();
@@ -2341,6 +2377,7 @@ public partial class ComposeWindow : Window
     /// </summary>
     private void ApplyParagraphStyle(ComposeParagraphStyle style)
     {
+        if (NewRich is { } rich) { NewRichApplyParagraphStyle(rich, style); return; }
         var paragraphs = GetSelectedParagraphs();
         if (paragraphs.Count == 0) return;
 
@@ -2458,7 +2495,9 @@ public partial class ComposeWindow : Window
     private void SyncParagraphStyleCombo()
     {
         if (_vm.CurrentMode != ComposeMode.Html) return;
-        var style = RichTextBlockEditing.StyleOf(RichBodyBox.Selection.Start.Paragraph);
+        var style = NewRich is { } rich
+            ? StyleOf(rich.BlockAtCaret())
+            : RichTextBlockEditing.StyleOf(RichBodyBox.Selection.Start.Paragraph);
         var index = style is null ? -1 : (int)style.Value;
         if (ParagraphStyleCombo.SelectedIndex != index)
             ParagraphStyleCombo.SelectedIndex = index;
@@ -2512,7 +2551,10 @@ public partial class ComposeWindow : Window
         if (_vm.CurrentMode != ComposeMode.Html || ParagraphStyleCombo.SelectedIndex < 0) return;
         var chosen = (ComposeParagraphStyle)ParagraphStyleCombo.SelectedIndex;
         // Nothing is announced: the box already said the style as it was chosen.
-        if (GetSelectedParagraphs().Any(p => RichTextBlockEditing.StyleOf(p) != chosen))
+        bool differs = NewRich is { } rich
+            ? rich.SelectedBlocks().Any(b => StyleOf(b) != chosen)
+            : GetSelectedParagraphs().Any(p => RichTextBlockEditing.StyleOf(p) != chosen);
+        if (differs)
         {
             ApplyParagraphStyle(chosen);
             returnToText = true;
@@ -2526,7 +2568,9 @@ public partial class ComposeWindow : Window
         if (e.OriginalSource != ParagraphStyleMenu) return;
         int current = -1;
         if (_vm.CurrentMode == ComposeMode.Html)
-            current = RichTextBlockEditing.StyleOf(RichBodyBox.Selection.Start.Paragraph) is { } style ? (int)style : -1;
+            current = (NewRich is { } rich
+                ? StyleOf(rich.BlockAtCaret())
+                : RichTextBlockEditing.StyleOf(RichBodyBox.Selection.Start.Paragraph)) is { } style ? (int)style : -1;
         else if (_vm.CurrentMode == ComposeMode.Markdown)
             current = MarkdownStyleAtCaret();
         foreach (var item in ParagraphStyleMenu.Items.OfType<MenuItem>())
@@ -2569,6 +2613,7 @@ public partial class ComposeWindow : Window
             AnnounceFormatting($"{name} {(edit.TurnedOn ? "on" : "off")}");
             return;
         }
+        if (NewRich is { } rich) { NewRichToggleList(rich, ordered); return; }
 
         EnsureRichEditorFocused();
         var command = ordered ? EditingCommands.ToggleNumbering : EditingCommands.ToggleBullets;
@@ -2580,6 +2625,7 @@ public partial class ComposeWindow : Window
     private void InsertLink()
     {
         var inMarkdown = _vm.CurrentMode == ComposeMode.Markdown;
+        if (!inMarkdown && NewRich is { } rich) { NewRichInsertLink(rich); return; }
         var selectionText = inMarkdown
             ? PlainBody.SelectedText.Trim()
             : RichBodyBox.Selection.Text.Trim();
@@ -2624,6 +2670,7 @@ public partial class ComposeWindow : Window
             AnnounceFormatting("Formatting cleared");
             return;
         }
+        if (NewRich is { } rich) { NewRichClearFormatting(rich); return; }
 
         EnsureRichEditorFocused();
         // ClearAllProperties resets character and paragraph formatting but not our
@@ -2663,6 +2710,7 @@ public partial class ComposeWindow : Window
     {
         if (_vm.CurrentMode == ComposeMode.Markdown)
             return MarkdownEditing.DescribeFormattingParts(PlainBody.Text, PlainBody.CaretIndex);
+        if (NewRich is { } rich) return NewRichFormattingParts(rich);
 
         var selection = RichBodyBox.Selection;
 

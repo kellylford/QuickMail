@@ -97,6 +97,25 @@ internal static class SpellScan
     }
 
     /// <summary>
+    /// <see cref="QuoteBoundaryIndex"/> for the text of a rich (HTML) body in the hosted editor
+    /// (#1099): the start of the first line that begins with the reply or forward marker, or -1.
+    /// A quote there is a quote block, not lines starting with a greater-than sign.
+    /// </summary>
+    internal static int RichQuoteBoundaryIndex(string text)
+    {
+        if (string.IsNullOrEmpty(text)) return -1;
+        int lineStart = 0;
+        while (lineStart < text.Length)
+        {
+            int lineEnd = text.IndexOf('\n', lineStart);
+            if (lineEnd < 0) lineEnd = text.Length;
+            if (HtmlQuoteMarker.IsMatch(text[lineStart..lineEnd].TrimStart().TrimEnd('\r'))) return lineStart;
+            lineStart = lineEnd + 1;
+        }
+        return -1;
+    }
+
+    /// <summary>
     /// TextPointer at the start of the quoted/forwarded original in a rich (HTML) body — the first
     /// paragraph whose text begins with the reply/forward marker — or null if none is present.
     /// Same signature caveat as <see cref="QuoteBoundaryIndex"/>.

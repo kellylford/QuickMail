@@ -210,7 +210,7 @@ public class NewEditorSupportTests
     // ── The setting ──────────────────────────────────────────────────────────
 
     [Fact]
-    public void UseNewEditor_DefaultsOff_AndRoundTripsOn()
+    public void UseNewEditor_DefaultsOn_AndRoundTripsOff()
     {
         var dir = Path.Combine(Path.GetTempPath(), "qm-neweditor-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(dir);
@@ -220,14 +220,14 @@ public class NewEditorSupportTests
             var service = new ConfigService(profile);
 
             var config = service.Load();
-            Assert.False(config.UseNewEditor);
-            Assert.False(new ConfigModel().UseNewEditor);
+            Assert.True(config.UseNewEditor);
+            Assert.True(new ConfigModel().UseNewEditor);
 
-            config.UseNewEditor = true;
+            config.UseNewEditor = false;
             service.Save(config);
 
-            Assert.True(new ConfigService(profile).Load().UseNewEditor);
-            Assert.Contains("UseNewEditor = on", File.ReadAllText(Path.Combine(dir, "config.ini")));
+            Assert.False(new ConfigService(profile).Load().UseNewEditor);
+            Assert.Contains("UseNewEditor = off", File.ReadAllText(Path.Combine(dir, "config.ini")));
         }
         finally
         {

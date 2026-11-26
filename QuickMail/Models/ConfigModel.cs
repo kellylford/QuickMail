@@ -353,12 +353,13 @@ public class ConfigModel
     public bool CheckSpellingAsYouType { get; set; } = true;
 
     /// <summary>
-    /// The editor experiment (#1099): compose windows opened afterwards use the hosted WinUI
-    /// editor (<c>Controls/WinUiEditorHost</c>) for the Plain Text and Markdown body in place of
-    /// the WPF text box. HTML mode keeps its WPF editor. Off by default, and while it is off no
-    /// WinUI code runs at all.
+    /// The new message editor (#1099): compose windows opened afterwards use the hosted WinUI
+    /// editor (<c>Controls/WinUiEditorHost</c>) for the body in every mode, Plain Text, Markdown
+    /// and HTML, in place of the WPF text box and rich text box. On by default. Off, QuickMail
+    /// uses the WPF editors and runs no WinUI code at all; it is the way back if the new editor
+    /// misbehaves.
     /// </summary>
-    public bool UseNewEditor { get; set; }
+    public bool UseNewEditor { get; set; } = true;
 
     /// <summary>Automatically save composes as drafts while editing.</summary>
     public bool AutoSaveDrafts { get; set; } = true;

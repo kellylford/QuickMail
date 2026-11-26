@@ -993,9 +993,9 @@ public class ConfigService : IConfigService
         sb.AppendLine();
 
         sb.AppendLine($"UseNewEditor = {(config.UseNewEditor ? "on" : "off")}");
-        sb.AppendLine("# Experimental: use the new message editor for the Plain Text and Markdown body.");
-        sb.AppendLine("# HTML messages keep the current editor. Applies to messages opened afterwards.");
-        sb.AppendLine("# Values: on, off. Default off.");
+        sb.AppendLine("# Use the new message editor for the body of every message. Turn off to go back to");
+        sb.AppendLine("# the previous editor. Applies to messages opened afterwards.");
+        sb.AppendLine("# Values: on, off. Default on.");
         sb.AppendLine();
 
         sb.AppendLine($"ConfirmBeforeSend = {(config.ConfirmBeforeSend ? "on" : "off")}");

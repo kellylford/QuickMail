@@ -106,14 +106,18 @@ public class RichBodyModelTests
         Assert.Equal(new ComposeImage("cid:abc", "A chart", 10, 20), picture.Image);
     }
 
-    [Theory]
-    [InlineData("no change", "no change")]
-    [InlineData("a\rb\nc", "a b c")]
-    [InlineData("cell\u0007mark", "cell mark")]
-    [InlineData("row￹start￻end", "row start end")]
-    [InlineData("object￼here", "object here")]
-    public void Clean_TakesOutCharactersTheEditorGivesAMeaning(string text, string expected) =>
-        Assert.Equal(expected, RichBody.Clean(text));
+    [Fact]
+    public void Clean_TakesOutCharactersTheEditorGivesAMeaning()
+    {
+        // Built from character codes: these are the marks RichEdit uses for a cell's end, a
+        // table row's start and end, and an embedded object.
+        string With(int code) => "before" + (char)code + "after";
+
+        Assert.Equal("no change", RichBody.Clean("no change"));
+        Assert.Equal("a b c", RichBody.Clean("a\rb\nc"));
+        foreach (int code in new[] { 0x0007, 0x000B, 0x000C, 0xFFF9, 0xFFFA, 0xFFFB, 0xFFFC })
+            Assert.Equal("before after", RichBody.Clean(With(code)));
+    }
 
     [StaFact]
     public void ToDocument_OnNothing_IsOneEmptyParagraph()

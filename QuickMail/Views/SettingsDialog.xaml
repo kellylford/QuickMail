@@ -395,11 +395,11 @@
                                            Foreground="{DynamicResource Theme.TextSecondary}" FontSize="{DynamicResource Theme.FontSizeSmall}" Margin="0,3,0,0" TextWrapping="Wrap"/>
 
                                 <CheckBox x:Name="UseNewEditorCheckBox"
-                                          Content="Use the new message editor for Plain Text and Markdown (experimental)"
+                                          Content="Use the new message editor"
                                           IsChecked="{Binding UseNewEditor, Mode=TwoWay}"
                                           Margin="0,10,0,0"
-                                          AutomationProperties.HelpText="A different editing control for the message body, being tried for how it reads with screen readers. HTML messages keep the current editor. Applies to messages you open afterwards."/>
-                                <TextBlock Text="A different editing control for the message body, being tried for how it reads with screen readers. HTML messages keep the current editor. Applies to messages you open afterwards."
+                                          AutomationProperties.HelpText="The editor for the message body, in Plain Text, Markdown and HTML. Turn off to go back to the previous editor. Applies to messages you open afterwards."/>
+                                <TextBlock Text="The editor for the message body, in Plain Text, Markdown and HTML. Turn off to go back to the previous editor. Applies to messages you open afterwards."
                                            Foreground="{DynamicResource Theme.TextSecondary}" FontSize="{DynamicResource Theme.FontSizeSmall}" Margin="0,3,0,0" TextWrapping="Wrap"/>
                             </StackPanel>
                         </GroupBox>

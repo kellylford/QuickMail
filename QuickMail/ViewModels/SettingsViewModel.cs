@@ -254,9 +254,9 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     private bool _checkSpellingAsYouType = true;
 
-    /// <summary>The editor experiment (#1099). Bound to the Composing checkbox; off by default.</summary>
+    /// <summary>The new message editor (#1099). Bound to the Composing checkbox; on by default.</summary>
     [ObservableProperty]
-    private bool _useNewEditor;
+    private bool _useNewEditor = true;
 
     // ── Windowing ──────────────────────────────────────────────────────────────────
 

@@ -32,8 +32,13 @@ public partial class ComposeWindow
     // One spell checker for the process: creating Windows' is a COM activation.
     private static WindowsSpellChecker? s_windowsSpeller;
 
-    /// <summary>The Plain Text and Markdown editor in use.</summary>
-    private IPlainTextEditor PlainBody => _plainBody;
+    /// <summary>
+    /// The editor the text commands work on: the Plain Text and Markdown editor, or, in HTML mode
+    /// with the hosted rich editor in use, that one (for spelling and Alt+1/2/3, which work on
+    /// text and positions and so are the same code in every mode).
+    /// </summary>
+    private IPlainTextEditor PlainBody =>
+        _vm.CurrentMode == ComposeMode.Html && _newRich != null ? _newRich : _plainBody;
 
     /// <summary>The plain editor as an element, for focus moves.</summary>
     private UIElement PlainBodyElement => (UIElement?)_newEditor ?? BodyBox;
@@ -41,9 +46,17 @@ public partial class ComposeWindow
     /// <summary>True when this window's plain body is the hosted WinUI editor.</summary>
     internal bool UsesNewEditor => _newEditor != null;
 
+    /// <summary>
+    /// False keeps every compose window on the WPF editors whatever the setting says. The test
+    /// assembly turns it off for the whole run: its compose tests drive BodyBox and RichBodyBox
+    /// by name, which the setting-off path still is, and a test host is no place to start WinUI.
+    /// Tests of the new editor turn it on for themselves.
+    /// </summary>
+    internal static bool NewEditorAllowed { get; set; } = true;
+
     private void InitializePlainBody(ConfigModel config)
     {
-        if (config.UseNewEditor && TryCreateNewEditor())
+        if (NewEditorAllowed && config.UseNewEditor && TryCreateNewEditor())
             return;
 
         _plainBody = new WpfTextEditor(BodyBox);
@@ -105,6 +118,9 @@ public partial class ComposeWindow
         host.IsSpellCheckEnabled = false;
 
         ApplyNewEditorTheme();
+        // After the window's own key handlers (wired in XAML), so those still go first.
+        PreviewKeyDown += HostedFocus_PreviewKeyDown;
+        KeyDown += HostedFocus_KeyDown;
         _registry.BindingsChanged += OnBindingsChangedRefreshNewEditor;
         if (_themeService != null)
             _themeService.ThemeChanged += OnThemeChangedRefreshNewEditor;
@@ -119,12 +135,21 @@ public partial class ComposeWindow
     private void ReleaseNewEditor()
     {
         _vm.PropertyChanged -= OnViewModelBodyChanged;
+        PreviewKeyDown -= HostedFocus_PreviewKeyDown;
+        KeyDown -= HostedFocus_KeyDown;
         _registry.BindingsChanged -= OnBindingsChangedRefreshNewEditor;
         if (_themeService != null)
             _themeService.ThemeChanged -= OnThemeChangedRefreshNewEditor;
-        if (_newEditor is not { } host) return;
-        host.PreviewKeyDown -= BodyBox_PreviewKeyDown;
-        host.Close();   // clears the editor's own events and disposes the island
+        if (_newEditor is { } host)
+        {
+            host.PreviewKeyDown -= BodyBox_PreviewKeyDown;
+            host.Close();   // clears the editor's own events and disposes the island
+        }
+        if (_newRich is { } rich)
+        {
+            rich.PreviewKeyDown -= NewRich_PreviewKeyDown;
+            rich.Close();
+        }
     }
 
     private void OnNewEditorSelectionChanged(object? sender, EventArgs e) =>
@@ -202,8 +227,12 @@ public partial class ComposeWindow
 
     private void OnThemeChangedRefreshNewEditor(object? sender, EventArgs e) => ApplyNewEditorTheme();
 
-    private void OnBindingsChangedRefreshNewEditor(object? sender, EventArgs e) =>
-        _newEditor?.SetAcceleratorKey(_registry.GetGestureText("compose.focusBody"));
+    private void OnBindingsChangedRefreshNewEditor(object? sender, EventArgs e)
+    {
+        var key = _registry.GetGestureText("compose.focusBody");
+        _newEditor?.SetAcceleratorKey(key);
+        _newRich?.SetAcceleratorKey(key);
+    }
 
     /// <summary>Gives the hosted editor the colors and font BodyBox's style would have had.</summary>
     private void ApplyNewEditorTheme()
@@ -220,6 +249,16 @@ public partial class ComposeWindow
         _newEditor.SetAcceleratorKey(_registry.GetGestureText("compose.focusBody"));
         // BodyBox is collapsed but still in the tree, so its inherited font size is the theme's.
         _newEditor.SetFont((_plainBodyFont ?? BodyBox.FontFamily).Source, BodyBox.FontSize);
+
+        if (_newRich == null) return;
+        _newRich.ApplyColors(
+            Token("Theme.InputBackground", SystemColors.WindowColor),
+            Token("Theme.TextPrimary", SystemColors.WindowTextColor),
+            Token("Theme.InputBorder", SystemColors.ActiveBorderColor),
+            Token("Theme.Accent", SystemColors.HighlightColor));
+        _newRich.SetAcceleratorKey(_registry.GetGestureText("compose.focusBody"));
+        // As the WPF rich editor's document: Segoe UI at the body size.
+        _newRich.SetFont("Segoe UI", BodyBox.FontSize);
     }
 
     /// <summary>Shows the plain editor in Plain Text and Markdown, and hides it in HTML mode.</summary>

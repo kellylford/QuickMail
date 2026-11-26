@@ -50,6 +50,11 @@ public partial class ComposeWindow
     /// <summary>Draws pictures that arrived after the document was built — a reply's or forward's quoted pictures.</summary>
     private async void OnInlineImagesArrived()
     {
+        if (NewRich is { } rich)
+        {
+            await NewRichDrawArrivedPicturesAsync(rich);
+            return;
+        }
         // These came from a message someone else sent: decode them on the thread pool (the
         // bitmaps are frozen), so a picture built to be slow to decode cannot freeze the window.
         var waiting = EditorPictures()
@@ -106,7 +111,9 @@ public partial class ComposeWindow
 
     /// <summary>The Content-IDs of the pictures in the editor now, for the view model's reply/forward fetch.</summary>
     private HashSet<string> EditorPictureIds() =>
-        EditorPictures()
+        NewRich is { } rich
+            ? rich.Pictures().Select(p => p.ContentId).OfType<string>().ToHashSet(StringComparer.OrdinalIgnoreCase)
+            : EditorPictures()
             .Select(c => ((ComposeImage)c.Tag).ContentId)
             .OfType<string>()
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -268,6 +275,11 @@ public partial class ComposeWindow
             PlainBody.SelectedText = markdown;
             PlainBody.Select(PlainBody.SelectionStart + markdown.Length, 0);
         }
+        else if (_vm.CurrentMode == ComposeMode.Html && NewRich is { } rich)
+        {
+            rich.InsertImage(info);
+            _vm.MarkBodyDirty();
+        }
         else if (_vm.CurrentMode == ComposeMode.Html)
         {
             RichBodyBox.BeginChange();
@@ -300,6 +312,11 @@ public partial class ComposeWindow
         if (_vm.CurrentMode == ComposeMode.Markdown)
         {
             ShowMarkdownImageProperties();
+            return;
+        }
+        if (NewRich is { } rich)
+        {
+            NewRichShowImageProperties(rich);
             return;
         }
 
@@ -461,7 +478,7 @@ public partial class ComposeWindow
     private bool TryPastePicture()
     {
         if (_vm.CurrentMode == ComposeMode.PlainText) return false;
-        if (!(PlainBody.IsKeyboardFocusWithin || RichBodyBox.IsKeyboardFocusWithin)) return false;
+        if (!AnyBodyHasFocus) return false;
         try
         {
             if (!Clipboard.ContainsImage() || Clipboard.ContainsText()) return false;

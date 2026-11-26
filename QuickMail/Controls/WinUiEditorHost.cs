@@ -31,8 +31,14 @@ namespace QuickMail.Controls;
 /// <see cref="WndProc"/>. The window's own <c>PreviewKeyDown</c> still sees every key first, with
 /// this element as the focused one, so command keys work from inside the editor.</para>
 ///
-/// <para><b>Plain text.</b> RichEditBox is a rich editor; here its formatting keys are off, paste
-/// takes text only, and <see cref="Text"/> is the document's text with "\r\n" line breaks.</para>
+/// <para><b>Plain text.</b> RichEditBox is a rich editor; for the Plain Text and Markdown body its
+/// formatting keys are off, paste takes text only, and <see cref="Text"/> is the document's text
+/// with "\r\n" line breaks.</para>
+///
+/// <para><b>Rich.</b> For HTML messages the same control is made with <c>rich: true</c>. The
+/// formatting is then driven through <see cref="Rich"/>, paste and copy are the owner's
+/// (<see cref="PasteRequested"/>, <see cref="CopyRequested"/>), and <see cref="Text"/> is the
+/// text with everything that is not the user's words blanked, for spelling.</para>
 /// </summary>
 internal sealed class WinUiEditorHost : HwndHost, IPlainTextEditor
 {
@@ -46,7 +52,10 @@ internal sealed class WinUiEditorHost : HwndHost, IPlainTextEditor
     private string? _text;
 
     /// <param name="spelling">Where the misspellings are; null leaves every spelling query empty.</param>
-    public WinUiEditorHost(string accessibleName, PlainTextSpelling? spelling = null)
+    /// <param name="rich">True for the HTML body: formatted text, driven through <see cref="Rich"/>.</param>
+    /// <param name="resolveImage">Rich only: the picture for a <c>src</c>, or null for a placeholder.</param>
+    public WinUiEditorHost(string accessibleName, PlainTextSpelling? spelling = null, bool rich = false,
+        Func<string, System.Windows.Media.Imaging.BitmapSource?>? resolveImage = null)
     {
         WinUiRuntime.EnsureStarted();
         _spelling = spelling;
@@ -74,6 +83,7 @@ internal sealed class WinUiEditorHost : HwndHost, IPlainTextEditor
             TextChanged?.Invoke(this, EventArgs.Empty);
         };
         _editor.SelectionChanged += (_, _) => SelectionChanged?.Invoke(this, EventArgs.Empty);
+        _editor.Loaded += (_, _) => EditorLoaded?.Invoke(this, EventArgs.Empty);
         // Tab reaches the island before WPF sees it, and would move focus out of the editor.
         _editor.PreviewKeyDown += (_, e) =>
         {
@@ -85,8 +95,32 @@ internal sealed class WinUiEditorHost : HwndHost, IPlainTextEditor
         _editor.Paste += OnPaste;
         _editor.DragOver += OnDragOver;
         _editor.Drop += OnDrop;
+        if (rich)
+        {
+            Rich = new RichEditDocument(_editor, resolveImage ?? (_ => null));
+            _editor.CopyingToClipboard += (_, e) => { if (CopyRequested?.Invoke(false) == true) e.Handled = true; };
+            _editor.CuttingToClipboard += (_, e) => { if (CopyRequested?.Invoke(true) == true) e.Handled = true; };
+        }
         Focusable = true;
     }
+
+    /// <summary>The formatted body, when this editor was made for HTML messages; otherwise null.</summary>
+    public RichEditDocument? Rich { get; }
+
+    /// <summary>
+    /// Rich only. Paste was asked for (Ctrl+V, the context menu). Return true to say it has been
+    /// dealt with; false pastes the clipboard's plain text.
+    /// </summary>
+    public Func<bool>? PasteRequested { get; set; }
+
+    /// <summary>
+    /// Rich only. Copy (false) or Cut (true) was asked for. Return true to say it has been dealt
+    /// with, and the control's own copy is skipped.
+    /// </summary>
+    public Func<bool, bool>? CopyRequested { get; set; }
+
+    /// <summary>Takes the selection out, as Cut does once its content is on the clipboard.</summary>
+    public void DeleteSelection() => _editor.Document.Selection.SetText(TextSetOptions.None, string.Empty);
 
     /// <summary>
     /// The text changed, by the user or the program, <see cref="SetText"/> included. WinUI raises
@@ -96,6 +130,13 @@ internal sealed class WinUiEditorHost : HwndHost, IPlainTextEditor
     public event EventHandler? TextChanged;
 
     public event EventHandler? SelectionChanged;
+
+    /// <summary>
+    /// The control has loaded in its island. When it does, it sets every character to its own
+    /// font and size, so formatted text written before this (a code font, a heading's size) is
+    /// written again by the owner.
+    /// </summary>
+    public event EventHandler? EditorLoaded;
 
     /// <summary>
     /// Tab (false) or Shift+Tab (true) was pressed in the editor. Return true to take the key;
@@ -125,9 +166,12 @@ internal sealed class WinUiEditorHost : HwndHost, IPlainTextEditor
     {
         TextChanged = null;
         SelectionChanged = null;
+        EditorLoaded = null;
         FilesDropped = null;
         HostingFailed = null;
         TabPressed = null;
+        PasteRequested = null;
+        CopyRequested = null;
         Dispose();
     }
 
@@ -166,7 +210,7 @@ internal sealed class WinUiEditorHost : HwndHost, IPlainTextEditor
         }
         Add("Cut", () => _editor.Document.Selection.Cut());
         Add("Copy", () => _editor.Document.Selection.Copy());
-        Add("Paste", PasteText);
+        Add("Paste", Paste);
         Add("Select All", () => Select(0, Text.Length));
         return menu;
     }
@@ -179,7 +223,9 @@ internal sealed class WinUiEditorHost : HwndHost, IPlainTextEditor
         {
             if (_text == null)
             {
-                _editor.Document.GetText(TextGetOptions.None, out var raw);
+                string? raw;
+                if (Rich != null) raw = Rich.MaskedText();
+                else _editor.Document.GetText(TextGetOptions.None, out raw);
                 _text = RichEditOffsets.ToText(raw ?? string.Empty);
             }
             return _text;
@@ -313,6 +359,12 @@ internal sealed class WinUiEditorHost : HwndHost, IPlainTextEditor
     private void OnPaste(object sender, TextControlPasteEventArgs e)
     {
         e.Handled = true;
+        Paste();
+    }
+
+    private void Paste()
+    {
+        if (PasteRequested?.Invoke() == true) return;
         PasteText();
     }
 
@@ -460,6 +512,49 @@ internal sealed class WinUiEditorHost : HwndHost, IPlainTextEditor
             _source.NavigateFocus(new XamlSourceFocusNavigationRequest(XamlSourceFocusNavigationReason.First));
     });
 
+    /// <summary>
+    /// Gives this editor keyboard focus, now if it can take it, or as soon as it has been laid
+    /// out. An editor made a moment ago (HTML mode's, on the first switch to it) is not yet in
+    /// the window's layout, and WPF refuses focus to an element it has not arranged; without
+    /// this WPF would go on counting the editor it replaced as the focused one.
+    /// </summary>
+    public void FocusWhenReady()
+    {
+        if (TryFocus()) return;
+        // Not laid out yet: try again each time layout settles, a few times at most.
+        int attempts = 0;
+        EventHandler? retry = null;
+        retry = (_, _) =>
+        {
+            if (TryFocus() || ++attempts >= 20) LayoutUpdated -= retry;
+        };
+        LayoutUpdated += retry;
+    }
+
+    private bool TryFocus()
+    {
+        if (!IsVisible || _source == null) return false;
+        if (!Focus()) return false;
+        FocusEditor();
+        return true;
+    }
+
+    /// <summary>
+    /// True when Windows' keyboard focus is in this editor. This is the truth to go by: WPF's
+    /// own record of the focused element is sometimes empty while the island has focus (seen
+    /// after the window is activated again), and then <c>IsKeyboardFocusWithin</c> is false and
+    /// WPF sends its key events to the window, not to this element.
+    /// </summary>
+    public bool HasFocus
+    {
+        get
+        {
+            if (_container == IntPtr.Zero) return false;
+            var focus = GetFocus();
+            return focus != IntPtr.Zero && (focus == _container || IsChild(_container, focus));
+        }
+    }
+
     protected override bool TabIntoCore(TraversalRequest request)
     {
         // Through WPF's own focus, so it knows this element is the focused one;
@@ -512,6 +607,17 @@ internal sealed class WinUiEditorHost : HwndHost, IPlainTextEditor
     /// </summary>
     protected override void OnKeyDown(KeyEventArgs e)
     {
+        HandleKeyDown(e);
+        if (!e.Handled) base.OnKeyDown(e);
+    }
+
+    /// <summary>
+    /// What this element does with a key on its way up from the editor. Public because the
+    /// owning window calls it too, for a key WPF routed to the window while the editor had
+    /// focus (see <see cref="HasFocus"/>).
+    /// </summary>
+    public void HandleKeyDown(KeyEventArgs e)
+    {
         // RichEdit's own formatting keys (alignment, line spacing, lists, superscript and
         // subscript, all caps) are not commands in a plain-text body. Unhandled by QuickMail's
         // commands by this point, they stop here and never reach the control.
@@ -531,9 +637,7 @@ internal sealed class WinUiEditorHost : HwndHost, IPlainTextEditor
             TranslateMessage(ref msg);
             DispatchMessage(ref msg);
             e.Handled = true;
-            return;
         }
-        base.OnKeyDown(e);
     }
 
     internal static bool IsRichEditFormattingKey(Key key, ModifierKeys modifiers)
@@ -563,6 +667,13 @@ internal sealed class WinUiEditorHost : HwndHost, IPlainTextEditor
 
     [DllImport("user32")]
     private static extern IntPtr SetFocus(IntPtr hwnd);
+
+    [DllImport("user32")]
+    private static extern IntPtr GetFocus();
+
+    [DllImport("user32")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool IsChild(IntPtr parent, IntPtr child);
 
     [DllImport("user32")]
     private static extern IntPtr DispatchMessage(ref MSG msg);
