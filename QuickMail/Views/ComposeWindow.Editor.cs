@@ -74,7 +74,7 @@ public partial class ComposeWindow
         try
         {
             s_windowsSpeller ??= new WindowsSpellChecker();
-            var spelling = new PlainTextSpelling(s_windowsSpeller, word => _customDictionary?.Contains(word) == true);
+            var spelling = new PlainTextSpelling(s_windowsSpeller, IsKnownWord);
             host = new WinUiEditorHost("Message body", spelling)
             {
                 Margin = BodyBox.Margin,
@@ -110,6 +110,7 @@ public partial class ComposeWindow
         host.TabPressed = HandleBodyTab;
         host.FilesDropped += OnNewEditorFilesDropped;
         host.HostingFailed += OnNewEditorHostingFailed;
+        host.ContextMenuItemsRequested = NewEditorSpellingMenuItems;
         // Windows' wavy underlines stay off for now. In this control they come with Windows'
         // autocorrect ("recieve" became "receive" as it was typed, with nothing said), and the two
         // cannot be had apart. QuickMail's own spelling announcements, Next Misspelling and Check
@@ -150,6 +151,69 @@ public partial class ComposeWindow
             rich.PreviewKeyDown -= NewRich_PreviewKeyDown;
             rich.Close();
         }
+    }
+
+    // Words the user chose Ignore All for in this message.
+    private readonly System.Collections.Generic.HashSet<string> _ignoredWords = new(StringComparer.Ordinal);
+
+    /// <summary>A word the hosted editors do not count as misspelled: in the custom dictionary, or ignored in this message.</summary>
+    private bool IsKnownWord(string word) =>
+        _ignoredWords.Contains(word) || _customDictionary?.Contains(word) == true;
+
+    /// <summary>
+    /// What the hosted editor's context menu offers above Cut, Copy and Paste when the caret is
+    /// on a misspelled word: the suggestions, Ignore All, and Add to Dictionary. The WPF editors
+    /// get the first two from WPF's own menu.
+    /// </summary>
+    private System.Collections.Generic.List<(string Text, Action Run)> NewEditorSpellingMenuItems()
+    {
+        var items = new System.Collections.Generic.List<(string Text, Action Run)>();
+        // As the announcements: nothing while "Check spelling as I type" is off and no check has been asked for.
+        if (!_spellCheckEnabled && !_checkSpellingAsYouType) return items;
+        var editor = PlainBody;
+        var text = editor.Text;
+        if (text.Length == 0) return items;
+
+        // The caret may sit just past the word's last letter.
+        int caret = Math.Min(editor.CaretIndex, text.Length - 1);
+        int start = editor.GetSpellingErrorStart(caret);
+        int probe = caret;
+        if (start < 0 && caret > 0)
+        {
+            probe = caret - 1;
+            start = editor.GetSpellingErrorStart(probe);
+        }
+        if (start < 0 || SpellScan.IsInAddress(text, start)) return items;
+        int length = editor.GetSpellingErrorLength(probe);
+        if (length <= 0 || start + length > text.Length) return items;
+        var word = text.Substring(start, length);
+
+        foreach (var suggestion in (editor.GetSpellingSuggestions(probe) ?? Array.Empty<string>()).Take(5))
+            items.Add((suggestion, () => ReplaceMisspellingFromMenu(start, word, suggestion)));
+        items.Add(("Ignore All", () => _ignoredWords.Add(word)));
+        if (_customDictionary != null)
+            items.Add(("Add to Dictionary", () => _customDictionary.AddWord(word)));
+        return items;
+    }
+
+    private void ReplaceMisspellingFromMenu(int start, string word, string replacement)
+    {
+        var editor = PlainBody;
+        var text = editor.Text;
+        // The menu was open a while; only replace what is still there.
+        if (start + word.Length > text.Length || !text.AsSpan(start, word.Length).SequenceEqual(word)) return;
+        var wasSuppressed = _suppressSpellingAnnouncement;
+        _suppressSpellingAnnouncement = true;
+        try
+        {
+            editor.Select(start, word.Length);
+            editor.SelectedText = replacement;
+            editor.Select(start + replacement.Length, 0);
+        }
+        finally { _suppressSpellingAnnouncement = wasSuppressed; }
+        ClearSpellingContext();
+        if (NewRich != null) _vm.MarkBodyDirty();
+        AccessibilityHelper.Announce(this, $"Replaced with {replacement}.", category: AnnouncementCategory.Result);
     }
 
     private void OnNewEditorSelectionChanged(object? sender, EventArgs e) =>

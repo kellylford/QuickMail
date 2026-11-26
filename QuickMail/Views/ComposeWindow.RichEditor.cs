@@ -88,7 +88,7 @@ public partial class ComposeWindow
         try
         {
             s_windowsSpeller ??= new WindowsSpellChecker();
-            var spelling = new PlainTextSpelling(s_windowsSpeller, word => _customDictionary?.Contains(word) == true);
+            var spelling = new PlainTextSpelling(s_windowsSpeller, IsKnownWord);
             host = new WinUiEditorHost("Message body", spelling, rich: true,
                 resolveImage: src => ResolveEditorImage(src) as BitmapSource)
             {
@@ -119,6 +119,7 @@ public partial class ComposeWindow
         host.HostingFailed += OnNewRichHostingFailed;
         host.PasteRequested = OnNewRichPaste;
         host.CopyRequested = OnNewRichCopy;
+        host.ContextMenuItemsRequested = NewEditorSpellingMenuItems;
         host.IsSpellCheckEnabled = false; // see the note where the plain editor is made
         ApplyNewEditorTheme();
         return true;
@@ -180,7 +181,7 @@ public partial class ComposeWindow
         var config = _configService.Load();
         if (config.AnnounceFormattingWhileNavigating)
         {
-            var label = BlockLabel(rich.BlockAtCaret());
+            var label = BlockLabel(rich.BlockAtCaretWithTablePosition());
             if (label != _lastAnnouncedBlockType)
             {
                 _lastAnnouncedBlockType = label;
@@ -222,7 +223,8 @@ public partial class ComposeWindow
             var kind = block.List == RichListKind.Numbered ? "Numbered list item" : "Bullet list item";
             label = block.ListLevel > 0 ? $"{kind}, level {block.ListLevel + 1}" : kind;
         }
-        else if (block.InTable) label = "Table cell";
+        else if (block.InTable)
+            label = block.TableRow > 0 ? $"Table cell, row {block.TableRow}, column {block.TableColumn}" : "Table cell";
         else label = "Normal text";
         return BlockLabels.WithQuote(label, block.QuoteDepth);
     }
@@ -329,7 +331,7 @@ public partial class ComposeWindow
     /// <summary>The formatting at the cursor, one fact per entry, in the order <see cref="GetFormattingParts"/> gives.</summary>
     private static List<string> NewRichFormattingParts(RichEditDocument rich)
     {
-        var block = rich.BlockAtCaret();
+        var block = rich.BlockAtCaretWithTablePosition();
         var (bold, italic, underline, strike, code) = rich.CharacterState();
         // A heading is bold as a whole; that is the heading, not Bold.
         if (block.Heading > 0) bold = "off";
@@ -375,6 +377,9 @@ public partial class ComposeWindow
                 break;
             case RichEditDocument.EnterResult.LeftCode:
                 AnnounceFormatting("Normal text");
+                break;
+            case RichEditDocument.EnterResult.CodeLine or RichEditDocument.EnterResult.CellLine:
+                // Same block, new line: nothing has changed that needs saying.
                 break;
             case RichEditDocument.EnterResult.HeadingBreak when _configService.Load().AnnounceFormattingWhileNavigating:
                 AccessibilityHelper.Announce(this, _lastAnnouncedBlockType, category: AnnouncementCategory.Result);

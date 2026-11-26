@@ -1,0 +1,135 @@
+# #1099 Stage 3: HTML mode in QuickMail's compose window. The same steps run against the new
+# editor (UseNewEditor = on) and the current WPF rich editor (off). A new message is open, with
+# focus in the To box.
+w 4
+q +{TAB}
+w 2
+q {TAB}
+w 3
+
+# 0. Into the body, and into HTML mode.
+k %y
+w 3
+e Message body
+k ^+3
+w 5
+e Switched to HTML mode
+
+# 1. Typed-word echo: each word as Space ends it, and the last as Enter ends it.
+t one two the cup toast three
+w 3
+e one
+e two
+e the
+e cup
+e toast
+k {ENTER}
+w 3
+e three
+
+# The rest of the text, typed without logging.
+Q Alpha line
+q {ENTER}
+q {ENTER}
+Q Beta line
+q {ENTER}
+Q Gamma
+q {ENTER}
+Q A much longer line of text here
+q {ENTER}
+Q Short
+w 3
+
+# 2. Down from the top: each line once, a blank line as blank.
+k ^{HOME}
+w 3
+e one two the cup toast three
+k {DOWN}
+w 3
+e Alpha line
+k {DOWN}
+w 3
+e blank
+e! Beta
+k {DOWN}
+w 3
+e Beta line
+k {DOWN}
+w 3
+e Gamma
+
+# 3. From the end of a long line, Down onto a shorter one: that line alone.
+k {DOWN}
+w 3
+e A much longer line of text here
+k {END}
+w 2
+k {DOWN}
+w 3
+e Short
+
+# 4. Ctrl+Up by paragraph.
+k ^{UP}
+w 3
+k ^{UP}
+w 3
+e A much longer line of text here
+k ^{UP}
+w 3
+e Gamma
+
+# 5. A heading: the command says what it did, and the line reads as its text.
+k ^%2
+w 4
+e Heading 2
+k {UP}
+w 3
+e Beta line
+k {DOWN}
+w 3
+e Gamma
+
+# 6. Bold, typed.
+k ^{END}
+w 2
+q {ENTER}
+k ^b
+w 3
+e Bold on
+t strong words
+w 3
+e strong
+k ^b
+w 3
+e Bold off
+
+# 7. A list.
+q {ENTER}
+k ^+l
+w 3
+e Bullet list on
+t first item
+w 2
+k {ENTER}
+w 3
+t second item
+w 2
+k {UP}
+w 3
+e first item
+k {DOWN}
+w 3
+e second item
+
+# 8. The formatting where the caret is.
+k ^t
+w 5
+e Bullet list item
+
+# 9. Leaving and coming back.
+k %u
+w 3
+e Subject
+k %y
+w 3
+e Message body

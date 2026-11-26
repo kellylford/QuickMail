@@ -20,13 +20,20 @@ namespace QuickMail.Controls;
 /// <para><b>What the editor holds natively</b>, so a screen reader meets the real thing: bold,
 /// italic, underline and strikethrough; links (a RichEdit "friendly name" link, announced as a
 /// link); bulleted and numbered lists with levels; pictures with alternative text (announced as
-/// a graphic with that text); tables; and the Heading 1 to 6 paragraph styles.</para>
+/// a graphic with that text); and the Heading 1 to 6 paragraph styles.</para>
 ///
 /// <para><b>What it has no notion of</b> is written in paragraph properties that RichEdit keeps
 /// but does not draw, checked in the Stage 3 spike to survive editing and a round trip:
 /// a quote's depth is the paragraph's right indent in points (1 per level, too small to see; the
 /// visible indent is on the left), and a code block is "keep together". A rule is a paragraph
 /// holding <see cref="RichBody.RuleText"/>.</para>
+///
+/// <para><b>Tables</b> are not RichEdit's own. A screen reader reads one of those a row at a
+/// time with the cells run together ("Cell A1Cell B1"). Here each cell is a paragraph of its
+/// own, so it reads as its text, and QuickMail can say which row and column it is. A cell is a
+/// paragraph marked "keep with next"; "no line number" alternates from one row to the next, and
+/// "widow control" from one table to the next, which is how rows and tables are told apart
+/// again. What is sent is a real table.</para>
 ///
 /// <para><b>Pictures.</b> RichEdit will not say which picture an object is, so each inserted
 /// picture is remembered with a range on its character. A TOM range moves with the text around
@@ -37,7 +44,6 @@ internal sealed class RichEditDocument
     /// <summary>Left indent, in points, for each level of quote or list.</summary>
     private const float LevelIndent = 18f;
 
-    private const char TablePlaceholder = (char)0xE000;
     private const char ImagePlaceholder = (char)0xE001;
     private const char RowStart = (char)0xFFF9;
     private const char RowEnd = (char)0xFFFB;
@@ -81,6 +87,10 @@ internal sealed class RichEditDocument
         try
         {
             int length = Raw().Length;
+            // After a table that ends the body, a line to type on: Enter in a cell is a line
+            // break in the cell, so there would be no other way past the table.
+            if (paragraphs.Count > 0 && paragraphs[^1].IsCell)
+                paragraphs = paragraphs.Append(new RichParagraph { QuoteDepth = paragraphs[^1].QuoteDepth }).ToList();
             InsertAt(Doc.GetRange(0, length), paragraphs, wholeDocument: true);
             Doc.Selection.SetRange(0, 0);
         }
@@ -161,34 +171,21 @@ internal sealed class RichEditDocument
         int lengthBefore = Raw().Length;
         int replaced = target.EndPosition - target.StartPosition;
 
-        // 1. The text, with one placeholder paragraph for each table and a placeholder character
-        //    for each picture.
-        var tables = new List<List<RichParagraph>>();
+        // 1. The text, with a placeholder character for each picture.
         var text = new StringBuilder();
-        for (int i = 0; i < paragraphs.Count;)
+        for (int i = 0; i < paragraphs.Count; i++)
         {
-            if (text.Length > 0) text.Append('\r');
-            var p = paragraphs[i];
-            if (p.IsCell)
-            {
-                var cells = new List<RichParagraph>();
-                int id = p.Table;
-                while (i < paragraphs.Count && paragraphs[i].Table == id) cells.Add(paragraphs[i++]);
-                tables.Add(cells);
-                text.Append(TablePlaceholder);
-            }
-            else
-            {
-                AppendText(text, p);
-                i++;
-            }
+            // Between paragraphs, whatever they hold: an empty first paragraph (the blank line a
+            // reply starts with) still needs its break.
+            if (i > 0) text.Append('\r');
+            AppendText(text, paragraphs[i]);
         }
         target.SetText(TextSetOptions.None, text.ToString());
 
         // Text set over other text takes the format of what was there (a heading's size and
         // bold, a quote's indent). Paragraphs that bring their own formats start from plain.
         bool ownFormats = wholeDocument || paragraphs.Count > 1;
-        if (ownFormats && text.Length > 0)
+        if (ownFormats)
         {
             var written0 = Doc.GetRange(start, start + text.Length);
             var characters = written0.CharacterFormat;
@@ -204,31 +201,18 @@ internal sealed class RichEditDocument
                 paragraphFormat.Style = ParagraphStyle.Normal;
                 paragraphFormat.ListType = MarkerType.None;
                 paragraphFormat.KeepTogether = FormatEffect.Off;
+                paragraphFormat.KeepWithNext = FormatEffect.Off;
+                paragraphFormat.NoLineNumber = FormatEffect.Off;
                 paragraphFormat.Alignment = ParagraphAlignment.Left;
                 paragraphFormat.SetIndents(0, 0, 0);
             }
         }
 
-        // 2. Each table, as RTF, over its placeholder. Last first, so earlier positions hold.
-        var placeholders = new List<int>();
-        var written = Raw();
-        for (int i = start; i < written.Length && placeholders.Count < tables.Count; i++)
-            if (written[i] == TablePlaceholder) placeholders.Add(i);
-        for (int t = Math.Min(tables.Count, placeholders.Count) - 1; t >= 0; t--)
-        {
-            int at = placeholders[t];
-            bool hasBreak = at + 1 < written.Length && written[at + 1] == '\r';
-            Doc.GetRange(at, at + (hasBreak ? 2 : 1)).SetText(TextSetOptions.FormatRtf, TableRtf(tables[t]));
-        }
-
-        // 3. Where everything ended up, read back from the document: RichEdit decides how a table
-        //    lies in the text, so positions are found, not assumed.
+        // 2. Where each paragraph ended up, read back from the document, not assumed.
         var raw = Raw();
         int regionEnd = Math.Min(raw.Length, start + (raw.Length - lengthBefore + replaced));
         if (wholeDocument) regionEnd = raw.Length;
         var slots = Slots(raw, start, regionEnd);
-        // A table at the very end leaves an empty paragraph after it, which the body does not have.
-        if (slots.Count == paragraphs.Count + 1 && slots[^1].Length == 0) slots.RemoveAt(slots.Count - 1);
         if (slots.Count != paragraphs.Count)
         {
             LogService.Log($"New editor: {paragraphs.Count} paragraphs were written but {slots.Count} were found; " +
@@ -236,7 +220,7 @@ internal sealed class RichEditDocument
             return regionEnd;
         }
 
-        // 4. Formats, last paragraph first: setting a link puts its address into the text, which
+        // 3. Formats, last paragraph first: setting a link puts its address into the text, which
         //    moves everything after it.
         bool paragraphFormats = wholeDocument || paragraphs.Count > 1;
         for (int i = slots.Count - 1; i >= 0; i--)
@@ -293,17 +277,30 @@ internal sealed class RichEditDocument
             }
         }
 
+        if (!paragraphFormat) return;
+
         if (p.IsCell)
         {
             var cell = Doc.GetRange(start, start);
             cell.Expand(TextRangeUnit.Paragraph);
             if (p.HeaderCell) cell.CharacterFormat.Bold = FormatEffect.On;
-            if (p.CellAlign is "C") cell.ParagraphFormat.Alignment = ParagraphAlignment.Center;
-            else if (p.CellAlign is "R") cell.ParagraphFormat.Alignment = ParagraphAlignment.Right;
-            SetQuoteAndList(cell, p.QuoteDepth, RichListKind.None, 0);
+            var cellFormat = cell.ParagraphFormat;
+            cellFormat.Style = ParagraphStyle.Normal;
+            cellFormat.KeepTogether = FormatEffect.Off;
+            cellFormat.ListType = MarkerType.None;
+            cellFormat.KeepWithNext = FormatEffect.On;
+            cellFormat.NoLineNumber = p.Row % 2 == 1 ? FormatEffect.On : FormatEffect.Off;
+            cellFormat.WidowControl = p.Table % 2 == 1 ? FormatEffect.On : FormatEffect.Off;
+            cellFormat.Alignment = p.CellAlign switch
+            {
+                "C" => ParagraphAlignment.Center,
+                "R" => ParagraphAlignment.Right,
+                _ => ParagraphAlignment.Left,
+            };
+            // One level in, so a table stands apart from the text around it.
+            cellFormat.SetIndents(0, LevelIndent * (Math.Clamp(p.QuoteDepth, 0, 20) + 1), Math.Clamp(p.QuoteDepth, 0, 20));
             return;
         }
-        if (!paragraphFormat) return;
 
         var paragraph = Doc.GetRange(start, start);
         paragraph.Expand(TextRangeUnit.Paragraph);
@@ -311,6 +308,7 @@ internal sealed class RichEditDocument
         if (p.Heading > 0) SetHeading(paragraph, p.Heading);
         else paragraph.ParagraphFormat.Style = ParagraphStyle.Normal;
         paragraph.ParagraphFormat.KeepTogether = p.Pre ? FormatEffect.On : FormatEffect.Off;
+        paragraph.ParagraphFormat.KeepWithNext = FormatEffect.Off;
         SetQuoteAndList(paragraph, p.QuoteDepth, p.List, p.ListLevel);
     }
 
@@ -424,45 +422,6 @@ internal sealed class RichEditDocument
         return s_placeholder = bitmap;
     }
 
-    /// <summary>A table's cells as RTF: Microsoft.UI.Text has no table API. Cell formatting follows by range.</summary>
-    private static string TableRtf(List<RichParagraph> cells)
-    {
-        var rows = cells.GroupBy(c => c.Row).OrderBy(g => g.Key).Select(g => g.ToList()).ToList();
-        int columns = Math.Max(1, rows.Max(r => r.Count));
-        int cellWidth = Math.Max(900, 9000 / columns);
-        var rtf = new StringBuilder(@"{\rtf1\ansi\deff0 ");
-        foreach (var row in rows)
-        {
-            rtf.Append(@"\trowd\trgaph100");
-            for (int c = 1; c <= columns; c++)
-                rtf.Append(@"\cellx").Append((cellWidth * c).ToString(CultureInfo.InvariantCulture));
-            rtf.Append(@"\pard\intbl ");
-            for (int c = 0; c < columns; c++)
-            {
-                if (c < row.Count)
-                {
-                    var text = new StringBuilder();
-                    AppendText(text, row[c]);
-                    AppendRtfText(rtf, text.ToString());
-                }
-                rtf.Append(@"\cell ");
-            }
-            rtf.Append(@"\row ");
-        }
-        return rtf.Append(@"\pard}").ToString();
-    }
-
-    private static void AppendRtfText(StringBuilder rtf, string text)
-    {
-        foreach (char c in text)
-        {
-            if (c is '\\' or '{' or '}') rtf.Append('\\').Append(c);
-            else if (c == '\v') rtf.Append(@"\line ");
-            else if (c is >= ' ' and < (char)127) rtf.Append(c);
-            else rtf.Append(@"\u").Append(((short)c).ToString(CultureInfo.InvariantCulture)).Append('?');
-        }
-    }
-
     // ─────────────────────────────── Reading ─────────────────────────────────
 
     private readonly record struct Slot(int Start, int Length, int Table, int Row);
@@ -554,20 +513,44 @@ internal sealed class RichEditDocument
     {
         var raw = Raw();
         var slots = Slots(raw, 0, raw.Length);
-        // The paragraph RichEdit keeps after a table that ends the body is not the writer's.
-        if (slots.Count >= 2 && slots[^1].Length == 0 && slots[^1].Table < 0 && slots[^2].Table >= 0)
-            slots.RemoveAt(slots.Count - 1);
 
         var formats = FormatRuns(0, raw.Length);
         var pictures = PicturePositions(raw);
         var result = new List<RichParagraph>(slots.Count);
         int formatIndex = 0;
 
+        int table = -1, row = 0;
+        bool previousWasCell = false;
+        FormatEffect rowMark = FormatEffect.Off, tableMark = FormatEffect.Off;
+
         foreach (var slot in slots)
         {
-            var paragraph = new RichParagraph { Table = slot.Table, Row = slot.Row };
+            var paragraph = new RichParagraph();
             var paragraphFormat = Doc.GetRange(slot.Start, slot.Start).ParagraphFormat;
             paragraph.QuoteDepth = Math.Clamp((int)Math.Round(paragraphFormat.RightIndent), 0, 20);
+
+            // A cell is a paragraph marked "keep with next". A new row is where "no line number"
+            // changes; a new table is where "widow control" changes, or after anything not a cell.
+            bool isCell = paragraphFormat.KeepWithNext == FormatEffect.On;
+            if (isCell)
+            {
+                var thisRow = paragraphFormat.NoLineNumber;
+                var thisTable = paragraphFormat.WidowControl;
+                if (!previousWasCell || thisTable != tableMark)
+                {
+                    table++;
+                    row = 0;
+                }
+                else if (thisRow != rowMark)
+                {
+                    row++;
+                }
+                rowMark = thisRow;
+                tableMark = thisTable;
+                paragraph.Table = table;
+                paragraph.Row = row;
+            }
+            previousWasCell = isCell;
 
             if (slot.Start + slot.Length < rangeStart || slot.Start >= rangeEnd) continue;
             int begin = Math.Max(slot.Start, rangeStart);
@@ -591,7 +574,7 @@ internal sealed class RichEditDocument
                 if (!run.Bold) allBold = false;
             }
 
-            if (slot.Table >= 0)
+            if (isCell)
             {
                 paragraph.HeaderCell = allBold;
                 paragraph.CellAlign = paragraphFormat.Alignment switch
@@ -631,6 +614,10 @@ internal sealed class RichEditDocument
             }
             result.Add(paragraph);
         }
+        // The line Load puts after a table that ends the body is not part of the body.
+        if (rangeStart == 0 && rangeEnd == int.MaxValue && result.Count >= 2
+            && result[^1] is { IsCell: false, Runs.Count: 0 } && result[^2].IsCell)
+            result.RemoveAt(result.Count - 1);
         return result;
     }
 
@@ -800,8 +787,10 @@ internal sealed class RichEditDocument
     // ─────────────────────────── Paragraph formatting ────────────────────────
 
     /// <summary>What a paragraph is, as the commands and announcements need it.</summary>
+    /// <param name="TableRow">For a cell, its row counted from 1; otherwise 0.</param>
+    /// <param name="TableColumn">For a cell, its column counted from 1; otherwise 0.</param>
     internal readonly record struct BlockInfo(int Start, int End, int Heading, bool Pre, RichListKind List, int ListLevel,
-        int QuoteDepth, bool InTable);
+        int QuoteDepth, bool InTable, int TableRow = 0, int TableColumn = 0);
 
     /// <summary>The paragraph the caret is in.</summary>
     public BlockInfo BlockAtCaret() => BlockAt(Doc.Selection.StartPosition);
@@ -819,11 +808,48 @@ internal sealed class RichEditDocument
             MarkerType.Bullet => RichListKind.Bullet,
             _ => RichListKind.Numbered,
         };
-        range.GetText(TextGetOptions.None, out var text);
-        bool inTable = text is { Length: > 0 } && (text[^1] == CellEnd || text[0] is RowStart or RowEnd);
+        bool inTable = format.KeepWithNext == FormatEffect.On;
         return new BlockInfo(range.StartPosition, range.EndPosition, heading, format.KeepTogether == FormatEffect.On,
             list, list == RichListKind.None ? 0 : Math.Clamp(format.ListLevelIndex, 0, 8),
             Math.Clamp((int)Math.Round(format.RightIndent), 0, 20), inTable);
+    }
+
+    /// <summary>
+    /// The caret's paragraph with, for a table cell, its row and column: found by walking back
+    /// through the cells before it, so only asked where it will be spoken.
+    /// </summary>
+    public BlockInfo BlockAtCaretWithTablePosition()
+    {
+        var block = BlockAtCaret();
+        if (!block.InTable) return block;
+
+        var here = Doc.GetRange(block.Start, block.Start).ParagraphFormat;
+        var tableMark = here.WidowControl;
+        var rowMark = here.NoLineNumber;
+        int row = 1, column = 1;
+        bool inFirstRow = true;
+        int at = block.Start;
+        for (int guard = 0; at > 0 && guard < 5000; guard++)
+        {
+            var previous = Doc.GetRange(at - 1, at - 1);
+            previous.Expand(TextRangeUnit.Paragraph);
+            var format = previous.ParagraphFormat;
+            if (format.KeepWithNext != FormatEffect.On || format.WidowControl != tableMark) break;
+            var mark = format.NoLineNumber;
+            if (mark != rowMark)
+            {
+                row++;
+                rowMark = mark;
+                inFirstRow = false;
+            }
+            else if (inFirstRow)
+            {
+                column++;
+            }
+            if (previous.StartPosition >= at) break;
+            at = previous.StartPosition;
+        }
+        return block with { TableRow = row, TableColumn = column };
     }
 
     /// <summary>The paragraphs the selection touches.</summary>
@@ -1041,7 +1067,7 @@ internal sealed class RichEditDocument
     // ─────────────────────────────── Enter ───────────────────────────────────
 
     /// <summary>What <see cref="HandleEnter"/> did, for the caller to announce.</summary>
-    internal enum EnterResult { NotHandled, LeftQuote, HeadingBreak, CodeLine, LeftCode }
+    internal enum EnterResult { NotHandled, LeftQuote, HeadingBreak, CodeLine, LeftCode, CellLine }
 
     /// <summary>
     /// Enter where RichEdit's own paragraph break is wrong. Call with nothing selected.
@@ -1051,6 +1077,7 @@ internal sealed class RichEditDocument
     /// elsewhere leaves both halves headings. Left alone, RichEdit carries the heading on.</item>
     /// <item>In a code block, Enter starts a new line of the same block; on an empty last line it
     /// ends the block.</item>
+    /// <item>In a table cell, Enter starts a new line in the cell.</item>
     /// </list>
     /// </summary>
     public EnterResult HandleEnter()
@@ -1059,7 +1086,13 @@ internal sealed class RichEditDocument
         if (selection.EndPosition != selection.StartPosition) return EnterResult.NotHandled;
         int caret = selection.StartPosition;
         var block = BlockAt(caret);
-        if (block.InTable) return EnterResult.NotHandled;
+        if (block.InTable)
+        {
+            // A new paragraph here would be a new cell. A line break keeps the text in this one.
+            Doc.GetRange(caret, caret).SetText(TextSetOptions.None, RichBody.LineBreak);
+            Doc.Selection.SetRange(caret + 1, caret + 1);
+            return EnterResult.CellLine;
+        }
         bool empty = block.End - block.Start <= 1;
         bool atEnd = caret >= block.End - 1;
 

@@ -172,6 +172,7 @@ internal sealed class WinUiEditorHost : HwndHost, IPlainTextEditor
         TabPressed = null;
         PasteRequested = null;
         CopyRequested = null;
+        ContextMenuItemsRequested = null;
         Dispose();
     }
 
@@ -197,6 +198,12 @@ internal sealed class WinUiEditorHost : HwndHost, IPlainTextEditor
     /// </summary>
     public bool IsMenuOpen { get; private set; }
 
+    /// <summary>
+    /// Asked each time the context menu opens: items to put above Cut, Copy and Paste. The owner
+    /// uses it for spelling suggestions when the caret is on a misspelled word.
+    /// </summary>
+    public Func<IReadOnlyList<(string Text, Action Run)>>? ContextMenuItemsRequested { get; set; }
+
     private MenuFlyout BuildContextMenu()
     {
         var menu = new MenuFlyout();
@@ -208,10 +215,22 @@ internal sealed class WinUiEditorHost : HwndHost, IPlainTextEditor
             item.Click += (_, _) => run();
             menu.Items.Add(item);
         }
-        Add("Cut", () => _editor.Document.Selection.Cut());
-        Add("Copy", () => _editor.Document.Selection.Copy());
-        Add("Paste", Paste);
-        Add("Select All", () => Select(0, Text.Length));
+        void Fill()
+        {
+            menu.Items.Clear();
+            var extra = ContextMenuItemsRequested?.Invoke();
+            if (extra is { Count: > 0 })
+            {
+                foreach (var (text, run) in extra) Add(text, run);
+                menu.Items.Add(new MenuFlyoutSeparator());
+            }
+            Add("Cut", () => _editor.Document.Selection.Cut());
+            Add("Copy", () => _editor.Document.Selection.Copy());
+            Add("Paste", Paste);
+            Add("Select All", () => Select(0, Text.Length));
+        }
+        menu.Opening += (_, _) => Fill();
+        Fill();
         return menu;
     }
 

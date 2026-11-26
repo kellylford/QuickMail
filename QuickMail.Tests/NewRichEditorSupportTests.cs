@@ -117,6 +117,10 @@ public class NewRichEditorSupportTests
         Assert.Equal("Bullet list item", ComposeWindow.BlockLabel(Block(list: RichListKind.Bullet)));
         Assert.Equal("Numbered list item, level 2", ComposeWindow.BlockLabel(Block(list: RichListKind.Numbered, level: 1)));
         Assert.Equal("Table cell", ComposeWindow.BlockLabel(Block(table: true)));
+        Assert.Equal("Table cell, row 2, column 3",
+            ComposeWindow.BlockLabel(Block(table: true) with { TableRow = 2, TableColumn = 3 }));
+        Assert.Equal("Table cell, row 1, column 1, quote",
+            ComposeWindow.BlockLabel(Block(table: true, quote: 1) with { TableRow = 1, TableColumn = 1 }));
         Assert.Equal("Quote", ComposeWindow.BlockLabel(Block(quote: 1)));
         Assert.Equal("Quote, level 2", ComposeWindow.BlockLabel(Block(quote: 2)));
         Assert.Equal("Heading 2, quote", ComposeWindow.BlockLabel(Block(heading: 2, quote: 1)));
