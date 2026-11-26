@@ -68,6 +68,16 @@
          app that is not compiled ahead of time, and none of its view models are bound from WinUI
          XAML: the hosted editor is the only WinUI object and it is driven from code. -->
     <NoWarn>$(NoWarn);MVVMTK0045</NoWarn>
+    <!-- Two more that only the .NET 11 SDK raises (GitHub's runners have it; global.json rolls
+         forward to the latest major), and that `-warnaserror` in the publish steps turns into
+         errors:
+         CsWinRT1032: a collection expression assigned to a read-only interface "is not supported
+         for trimming and AOT". The same case as MVVMTK0045: QuickMail is neither trimmed nor
+         compiled ahead of time, and passes none of these collections to WinRT.
+         NETSDK1244: IncludeAllContentForSelfExtract "enables a legacy compatibility mode". The
+         Windows App SDK requires it for a single-file exe (its DLLs are found through the app
+         manifest, beside the unpacked files) and sets it itself. -->
+    <NoWarn>$(NoWarn);CsWinRT1032;NETSDK1244</NoWarn>
   </PropertyGroup>
 
 </Project>
