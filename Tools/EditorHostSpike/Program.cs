@@ -15,6 +15,8 @@ public static class Program
     [STAThread]
     public static void Main()
     {
+        Velopack.VelopackApp.Build().Run();
+
         // The Windows App SDK's UI stack needs a dispatcher queue on this thread, and a WinUI
         // Application object for its controls, resources and metadata.
         var controller = DispatcherQueueController.CreateOnCurrentThread();

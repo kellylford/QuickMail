@@ -19,6 +19,12 @@
     <EnableMsixTooling>true</EnableMsixTooling>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.8.*" />
+    <!-- Only the WinUI part of the Windows App SDK. The whole SDK (Microsoft.WindowsAppSDK) adds
+         about 50 MB of AI and ML libraries QuickMail has no use for, and its single-file exe
+         doesn't start: its manifest names SessionHandleIPCProxyStub.dll twice, and Windows
+         refuses it ("side-by-side configuration is incorrect"). -->
+    <PackageReference Include="Microsoft.WindowsAppSDK.WinUI" Version="1.8.*" />
+    <!-- As QuickMail: vpk pack refuses an exe whose Main doesn't run VelopackApp first. -->
+    <PackageReference Include="Velopack" Version="1.2.161" />
   </ItemGroup>
 </Project>
