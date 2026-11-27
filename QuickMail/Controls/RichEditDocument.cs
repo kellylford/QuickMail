@@ -58,6 +58,7 @@ internal sealed class RichEditDocument
     // Where inline code was loaded, so its font can be put back (see MendFonts). Ranges move
     // with the text around them.
     private readonly List<ITextRange> _codeRanges = new();
+    private bool _loading;
 
     /// <param name="resolveImage">The picture for a <c>src</c> as the editor draws it, or null for a placeholder.</param>
     public RichEditDocument(RichEditBox editor, Func<string, BitmapSource?> resolveImage)
@@ -89,6 +90,7 @@ internal sealed class RichEditDocument
         _images.Clear();
         _codeRanges.Clear();
         _typingFormat = null;
+        _loading = true;
         Doc.BatchDisplayUpdates();
         try
         {
@@ -115,6 +117,7 @@ internal sealed class RichEditDocument
         }
         finally
         {
+            _loading = false;
             Doc.ApplyDisplayUpdates();
         }
         Doc.ClearUndoRedoHistory();
@@ -137,6 +140,10 @@ internal sealed class RichEditDocument
 
         var raw = Raw();
         if (raw.Length == 0) return;
+        // With nothing to undo yet (the usual case: the body was loaded a moment ago), the
+        // history is cleared again afterwards. Otherwise one Ctrl+Z too many would take the
+        // code font back off, and inline code would be sent as plain text.
+        bool nothingToUndo = !Doc.CanUndo();
         Doc.BatchDisplayUpdates();
         try
         {
@@ -164,49 +171,62 @@ internal sealed class RichEditDocument
         {
             Doc.ApplyDisplayUpdates();
         }
+        if (nothingToUndo) Doc.ClearUndoRedoHistory();
+    }
+
+    /// <summary>True when the selection takes in the whole body (as after Ctrl+A).</summary>
+    public bool EverythingIsSelected()
+    {
+        var selection = Doc.Selection;
+        int last = Math.Max(0, Doc.GetRange(0, 0).StoryLength - 1);
+        return last > 0 && selection.StartPosition == 0 && selection.EndPosition >= last;
     }
 
     /// <summary>
-    /// A body with nothing in it is plain text. Deleting everything leaves one empty paragraph
-    /// that keeps the kind of the last one (a heading, a list item, a code block, a quote), and
+    /// Deletes the whole body and leaves it plain text, as one undo step. Deleting everything
+    /// the control's way leaves one empty paragraph that keeps the kind of the last one (a
+    /// heading, a list item, a code block, a quote) and whatever was switched on for typing;
     /// that empty paragraph was then sent as an empty heading or bullet, and counted as
-    /// "formatting" that switching to Plain Text would lose. Returns true if it changed anything.
+    /// "formatting" that switching to Plain Text would lose.
     /// </summary>
-    public bool ResetIfEmpty()
+    public void DeleteEverything()
     {
-        var raw = Raw();
-        if (raw.Length > 1 || (raw.Length == 1 && raw[0] != (char)13)) return false;
-        var range = Doc.GetRange(0, raw.Length);
-        var format = range.ParagraphFormat;
-        bool plain = format.Style is ParagraphStyle.Normal or ParagraphStyle.None or ParagraphStyle.Undefined
-                     && format.ListType is MarkerType.None or MarkerType.Undefined
-                     && format.KeepTogether != FormatEffect.On
-                     && format.KeepWithNext != FormatEffect.On
-                     && Math.Round(format.RightIndent) == 0
-                     && Math.Round(format.LeftIndent) == 0;
-        var caret = Doc.Selection.CharacterFormat;
-        plain = plain && caret.Bold != FormatEffect.On && caret.Italic != FormatEffect.On
-                && caret.Underline is UnderlineType.None or UnderlineType.Undefined
-                && caret.Strikethrough != FormatEffect.On;
-        if (plain) return false;
-
-        format.Style = ParagraphStyle.Normal;
-        format.ListType = MarkerType.None;
-        format.KeepTogether = FormatEffect.Off;
-        format.KeepWithNext = FormatEffect.Off;
-        format.NoLineNumber = FormatEffect.Off;
-        format.Alignment = ParagraphAlignment.Left;
-        format.SetIndents(0, 0, 0);
-        foreach (var characters in new[] { range.CharacterFormat, Doc.Selection.CharacterFormat })
+        Doc.BeginUndoGroup();
+        try
         {
-            characters.Bold = FormatEffect.Off;
-            characters.Italic = FormatEffect.Off;
-            characters.Underline = UnderlineType.None;
-            characters.Strikethrough = FormatEffect.Off;
-            characters.Size = BaseSize;
-            characters.Name = BaseFont;
+            var all = Doc.GetRange(0, Math.Max(0, Doc.GetRange(0, 0).StoryLength - 1));
+            all.SetText(TextSetOptions.None, string.Empty);
+            var range = Doc.GetRange(0, 1);
+            var format = range.ParagraphFormat;
+            format.Style = ParagraphStyle.Normal;
+            format.ListType = MarkerType.None;
+            format.KeepTogether = FormatEffect.Off;
+            format.KeepWithNext = FormatEffect.Off;
+            format.NoLineNumber = FormatEffect.Off;
+            format.Alignment = ParagraphAlignment.Left;
+            format.SetIndents(0, 0, 0);
+            Doc.Selection.SetRange(0, 0);
+            foreach (var characters in new[] { range.CharacterFormat, Doc.Selection.CharacterFormat })
+            {
+                characters.Bold = FormatEffect.Off;
+                characters.Italic = FormatEffect.Off;
+                characters.Underline = UnderlineType.None;
+                characters.Strikethrough = FormatEffect.Off;
+                characters.Size = BaseSize;
+                characters.Name = BaseFont;
+            }
+            _typingFormat = null;
         }
-        return true;
+        finally { Doc.EndUndoGroup(); }
+    }
+
+    /// <summary>The caret moved: a format switched on for typing somewhere else no longer applies.</summary>
+    public void ForgetTypingFormatIfMoved()
+    {
+        if (_typingFormat is not { } wanted) return;
+        var selection = Doc.Selection;
+        if (selection.StartPosition != selection.EndPosition || selection.StartPosition != wanted.Position)
+            _typingFormat = null;
     }
 
     /// <summary>
@@ -417,7 +437,7 @@ internal sealed class RichEditDocument
                 if (run.Underline) format.Underline = UnderlineType.Single;
                 if (run.Strike) format.Strikethrough = FormatEffect.On;
                 if (run.Code || p.Pre) format.Name = CodeFontName;
-                if (run.Code && !p.Pre) _codeRanges.Add(Doc.GetRange(from, to));
+                if (_loading && run.Code && !p.Pre) _codeRanges.Add(Doc.GetRange(from, to));
             }
 
             bool firstOfLink = run.Link is not null
@@ -1383,7 +1403,10 @@ internal sealed class RichEditDocument
         {
             // Enter on an empty list item ends the list there. The control's own Enter does that
             // and adds a paragraph as well, which left a blank line after every list.
-            SetQuoteAndList(RangeOf(block), block.QuoteDepth, RichListKind.None, 0);
+            if (block.ListLevel > 0)
+                SetQuoteAndList(RangeOf(block), block.QuoteDepth, block.List, block.ListLevel - 1);
+            else
+                SetQuoteAndList(RangeOf(block), block.QuoteDepth, RichListKind.None, 0);
             return EnterResult.LeftList;
         }
 

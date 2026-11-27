@@ -728,7 +728,7 @@ public partial class ComposeWindow : Window
             var files = Clipboard.GetFileDropList().Cast<string>().Where(f => f != null).ToList();
             // Pasted into the body of a rich message, pictures go in the body (#729); anything
             // else, and every file pasted anywhere else, is attached as before.
-            _ = AnyBodyHasFocus ? TakeFilesIntoBodyAsync(files) : AttachFilesAsync(files);
+            PasteFiles(files, AnyBodyHasFocus);
             return true;
         }
 
@@ -758,6 +758,25 @@ public partial class ComposeWindow : Window
             return true;
         }
         return false;
+    }
+
+    /// <summary>
+    /// Files pasted with Ctrl+V. Not awaited by the key that started it, so a file that cannot be
+    /// read (open in another program) is caught and said here, not lost in silence.
+    /// </summary>
+    private async void PasteFiles(System.Collections.Generic.List<string> files, bool intoBody)
+    {
+        try
+        {
+            if (intoBody) await TakeFilesIntoBodyAsync(files);
+            else await AttachFilesAsync(files);
+        }
+        catch (Exception ex) when (ex is System.IO.IOException or UnauthorizedAccessException or NotSupportedException)
+        {
+            LogService.Log("Compose: pasting files", ex);
+            AccessibilityHelper.Announce(this, "A pasted file could not be read, so it was not attached.",
+                category: AnnouncementCategory.Result);
+        }
     }
 
     /// <summary>Runs the compose command bound to a key, if there is one and it is available.</summary>

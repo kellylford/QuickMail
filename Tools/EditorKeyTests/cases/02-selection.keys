@@ -92,3 +92,26 @@ text: one two three
 caret: select "two"
 keys: {LEFT}
 caret-is: before "two"
+
+== Ctrl+Shift+End does not take in the mark that ends the body
+text: alpha\nbeta
+caret: before "beta"
+keys: ^+{END}
+selection-is: "beta"
+keys: ^c
+keys: ^{END}
+keys: ^v
+text-is: alpha\nbetabeta
+
+== Shift+Down on the last line selects to the end of the body and no further
+text: alpha\nbeta
+caret: before "beta"
+keys: +{DOWN}
+selection-is: "beta"
+
+== Shift+End after selecting upward leaves the far end where it was
+text: alpha beta\ngamma
+caret: before "gamma"
+keys: +{UP}
+keys: +{END}
+selection-is: "\n"

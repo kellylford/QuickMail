@@ -69,6 +69,7 @@ markdown: ```\nline one\n```
 caret: after "line one"
 keys: {ENTER}
 type: line two
+text-is: line one\vline two
 markdown-is: ```\nline one\nline two\n```
 
 == Enter on an empty last line of a code block leaves the block
@@ -96,6 +97,8 @@ markdown: | Name | Size |\n| --- | --- |\n| One | 12 |
 caret: after "One"
 keys: {ENTER}
 type: more
+# \v is a line break inside the cell's paragraph: a new paragraph (\n) would be a new cell.
+text-is: Name\nSize\nOne\vmore\n12\n
 markdown-is: | Name | Size |\n| --- | --- |\n| One more | 12 |
 
 == Backspace at the start of a table cell does not merge it with the cell before
@@ -158,3 +161,47 @@ keys: ^i
 type: three
 keys: ^i
 markdown-is: *three*
+
+== Ctrl+Backspace at the start of a table cell does not merge it with the cell before
+modes: html
+markdown: | Name | Size |\n| --- | --- |\n| One | 12 |
+caret: before "Size"
+keys: ^{BACKSPACE}
+markdown-is: | Name | Size |\n| --- | --- |\n| One | 12 |
+
+== Ctrl+Delete at the end of a table cell does not merge it with the next cell
+modes: html
+markdown: | Name | Size |\n| --- | --- |\n| One | 12 |
+caret: after "Name"
+keys: ^{DELETE}
+markdown-is: | Name | Size |\n| --- | --- |\n| One | 12 |
+
+== Deleting a whole heading leaves plain text, and Undo brings the heading back
+modes: html
+markdown: # Title
+keys: ^a{DELETE}
+text-is: 
+keys: ^z
+text-is: Title
+markdown-is: # Title
+keys: ^a{DELETE}
+type: plain
+markdown-is: plain
+
+== Deleting the words of a heading to retype them keeps it a heading
+modes: html
+markdown: # Title
+caret: end
+keys: +{HOME}
+keys: {DELETE}
+type: Other
+markdown-is: # Other
+
+== Enter on an empty nested list item brings it out one level
+modes: html
+markdown: - one\n  - two
+caret: end
+keys: {ENTER}
+keys: {ENTER}
+type: three
+markdown-is: - one\n  - two\n- three

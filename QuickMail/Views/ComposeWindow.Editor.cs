@@ -109,6 +109,8 @@ public partial class ComposeWindow
         host.PreviewKeyDown += BodyBox_PreviewKeyDown; // Alt+1/2/3 only: other keys come through KeyRouter
         host.KeyRouter = (key, modifiers) => RouteBodyKey(host, key, modifiers);
         host.FocusStrayed = FocusActiveEditor;
+        host.AltCombinationUsed = () => _suppressNextMenuActivation = true;
+        host.KeyFailed = OnBodyKeyFailed;
         host.TabPressed = HandleBodyTab;
         host.FilesDropped += OnNewEditorFilesDropped;
         host.HostingFailed += OnNewEditorHostingFailed;

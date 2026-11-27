@@ -17,28 +17,23 @@ using WinUiAutomation = Microsoft.UI.Xaml.Automation.AutomationProperties;
 namespace QuickMail.Controls;
 
 /// <summary>
-/// The #1099 experiment: WinUI 3's <c>RichEditBox</c> as a plain-text editor inside a WPF window.
-/// The editor lives in a WinUI XAML island (<c>DesktopWindowXamlSource</c>) whose window is a child
-/// of a plain container window this <see cref="HwndHost"/> owns.
+/// The message body's editor (#1099): WinUI 3's <c>RichEditBox</c> in a XAML island, hosted in
+/// the WPF compose window. One instance edits Plain Text and Markdown; another, made with
+/// <c>rich: true</c>, edits HTML through <see cref="Rich"/>.
 ///
-/// <para><b>Why:</b> the reading bugs fixed in #1096 and the typed-word problem behind the NVDA
-/// Typing Fix (#300) are in WPF's own text provider. RichEditBox is the one editor that read
-/// correctly with every screen reader Kelly tried.</para>
+/// <para><b>Keys.</b> Every key typed here is taken in the thread's message filter
+/// (<see cref="TakeKey"/>, <see cref="DeliverKey"/>), by where Windows' keyboard focus is. WPF's
+/// own key events are never raised for them; Alt combinations are the exception, and still go
+/// through WPF for access keys and menus. The owner's commands come first
+/// (<see cref="KeyRouter"/>), then Tab and the editing combinations, which are carried out here
+/// (<see cref="TryEditingChord"/>), and anything else goes to the control as it stands.</para>
 ///
-/// <para><b>Keys and focus</b> cross between WPF and the island in four places, each of which was a
-/// real failure in the Stage 1 spike (Tools/EditorHostSpike/README.md):
-/// <see cref="TranslateCharCore"/>, <see cref="OnKeyDown"/>, <see cref="FocusEditor"/> and
-/// <see cref="WndProc"/>. The window's own <c>PreviewKeyDown</c> still sees every key first, with
-/// this element as the focused one, so command keys work from inside the editor.</para>
+/// <para><b>Focus.</b> One rule decides when focus may be put into the editor
+/// (<see cref="MayTakeFocus"/>) and one path does it (<see cref="Settle"/>). Windows does not give
+/// an island its focus back when the window is activated again, so this is not optional.</para>
 ///
-/// <para><b>Plain text.</b> RichEditBox is a rich editor; for the Plain Text and Markdown body its
-/// formatting keys are off, paste takes text only, and <see cref="Text"/> is the document's text
-/// with "\r\n" line breaks.</para>
-///
-/// <para><b>Rich.</b> For HTML messages the same control is made with <c>rich: true</c>. The
-/// formatting is then driven through <see cref="Rich"/>, paste and copy are the owner's
-/// (<see cref="PasteRequested"/>, <see cref="CopyRequested"/>), and <see cref="Text"/> is the
-/// text with everything that is not the user's words blanked, for spelling.</para>
+/// <para><b>Text.</b> <see cref="Text"/> and the selection members speak in the offsets the rest
+/// of QuickMail uses (line ends as one character each); see <see cref="RichEditOffsets"/>.</para>
 /// </summary>
 internal sealed class WinUiEditorHost : HwndHost, IPlainTextEditor
 {
@@ -91,11 +86,25 @@ internal sealed class WinUiEditorHost : HwndHost, IPlainTextEditor
         // keys, which still go through WPF, and focus restored after a dialog start from here.
         _editor.GotFocus += (_, _) =>
         {
-            if (!IsVisible) return;
-            var scope = FocusManager.GetFocusScope(this);
-            if (scope != null && !ReferenceEquals(FocusManager.GetFocusedElement(scope), this))
-                FocusManager.SetFocusedElement(scope, this);
+            // Only when WPF has no focused element at all. If it believes another control is
+            // focused, setting the logical focus here would make it move keyboard focus to this
+            // element, which puts Windows' focus on the outer window in the middle of whatever
+            // brought focus to the editor.
+            if (!IsVisible || Keyboard.FocusedElement != null) return;
+            try
+            {
+                var scope = FocusManager.GetFocusScope(this);
+                if (scope != null && !ReferenceEquals(FocusManager.GetFocusedElement(scope), this))
+                    FocusManager.SetFocusedElement(scope, this);
+            }
+            catch (InvalidOperationException ex)
+            {
+                Services.LogService.Debug($"New editor: recording focus with WPF: {ex.Message}");
+            }
         };
+        // While an input method is composing text, every key is its: QuickMail takes none.
+        _editor.TextCompositionStarted += (_, _) => _composing = true;
+        _editor.TextCompositionEnded += (_, _) => _composing = false;
         _editor.Paste += OnPaste;
         _editor.DragOver += OnDragOver;
         _editor.Drop += OnDrop;
@@ -129,6 +138,15 @@ internal sealed class WinUiEditorHost : HwndHost, IPlainTextEditor
     /// editor. Runs before the editor sees the key.
     /// </summary>
     public Func<Key, ModifierKeys, bool>? KeyRouter { get; set; }
+
+    /// <summary>A key was pressed in this editor while Alt was down (Ctrl+Alt, or AltGr).</summary>
+    public Action? AltCombinationUsed { get; set; }
+
+    /// <summary>A command run from a key in this editor threw. The error has been logged.</summary>
+    public Action<Exception>? KeyFailed { get; set; }
+
+    // An input method is composing text in the editor.
+    private bool _composing;
 
     /// <summary>
     /// A key arrived while Windows' focus was in this editor although it is hidden. The key is
@@ -170,13 +188,31 @@ internal sealed class WinUiEditorHost : HwndHost, IPlainTextEditor
         if (!host.IsVisible)
         {
             // Focus is in an editor the user cannot see (the other format's). Nothing typed may
-            // go into it. Drop the key and have the owner put focus right.
-            if (msg.message == WM_KEYDOWN)
+            // go into it. The key goes to the editor that is showing in the same window, with
+            // focus, at once: dropping it lost the first letters of whatever was being typed.
+            var showing = s_hosts.FirstOrDefault(h => !ReferenceEquals(h, host) && h.IsVisible && h._source != null
+                                                      && ReferenceEquals(Window.GetWindow(h), Window.GetWindow(host)));
+            if (showing != null)
             {
-                Services.LogService.Debug("New editor: a key arrived in a hidden editor; dropped, and focus is being put right.");
-                host.FocusStrayed?.Invoke();
+                showing.TakeFocusNow();
+                if (showing.IslandHasFocus)
+                {
+                    Services.LogService.Debug("New editor: a key arrived in the hidden editor; focus and the key went to the one showing.");
+                    s_wanted = showing;
+                    msg.hwnd = GetFocus();
+                    focus = msg.hwnd;
+                    host = showing;
+                }
             }
-            return true;
+            if (!host.IsVisible)
+            {
+                if (msg.message == WM_KEYDOWN)
+                {
+                    Services.LogService.Debug("New editor: a key arrived in a hidden editor; dropped, and focus is being put right.");
+                    host.FocusStrayed?.Invoke();
+                }
+                return true;
+            }
         }
 
         // Windows' focus can be on a window inside the host while the island itself, the only
@@ -188,15 +224,27 @@ internal sealed class WinUiEditorHost : HwndHost, IPlainTextEditor
         {
             host.TakeFocusNow();
             var now = GetFocus();
+            bool mended = host.IslandHasFocus;
             Services.LogService.Debug($"New editor: focus was on window {DescribeWindow(focus)}, not on the editor's island; " +
-                                      $"moved to {DescribeWindow(now)} (island has focus now: {host.IslandHasFocus}).");
-            if (now != IntPtr.Zero) msg.hwnd = now;
+                                      $"moved to {DescribeWindow(now)} (island has focus now: {mended}).");
+            // Only to the island: a key sent to any other window in the host goes nowhere.
+            if (mended && now != IntPtr.Zero) msg.hwnd = now;
         }
 
-        if (msg.message != WM_KEYDOWN || vk == VK_PROCESSKEY || host.IsMenuOpen) return false;
+        if (msg.message != WM_KEYDOWN || vk == VK_PROCESSKEY || host.IsMenuOpen || host._composing) return false;
 
         var key = KeyInterop.KeyFromVirtualKey(vk);
         var modifiers = CurrentModifiers();
+        if ((modifiers & ModifierKeys.Alt) != 0)
+        {
+            // Ctrl+Alt arrives here (AltGr on many keyboards). WPF sees only the Alt key go down
+            // and up, which it would take for "Alt pressed alone" and answer by opening the menu
+            // bar; the owner is told a key was used with it.
+            host.AltCombinationUsed?.Invoke();
+            // And when the combination types a character on this keyboard (AltGr+Q for "@"), it
+            // is typing, not a command.
+            if (TypesCharacter(vk, msg.lParam)) return false;
+        }
         if (Services.LogService.DebugMode && vk is not (VK_CONTROL or VK_SHIFT))
             Services.LogService.Debug($"New editor: key {key} ({modifiers}) in the {(host.Rich != null ? "HTML" : "plain")} editor.");
 
@@ -265,16 +313,33 @@ internal sealed class WinUiEditorHost : HwndHost, IPlainTextEditor
                 selection.HomeKey(control ? TextRangeUnit.Story : TextRangeUnit.Line, shift);
                 break;
             case Key.End:
-                selection.EndKey(control ? TextRangeUnit.Story : TextRangeUnit.Line, shift);
+            {
                 // Extending to the end of a line stops before the mark that ends its paragraph,
-                // as the key does; the document's method takes the mark in.
-                if (shift && !control && selection.EndPosition > selection.StartPosition)
+                // as the key does; the document's method takes the mark in. The end that moves
+                // is the active one, which is the selection's start when it was made upward.
+                bool startWasActive = (selection.Options & SelectionOptions.StartActive) != 0
+                                      && selection.StartPosition != selection.EndPosition;
+                int activeBefore = startWasActive ? selection.StartPosition : selection.EndPosition;
+                int anchor = startWasActive ? selection.EndPosition : selection.StartPosition;
+                selection.EndKey(control ? TextRangeUnit.Story : TextRangeUnit.Line, shift);
+                if (shift && !control)
                 {
-                    var last = document.GetRange(selection.EndPosition - 1, selection.EndPosition);
-                    last.GetText(TextGetOptions.None, out var ch);
-                    if (ch == "\r") selection.MoveEnd(TextRangeUnit.Character, -1);
+                    // Where the active end went: the end that is not the anchor (or, when the
+                    // two have met, that same place).
+                    int active = selection.StartPosition == anchor ? selection.EndPosition : selection.StartPosition;
+                    if (active > activeBefore && active > 0)
+                    {
+                        document.GetRange(active - 1, active).GetText(TextGetOptions.None, out var ch);
+                        if (ch == "\r")
+                        {
+                            active--;
+                            selection.SetRange(Math.Min(anchor, active), Math.Max(anchor, active));
+                            if (active < anchor) selection.Options |= SelectionOptions.StartActive;
+                        }
+                    }
                 }
                 break;
+            }
             case Key.PageUp when !control:
                 selection.MoveUp(TextRangeUnit.Screen, 1, shift);
                 break;
@@ -299,11 +364,11 @@ internal sealed class WinUiEditorHost : HwndHost, IPlainTextEditor
 
             case Key.C when control && !shift:
             case Key.Insert when control && !shift:
-                if (CopyRequested?.Invoke(false) != true) selection.Copy();
+                CopySelection(cut: false);
                 return true;
             case Key.X when control && !shift:
             case Key.Delete when shift && !control:
-                if (CopyRequested?.Invoke(true) != true) selection.Cut();
+                CopySelection(cut: true);
                 break;
             case Key.V when control && !shift:
             case Key.Insert when shift && !control:
@@ -321,10 +386,69 @@ internal sealed class WinUiEditorHost : HwndHost, IPlainTextEditor
                 return false;
         }
 
+        // A selection never takes in the mark that ends the document: copied, it pasted as an
+        // extra blank line.
+        int lastPosition = Math.Max(0, document.GetRange(0, 0).StoryLength - 1);
+        if (shift && selection.EndPosition > lastPosition && selection.StartPosition <= lastPosition)
+            selection.SetRange(selection.StartPosition, lastPosition);
+
         // Keep the end of the selection that moved in view, as the control does for its own keys.
         bool startActive = (selection.Options & SelectionOptions.StartActive) != 0;
         selection.ScrollIntoView(startActive ? PointOptions.Start : PointOptions.None);
         return true;
+    }
+
+    /// <summary>
+    /// Copy or Cut. A formatted body's owner writes the clipboard (HTML and text). A plain body
+    /// puts its text there itself: the document's own Copy writes rich text too, and a Plain Text
+    /// message must never put fonts on the clipboard.
+    /// </summary>
+    private void CopySelection(bool cut)
+    {
+        if (CopyRequested?.Invoke(cut) == true) return;
+        var selection = _editor.Document.Selection;
+        if (selection.StartPosition == selection.EndPosition) return;
+        if (Rich != null)
+        {
+            if (cut) selection.Cut(); else selection.Copy();
+            return;
+        }
+        string text = SelectedText.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n')
+            .Replace("\n", "\r\n", StringComparison.Ordinal);
+        try
+        {
+            Clipboard.SetDataObject(new DataObject(DataFormats.UnicodeText, text), copy: true);
+        }
+        catch (COMException)
+        {
+            return; // another program has the clipboard open: nothing copied, so nothing is cut
+        }
+        if (cut) selection.SetText(TextSetOptions.None, string.Empty);
+    }
+
+    /// <summary>
+    /// True when this key, with the modifiers held now, types a character on the current
+    /// keyboard layout: AltGr+Q for "@" on a German keyboard arrives as Ctrl+Alt+Q.
+    /// </summary>
+    private static bool TypesCharacter(int vk, IntPtr lParam)
+    {
+        var state = new byte[256];
+        if (!GetKeyboardState(state)) return false;
+        var buffer = new char[8];
+        uint scan = (uint)((lParam.ToInt64() >> 16) & 0xFF);
+        // Flag 4: do not change the keyboard's state (dead keys) by asking.
+        int count = ToUnicode((uint)vk, scan, state, buffer, buffer.Length, 4);
+        return count > 0 && !char.IsControl(buffer[0]);
+    }
+
+    /// <summary>
+    /// Tells the user that a key did not do its work. Called when a command run from a key in
+    /// the body threw: the error is in the log, and silence would leave the user guessing.
+    /// </summary>
+    internal static void ReportKeyError(Exception ex)
+    {
+        var host = s_hosts.FirstOrDefault(h => h.IsVisible && h.HasFocus) ?? s_hosts.FirstOrDefault(h => h.IsVisible);
+        host?.KeyFailed?.Invoke(ex);
     }
 
     /// <summary>
@@ -444,6 +568,9 @@ internal sealed class WinUiEditorHost : HwndHost, IPlainTextEditor
         ContextMenuItemsRequested = null;
         KeyRouter = null;
         FocusStrayed = null;
+        AltCombinationUsed = null;
+        KeyFailed = null;
+        if (ReferenceEquals(s_wanted, this)) s_wanted = null;
         CancelFocusRetry();
         s_hosts.Remove(this);
         Dispose();
@@ -789,60 +916,101 @@ internal sealed class WinUiEditorHost : HwndHost, IPlainTextEditor
             Math.Max(1, (int)(ActualWidth * dpi.DpiScaleX)), Math.Max(1, (int)(ActualHeight * dpi.DpiScaleY))));
     }
 
+    // The editor the keyboard was last asked to be in. Focus is only ever put into this one,
+    // so a request made for the HTML editor before the format changed cannot take focus from
+    // the Plain Text editor that replaced it.
+    private static WinUiEditorHost? s_wanted;
+    private int _settleSerial;
+
     /// <summary>
-    /// Puts focus in the editor. Deferred, so it runs after WPF has finished moving its own focus
-    /// to this element, which puts Win32 focus on the container window.
-    /// <c>NavigateFocus(Programmatic)</c> alone left focus on the island's pane, and after a dialog
-    /// closes WinUI still counts the editor as focused, so <c>Focus</c> alone does nothing: Win32
-    /// focus goes to the island's window first.
+    /// Asks for keyboard focus in the editor. It is put there by <see cref="Settle"/>, after WPF
+    /// has finished moving its own focus (which puts Windows' focus on the outer window), and
+    /// checked a few times afterwards.
     /// </summary>
-    public void FocusEditor() => FocusEditor(attempt: 0);
-
-    // Every request to focus an editor, across all of them. Only the newest one runs: a request
-    // queued for the HTML editor before the format changed must not take focus from the Plain
-    // Text editor that replaced it, which is what left focus in an editor that was hidden.
-    private static int s_focusRequest;
-
-    private void FocusEditor(int attempt)
+    public void FocusEditor()
     {
-        // A request for an editor that is hidden is not a request at all, and above all must
-        // not cancel one already queued for the editor that is showing.
+        // A request for an editor that is hidden is not a request at all.
         if (!IsVisible) return;
-        int request = ++s_focusRequest;
-        Dispatcher.BeginInvoke(DispatcherPriority.Input, () =>
-        {
-            if (request != s_focusRequest) return;
-            // Queued before the window closed: there is nothing left to focus. Closing destroys
-            // the container (a child window) before WPF disposes this element, and the island's
-            // bridge goes with it while _source is still set.
-            if (_container == IntPtr.Zero || !IsWindow(_container)) return;
-            if (_source?.SiteBridge == null) return;
-            // Never into an editor that is hidden: keys typed there go nowhere the user can see.
-            if (!IsVisible) return;
-            TakeFocusNow();
+        s_wanted = this;
+        ScheduleSettle(0);
+    }
 
-            // Check it took, once things have settled. An island shown a moment ago can refuse
-            // focus, and then Windows' focus sits on it with no editor to receive the keys.
-            Dispatcher.BeginInvoke(DispatcherPriority.ContextIdle, () =>
-            {
-                if (request != s_focusRequest || !IsVisible || _source == null) return;
-                bool inEditor = IslandHasFocus && _editor.FocusState != Microsoft.UI.Xaml.FocusState.Unfocused;
-                if (inEditor) return;
-                if (attempt >= 4)
-                {
-                    Services.LogService.Log("New editor: the message body did not take focus after several tries.");
-                    return;
-                }
-                Services.LogService.Debug($"New editor: focus did not reach the editor (try {attempt + 1}); trying again.");
-                var timer = new DispatcherTimer(DispatcherPriority.Input) { Interval = TimeSpan.FromMilliseconds(60) };
-                timer.Tick += (_, _) =>
-                {
-                    timer.Stop();
-                    if (request == s_focusRequest) FocusEditor(attempt + 1);
-                };
-                timer.Start();
-            });
-        });
+    private void ScheduleSettle(int attempt)
+    {
+        int serial = ++_settleSerial;
+        void Run()
+        {
+            if (serial == _settleSerial) Settle(attempt);
+        }
+
+        if (attempt == 0)
+        {
+            Dispatcher.BeginInvoke(DispatcherPriority.Input, (Action)Run);
+            return;
+        }
+        // Later looks: soon, in case the island refused; then after a quarter second, in case
+        // something (WPF restoring focus after a dialog) moved focus to the outer window since.
+        var timer = new DispatcherTimer(DispatcherPriority.Input) { Interval = TimeSpan.FromMilliseconds(attempt == 1 ? 60 : 250) };
+        timer.Tick += (_, _) =>
+        {
+            timer.Stop();
+            Run();
+        };
+        timer.Start();
+    }
+
+    /// <summary>
+    /// The one place focus is put into the editor without a key having been pressed in it.
+    /// </summary>
+    private void Settle(int attempt)
+    {
+        if (!ReferenceEquals(s_wanted, this)) return;
+        // Queued before the window closed: there is nothing left to focus. Closing destroys the
+        // container (a child window) before WPF disposes this element, and the island's bridge
+        // goes with it while _source is still set.
+        if (_container == IntPtr.Zero || !IsWindow(_container) || _source?.SiteBridge == null) return;
+        // Never into an editor that is hidden: keys typed there go nowhere the user can see.
+        if (!IsVisible) return;
+
+        if (!MayTakeFocus())
+        {
+            // The keyboard is somewhere it was put on purpose. Stop wanting it.
+            s_wanted = null;
+            return;
+        }
+
+        bool inEditor = IslandHasFocus && _editor.FocusState != Microsoft.UI.Xaml.FocusState.Unfocused;
+        if (!inEditor)
+        {
+            if (attempt > 0) Services.LogService.Debug($"New editor: focus was not in the editor (look {attempt}); putting it there.");
+            TakeFocusNow();
+        }
+        if (attempt < 3) ScheduleSettle(attempt + 1);
+        else if (!inEditor) Services.LogService.Log("New editor: the message body did not take focus after several tries.");
+    }
+
+    /// <summary>
+    /// The one rule for when focus may be put into this editor on QuickMail's initiative: its
+    /// window is the active one and is not disabled behind a dialog, and Windows' focus is on
+    /// nothing, already inside one of the window's editors, or on the window itself with WPF
+    /// either having no focused element or counting an editor as it. Anything else means the
+    /// user, or a command, has put the keyboard in another control, and it stays there.
+    /// </summary>
+    private bool MayTakeFocus()
+    {
+        if (PresentationSource.FromVisual(this) is not HwndSource root) return false;
+        if (GetActiveWindow() != root.Handle || !IsWindowEnabled(root.Handle)) return false;
+        var focus = GetFocus();
+        if (focus == IntPtr.Zero) return true;
+        if (focus == root.Handle)
+            return Keyboard.FocusedElement is null or WinUiEditorHost;
+        foreach (var host in s_hosts)
+        {
+            if (host._container != IntPtr.Zero && (focus == host._container || IsChild(host._container, focus))
+                && ReferenceEquals(Window.GetWindow(host), Window.GetWindow(this)))
+                return true;
+        }
+        return false;
     }
 
     /// <summary>
@@ -882,25 +1050,6 @@ internal sealed class WinUiEditorHost : HwndHost, IPlainTextEditor
         Focus();
         FocusEditor();
         return true;
-    }
-
-    /// <summary>
-    /// A moment after focus arrived on the host's outer window: if it is still there and not on
-    /// the island, put it on the island. The request made when focus arrived can be dropped (the
-    /// editor not yet showing, a newer request elsewhere), and then a screen reader was left on
-    /// a nameless pane until the next key was pressed.
-    /// </summary>
-    private void CheckFocusSoon()
-    {
-        var timer = new DispatcherTimer(DispatcherPriority.Input) { Interval = TimeSpan.FromMilliseconds(250) };
-        timer.Tick += (_, _) =>
-        {
-            timer.Stop();
-            if (_source == null || !IsVisible || !HasFocus || IslandHasFocus) return;
-            Services.LogService.Debug("New editor: focus was still on the host's outer window; moved to the editor.");
-            TakeFocusNow();
-        };
-        timer.Start();
     }
 
     /// <summary>
@@ -959,11 +1108,8 @@ internal sealed class WinUiEditorHost : HwndHost, IPlainTextEditor
     /// </summary>
     protected override IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
-        if (msg == WM_SETFOCUS && hwnd == _container)
-        {
-            FocusEditor();
-            CheckFocusSoon();
-        }
+        // Windows or WPF put focus on the outer window: that is a request for the editor.
+        if (msg == WM_SETFOCUS && hwnd == _container) FocusEditor();
         // The container is going (its window is closing). Release the island now, while the
         // container and the island's own window still exist.
         else if (msg == WM_DESTROY && hwnd == _container) ReleaseIsland();
@@ -1004,6 +1150,20 @@ internal sealed class WinUiEditorHost : HwndHost, IPlainTextEditor
 
     [DllImport("user32", CharSet = CharSet.Unicode)]
     private static extern int GetClassName(IntPtr hwnd, [Out] char[] name, int max);
+
+    [DllImport("user32")]
+    private static extern IntPtr GetActiveWindow();
+
+    [DllImport("user32")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool IsWindowEnabled(IntPtr hwnd);
+
+    [DllImport("user32")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetKeyboardState([Out] byte[] state);
+
+    [DllImport("user32", CharSet = CharSet.Unicode)]
+    private static extern int ToUnicode(uint virtualKey, uint scanCode, byte[] keyState, [Out] char[] buffer, int size, uint flags);
 
     [DllImport("user32", CharSet = CharSet.Unicode)]
     private static extern IntPtr CreateWindowEx(int exStyle, string cls, string name, int style, int x, int y, int w, int h,

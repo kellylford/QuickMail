@@ -78,19 +78,28 @@ type: b
 text-is: a\tb
 typing-works
 
-== Ctrl+Z undoes typing
-text: one
-caret: end
-type: " two"
-keys: ^z
+== Ctrl+Z brings back what was deleted
+text: one two
+caret: select " two"
+keys: {DELETE}
 text-is: one
+keys: ^z
+text-is: one two
 
 == Ctrl+Y redoes what was undone
-text: one
-caret: end
-type: " two"
+text: one two
+caret: select " two"
+keys: {DELETE}
 keys: ^z
 keys: ^y
+text-is: one
+
+== Ctrl+Z after Ctrl+Backspace brings the word back
+text: one two
+caret: end
+keys: ^{BACKSPACE}
+text-is: "one "
+keys: ^z
 text-is: one two
 
 == Ctrl+C then Ctrl+V copies a word
@@ -133,3 +142,11 @@ keys: ^2
 keys: ^5
 text-is: one two
 selection-is: "two"
+
+== Bold switched on, then Space, then a word: all of it is bold
+modes: html
+type: a
+keys: ^b
+type: " b"
+keys: ^b
+markdown-is: a **b**

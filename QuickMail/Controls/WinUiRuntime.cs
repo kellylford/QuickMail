@@ -78,8 +78,25 @@ internal static class WinUiRuntime
         if (handled) return;
         // A key in a hosted editor is QuickMail's first: commands, Tab and editing combinations
         // are carried out at once, with the modifier keys as they are at this instant.
-        if (WinUiEditorHost.TakeKey(ref msg))
+        //
+        // This runs inside the dispatcher's message loop, outside any dispatcher operation, so
+        // an exception thrown here would not reach the application's handler for unhandled
+        // dispatcher exceptions: it would end the process, and the message with it. Whatever a
+        // command throws is logged, and the key counts as dealt with.
+        try
         {
+            if (WinUiEditorHost.TakeKey(ref msg))
+            {
+                handled = true;
+                return;
+            }
+        }
+#pragma warning disable CA1031 // see above: any exception here would end QuickMail
+        catch (Exception ex)
+#pragma warning restore CA1031
+        {
+            Services.LogService.Log("A key in the message body raised an error", ex);
+            WinUiEditorHost.ReportKeyError(ex);
             handled = true;
             return;
         }

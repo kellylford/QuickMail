@@ -27,7 +27,6 @@ namespace QuickMail.Views;
 public partial class ComposeWindow
 {
     private WinUiEditorHost? _newRich;
-    private bool _newRichHadText;
 
     // The HTML last loaded into the rich editor, to hand to the WPF editor if hosting fails.
     private string _newRichLoadedHtml = string.Empty;
@@ -65,12 +64,29 @@ public partial class ComposeWindow
         BodyBox_PreviewKeyDown(host, e);
     }
 
+    /// <summary>A command run from a key in the body threw. It is in the log; say that it did not work.</summary>
+    private void OnBodyKeyFailed(Exception ex) =>
+        AccessibilityHelper.Announce(this, "That did not work. The error is in the log.", category: AnnouncementCategory.Result);
+
+    private DateTime _cellEdgeSaid;
+    private bool _selectAllJustPressed;
+
+    /// <summary>A key that would have joined two table cells: nothing is deleted, and it says where the caret is.</summary>
+    private bool RefuseAtCellEdge(string where)
+    {
+        // The outcome of the key, so a Result; and once, not on every repeat of a held key.
+        if ((DateTime.UtcNow - _cellEdgeSaid).TotalSeconds > 1.5)
+            AccessibilityHelper.Announce(this, where, category: AnnouncementCategory.Result);
+        _cellEdgeSaid = DateTime.UtcNow;
+        return true;
+    }
+
     private static bool IsFromHost(KeyEventArgs e, WinUiEditorHost host) =>
         ReferenceEquals(e.OriginalSource, host) || ReferenceEquals(e.Source, host);
 
     /// <summary>
     /// A key pressed in a hosted editor, before the editor sees it. Called from the thread's
-    /// message filter (<see cref="WinUiEditorHost.RouteKeyMessage"/>), so it runs whatever WPF
+    /// message filter (<see cref="WinUiEditorHost.TakeKey"/>), so it runs whatever WPF
     /// believes about focus. True takes the key. The order is what the WPF-routed path had: the
     /// window's keys and commands, then keys the editor must not act on, then Enter where the
     /// editor's own paragraph break is wrong. Alt combinations never come here.
@@ -82,36 +98,48 @@ public partial class ComposeWindow
         FlushNewEditorBody();
         NoteBodyKeyForSpelling(key, modifiers);
 
+        // Was the last key Ctrl+A? (The modifier keys arrive as keys of their own.)
+        bool afterSelectAll = _selectAllJustPressed;
+        if (key is not (Key.LeftCtrl or Key.RightCtrl or Key.LeftShift or Key.RightShift))
+            _selectAllJustPressed = key == Key.A && modifiers == ModifierKeys.Control;
+
         if (HandleWindowKey(key, modifiers)) return true;
         if (RunComposeCommand(key, modifiers)) return true;
 
         // A letter is about to go into the HTML body: what Ctrl+B and the like switched on for
         // it must still be on.
-        if (ReferenceEquals(host, _newRich) && IsTypingKey(key, modifiers)) NewRich?.EnsureTypingFormat();
+        if (ReferenceEquals(host, _newRich) && (IsTypingKey(key, modifiers) || key == Key.Space))
+            NewRich?.EnsureTypingFormat();
 
         // RichEdit's own formatting keys (alignment, line spacing, lists, superscript and
         // subscript, all caps) are not commands in a message. Not one of QuickMail's commands by
         // this point, they stop here and never reach the control.
         if (WinUiEditorHost.IsRichEditFormattingKey(key, modifiers)) return true;
 
-        if (ReferenceEquals(host, _newRich) && modifiers == ModifierKeys.None)
+        if (ReferenceEquals(host, _newRich) && NewRich is { } rich)
         {
-            if (key == Key.Return) return NewRichEnter();
-            // Backspace at the start of a table cell and Delete at its end would join two cells,
-            // changing the table's shape with nothing said. They do nothing, and say where.
-            if (key is Key.Back or Key.Delete && NewRich is { } table)
+            if (key == Key.Return && modifiers == ModifierKeys.None) return NewRichEnter();
+
+            if (key is Key.Back or Key.Delete && modifiers is ModifierKeys.None or ModifierKeys.Control)
             {
-                int edge = table.TableCellEdge();
-                if (key == Key.Back && edge is -1 or 2)
+                // Deleting the whole body, after Select All, leaves it plain text, in one undo
+                // step. Only after Select All: selecting the words of a one-line heading to
+                // retype them selects "everything" too, and must leave it a heading.
+                if (afterSelectAll && rich.EverythingIsSelected())
                 {
-                    AccessibilityHelper.Announce(this, "Start of cell", category: AnnouncementCategory.Hint);
+                    rich.DeleteEverything();
+                    _vm.MarkBodyDirty();
+                    _lastAnnouncedBlockType = BlockLabel(rich.BlockAtCaret());
+                    SyncParagraphStyleCombo();
                     return true;
                 }
-                if (key == Key.Delete && edge is 1 or 2)
-                {
-                    AccessibilityHelper.Announce(this, "End of cell", category: AnnouncementCategory.Hint);
-                    return true;
-                }
+
+                // Backspace at the start of a table cell and Delete at its end, by character or
+                // by word, would join two cells, changing the table's shape with nothing said.
+                // They do nothing, and say where.
+                int edge = rich.TableCellEdge();
+                if (key == Key.Back && edge is -1 or 2) return RefuseAtCellEdge("Start of cell");
+                if (key == Key.Delete && edge is 1 or 2) return RefuseAtCellEdge("End of cell");
             }
         }
         return false;
@@ -158,6 +186,8 @@ public partial class ComposeWindow
         host.PreviewKeyDown += BodyBox_PreviewKeyDown; // Alt+1/2/3 only: other keys come through KeyRouter
         host.KeyRouter = (key, modifiers) => RouteBodyKey(host, key, modifiers);
         host.FocusStrayed = FocusActiveEditor;
+        host.AltCombinationUsed = () => _suppressNextMenuActivation = true;
+        host.KeyFailed = OnBodyKeyFailed;
         host.TabPressed = HandleBodyTab;
         host.FilesDropped += OnNewEditorFilesDropped;
         host.HostingFailed += OnNewRichHostingFailed;
@@ -234,27 +264,6 @@ public partial class ComposeWindow
     private void OnNewRichTextChanged(object? sender, EventArgs e)
     {
         if (_newRich == null) return;
-        // A body that has just been emptied goes back to plain text: no heading, list or quote
-        // left on its one empty line, and nothing switched on for the next typing. Only on the
-        // change from text to none, so Ctrl+B in an empty body is left alone.
-        bool empty = _newRich.Text.Length == 0;
-        bool justEmptied = empty && _newRichHadText;
-        _newRichHadText = !empty;
-        if (justEmptied && NewRich is { } emptied)
-        {
-            try
-            {
-                if (emptied.ResetIfEmpty())
-                {
-                    _lastAnnouncedBlockType = BlockLabel(emptied.BlockAtCaret());
-                    SyncParagraphStyleCombo();
-                }
-            }
-            catch (Exception ex) when (ex is COMException or ArgumentException or InvalidOperationException)
-            {
-                LogService.Debug($"New editor: resetting an emptied body: {ex.Message}");
-            }
-        }
         // WinUI reports a change after the fact, the load's own included; text that still is what
         // was loaded has not been edited. Formatting commands mark the body dirty themselves.
         if (_newRichLoadedText != null && string.Equals(_newRich.Text, _newRichLoadedText, StringComparison.Ordinal)) return;
@@ -266,6 +275,7 @@ public partial class ComposeWindow
     {
         NoteEditingActivity();
         if (_vm.CurrentMode != ComposeMode.Html || NewRich is not { } rich) return;
+        rich.ForgetTypingFormatIfMoved();
         SyncParagraphStyleCombo();
         if (_suppressFormattingAnnouncement) return;
 

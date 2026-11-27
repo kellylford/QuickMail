@@ -19,7 +19,10 @@ internal static class Program
     private static string _exe = string.Empty;
     private static string _profileTemplate = string.Empty;
     private static App? _app;
-    private static bool _trailingMark;
+    // Whether UI Automation's text for each editor ends with the mark that ends the document,
+    // learned from that editor when its body is empty. Once known it is required: an editor
+    // that reports "x" where it should report "x" and the mark is not passed over.
+    private static readonly Dictionary<string, bool> _finalMark = new();
     private static readonly List<string> _warnings = new();
 
     // Off (--no-restart) only when hunting a fault: the app's log then covers the whole run.
@@ -138,9 +141,10 @@ internal static class Program
         _app = App.Start(_exe, profile);
         _app.OpenNewMessage();
 
-        // Does UI Automation include the paragraph mark that ends the document? Ask an empty body.
-        var empty = _app.Read();
-        _trailingMark = empty.Text == "\n";
+        // What was learned about each editor's final mark is kept across restarts: it is a fact
+        // about the control, and a case that starts in a new window may read the HTML editor
+        // for the first time with text already in it.
+        Read(); // learns the plain editor's final mark from its empty body
     }
 
     private static void CopyDirectory(string from, string to)
@@ -155,13 +159,21 @@ internal static class Program
     private static EditorState Read()
     {
         var state = _app!.Read();
-        if (_trailingMark && state.Text.EndsWith('\n'))
+        string editor = _app.VisibleEditorId;
+        if (!_finalMark.TryGetValue(editor, out bool mark))
         {
-            string text = state.Text[..^1];
-            int start = Math.Min(state.SelectionStart, text.Length);
-            return new EditorState(text, start, Math.Min(state.SelectionLength, text.Length - start));
+            // Only an empty body can say: its text is nothing, or the mark alone.
+            if (state.Text.Length == 0) _finalMark[editor] = false;
+            else if (state.Text == "\n") _finalMark[editor] = mark = true;
+            else throw new InvalidOperationException(
+                $"The {editor} editor was first read with text in it ({CaseFile.Show(state.Text)}); it has to be read empty once, to learn how its text ends.");
         }
-        return state;
+        if (!mark) return state;
+        if (!state.Text.EndsWith('\n'))
+            throw new InvalidOperationException($"The {editor} editor's text has lost the mark that ends it: {CaseFile.Show(state.Text)}.");
+        string text = state.Text[..^1];
+        int start = Math.Min(state.SelectionStart, text.Length);
+        return new EditorState(text, start, Math.Min(state.SelectionLength, text.Length - start));
     }
 
     private static string CurrentMode()
@@ -175,11 +187,18 @@ internal static class Program
 
     // ── Setting up ───────────────────────────────────────────────────────────
 
+    /// <summary>
+    /// Empties the body with Ctrl+A and Delete, and checks that it is empty. Those are keys under
+    /// test too, so a failure here is a failure of the case, never something to retry past.
+    /// </summary>
     private static void ClearBody()
     {
         if (Read().Text.Length == 0) return;
         Keyboard.Send("^a{DELETE}");
         Thread.Sleep(150);
+        var after = Read();
+        if (after.Text.Length != 0)
+            throw new InvalidOperationException($"Ctrl+A, Delete did not empty the body; it holds {CaseFile.Show(after.Text)}.");
     }
 
     private static void SwitchTo(string mode)
@@ -193,28 +212,19 @@ internal static class Program
         Thread.Sleep(600);
     }
 
-    private static void Paste(string text)
+    /// <summary>
+    /// Puts text in the body by typing it, a key at a time, and checks it arrived exactly.
+    /// Typing is the one thing every case depends on anyway; pasting would lean on Ctrl+V and
+    /// the clipboard, which are under test and can be held by other programs.
+    /// </summary>
+    private static void TypeBody(string text)
     {
         if (text.Length == 0) return;
-        // Setting the clipboard can fail when something else has it open (a clipboard history,
-        // a remote session). That is the test's own step, not the editor's: try again, and say so.
-        for (int attempt = 1; attempt <= 3; attempt++)
-        {
-            try
-            {
-                System.Windows.Clipboard.SetText(text.Replace("\n", "\r\n", StringComparison.Ordinal));
-            }
-            catch (System.Runtime.InteropServices.COMException)
-            {
-                Thread.Sleep(300);
-                continue;
-            }
-            Keyboard.Send("^v");
-            Thread.Sleep(300);
-            if (Read().Text.Length > 0) return;
-            _warnings.Add($"Setting up text by pasting needed another try (attempt {attempt}).");
-            Thread.Sleep(400);
-        }
+        Keyboard.Type(text);
+        Thread.Sleep(200);
+        string now = Read().Text;
+        if (now != text)
+            throw new InvalidOperationException($"Typing the case's text gave {CaseFile.Show(now)}, not {CaseFile.Show(text)}.");
     }
 
     // ── Running a case ───────────────────────────────────────────────────────
@@ -232,14 +242,14 @@ internal static class Program
             {
                 case "text":
                     ClearBody();
-                    Paste(CaseFile.Unescape(step.Argument));
+                    TypeBody(CaseFile.Unescape(step.Argument));
                     break;
 
                 case "markdown":
                     // A formatted body: written as Markdown, carried into HTML mode.
                     if (mode != "html") throw new FormatException($"{where}: 'markdown' sets up an HTML body; the case must be 'modes: html'.");
                     SwitchTo("markdown");
-                    Paste(CaseFile.Unescape(step.Argument));
+                    TypeBody(CaseFile.Unescape(step.Argument));
                     Keyboard.Send("^+3");
                     for (int i = 0; i < 20 && CurrentMode() != "html"; i++) Thread.Sleep(250);
                     Thread.Sleep(1200);
@@ -311,31 +321,41 @@ internal static class Program
 
                 case "focus-is":
                 {
-                    var (name, className) = App.Focused();
-                    if (!name.Contains(step.Argument, StringComparison.OrdinalIgnoreCase))
+                    var (name, className, id) = App.Focused();
+                    if (step.Argument == "Message body")
+                    {
+                        // The two editors share this name: it must be the one that is showing.
+                        if (id != _app.VisibleEditorId)
+                            failures.Add($"{where}: focus should be on the message body ({_app.VisibleEditorId}); it is on '{name}' ({className}{(id.Length > 0 ? " #" + id : string.Empty)}).");
+                    }
+                    else if (!name.Contains(step.Argument, StringComparison.OrdinalIgnoreCase))
+                    {
                         failures.Add($"{where}: focus should be on '{step.Argument}'; it is on '{name}' ({className}).");
+                    }
                     break;
                 }
 
                 case "typing-works":
                 {
-                    // The only proof that the editor has the keyboard: a typed letter arrives.
-                    // A focus report alone has been wrong before.
+                    // Two things, both required. First, before any key is pressed: focus is
+                    // reported on the editor that is showing. QuickMail mends focus on the first
+                    // key, so typing alone can succeed from a state in which a screen reader
+                    // user was left on a nameless pane. Second: a typed letter arrives. A focus
+                    // report alone has been wrong before.
+                    var (name, className, id) = App.Focused();
+                    if (id != _app.VisibleEditorId)
+                        failures.Add($"{where}: before typing, focus should be on the message body ({_app.VisibleEditorId}); it is on '{name}' ({className}{(id.Length > 0 ? " #" + id : string.Empty)}); in front: '{App.ForegroundTitle()}'.");
+
                     var before = Read();
                     Keyboard.Type("q");
                     Thread.Sleep(200);
                     var after = Read();
                     string expected = before.Text[..before.SelectionStart] + "q" + before.Text[(before.SelectionStart + before.SelectionLength)..];
                     if (after.Text != expected)
-                    {
-                        var (name, className) = App.Focused();
                         failures.Add($"{where}: a typed letter did not arrive. Text was {CaseFile.Show(before.Text)}, is {CaseFile.Show(after.Text)}. " +
                                      $"Focus is reported on '{name}' ({className}); in front: '{App.ForegroundTitle()}'.");
-                    }
                     else
-                    {
                         Keyboard.Send("{BACKSPACE}");
-                    }
                     break;
                 }
 

@@ -77,19 +77,26 @@ internal sealed class App : IDisposable
         return new string(title, 0, Math.Max(0, length));
     }
 
-    /// <summary>The element UI Automation reports as focused: its name and its class.</summary>
-    public static (string Name, string Class) Focused()
+    /// <summary>The element UI Automation reports as focused: its name, its class and its automation id.</summary>
+    public static (string Name, string Class, string Id) Focused()
     {
         try
         {
             var element = AutomationElement.FocusedElement;
-            return (element.Current.Name, element.Current.ClassName);
+            return (element.Current.Name, element.Current.ClassName, element.Current.AutomationId);
         }
         catch (Exception ex) when (ex is ElementNotAvailableException or COMException or InvalidOperationException)
         {
-            return ($"(unavailable: {ex.Message})", string.Empty);
+            return ($"(unavailable: {ex.Message})", string.Empty, string.Empty);
         }
     }
+
+    /// <summary>
+    /// The automation id of the editor that is showing. The two editors have one name, so a
+    /// focus check by name cannot tell the hidden one from the visible one; the id can.
+    /// </summary>
+    public string VisibleEditorId =>
+        ComposeTitle.Contains("- HTML -", StringComparison.Ordinal) ? "HtmlMessageBody" : "PlainMessageBody";
 
     /// <summary>The message body's editor in the compose window. Throws if it is not the new editor.</summary>
     private AutomationElement Editor()
@@ -97,7 +104,7 @@ internal sealed class App : IDisposable
         if (_compose == null) throw new InvalidOperationException("No compose window is open.");
         // There are two body editors in the window, one for HTML and one for the other two
         // formats, with the same name; only one is showing. The window's title says which.
-        string id = ComposeTitle.Contains("- HTML -", StringComparison.Ordinal) ? "HtmlMessageBody" : "PlainMessageBody";
+        string id = VisibleEditorId;
         var element = _compose.FindFirst(TreeScope.Descendants, new PropertyCondition(AutomationElement.AutomationIdProperty, id));
         if (element != null) return element;
         var found = _compose.FindAll(TreeScope.Descendants, new PropertyCondition(AutomationElement.NameProperty, "Message body"));
@@ -128,10 +135,11 @@ internal sealed class App : IDisposable
 
     /// <summary>
     /// The editor's text ends with a paragraph mark the user did not type; UI Automation may or
-    /// may not include it. Line ends come as \r, \n or both.
+    /// may not include it. Paragraph ends come as \r, \n or both, and are given as \n; a line break
+    /// inside a paragraph (\v) is left as it is, so the two can be told apart.
     /// </summary>
     private static string Normalize(string text) =>
-        text.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n').Replace('\v', '\n');
+        text.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n');
 
     /// <summary>Puts the caret, or a selection, at an offset in the editor's text.</summary>
     public void Select(int start, int length)

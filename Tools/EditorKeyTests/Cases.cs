@@ -99,7 +99,7 @@ internal static class CaseFile
             if (text[i] == '\\' && i + 1 < text.Length)
             {
                 char next = text[++i];
-                sb.Append(next switch { 'n' => '\n', 't' => '\t', _ => next });
+                sb.Append(next switch { 'n' => '\n', 't' => '\t', 'v' => '\v', _ => next });
             }
             else
             {
@@ -138,7 +138,8 @@ internal static class CaseFile
         };
     }
 
-    /// <summary>Text on one line for a report: line ends shown as ⏎, tabs as ⇥.</summary>
+    /// <summary>Text on one line for a report: paragraph ends as ⏎, tabs as ⇥, line breaks inside a paragraph as ↓.</summary>
     public static string Show(string text) =>
-        "\"" + text.Replace("\n", "⏎", StringComparison.Ordinal).Replace("\t", "⇥", StringComparison.Ordinal) + "\"";
+        "\"" + text.Replace("\n", "⏎", StringComparison.Ordinal).Replace("\t", "⇥", StringComparison.Ordinal)
+            .Replace("\v", "↓", StringComparison.Ordinal) + "\"";
 }
