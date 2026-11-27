@@ -135,8 +135,10 @@ public partial class ComposeWindow : Window
         WireRichCompose();
 
         // Wire the View confirmation callback so the VM stays out of System.Windows.
+        // YesNo alone ignores Escape in a native message box, which left a keyboard user with a
+        // question that Escape would not dismiss. With Cancel, Escape is "no".
         vm.ConfirmationRequested = (message, title) =>
-            MessageBox.Show(this, message, title, MessageBoxButton.YesNo, MessageBoxImage.Warning)
+            MessageBox.Show(this, message, title, MessageBoxButton.YesNoCancel, MessageBoxImage.Warning)
             == MessageBoxResult.Yes;
 
         // YesNo alone ignores Escape in a native message box. Cancel makes Escape leave
@@ -652,74 +654,20 @@ public partial class ComposeWindow : Window
     // Alt+U → Subject field; Alt+M → From combo; Alt+Y → Body; Ctrl+V with files → add attachments; Escape → cancel.
     // Ctrl+Shift+P → Command Palette; F7 → Check Spelling dialog; Ctrl+F7 / Ctrl+Shift+F7 → inline misspelling navigation.
     // Ctrl+Enter → Send message (secondary shortcut alongside Alt+S).
-    private async void Window_PreviewKeyDown(object sender, KeyEventArgs e)
+    private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
     {
         NoteEditingActivity();
         // Any key may be a command that reads the body (send, save, close).
         FlushNewEditorBody();
 
-        // Ctrl+Shift+P: open the command palette
-        if (e.Key == Key.P && Keyboard.Modifiers == (ModifierKeys.Control | ModifierKeys.Shift))
+        if (HandleWindowKey(e.Key, Keyboard.Modifiers))
         {
-            OpenCommandPalette();
             e.Handled = true;
             return;
         }
+        if (e.Key == Key.Escape) return; // transient UI is closing itself
 
-        // Ctrl+Enter: send the message (secondary shortcut alongside Alt+S)
-        if (e.Key == Key.Return && Keyboard.Modifiers == ModifierKeys.Control)
-        {
-            CommitAllAddressInputs();
-            if (_vm.SendCommand.CanExecute(null))
-                _vm.SendCommand.Execute(null);
-            e.Handled = true;
-            return;
-        }
-
-        // Ctrl+V: if the clipboard contains files, paste them as attachments
-        if (e.Key == Key.V && Keyboard.Modifiers == ModifierKeys.Control && Clipboard.ContainsFileDropList())
-        {
-            var files = Clipboard.GetFileDropList().Cast<string>().Where(f => f != null).ToList();
-            e.Handled = true;
-            // Pasted into the body of a rich message, pictures go in the body (#729); anything
-            // else, and every file pasted anywhere else, is attached as before.
-            if (AnyBodyHasFocus)
-                await TakeFilesIntoBodyAsync(files);
-            else
-                await AttachFilesAsync(files);
-            return;
-        }
-
-        // Ctrl+V with a picture alone on the clipboard, in the body: describe it and put it in.
-        if (e.Key == Key.V && Keyboard.Modifiers == ModifierKeys.Control && TryPastePicture())
-        {
-            e.Handled = true;
-            return;
-        }
-
-        if (e.Key == Key.Escape)
-        {
-            // Transient UI consumes Escape itself: an open menu (focus sits on a
-            // MenuItem) or an open combo dropdown must close without closing the
-            // whole compose window. This preview handler tunnels ahead of them,
-            // so step aside instead of cancelling.
-            if (Keyboard.FocusedElement is MenuItem
-                || FromCombo.IsDropDownOpen
-                || ModeSelector.IsDropDownOpen
-                || ParagraphStyleCombo.IsDropDownOpen
-                || AutoCompletePopup.IsOpen
-                || _newEditor?.IsMenuOpen == true
-                || _newRich?.IsMenuOpen == true
-                || _previewWindow != null)
-            {
-                _previewWindow?.Close();
-                return;
-            }
-            _vm.CancelCommand.Execute(null);
-            e.Handled = true;
-            return;
-        }
-        else if (e.SystemKey == Key.U && (Keyboard.Modifiers & ModifierKeys.Alt) != 0)
+        if (e.SystemKey == Key.U && (Keyboard.Modifiers & ModifierKeys.Alt) != 0)
         {
             SubjectBox.Focus();
             SubjectBox.SelectAll();
@@ -748,16 +696,80 @@ public partial class ComposeWindow : Window
         var key = e.Key == Key.System ? e.SystemKey
             : e.Key == Key.ImeProcessed ? e.ImeProcessedKey
             : e.Key;
-        var modifiers = Keyboard.Modifiers;
-        var cmd = _registry.FindByGesture(key, modifiers);
-        if (cmd != null && (cmd.IsAvailable?.Invoke() ?? true))
+        if (RunComposeCommand(key, Keyboard.Modifiers)) e.Handled = true;
+    }
+
+    /// <summary>
+    /// The window's own keys that are not registry commands: Ctrl+Shift+P, Ctrl+Enter, Ctrl+V of
+    /// files or a picture, and Escape. True when the key was dealt with. Shared by WPF's key
+    /// event and by the hosted editor's key routing, which never raises a WPF key event.
+    /// </summary>
+    private bool HandleWindowKey(Key key, ModifierKeys modifiers)
+    {
+        // Ctrl+Shift+P: open the command palette
+        if (key == Key.P && modifiers == (ModifierKeys.Control | ModifierKeys.Shift))
         {
-            LogService.Debug($"[AltMenu] registry cmd '{cmd.Id}' (modifiers={modifiers}) handled; arming suppress={((modifiers & ModifierKeys.Alt) != 0)}");
-            cmd.Execute();
-            e.Handled = true;
-            if ((modifiers & ModifierKeys.Alt) != 0)
-                _suppressNextMenuActivation = true;
+            OpenCommandPalette();
+            return true;
         }
+
+        // Ctrl+Enter: send the message (secondary shortcut alongside Alt+S)
+        if (key == Key.Return && modifiers == ModifierKeys.Control)
+        {
+            CommitAllAddressInputs();
+            if (_vm.SendCommand.CanExecute(null))
+                _vm.SendCommand.Execute(null);
+            return true;
+        }
+
+        // Ctrl+V: if the clipboard contains files, paste them as attachments
+        if (key == Key.V && modifiers == ModifierKeys.Control && Clipboard.ContainsFileDropList())
+        {
+            var files = Clipboard.GetFileDropList().Cast<string>().Where(f => f != null).ToList();
+            // Pasted into the body of a rich message, pictures go in the body (#729); anything
+            // else, and every file pasted anywhere else, is attached as before.
+            _ = AnyBodyHasFocus ? TakeFilesIntoBodyAsync(files) : AttachFilesAsync(files);
+            return true;
+        }
+
+        // Ctrl+V with a picture alone on the clipboard, in the body: describe it and put it in.
+        if (key == Key.V && modifiers == ModifierKeys.Control && TryPastePicture())
+            return true;
+
+        if (key == Key.Escape)
+        {
+            // Transient UI consumes Escape itself: an open menu (focus sits on a
+            // MenuItem) or an open combo dropdown must close without closing the
+            // whole compose window. This runs ahead of them, so step aside instead
+            // of cancelling.
+            if (Keyboard.FocusedElement is MenuItem
+                || FromCombo.IsDropDownOpen
+                || ModeSelector.IsDropDownOpen
+                || ParagraphStyleCombo.IsDropDownOpen
+                || AutoCompletePopup.IsOpen
+                || _newEditor?.IsMenuOpen == true
+                || _newRich?.IsMenuOpen == true
+                || _previewWindow != null)
+            {
+                _previewWindow?.Close();
+                return false;
+            }
+            _vm.CancelCommand.Execute(null);
+            return true;
+        }
+        return false;
+    }
+
+    /// <summary>Runs the compose command bound to a key, if there is one and it is available.</summary>
+    private bool RunComposeCommand(Key key, ModifierKeys modifiers)
+    {
+        var cmd = _registry.FindByGesture(key, modifiers);
+        if (cmd == null || !(cmd.IsAvailable?.Invoke() ?? true)) return false;
+        LogService.Debug($"[AltMenu] registry cmd '{cmd.Id}' (modifiers={modifiers}) handled; arming suppress={((modifiers & ModifierKeys.Alt) != 0)}");
+        cmd.Execute();
+        if ((modifiers & ModifierKeys.Alt) != 0)
+            _suppressNextMenuActivation = true;
+        return true;
     }
 
     // Belt-and-suspenders: if the WndProc hook above didn't eat the Alt key release
@@ -1047,11 +1059,7 @@ public partial class ComposeWindow : Window
     /// </summary>
     private void BodyBox_PreviewKeyDown(object sender, KeyEventArgs e)
     {
-        _caretMovedByTyping = IsTypingKey(e.Key, e.KeyboardDevice.Modifiers);
-        if (_caretMovedByTyping && _configService.Load().AnnounceSpellingWhileTyping)
-            ResetSpellingTypingTimer();
-        else if (!_caretMovedByTyping)
-            _spellingTypingTimer?.Stop();
+        NoteBodyKeyForSpelling(e.Key, e.KeyboardDevice.Modifiers);
 
         // Alt+1/2/3: replace the current misspelled word with the corresponding suggestion.
         if ((Keyboard.Modifiers & ModifierKeys.Alt) != 0
@@ -1088,6 +1096,16 @@ public partial class ComposeWindow : Window
         // Spelling keys (F7 dialog, Ctrl+F7 / Ctrl+Shift+F7 inline) dispatch
         // through the command registry in Window_PreviewKeyDown — no hardcoded
         // branch here, so user rebinds always win.
+    }
+
+    /// <summary>Whether this key is typing, for the spelling announcements that follow the caret.</summary>
+    private void NoteBodyKeyForSpelling(Key key, ModifierKeys modifiers)
+    {
+        _caretMovedByTyping = IsTypingKey(key, modifiers);
+        if (_caretMovedByTyping && _configService.Load().AnnounceSpellingWhileTyping)
+            ResetSpellingTypingTimer();
+        else if (!_caretMovedByTyping)
+            _spellingTypingTimer?.Stop();
     }
 
     /// <summary>
@@ -1534,11 +1552,18 @@ public partial class ComposeWindow : Window
 
     private void OpenCommandPalette()
     {
+        // WPF's record of the focused element is not to be trusted while a hosted editor has
+        // focus; ask Windows first.
+        bool bodyHadFocus = FocusedHost != null;
         var previousFocus = Keyboard.FocusedElement as IInputElement;
         var palette = new CommandPaletteWindow(_registry) { Owner = this };
         palette.ShowDialog();
-        if (previousFocus != null) previousFocus.Focus();
-        else PlainBody.Focus();
+        // A command run from the palette may have moved focus on purpose (Alt+U's, a dialog).
+        if (FocusedHost != null || (Keyboard.FocusedElement != null && !ReferenceEquals(Keyboard.FocusedElement, previousFocus)
+                                    && Keyboard.FocusedElement is not Window))
+            return;
+        if (bodyHadFocus || previousFocus == null) FocusActiveEditor();
+        else previousFocus.Focus();
     }
 
     private async void OpenPreview()
@@ -1605,7 +1630,14 @@ public partial class ComposeWindow : Window
             new TextBoxSpellSource(SubjectBox, "subject"),
         };
         var vm = new SpellCheckDialogViewModel(sources, _customDictionary);
+        // A hosted editor with focus is given focus back by name: WPF's record may be empty or stale.
+        bool bodyHadFocus = FocusedHost != null;
         var previousFocus = Keyboard.FocusedElement as IInputElement;
+        void RestoreFocus()
+        {
+            if (bodyHadFocus) FocusActiveEditor();
+            else previousFocus?.Focus();
+        }
 
         // The session drives editor selection programmatically; keep the inline
         // navigating/formatting announcements quiet until it ends. The finally
@@ -1618,7 +1650,7 @@ public partial class ComposeWindow : Window
         {
             if (!vm.MoveNext())
             {
-                FinishSpellCheckSession(vm, () => previousFocus?.Focus());
+                FinishSpellCheckSession(vm, RestoreFocus);
                 return;
             }
 
@@ -1928,13 +1960,17 @@ public partial class ComposeWindow : Window
     private void ApplyComposeMode()
     {
         var mode = _vm.CurrentMode;
-        var bodyHadFocus = AnyBodyHasFocus;
+        var bodyHadFocus = _bodyHadFocusAtModeSwitch ?? AnyBodyHasFocus;
         _suppressFormattingAnnouncement = true;
         _lastAnnouncedBlockType = null;
 
         // HTML mode is the hosted rich editor's when the new editor is in use (#1099), and
         // RichBodyBox's otherwise.
         if (mode == ComposeMode.Html) EnsureNewRich();
+        // The editor about to be hidden gives up Windows' focus first: a hidden window must
+        // never be left holding the keyboard.
+        if (mode == ComposeMode.Html) _newEditor?.ReleaseFocus();
+        else _newRich?.ReleaseFocus();
         FormattingToolbarTray.Visibility = mode == ComposeMode.Html ? Visibility.Visible : Visibility.Collapsed;
         RichBodyBox.Visibility           = mode == ComposeMode.Html && _newRich == null ? Visibility.Visible : Visibility.Collapsed;
         if (_newRich != null)
@@ -1989,9 +2025,23 @@ public partial class ComposeWindow : Window
         _vm.SendCommand.Execute(null);
     }
 
-    private void MenuModePlain_Click(object sender, RoutedEventArgs e)    => _vm.SetMode(ComposeMode.PlainText);
-    private void MenuModeMarkdown_Click(object sender, RoutedEventArgs e) => _vm.SetMode(ComposeMode.Markdown);
-    private void MenuModeHtml_Click(object sender, RoutedEventArgs e)     => _vm.SetMode(ComposeMode.Html);
+    private void MenuModePlain_Click(object sender, RoutedEventArgs e)    => SwitchMode(ComposeMode.PlainText);
+    private void MenuModeMarkdown_Click(object sender, RoutedEventArgs e) => SwitchMode(ComposeMode.Markdown);
+    private void MenuModeHtml_Click(object sender, RoutedEventArgs e)     => SwitchMode(ComposeMode.Html);
+
+    // Whether the body had focus when a format switch was asked for. Read by ApplyComposeMode,
+    // which runs after the "formatting will be lost" question: by then that dialog has taken
+    // focus and given it back somewhere else, so asking then got the wrong answer about half
+    // the time and left focus in the editor that had just been hidden.
+    private bool? _bodyHadFocusAtModeSwitch;
+
+    /// <summary>Changes the format. False when the user said no to losing formatting.</summary>
+    private bool SwitchMode(ComposeMode mode)
+    {
+        _bodyHadFocusAtModeSwitch = AnyBodyHasFocus;
+        try { return _vm.SetMode(mode); }
+        finally { _bodyHadFocusAtModeSwitch = null; }
+    }
 
     /// <summary>
     /// WPF skips disabled menu items during arrow navigation, so when every
@@ -2027,7 +2077,7 @@ public partial class ComposeWindow : Window
             _ => ComposeMode.PlainText,
         };
         if (requested == _vm.CurrentMode) return;
-        if (!_vm.SetMode(requested))
+        if (!SwitchMode(requested))
             SyncModeSelector();   // user declined the confirmation — revert the selector
     }
 
@@ -2045,17 +2095,17 @@ public partial class ComposeWindow : Window
 
         _registry.Register(new CommandDefinition(
             id: "compose.setModePlain", category: "Compose", title: "Switch to Plain Text Mode",
-            execute: () => _vm.SetMode(ComposeMode.PlainText),
+            execute: () => SwitchMode(ComposeMode.PlainText),
             defaultKey: Key.D1, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift));
 
         _registry.Register(new CommandDefinition(
             id: "compose.setModeMarkdown", category: "Compose", title: "Switch to Markdown Mode",
-            execute: () => _vm.SetMode(ComposeMode.Markdown),
+            execute: () => SwitchMode(ComposeMode.Markdown),
             defaultKey: Key.D2, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift));
 
         _registry.Register(new CommandDefinition(
             id: "compose.setModeHtml", category: "Compose", title: "Switch to HTML Mode",
-            execute: () => _vm.SetMode(ComposeMode.Html),
+            execute: () => SwitchMode(ComposeMode.Html),
             defaultKey: Key.D3, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift));
 
         _registry.Register(new CommandDefinition(

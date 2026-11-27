@@ -27,6 +27,7 @@ namespace QuickMail.Views;
 public partial class ComposeWindow
 {
     private WinUiEditorHost? _newRich;
+    private bool _newRichHadText;
 
     // The HTML last loaded into the rich editor, to hand to the WPF editor if hosting fails.
     private string _newRichLoadedHtml = string.Empty;
@@ -47,33 +48,74 @@ public partial class ComposeWindow
 
     /// <summary>The hosted editor Windows' keyboard focus is in, or null. See <see cref="WinUiEditorHost.HasFocus"/>.</summary>
     private WinUiEditorHost? FocusedHost =>
-        _newRich is { HasFocus: true } rich ? rich
-        : _newEditor is { HasFocus: true } plain ? plain
+        _newRich is { IsVisible: true, HasFocus: true } rich ? rich
+        : _newEditor is { IsVisible: true, HasFocus: true } plain ? plain
         : null;
 
     /// <summary>
-    /// WPF sometimes has no focused element while a hosted editor has focus, and then routes key
-    /// events to the window alone: the editor's own handlers never see the key. These two window
-    /// handlers, added after the window's own, give such a key to the editor's handlers so the
-    /// editor behaves the same either way. They do nothing when WPF routed the key properly.
+    /// Alt combinations still come through WPF (access keys and menus need them to). WPF
+    /// sometimes has no focused element while a hosted editor has focus, and then raises the key
+    /// on the window alone, so the editor's Alt+1, Alt+2 and Alt+3 would never be seen. This
+    /// window handler, added after the window's own, gives such a key to the editor's handler.
+    /// It never moves focus: doing that from a key path took Windows' focus out of the editor.
     /// </summary>
     private void HostedFocus_PreviewKeyDown(object sender, KeyEventArgs e)
     {
         if (e.Handled || FocusedHost is not { } host || IsFromHost(e, host)) return;
-        LogService.Debug("[Compose] WPF had no focused element while the message body had focus; routing the key to it.");
-        host.Focus(); // puts WPF's record right for the keys that follow; Windows' focus is already there
-        if (ReferenceEquals(host, _newRich)) NewRich_PreviewKeyDown(host, e);
-        else BodyBox_PreviewKeyDown(host, e);
-    }
-
-    private void HostedFocus_KeyDown(object sender, KeyEventArgs e)
-    {
-        if (e.Handled || FocusedHost is not { } host || IsFromHost(e, host)) return;
-        host.HandleKeyDown(e);
+        BodyBox_PreviewKeyDown(host, e);
     }
 
     private static bool IsFromHost(KeyEventArgs e, WinUiEditorHost host) =>
         ReferenceEquals(e.OriginalSource, host) || ReferenceEquals(e.Source, host);
+
+    /// <summary>
+    /// A key pressed in a hosted editor, before the editor sees it. Called from the thread's
+    /// message filter (<see cref="WinUiEditorHost.RouteKeyMessage"/>), so it runs whatever WPF
+    /// believes about focus. True takes the key. The order is what the WPF-routed path had: the
+    /// window's keys and commands, then keys the editor must not act on, then Enter where the
+    /// editor's own paragraph break is wrong. Alt combinations never come here.
+    /// </summary>
+    private bool RouteBodyKey(WinUiEditorHost host, Key key, ModifierKeys modifiers)
+    {
+        NoteEditingActivity();
+        // Any key may be a command that reads the body (send, save, close).
+        FlushNewEditorBody();
+        NoteBodyKeyForSpelling(key, modifiers);
+
+        if (HandleWindowKey(key, modifiers)) return true;
+        if (RunComposeCommand(key, modifiers)) return true;
+
+        // A letter is about to go into the HTML body: what Ctrl+B and the like switched on for
+        // it must still be on.
+        if (ReferenceEquals(host, _newRich) && IsTypingKey(key, modifiers)) NewRich?.EnsureTypingFormat();
+
+        // RichEdit's own formatting keys (alignment, line spacing, lists, superscript and
+        // subscript, all caps) are not commands in a message. Not one of QuickMail's commands by
+        // this point, they stop here and never reach the control.
+        if (WinUiEditorHost.IsRichEditFormattingKey(key, modifiers)) return true;
+
+        if (ReferenceEquals(host, _newRich) && modifiers == ModifierKeys.None)
+        {
+            if (key == Key.Return) return NewRichEnter();
+            // Backspace at the start of a table cell and Delete at its end would join two cells,
+            // changing the table's shape with nothing said. They do nothing, and say where.
+            if (key is Key.Back or Key.Delete && NewRich is { } table)
+            {
+                int edge = table.TableCellEdge();
+                if (key == Key.Back && edge is -1 or 2)
+                {
+                    AccessibilityHelper.Announce(this, "Start of cell", category: AnnouncementCategory.Hint);
+                    return true;
+                }
+                if (key == Key.Delete && edge is 1 or 2)
+                {
+                    AccessibilityHelper.Announce(this, "End of cell", category: AnnouncementCategory.Hint);
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
 
     /// <summary>
     /// Makes the hosted rich editor if the new editor is in use and it does not exist yet. False
@@ -113,7 +155,9 @@ public partial class ComposeWindow
         host.TextChanged += OnNewRichTextChanged;
         host.SelectionChanged += OnNewRichSelectionChanged;
         host.EditorLoaded += OnNewRichEditorLoaded;
-        host.PreviewKeyDown += NewRich_PreviewKeyDown;
+        host.PreviewKeyDown += BodyBox_PreviewKeyDown; // Alt+1/2/3 only: other keys come through KeyRouter
+        host.KeyRouter = (key, modifiers) => RouteBodyKey(host, key, modifiers);
+        host.FocusStrayed = FocusActiveEditor;
         host.TabPressed = HandleBodyTab;
         host.FilesDropped += OnNewEditorFilesDropped;
         host.HostingFailed += OnNewRichHostingFailed;
@@ -175,18 +219,42 @@ public partial class ComposeWindow
     /// </summary>
     private void OnNewRichEditorLoaded(object? sender, EventArgs e)
     {
-        if (NewRich is not { } rich || _newRichLoadedText == null) return;
-        // Anything typed in the moment before the control finished loading is an edit, and its
-        // report may still be on its way: compare the text, do not trust the flag alone.
-        if (!string.Equals(_newRich!.Text, _newRichLoadedText, StringComparison.Ordinal)) return;
-        bool hadFocus = _newRich.HasFocus;
-        LoadHtmlIntoNewRich(rich, _newRichLoadedHtml);
-        if (hadFocus) _newRich?.FocusEditor(); // null if the load failed and HTML mode fell back
+        if (NewRich is not { } rich) return;
+        // Fonts only, and in place: the caret, the selection, what has been typed and what has
+        // been switched on for the next typing (Ctrl+B) all stay as they are.
+        _suppressFormattingAnnouncement = true;
+        try { rich.MendFonts(); }
+        catch (Exception ex) when (ex is COMException or ArgumentException or InvalidOperationException)
+        {
+            LogService.Log("New editor: putting fonts back after the control loaded", ex);
+        }
+        finally { _suppressFormattingAnnouncement = false; }
     }
 
     private void OnNewRichTextChanged(object? sender, EventArgs e)
     {
         if (_newRich == null) return;
+        // A body that has just been emptied goes back to plain text: no heading, list or quote
+        // left on its one empty line, and nothing switched on for the next typing. Only on the
+        // change from text to none, so Ctrl+B in an empty body is left alone.
+        bool empty = _newRich.Text.Length == 0;
+        bool justEmptied = empty && _newRichHadText;
+        _newRichHadText = !empty;
+        if (justEmptied && NewRich is { } emptied)
+        {
+            try
+            {
+                if (emptied.ResetIfEmpty())
+                {
+                    _lastAnnouncedBlockType = BlockLabel(emptied.BlockAtCaret());
+                    SyncParagraphStyleCombo();
+                }
+            }
+            catch (Exception ex) when (ex is COMException or ArgumentException or InvalidOperationException)
+            {
+                LogService.Debug($"New editor: resetting an emptied body: {ex.Message}");
+            }
+        }
         // WinUI reports a change after the fact, the load's own included; text that still is what
         // was loaded has not been edited. Formatting commands mark the body dirty themselves.
         if (_newRichLoadedText != null && string.Equals(_newRich.Text, _newRichLoadedText, StringComparison.Ordinal)) return;
@@ -221,7 +289,7 @@ public partial class ComposeWindow
         LogService.Log("The new message editor could not be hosted for HTML mode; using the standard editor", ex);
         if (_newRich is not { } host) return;
         bool hadFocus = host.HasFocus;
-        host.PreviewKeyDown -= NewRich_PreviewKeyDown;
+        host.PreviewKeyDown -= BodyBox_PreviewKeyDown;
         host.Close();
         BodyEditorGrid.Children.Remove(host);
         _newRich = null;
@@ -270,7 +338,7 @@ public partial class ComposeWindow
 
     private void EnsureNewRichFocused()
     {
-        if (_newRich is { } host && !(host.HasFocus && host.IsKeyboardFocusWithin)) host.FocusWhenReady();
+        if (_newRich is { } host && !host.HasFocus) host.FocusWhenReady();
     }
 
     // ── Commands ─────────────────────────────────────────────────────────────
@@ -377,18 +445,14 @@ public partial class ComposeWindow
     // ── Keys ─────────────────────────────────────────────────────────────────
 
     /// <summary>
-    /// Keys in the hosted rich editor: everything the plain editor's handler does (typing
-    /// detection for spelling, Alt+1/2/3), then Enter where the editor's own break is wrong.
+    /// Enter in the hosted rich editor, where the editor's own paragraph break is wrong. True
+    /// when it was dealt with here.
     /// </summary>
-    private void NewRich_PreviewKeyDown(object sender, KeyEventArgs e)
+    private bool NewRichEnter()
     {
-        BodyBox_PreviewKeyDown(sender, e);
-        if (e.Handled || NewRich is not { } rich) return;
-        if (e.Key != Key.Return || Keyboard.Modifiers != ModifierKeys.None) return;
-
+        if (NewRich is not { } rich) return false;
         var result = rich.HandleEnter();
-        if (result == RichEditDocument.EnterResult.NotHandled) return;
-        e.Handled = true;
+        if (result == RichEditDocument.EnterResult.NotHandled) return false;
         _vm.MarkBodyDirty();
         var block = rich.BlockAtCaret();
         _lastAnnouncedBlockType = BlockLabel(block);
@@ -401,6 +465,9 @@ public partial class ComposeWindow
             case RichEditDocument.EnterResult.LeftCode:
                 AnnounceFormatting("Normal text");
                 break;
+            case RichEditDocument.EnterResult.LeftList:
+                AnnounceFormatting(_lastAnnouncedBlockType ?? "Normal text");
+                break;
             case RichEditDocument.EnterResult.CodeLine or RichEditDocument.EnterResult.CellLine:
                 // Same block, new line: nothing has changed that needs saying.
                 break;
@@ -408,6 +475,7 @@ public partial class ComposeWindow
                 AccessibilityHelper.Announce(this, _lastAnnouncedBlockType, category: AnnouncementCategory.Result);
                 break;
         }
+        return true;
     }
 
     /// <summary>Tab and Shift+Tab in the hosted rich editor: a list item's level, else as in the plain editor.</summary>
@@ -439,7 +507,7 @@ public partial class ComposeWindow
         var lines = text.Replace("\r\n", "\n", StringComparison.Ordinal).TrimEnd('\n').Split('\n');
         rich.InsertLines(lines);
         _vm.MarkBodyDirty();
-        _newRich!.Focus();
+        _newRich!.FocusWhenReady();
     }
 
     // ── Clipboard ────────────────────────────────────────────────────────────

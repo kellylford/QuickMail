@@ -1,0 +1,94 @@
+# Selecting with Shift, and what typing and deleting do to a selection.
+
+== Shift+Right selects one character
+text: one two three
+caret: before "two"
+keys: +{RIGHT}
+selection-is: "t"
+
+== Shift+Left selects one character back
+text: one two three
+caret: after "two"
+keys: +{LEFT}
+selection-is: "o"
+
+== Ctrl+Shift+Right selects to the start of the next word
+text: one two three
+caret: before "two"
+keys: ^+{RIGHT}
+selection-is: "two "
+
+== Ctrl+Shift+Left selects back to the start of the word
+text: one two three
+caret: after "two"
+keys: ^+{LEFT}
+selection-is: "two"
+
+== Shift+End selects to the end of the line
+text: one two three\nfour
+caret: before "two"
+keys: +{END}
+selection-is: "two three"
+
+== Shift+Home selects to the start of the line
+text: one two three\nfour
+caret: before "three"
+keys: +{HOME}
+selection-is: "one two "
+
+== Shift+Down selects to the same column on the next line
+text: alpha\nbeta\ngamma
+caret: start
+keys: +{DOWN}
+selection-is: "alpha\n"
+
+== Ctrl+Shift+End selects to the end of the body
+text: alpha\nbeta\ngamma
+caret: before "beta"
+keys: ^+{END}
+selection-is: "beta\ngamma"
+
+== Ctrl+Shift+Home selects to the start of the body
+text: alpha\nbeta\ngamma
+caret: before "gamma"
+keys: ^+{HOME}
+selection-is: "alpha\nbeta\n"
+
+== Ctrl+A selects everything
+text: alpha\nbeta
+caret: before "beta"
+keys: ^a
+selection-is: "alpha\nbeta"
+
+== Typing replaces the selection
+text: one two three
+caret: select "two"
+type: x
+text-is: one x three
+caret-is: after "one x"
+
+== Delete removes the selection
+text: one two three
+caret: select "two "
+keys: {DELETE}
+text-is: one three
+caret-is: before "three"
+
+== Backspace removes the selection
+text: one two three
+caret: select "two "
+keys: {BACKSPACE}
+text-is: one three
+caret-is: before "three"
+
+== An arrow key collapses the selection to its end
+text: one two three
+caret: select "two"
+keys: {RIGHT}
+caret-is: after "two"
+
+== Left collapses the selection to its start
+text: one two three
+caret: select "two"
+keys: {LEFT}
+caret-is: before "two"

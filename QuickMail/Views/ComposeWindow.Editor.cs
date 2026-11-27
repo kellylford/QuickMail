@@ -106,7 +106,9 @@ public partial class ComposeWindow
         host.TextChanged += OnNewEditorTextChanged;
         _vm.PropertyChanged += OnViewModelBodyChanged;
         host.SelectionChanged += OnNewEditorSelectionChanged;
-        host.PreviewKeyDown += BodyBox_PreviewKeyDown;
+        host.PreviewKeyDown += BodyBox_PreviewKeyDown; // Alt+1/2/3 only: other keys come through KeyRouter
+        host.KeyRouter = (key, modifiers) => RouteBodyKey(host, key, modifiers);
+        host.FocusStrayed = FocusActiveEditor;
         host.TabPressed = HandleBodyTab;
         host.FilesDropped += OnNewEditorFilesDropped;
         host.HostingFailed += OnNewEditorHostingFailed;
@@ -121,7 +123,6 @@ public partial class ComposeWindow
         ApplyNewEditorTheme();
         // After the window's own key handlers (wired in XAML), so those still go first.
         PreviewKeyDown += HostedFocus_PreviewKeyDown;
-        KeyDown += HostedFocus_KeyDown;
         _registry.BindingsChanged += OnBindingsChangedRefreshNewEditor;
         if (_themeService != null)
             _themeService.ThemeChanged += OnThemeChangedRefreshNewEditor;
@@ -137,7 +138,6 @@ public partial class ComposeWindow
     {
         _vm.PropertyChanged -= OnViewModelBodyChanged;
         PreviewKeyDown -= HostedFocus_PreviewKeyDown;
-        KeyDown -= HostedFocus_KeyDown;
         _registry.BindingsChanged -= OnBindingsChangedRefreshNewEditor;
         if (_themeService != null)
             _themeService.ThemeChanged -= OnThemeChangedRefreshNewEditor;
@@ -148,7 +148,7 @@ public partial class ComposeWindow
         }
         if (_newRich is { } rich)
         {
-            rich.PreviewKeyDown -= NewRich_PreviewKeyDown;
+            rich.PreviewKeyDown -= BodyBox_PreviewKeyDown;
             rich.Close();
         }
     }

@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows10.0.17763.0</TargetFramework>
+    <!-- UI Automation's managed client ships with the Windows Desktop framework. -->
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <!-- Test tooling (#1099): drives the published QuickMail with real keystrokes and checks the
+         message editor's text and caret after each. Never shipped, and it does not reference the
+         app: it tests the exe the way a person meets it. -->
+    <WindowsPackageType>None</WindowsPackageType>
+    <EnableMsixTooling>false</EnableMsixTooling>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- WPF projects leave System.IO out of the implicit usings. -->
+    <Using Include="System.IO" />
+    <None Include="cases\**\*.keys" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

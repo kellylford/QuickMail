@@ -76,12 +76,25 @@ internal static class WinUiRuntime
     private static void FilterMessage(ref MSG msg, ref bool handled)
     {
         if (handled) return;
+        // A key in a hosted editor is QuickMail's first: commands, Tab and editing combinations
+        // are carried out at once, with the modifier keys as they are at this instant.
+        if (WinUiEditorHost.TakeKey(ref msg))
+        {
+            handled = true;
+            return;
+        }
         var m = new ContentMsg
         {
             hwnd = msg.hwnd, message = (uint)msg.message, wParam = msg.wParam, lParam = msg.lParam,
             time = msg.time, ptX = msg.pt_x, ptY = msg.pt_y,
         };
-        if (ContentPreTranslateMessage(ref m)) handled = true;
+        if (ContentPreTranslateMessage(ref m))
+        {
+            handled = true;
+            return;
+        }
+        // Any other key for a hosted editor goes straight to it, never through WPF's key routing.
+        if (WinUiEditorHost.DeliverKey(ref msg)) handled = true;
     }
 
     [StructLayout(LayoutKind.Sequential)]

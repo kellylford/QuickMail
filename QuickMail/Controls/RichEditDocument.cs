@@ -55,6 +55,10 @@ internal sealed class RichEditDocument
     private readonly Func<string, BitmapSource?> _resolveImage;
     private readonly List<(ITextRange Range, ComposeImage Info)> _images = new();
 
+    // Where inline code was loaded, so its font can be put back (see MendFonts). Ranges move
+    // with the text around them.
+    private readonly List<ITextRange> _codeRanges = new();
+
     /// <param name="resolveImage">The picture for a <c>src</c> as the editor draws it, or null for a placeholder.</param>
     public RichEditDocument(RichEditBox editor, Func<string, BitmapSource?> resolveImage)
     {
@@ -83,6 +87,8 @@ internal sealed class RichEditDocument
     public void Load(IReadOnlyList<RichParagraph> paragraphs)
     {
         _images.Clear();
+        _codeRanges.Clear();
+        _typingFormat = null;
         Doc.BatchDisplayUpdates();
         try
         {
@@ -93,12 +99,130 @@ internal sealed class RichEditDocument
                 paragraphs = paragraphs.Append(new RichParagraph { QuoteDepth = paragraphs[^1].QuoteDepth }).ToList();
             InsertAt(Doc.GetRange(0, length), paragraphs, wholeDocument: true);
             Doc.Selection.SetRange(0, 0);
+            if (Raw().Length <= 1)
+            {
+                // An empty body has no text to take a format from, so the caret keeps whatever
+                // the last body left it: after bold text, a new empty body started out bold, and
+                // Ctrl+B then turned bold off while saying nothing was wrong.
+                var caret = Doc.Selection.CharacterFormat;
+                caret.Bold = FormatEffect.Off;
+                caret.Italic = FormatEffect.Off;
+                caret.Underline = UnderlineType.None;
+                caret.Strikethrough = FormatEffect.Off;
+                caret.Size = BaseSize;
+                caret.Name = BaseFont;
+            }
         }
         finally
         {
             Doc.ApplyDisplayUpdates();
         }
         Doc.ClearUndoRedoHistory();
+    }
+
+    /// <summary>
+    /// The control sets every character to its own font and size when it finishes loading, which
+    /// is after a body loaded as the window opened. That loses what a font or a size stands for
+    /// here: a heading's size, a code block's font, and inline code, which is known only by its
+    /// font and would be sent as plain text. This puts them back from what survives (paragraph
+    /// styles, the code block mark, and the remembered inline code).
+    ///
+    /// <para>It replaces loading the body a second time, which also threw away anything done
+    /// in the moment between: Ctrl+B pressed straight after switching to HTML was undone with
+    /// nothing said, and the text typed next went in plain.</para>
+    /// </summary>
+    public void MendFonts()
+    {
+        EnsureTypingFormat();
+
+        var raw = Raw();
+        if (raw.Length == 0) return;
+        Doc.BatchDisplayUpdates();
+        try
+        {
+            foreach (var slot in Slots(raw, 0, raw.Length))
+            {
+                var paragraph = Doc.GetRange(slot.Start, slot.Start + slot.Length);
+                var format = paragraph.ParagraphFormat;
+                var style = format.Style;
+                if (style is >= ParagraphStyle.Heading1 and <= ParagraphStyle.Heading6)
+                {
+                    paragraph.CharacterFormat.Size = HeadingSize(style - ParagraphStyle.Heading1 + 1);
+                    paragraph.CharacterFormat.Bold = FormatEffect.On;
+                }
+                else if (format.KeepTogether == FormatEffect.On && format.KeepWithNext != FormatEffect.On && slot.Length > 0)
+                {
+                    paragraph.CharacterFormat.Name = CodeFontName;
+                }
+            }
+            foreach (var code in _codeRanges)
+            {
+                if (code.EndPosition > code.StartPosition) code.CharacterFormat.Name = CodeFontName;
+            }
+        }
+        finally
+        {
+            Doc.ApplyDisplayUpdates();
+        }
+    }
+
+    /// <summary>
+    /// A body with nothing in it is plain text. Deleting everything leaves one empty paragraph
+    /// that keeps the kind of the last one (a heading, a list item, a code block, a quote), and
+    /// that empty paragraph was then sent as an empty heading or bullet, and counted as
+    /// "formatting" that switching to Plain Text would lose. Returns true if it changed anything.
+    /// </summary>
+    public bool ResetIfEmpty()
+    {
+        var raw = Raw();
+        if (raw.Length > 1 || (raw.Length == 1 && raw[0] != (char)13)) return false;
+        var range = Doc.GetRange(0, raw.Length);
+        var format = range.ParagraphFormat;
+        bool plain = format.Style is ParagraphStyle.Normal or ParagraphStyle.None or ParagraphStyle.Undefined
+                     && format.ListType is MarkerType.None or MarkerType.Undefined
+                     && format.KeepTogether != FormatEffect.On
+                     && format.KeepWithNext != FormatEffect.On
+                     && Math.Round(format.RightIndent) == 0
+                     && Math.Round(format.LeftIndent) == 0;
+        var caret = Doc.Selection.CharacterFormat;
+        plain = plain && caret.Bold != FormatEffect.On && caret.Italic != FormatEffect.On
+                && caret.Underline is UnderlineType.None or UnderlineType.Undefined
+                && caret.Strikethrough != FormatEffect.On;
+        if (plain) return false;
+
+        format.Style = ParagraphStyle.Normal;
+        format.ListType = MarkerType.None;
+        format.KeepTogether = FormatEffect.Off;
+        format.KeepWithNext = FormatEffect.Off;
+        format.NoLineNumber = FormatEffect.Off;
+        format.Alignment = ParagraphAlignment.Left;
+        format.SetIndents(0, 0, 0);
+        foreach (var characters in new[] { range.CharacterFormat, Doc.Selection.CharacterFormat })
+        {
+            characters.Bold = FormatEffect.Off;
+            characters.Italic = FormatEffect.Off;
+            characters.Underline = UnderlineType.None;
+            characters.Strikethrough = FormatEffect.Off;
+            characters.Size = BaseSize;
+            characters.Name = BaseFont;
+        }
+        return true;
+    }
+
+    /// <summary>
+    /// -1 when the caret is at the start of a table cell, 1 when at its end, 2 when the cell is
+    /// empty (both), and 0 otherwise or outside a table or with text selected. Backspace at a
+    /// cell's start and Delete at its end would join two cells.
+    /// </summary>
+    public int TableCellEdge()
+    {
+        var selection = Doc.Selection;
+        if (selection.StartPosition != selection.EndPosition) return 0;
+        var block = BlockAtCaret();
+        if (!block.InTable) return 0;
+        bool atStart = selection.StartPosition == block.Start;
+        bool atEnd = selection.StartPosition >= block.End - 1;
+        return atStart && atEnd ? 2 : atStart ? -1 : atEnd ? 1 : 0;
     }
 
     /// <summary>
@@ -293,6 +417,7 @@ internal sealed class RichEditDocument
                 if (run.Underline) format.Underline = UnderlineType.Single;
                 if (run.Strike) format.Strikethrough = FormatEffect.On;
                 if (run.Code || p.Pre) format.Name = CodeFontName;
+                if (run.Code && !p.Pre) _codeRanges.Add(Doc.GetRange(from, to));
             }
 
             bool firstOfLink = run.Link is not null
@@ -806,11 +931,51 @@ internal sealed class RichEditDocument
 
     // ─────────────────────────── Character formatting ────────────────────────
 
+    // What has been switched on for the next typing (Ctrl+B with nothing selected), and where
+    // the caret was. The control resets the caret's format on its own schedule: when it finishes
+    // loading, and some time after a body has been loaded into it. A command given in that time
+    // was undone with nothing said, and the text typed next went in plain. So the wish is
+    // remembered, and put back just before the next letter is typed if the caret has not moved.
+    private (int Position, FormatEffect Bold, FormatEffect Italic, UnderlineType Underline, FormatEffect Strike)? _typingFormat;
+
+    private void RememberTypingFormat()
+    {
+        var selection = Doc.Selection;
+        if (selection.StartPosition != selection.EndPosition)
+        {
+            _typingFormat = null;
+            return;
+        }
+        var format = selection.CharacterFormat;
+        _typingFormat = (selection.StartPosition, format.Bold, format.Italic, format.Underline, format.Strikethrough);
+    }
+
+    /// <summary>
+    /// Call before a typed character goes in. If a formatting command was given at this caret
+    /// position and the control has since dropped it, it is put back.
+    /// </summary>
+    public void EnsureTypingFormat()
+    {
+        if (_typingFormat is not { } wanted) return;
+        var selection = Doc.Selection;
+        if (selection.StartPosition != selection.EndPosition || selection.StartPosition != wanted.Position)
+        {
+            _typingFormat = null; // the caret moved: what is there now decides
+            return;
+        }
+        var format = selection.CharacterFormat;
+        if (format.Bold != wanted.Bold) format.Bold = wanted.Bold;
+        if (format.Italic != wanted.Italic) format.Italic = wanted.Italic;
+        if (format.Underline != wanted.Underline) format.Underline = wanted.Underline;
+        if (format.Strikethrough != wanted.Strike) format.Strikethrough = wanted.Strike;
+    }
+
     public bool ToggleBold()
     {
         var format = Doc.Selection.CharacterFormat;
         bool on = format.Bold != FormatEffect.On;
         format.Bold = on ? FormatEffect.On : FormatEffect.Off;
+        RememberTypingFormat();
         return on;
     }
 
@@ -819,6 +984,7 @@ internal sealed class RichEditDocument
         var format = Doc.Selection.CharacterFormat;
         bool on = format.Italic != FormatEffect.On;
         format.Italic = on ? FormatEffect.On : FormatEffect.Off;
+        RememberTypingFormat();
         return on;
     }
 
@@ -827,6 +993,7 @@ internal sealed class RichEditDocument
         var format = Doc.Selection.CharacterFormat;
         bool on = format.Underline is UnderlineType.None or UnderlineType.Undefined;
         format.Underline = on ? UnderlineType.Single : UnderlineType.None;
+        RememberTypingFormat();
         return on;
     }
 
@@ -835,6 +1002,7 @@ internal sealed class RichEditDocument
         var format = Doc.Selection.CharacterFormat;
         bool on = format.Strikethrough != FormatEffect.On;
         format.Strikethrough = on ? FormatEffect.On : FormatEffect.Off;
+        RememberTypingFormat();
         return on;
     }
 
@@ -1156,7 +1324,7 @@ internal sealed class RichEditDocument
     // ─────────────────────────────── Enter ───────────────────────────────────
 
     /// <summary>What <see cref="HandleEnter"/> did, for the caller to announce.</summary>
-    internal enum EnterResult { NotHandled, LeftQuote, HeadingBreak, CodeLine, LeftCode, CellLine }
+    internal enum EnterResult { NotHandled, LeftQuote, HeadingBreak, CodeLine, LeftCode, CellLine, LeftList }
 
     /// <summary>
     /// Enter where RichEdit's own paragraph break is wrong. Call with nothing selected.
@@ -1209,6 +1377,14 @@ internal sealed class RichEditDocument
                 return EnterResult.CodeLine;
             }
             finally { Doc.EndUndoGroup(); }
+        }
+
+        if (empty && block.List != RichListKind.None)
+        {
+            // Enter on an empty list item ends the list there. The control's own Enter does that
+            // and adds a paragraph as well, which left a blank line after every list.
+            SetQuoteAndList(RangeOf(block), block.QuoteDepth, RichListKind.None, 0);
+            return EnterResult.LeftList;
         }
 
         if (empty && block.QuoteDepth > 0)
