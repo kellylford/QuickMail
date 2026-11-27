@@ -5073,11 +5073,20 @@ public partial class MainViewModel : ObservableObject, IDisposable
         // home-folder copy vanished (e.g. a Gmail message archived out of INBOX while its All Mail
         // copy remains) — a message that merely moved, not deleted (issue #220). CollapseKeyFor
         // falls back to the per-folder key for messages with no Message-ID, preserving old behavior.
+        //
+        // Only folders whose listing can prove a deletion are scoped (#1113 review). A POP3 fetch
+        // returns its window plus whatever it just collected, whatever that message's Date header
+        // says, so one resent or delayed message dated last year would otherwise widen the "fetched
+        // range" back to then and drop every shown row in between that the window did not return.
         var fetchedKeys = new HashSet<string>(StringComparer.Ordinal);
         var minDateByFolder = new Dictionary<(Guid, string), DateTimeOffset>();
+        var authoritative = new Dictionary<Guid, bool>();
         foreach (var m in newMessages)
         {
             fetchedKeys.Add(MessageDeduplicator.CollapseKeyFor(m));
+            if (!authoritative.TryGetValue(m.AccountId, out var proves))
+                authoritative[m.AccountId] = proves = _imap.ListingIsAuthoritativeForDeletions(m.AccountId);
+            if (!proves) continue;
             var fk = (m.AccountId, m.FolderName);
             if (!minDateByFolder.TryGetValue(fk, out var min) || m.Date < min)
                 minDateByFolder[fk] = m.Date;
@@ -6277,10 +6286,16 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 targets.Add((account, folder));
         }
 
+        // Rows from an account whose folders live in the store (POP3, #1113) were just read from it, and anything collected
+        // on the way was stored as it arrived. Writing them back changes nothing and, now that such a folder lists every
+        // row it holds, would rewrite the whole folder on the UI thread on every open. The rules pass still runs.
+        var storeBacked = messages.Select(m => m.AccountId).Distinct().Where(_imap.FoldersLiveInLocalStore).ToHashSet();
+        var toWrite = storeBacked.Count == 0 ? messages : messages.Where(m => !storeBacked.Contains(m.AccountId)).ToList();
+
         // The write starts here, on the caller's thread, as the plain write this replaced did. The store runs it through
         // before returning, so a delete or a mark-read made straight afterwards still lands after it, not under it. Only the
         // rules pass, which reads the store, runs rules and writes back, moves off the UI thread.
-        var cached = _localStore.UpsertSummariesAsync(messages);
+        var cached = toWrite.Count > 0 ? _localStore.UpsertSummariesAsync(toWrite) : Task.CompletedTask;
         cached.LogFaults(writeContext);
         Task.Run(() => SettleRulesAfterCachingAsync(cached, targets)).LogFaults("client-side rules: settle mail a view cached");
     }
@@ -6314,21 +6329,21 @@ public partial class MainViewModel : ObservableObject, IDisposable
     /// <summary>
     /// Fetches what one folder lists — the fetch whose result <em>replaces</em> the rows shown, as
     /// opening a folder, an aggregate view, or All Mail's repair pass does. Within the Sync Range when
-    /// one is set, except for an account whose backend says the range must not limit its folders
-    /// (POP3, #1113): there it asks for everything, still through
+    /// one is set, except for an account whose folders live in the local store (POP3, #1113): there it
+    /// asks for everything at every range, uncapped, and always through
     /// <see cref="IMailService.GetMessagesSinceDateAsync"/>, because on a POP3 Inbox that call is also
     /// what collects new mail. Incremental fetches that only add rows keep the window; they never hide
     /// anything already shown.
     /// </summary>
     private Task<List<MailMessageSummary>> FetchFolderListAsync(Guid accountId, string folderFullName, CancellationToken ct)
     {
-        if (_syncDays <= 0)
-            return _imap.GetMessageSummariesAsync(accountId, folderFullName, 50000, ct);
+        if (_imap.FoldersLiveInLocalStore(accountId))
+            return _imap.GetMessagesSinceDateAsync(
+                accountId, folderFullName, DateTime.SpecifyKind(DateTime.MinValue, DateTimeKind.Utc), ct);
 
-        var since = _imap.SyncRangeLimitsFolderLists(accountId)
-            ? DateTime.UtcNow.AddDays(-_syncDays)
-            : DateTime.SpecifyKind(DateTime.MinValue, DateTimeKind.Utc);
-        return _imap.GetMessagesSinceDateAsync(accountId, folderFullName, since, ct);
+        return _syncDays > 0
+            ? _imap.GetMessagesSinceDateAsync(accountId, folderFullName, DateTime.UtcNow.AddDays(-_syncDays), ct)
+            : _imap.GetMessageSummariesAsync(accountId, folderFullName, 50000, ct);
     }
 
     private async Task RefreshFolderFromServerAsync(
