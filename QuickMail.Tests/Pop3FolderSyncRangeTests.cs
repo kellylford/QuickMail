@@ -306,7 +306,9 @@ public sealed class Pop3FolderSyncRangeTests : IDisposable
             new StubOAuthService(), new StubSyncService(), new StubConfigService(),
             new StubCommandRegistry(), new StubViewService(), new StubRuleService(),
             new StubSmtpService());
-        vm.Accounts.Add(new AccountModel { Id = Account, AccountName = "POP", Username = "me@example.com" });
+        // An OAuth sign-in, only so ConnectAllAccountsAsync connects it without a stored password: All
+        // Mail fetches only from connected accounts. What matters here is the backend's answers.
+        vm.Accounts.Add(new AccountModel { Id = Account, AccountName = "POP", Username = "me@example.com", AuthType = AuthType.OAuth2Microsoft });
         await vm.ConnectAllAccountsAsync();
 
         await vm.SelectFolderCommand.ExecuteAsync(MainViewModel.AllMailFolder);
