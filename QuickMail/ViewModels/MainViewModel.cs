@@ -6311,6 +6311,26 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
     }
 
+    /// <summary>
+    /// Fetches what one folder lists — the fetch whose result <em>replaces</em> the rows shown, as
+    /// opening a folder, an aggregate view, or All Mail's repair pass does. Within the Sync Range when
+    /// one is set, except for an account whose backend says the range must not limit its folders
+    /// (POP3, #1113): there it asks for everything, still through
+    /// <see cref="IMailService.GetMessagesSinceDateAsync"/>, because on a POP3 Inbox that call is also
+    /// what collects new mail. Incremental fetches that only add rows keep the window; they never hide
+    /// anything already shown.
+    /// </summary>
+    private Task<List<MailMessageSummary>> FetchFolderListAsync(Guid accountId, string folderFullName, CancellationToken ct)
+    {
+        if (_syncDays <= 0)
+            return _imap.GetMessageSummariesAsync(accountId, folderFullName, 50000, ct);
+
+        var since = _imap.SyncRangeLimitsFolderLists(accountId)
+            ? DateTime.UtcNow.AddDays(-_syncDays)
+            : DateTime.SpecifyKind(DateTime.MinValue, DateTimeKind.Utc);
+        return _imap.GetMessagesSinceDateAsync(accountId, folderFullName, since, ct);
+    }
+
     private async Task RefreshFolderFromServerAsync(
         Guid accountId, MailFolderModel folder, int version, CancellationToken ct)
     {
@@ -6321,9 +6341,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         var token = timeoutCts.Token;
         try
         {
-            var list = _syncDays > 0
-                ? await _imap.GetMessagesSinceDateAsync(accountId, folder.FullName, DateTime.UtcNow.AddDays(-_syncDays), token)
-                : await _imap.GetMessageSummariesAsync(accountId, folder.FullName, 50000, token);
+            var list = await FetchFolderListAsync(accountId, folder.FullName, token);
             _connectivity?.NoteAccountReachable(accountId, "folder-loaded");
             if (!IsCurrentFolderLoad(version, folder))
                 return;
@@ -6900,10 +6918,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             ct.ThrowIfCancellationRequested();
             try
             {
-                var msgs = _syncDays > 0
-                    ? await _imap.GetMessagesSinceDateAsync(account.Id, folder.FullName, DateTime.UtcNow.AddDays(-_syncDays), ct)
-                    : await _imap.GetMessageSummariesAsync(account.Id, folder.FullName, 50000, ct);
-                result.AddRange(msgs);
+                result.AddRange(await FetchFolderListAsync(account.Id, folder.FullName, ct));
             }
             catch (OperationCanceledException) { throw; }
             catch (Exception ex)
@@ -8050,10 +8065,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             ct.ThrowIfCancellationRequested();
             try
             {
-                var msgs = _syncDays > 0
-                    ? await _imap.GetMessagesSinceDateAsync(account.Id, folder.FullName, DateTime.UtcNow.AddDays(-_syncDays), ct)
-                    : await _imap.GetMessageSummariesAsync(account.Id, folder.FullName, 50000, ct);
-                result.AddRange(msgs);
+                result.AddRange(await FetchFolderListAsync(account.Id, folder.FullName, ct));
             }
             catch (OperationCanceledException) { throw; }
             catch (Exception ex)

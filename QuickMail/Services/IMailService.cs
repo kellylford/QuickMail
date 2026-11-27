@@ -96,6 +96,19 @@ public interface IMailService : IDisposable
     /// </summary>
     bool ListingIsAuthoritativeForDeletions(Guid accountId) => true;
 
+    /// <summary>
+    /// Whether View → Sync Range limits what a folder of this account lists. True for every backend
+    /// that fetches from a server mailbox: the range bounds how far back it fetches, and mail older
+    /// than that is still on the server, to be reached by widening the range.
+    ///
+    /// <para>False for POP3 (#1113). Its folders are read from the local store, which is the only copy
+    /// of the mail, and the folder's unread count is a count of that store. Applying the range to the
+    /// list there downloads nothing less; it only hides mail the count still includes, with nothing in
+    /// the folder to act on. This is about what a folder <em>lists</em> only: the sweep's window, and
+    /// <see cref="GetMessagesSinceDateAsync"/>'s role as POP3's download trigger, are unchanged.</para>
+    /// </summary>
+    bool SyncRangeLimitsFolderLists(Guid accountId) => true;
+
     Task<IList<string>> GetFolderMessageIdsAsync(Guid accountId, string folderName, CancellationToken ct = default);
 
     /// <summary>

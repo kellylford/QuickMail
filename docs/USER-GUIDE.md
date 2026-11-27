@@ -374,6 +374,8 @@ own web settings, and — for Gmail and Yahoo — an app password rather than yo
 
 - **Messages are downloaded whole and kept on this computer.** Reading a message, opening its
   attachments, searching, and saving the original message all work with no network.
+- **Every folder shows all the mail it holds.** The [Sync Range](#sync-range) doesn't hide older
+  mail in a POP3 account's folders, since this computer is where that mail is kept.
 - **Inbox, Sent, Drafts and Trash belong to QuickMail, and so do any folders you add.** A POP3
   server has no folders to show, so these are QuickMail's own. You can create folders of your own
   — to file a mailing list, say — and move, copy and delete them, and point rules at them,
@@ -1077,6 +1079,8 @@ QuickMail also checks for new mail by itself. Most mail servers tell QuickMail t
 ### Sync Range
 
 **View → Sync Range** decides how far back QuickMail keeps mail on this computer: **Last 7 Days**, **Last 30 Days** (the default), **Last 6 Months**, **Last 1 Year**, or **All Mail**. The same choice is **Sync range** in **Settings → General**. Older mail is still on your server; it is just not in QuickMail's lists, or in searches of the mail on this computer. A wider range means more to download the first time, and more disk space used.
+
+[POP3 accounts](#pop3-accounts) are the exception. Their mail is kept on this computer, not on a server, so their folders always show everything they hold, whatever the range.
 
 ### The Status Bar
 
