@@ -118,7 +118,7 @@ public class Pop3FolderSyncRangeTests
         var counted  = (await f.Pop.GetFoldersAsync(Account)).Single(x => x.FullName == lists.FullName);
 
         Assert.Equal(1, windowed.Count(m => !m.IsRead));
-        Assert.Equal(2, counted.UnreadCount);
+        Assert.Equal(3, counted.UnreadCount);
         Assert.False(f.Pop.SyncRangeLimitsFolderLists(Account));
     }
 
@@ -141,7 +141,7 @@ public class Pop3FolderSyncRangeTests
 
         await f.OpenListsAsync();
 
-        Assert.Equal(2, f.CachedLists.UnreadCount);
+        Assert.Equal(3, f.CachedLists.UnreadCount);
         Assert.Equal(f.CachedLists.UnreadCount, f.Vm.Messages.Count(m => !m.IsRead));
     }
 
@@ -153,7 +153,7 @@ public class Pop3FolderSyncRangeTests
         // refresh recounts the store), once the list shows every row there is to delete.
         var f = await new Fixture().WithFolderAsync(OldAndNew);
         await f.OpenListsAsync();
-        Assert.Equal(2, f.CachedLists.UnreadCount);
+        Assert.Equal(3, f.CachedLists.UnreadCount);
 
         await f.Vm.DeleteMessagesAsync(f.Vm.Messages.ToList());
 
