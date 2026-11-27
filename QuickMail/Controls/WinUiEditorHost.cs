@@ -187,6 +187,21 @@ internal sealed class WinUiEditorHost : HwndHost, IPlainTextEditor
             if (candidate._container != IntPtr.Zero && (focus == candidate._container || IsChild(candidate._container, focus)))
                 return candidate;
         }
+
+        // Focus is in no editor. If one has been asked to take it and has not yet (a format
+        // switch in progress, a dialog just closed), and nothing else has been given the
+        // keyboard since, this key is for that editor: it gets focus now, and the key.
+        if (s_wanted is { IsVisible: true, _source: not null } wanted && wanted.MayTakeFocus())
+        {
+            wanted.TakeFocusNow();
+            if (wanted.IslandHasFocus)
+            {
+                Services.LogService.Debug("New editor: a key arrived before focus reached the editor; focus and the key went to it.");
+                focus = GetFocus();
+                msg.hwnd = focus;
+                return wanted;
+            }
+        }
         return null;
     }
 
@@ -1064,6 +1079,12 @@ internal sealed class WinUiEditorHost : HwndHost, IPlainTextEditor
         // When WPF already counts this element as focused, Focus() changes nothing and raises
         // nothing, so the editor is asked directly either way.
         Focus();
+        // And Windows' focus on the island at once, not only when the queued request runs:
+        // between the two, keys typed went to no editor at all. (Focus() above has finished by
+        // the time it returns, leaving Windows' focus on the outer window.) The queued request
+        // still follows, to check it took.
+        s_wanted = this;
+        TakeFocusNow();
         FocusEditor();
         return true;
     }

@@ -21,6 +21,9 @@ internal sealed class App : IDisposable
     private AutomationElement? _compose;
     private AutomationElement? _main;
 
+    /// <summary>For running the cases against a build made before the editors had automation ids.</summary>
+    public static bool AllowEditorByName { get; set; }
+
     private App(Process process) => _process = process;
 
     public static App Start(string exe, string profileDir)
@@ -35,7 +38,7 @@ internal sealed class App : IDisposable
                                           && !w.Current.Name.Contains("Message", StringComparison.Ordinal), 60,
             "QuickMail's main window");
         app._main = main;
-        BringToFront(new IntPtr(main.Current.NativeWindowHandle), "QuickMail's main window");
+        BringToFront(main, "QuickMail's main window");
         Thread.Sleep(1500);
         return app;
     }
@@ -55,19 +58,26 @@ internal sealed class App : IDisposable
     /// process that is not itself in front unless a key has just been pressed. Never used
     /// between the keys of a case.
     /// </summary>
-    private static void BringToFront(IntPtr hwnd, string what)
+    private static void BringToFront(AutomationElement window, string what)
     {
+        var hwnd = new IntPtr(window.Current.NativeWindowHandle);
         for (int attempt = 0; attempt < 8; attempt++)
         {
             if (GetForegroundWindow() == hwnd) return;
-            // A key press unlocks SetForegroundWindow for this process. Not Alt, the usual
-            // choice: tapping Alt opens the menu bar of the window in front. An unassigned key
-            // code does the unlocking and means nothing to any window.
-            if (attempt > 0)
-            {
-                keybd_event(0xE8, 0, 0, UIntPtr.Zero);
-                keybd_event(0xE8, 0, 2, UIntPtr.Zero);
-            }
+            // UI Automation first: asked to focus a window, it activates it from inside the
+            // window's own process, which is always allowed to. A screen reader's window (JAWS
+            // runs with higher privileges) will not give the foreground up to SetForegroundWindow
+            // called from here.
+            try { window.SetFocus(); }
+            catch (Exception ex) when (ex is InvalidOperationException or ElementNotAvailableException or COMException) { }
+            Thread.Sleep(400);
+            if (GetForegroundWindow() == hwnd) return;
+
+            // Then the plain way. A key press unlocks SetForegroundWindow for this process; not
+            // Alt, the usual choice, which opens the menu bar of the window in front. An
+            // unassigned key code does the unlocking and means nothing to any window.
+            keybd_event(0xE8, 0, 0, UIntPtr.Zero);
+            keybd_event(0xE8, 0, 2, UIntPtr.Zero);
             SetForegroundWindow(hwnd);
             Thread.Sleep(400);
         }
@@ -84,7 +94,7 @@ internal sealed class App : IDisposable
     {
         var window = message ? _compose : _main;
         if (window == null) throw new InvalidOperationException("That window is not open.");
-        BringToFront(new IntPtr(window.Current.NativeWindowHandle), message ? "the message window" : "QuickMail's main window");
+        BringToFront(window, message ? "the message window" : "QuickMail's main window");
     }
 
     public string ComposeTitle => _compose?.Current.Name ?? string.Empty;
@@ -128,6 +138,16 @@ internal sealed class App : IDisposable
         var element = _compose.FindFirst(TreeScope.Descendants, new PropertyCondition(AutomationElement.AutomationIdProperty, id));
         if (element != null) return element;
         var found = _compose.FindAll(TreeScope.Descendants, new PropertyCondition(AutomationElement.NameProperty, "Message body"));
+        // A build from before the editors had ids (build 4 and earlier): the one on screen.
+        // Only good for comparing an old build against these cases; it cannot tell the two
+        // editors apart for certain.
+        if (AllowEditorByName)
+        {
+            foreach (AutomationElement candidate in found)
+            {
+                if (candidate.Current.ClassName == "RichEditBox" && !candidate.Current.IsOffscreen) return candidate;
+            }
+        }
         var classes = string.Join(", ", found.Cast<AutomationElement>().Select(e => e.Current.ClassName + "#" + e.Current.AutomationId));
         throw new InvalidOperationException(
             $"The new editor ({id}) was not found (found: {(classes.Length == 0 ? "nothing" : classes)}). " +

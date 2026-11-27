@@ -49,6 +49,7 @@ internal static class Program
                 case "--filter": filter = Next(); break;
                 case "--modes": onlyModes = Next().Split(',', StringSplitOptions.RemoveEmptyEntries); break;
                 case "--hold": Keyboard.HoldMs = int.Parse(Next(), System.Globalization.CultureInfo.InvariantCulture); break;
+                case "--old-build": App.AllowEditorByName = true; break;
                 case "--no-restart": _restartAfterFailure = false; break;
                 case "--delay": Keyboard.KeyDelayMs = int.Parse(Next(), System.Globalization.CultureInfo.InvariantCulture); break;
                 default: Console.Error.WriteLine($"Unknown argument {args[i]}"); return 2;
@@ -165,6 +166,14 @@ internal static class Program
             // Only an empty body can say: its text is nothing, or the mark alone.
             if (state.Text.Length == 0) _finalMark[editor] = false;
             else if (state.Text == "\n") _finalMark[editor] = mark = true;
+            else if (_finalMark.Count > 0)
+            {
+                // Read for the first time with text in it (a case that switches format with
+                // text in the body, run before any case that starts in this editor). Both
+                // editors are the same control, so what the other one taught is used; the
+                // requirement below still applies from here on.
+                _finalMark[editor] = mark = _finalMark.Values.First();
+            }
             else throw new InvalidOperationException(
                 $"The {editor} editor was first read with text in it ({CaseFile.Show(state.Text)}); it has to be read empty once, to learn how its text ends.");
         }
@@ -330,7 +339,7 @@ internal static class Program
                     if (step.Argument == "Message body")
                     {
                         // The two editors share this name: it must be the one that is showing.
-                        if (id != _app.VisibleEditorId)
+                        if (!OnTheEditor(name, id))
                             failures.Add($"{where}: focus should be on the message body ({_app.VisibleEditorId}); it is on '{name}' ({className}{(id.Length > 0 ? " #" + id : string.Empty)}).");
                     }
                     else if (!name.Contains(step.Argument, StringComparison.OrdinalIgnoreCase))
@@ -348,7 +357,7 @@ internal static class Program
                     // user was left on a nameless pane. Second: a typed letter arrives. A focus
                     // report alone has been wrong before.
                     var (name, className, id) = App.Focused();
-                    if (id != _app.VisibleEditorId)
+                    if (!OnTheEditor(name, id))
                         failures.Add($"{where}: before typing, focus should be on the message body ({_app.VisibleEditorId}); it is on '{name}' ({className}{(id.Length > 0 ? " #" + id : string.Empty)}); in front: '{App.ForegroundTitle()}'.");
 
                     var before = Read();
@@ -385,6 +394,13 @@ internal static class Program
             }
         }
     }
+
+    /// <summary>
+    /// True when the focused element is the editor that is showing: by its id, or, for a build
+    /// from before the editors had ids (--old-build), by the name the two editors share.
+    /// </summary>
+    private static bool OnTheEditor(string name, string id) =>
+        App.AllowEditorByName ? name == "Message body" : id == _app!.VisibleEditorId;
 
     private static string Describe(EditorState state)
     {

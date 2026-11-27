@@ -1,0 +1,110 @@
+# Typing that starts the instant a format switch is asked for, with no pause for the switch to
+# settle. During the switch the keyboard passes from one editor to the other; nothing typed in
+# that moment may be lost. A slow or busy machine (a screen reader makes it more so) stretches
+# the moment, which is how typed text went missing.
+
+== Typing straight after switching to HTML
+modes: plain
+keys: ^+3
+type: alpha beta gamma
+wait: 2
+mode-is: html
+text-is: alpha beta gamma
+
+== Typing straight after switching to Markdown
+modes: plain
+keys: ^+2
+type: alpha beta gamma
+wait: 2
+mode-is: markdown
+text-is: alpha beta gamma
+
+== Typing straight after switching from HTML to Plain Text
+modes: html
+keys: ^+1
+type: alpha beta gamma
+wait: 2
+mode-is: plain
+text-is: alpha beta gamma
+
+== Typing straight after switching from HTML to Markdown
+modes: html
+keys: ^+2
+type: alpha beta gamma
+wait: 2
+mode-is: markdown
+text-is: alpha beta gamma
+
+== Typing straight after switching from Markdown to HTML
+modes: markdown
+keys: ^+3
+type: alpha beta gamma
+wait: 2
+mode-is: html
+text-is: alpha beta gamma
+
+== Bold, then typing, straight after switching to HTML
+modes: plain
+keys: ^+3
+keys: ^b
+type: alpha beta
+keys: ^b
+wait: 2
+text-is: alpha beta
+markdown-is: **alpha beta**
+
+== Typing straight after the format question is answered Yes
+judgment: After a format switch the caret is at the top of the body, so what is typed next goes in front of the text. Should the caret keep its place (or go to the end) across a switch?
+modes: html
+keys: ^b
+type: bold
+keys: ^b
+keys: ^+1
+wait: 1.5
+front-is: Switch to Plain Text
+keys: y
+type: "after "
+wait: 2
+mode-is: plain
+text-is: after bold
+
+== Typing straight after the format question is answered No
+modes: html
+keys: ^b
+type: bold
+keys: ^b
+keys: ^+1
+wait: 1.5
+front-is: Switch to Plain Text
+keys: n
+type: " after"
+wait: 2
+mode-is: html
+text-is: bold after
+
+== Typing straight after Alt+Y from Subject
+text: body
+keys: %u
+wait: 0.5
+keys: %y
+type: " more"
+wait: 1.5
+text-is: body more
+
+== Typing straight after the context menu is closed
+text: body
+keys: +{F10}
+wait: 1
+keys: {ESC}
+type: " more"
+wait: 1.5
+text-is: body more
+
+== Typing straight after coming back from another window
+text: body
+window: main
+wait: 1.5
+window: message
+type: " more"
+wait: 1.5
+text-is: body more
