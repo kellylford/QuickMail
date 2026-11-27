@@ -30,7 +30,7 @@ internal static class CaseFile
         // Setting up
         "text", "markdown", "caret",
         // Doing
-        "keys", "type", "wait",
+        "keys", "type", "wait", "window",
         // Checking
         "caret-is", "selection-is", "text-is", "mode-is", "front-is", "focus-is", "typing-works", "markdown-is",
     };

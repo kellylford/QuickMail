@@ -75,13 +75,16 @@ internal sealed class WinUiEditorHost : HwndHost, IPlainTextEditor
         _editor.SelectionFlyout = null;
         _editor.ContextFlyout = BuildContextMenu();
         _editor.TextChanging += (_, _) => _text = null;
+        // Every handler QuickMail gives the control runs through Guarded: these are called from
+        // WinUI's native code, where an exception that escapes ends the process at once
+        // (0xc0000409), with nothing in the log and the message lost.
         _editor.TextChanged += (_, _) =>
         {
             _text = null;
-            TextChanged?.Invoke(this, EventArgs.Empty);
+            Guarded("text changed", () => TextChanged?.Invoke(this, EventArgs.Empty));
         };
-        _editor.SelectionChanged += (_, _) => SelectionChanged?.Invoke(this, EventArgs.Empty);
-        _editor.Loaded += (_, _) => EditorLoaded?.Invoke(this, EventArgs.Empty);
+        _editor.SelectionChanged += (_, _) => Guarded("selection changed", () => SelectionChanged?.Invoke(this, EventArgs.Empty));
+        _editor.Loaded += (_, _) => Guarded("loaded", () => EditorLoaded?.Invoke(this, EventArgs.Empty));
         // WPF's own record follows the editor, without WPF moving Windows' focus to do it: Alt
         // keys, which still go through WPF, and focus restored after a dialog start from here.
         _editor.GotFocus += (_, _) =>
@@ -105,20 +108,33 @@ internal sealed class WinUiEditorHost : HwndHost, IPlainTextEditor
         // While an input method is composing text, every key is its: QuickMail takes none.
         _editor.TextCompositionStarted += (_, _) => _composing = true;
         _editor.TextCompositionEnded += (_, _) => _composing = false;
-        _editor.Paste += OnPaste;
-        _editor.DragOver += OnDragOver;
+        _editor.Paste += (sender, e) => Guarded("paste", () => OnPaste(sender, e));
+        _editor.DragOver += (sender, e) => Guarded("drag over", () => OnDragOver(sender, e));
         _editor.Drop += OnDrop;
         if (rich)
         {
             Rich = new RichEditDocument(_editor, resolveImage ?? (_ => null));
-            _editor.CopyingToClipboard += (_, e) => { if (CopyRequested?.Invoke(false) == true) e.Handled = true; };
-            _editor.CuttingToClipboard += (_, e) => { if (CopyRequested?.Invoke(true) == true) e.Handled = true; };
+            _editor.CopyingToClipboard += (_, e) => Guarded("copy", () => { if (CopyRequested?.Invoke(false) == true) e.Handled = true; });
+            _editor.CuttingToClipboard += (_, e) => Guarded("cut", () => { if (CopyRequested?.Invoke(true) == true) e.Handled = true; });
         }
         Focusable = true;
     }
 
     /// <summary>The formatted body, when this editor was made for HTML messages; otherwise null.</summary>
     public RichEditDocument? Rich { get; }
+
+    /// <summary>Runs one of QuickMail's handlers for a WinUI event; whatever it throws is logged, and said, not passed back to WinUI.</summary>
+    private void Guarded(string what, Action handler)
+    {
+#pragma warning disable CA1031 // an exception returned to WinUI's native caller ends the process
+        try { handler(); }
+        catch (Exception ex)
+#pragma warning restore CA1031
+        {
+            Services.LogService.Log($"New editor: handling '{what}' raised an error", ex);
+            KeyFailed?.Invoke(ex);
+        }
+    }
 
     // ── Keys ─────────────────────────────────────────────────────────────────
     //
@@ -612,7 +628,7 @@ internal sealed class WinUiEditorHost : HwndHost, IPlainTextEditor
         void Add(string text, Action run)
         {
             var item = new MenuFlyoutItem { Text = text };
-            item.Click += (_, _) => run();
+            item.Click += (_, _) => Guarded("a context menu command", run);
             menu.Items.Add(item);
         }
         void Fill()
@@ -631,7 +647,7 @@ internal sealed class WinUiEditorHost : HwndHost, IPlainTextEditor
             Add("Paste", Paste);
             Add("Select All", () => Select(0, Text.Length));
         }
-        menu.Opening += (_, _) => Fill();
+        menu.Opening += (_, _) => Guarded("opening the context menu", Fill);
         Fill();
         return menu;
     }

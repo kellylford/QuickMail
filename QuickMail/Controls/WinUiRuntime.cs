@@ -139,6 +139,14 @@ internal static class WinUiRuntime
         public XamlApp()
         {
             _manager = Microsoft.UI.Xaml.Hosting.WindowsXamlManager.InitializeForCurrentThread();
+            // The last line of defense for an exception inside WinUI's own event dispatch. Left
+            // unhandled, WinUI ends the process; a compose window with a message in it must
+            // survive an error in one event.
+            UnhandledException += (_, e) =>
+            {
+                Services.LogService.Log("WinUI reported an unhandled error: " + e.Message, e.Exception);
+                e.Handled = true;
+            };
             Resources.MergedDictionaries.Add(new Microsoft.UI.Xaml.Controls.XamlControlsResources());
         }
 

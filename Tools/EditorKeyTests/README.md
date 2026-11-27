@@ -52,6 +52,7 @@ otherwise. `#` starts a comment.
 | `keys: ^{RIGHT}` | Presses keys. `^` Ctrl, `+` Shift, `%` Alt; `{RIGHT}`, `{F7}`, `{DOWN 3}`. |
 | `type: hello` | Types text, a key at a time. |
 | `wait: 1.5` | Waits, in seconds. |
+| `window: main` | Switches to QuickMail's main window (`main`) or back to the message (`message`), as Alt+Tab does. |
 | `caret-is: before "three"` | The caret must be there, with nothing selected. |
 | `selection-is: "two "` | The selected text must be exactly this. |
 | `text-is: one three` | The body's text must be exactly this. |

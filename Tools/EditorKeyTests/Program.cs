@@ -275,6 +275,11 @@ internal static class Program
                     Thread.Sleep(120);
                     break;
 
+                case "window":
+                    // "main" or "message": switch windows, as with Alt+Tab or the taskbar.
+                    _app.SwitchToWindow(message: step.Argument == "message");
+                    break;
+
                 case "wait":
                     Thread.Sleep((int)(double.Parse(step.Argument, System.Globalization.CultureInfo.InvariantCulture) * 1000));
                     break;

@@ -40,14 +40,17 @@ wait: 0.8
 focus-is: Message body
 typing-works
 
-== Alt+Tab away and back returns the keyboard to the body
+== Switching to another window and back returns the keyboard to the body
+# What Alt+Tab away and back does. The windows are switched by name: Alt+Tab itself goes to
+# whatever else is open on the machine, which differs between the test VM and CI.
 text: one two
 caret: after "one"
-keys: %{TAB}
+window: main
 wait: 1.5
-keys: %{TAB}
+window: message
 wait: 1.5
 front-is: New Message
+focus-is: Message body
 caret-is: after "one"
 typing-works
 

@@ -19,6 +19,7 @@ internal sealed class App : IDisposable
 {
     private readonly Process _process;
     private AutomationElement? _compose;
+    private AutomationElement? _main;
 
     private App(Process process) => _process = process;
 
@@ -33,6 +34,7 @@ internal sealed class App : IDisposable
         var main = app.WaitForWindow(w => w.Current.Name.EndsWith("- QuickMail", StringComparison.Ordinal)
                                           && !w.Current.Name.Contains("Message", StringComparison.Ordinal), 60,
             "QuickMail's main window");
+        app._main = main;
         BringToFront(new IntPtr(main.Current.NativeWindowHandle), "QuickMail's main window");
         Thread.Sleep(1500);
         return app;
@@ -50,21 +52,39 @@ internal sealed class App : IDisposable
 
     /// <summary>
     /// Brings a window to the front, once, at the start of a run. Windows refuses this to a
-    /// process that is not itself in front unless a key has just been pressed, so Alt is tapped
-    /// first. Never used between the keys of a case.
+    /// process that is not itself in front unless a key has just been pressed. Never used
+    /// between the keys of a case.
     /// </summary>
     private static void BringToFront(IntPtr hwnd, string what)
     {
         for (int attempt = 0; attempt < 8; attempt++)
         {
             if (GetForegroundWindow() == hwnd) return;
-            keybd_event(0x12, 0, 0, UIntPtr.Zero);
-            keybd_event(0x12, 0, 2, UIntPtr.Zero);
+            // A key press unlocks SetForegroundWindow for this process. Not Alt, the usual
+            // choice: tapping Alt opens the menu bar of the window in front. An unassigned key
+            // code does the unlocking and means nothing to any window.
+            if (attempt > 0)
+            {
+                keybd_event(0xE8, 0, 0, UIntPtr.Zero);
+                keybd_event(0xE8, 0, 2, UIntPtr.Zero);
+            }
             SetForegroundWindow(hwnd);
             Thread.Sleep(400);
         }
         if (GetForegroundWindow() != hwnd)
             throw new InvalidOperationException($"Could not bring {what} to the front; '{ForegroundTitle()}' is in front.");
+    }
+
+    /// <summary>
+    /// Switches to QuickMail's main window, or back to the message, as a person does with
+    /// Alt+Tab or the taskbar. This is a step a case asks for, because coming back to a window
+    /// is something the editor has to survive; it is never done between keys behind a case's back.
+    /// </summary>
+    public void SwitchToWindow(bool message)
+    {
+        var window = message ? _compose : _main;
+        if (window == null) throw new InvalidOperationException("That window is not open.");
+        BringToFront(new IntPtr(window.Current.NativeWindowHandle), message ? "the message window" : "QuickMail's main window");
     }
 
     public string ComposeTitle => _compose?.Current.Name ?? string.Empty;
