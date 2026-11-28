@@ -23,6 +23,9 @@ public static class LogService
     public static void Configure(string profileDir) =>
         _logFile = Path.Combine(profileDir, "quickmail.log");
 
+    /// <summary>The full path of the log file, for a message that tells the user where to look.</summary>
+    public static string LogFilePath => _logFile;
+
     // File.AppendAllText opens-writes-closes; concurrent callers from background sync,
     // prefetch, and the UI thread collided on the file handle and lost lines through
     // the swallowed IOException — exactly the lines you want during a sync crash.

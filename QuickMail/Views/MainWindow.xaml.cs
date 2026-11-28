@@ -193,6 +193,10 @@ public partial class MainWindow : Window
     // with the HC wording and everything else as "Theme changed to …".
     private bool _lastAnnouncedHighContrast;
 
+    // True once InitializeComponent has returned. False for the whole life of a window whose XAML
+    // failed to load: its named controls are null and it was never shown.
+    private bool _xamlLoaded;
+
     // The single live Theme Manager, if open. The manager is modeless, so guard
     // against stacking two over the same themes folder — a second open activates
     // the existing one instead of creating a rival that could write concurrently.
@@ -281,6 +285,7 @@ public partial class MainWindow : Window
         _outbox           = outbox;
         _connectivity     = connectivity;
         InitializeComponent();
+        _xamlLoaded = true;
         DataContext = vm;
         CommandShortcut.SetRegistry(this, _registry);
         PreviewGotKeyboardFocus += (_, _) => _focusChanges++;
@@ -792,6 +797,11 @@ public partial class MainWindow : Window
 
     protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
     {
+        // A window whose XAML never finished loading (a start that failed, #1117) is closed by
+        // Application.Shutdown like any other. It has no tray icon to hide to and none of its
+        // named controls exist, so none of the close handling below applies.
+        if (!_xamlLoaded) { base.OnClosing(e); return; }
+
         // When close-to-tray is enabled, a normal window close hides to the notification area
         // instead of exiting so the new-mail watchers keep running. An explicit exit (File > Exit
         // or the tray Exit item) sets _explicitExit and falls through to a real close.
@@ -928,6 +938,8 @@ public partial class MainWindow : Window
 
     protected override void OnClosed(EventArgs e)
     {
+        if (!_xamlLoaded) { base.OnClosed(e); return; }   // see OnClosing
+
         // A message still opening in the reading pane stops quietly (no focus attempt, log line or
         // announcement after close), and the picture requests it was waiting on are answered now (#959).
         // OnClosed, not OnClosing: closing to the tray cancels the close and the message stays open.

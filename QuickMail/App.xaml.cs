@@ -77,6 +77,10 @@ public partial class App : Application
     // wires its activation signal to the main window.
     private static SingleInstanceService? _singleInstance;
 
+    // True once the main window has been shown. Before that an unhandled error cannot be
+    // "logged and carried on from": there is no window to carry on in (#1117).
+    private static bool _mainWindowShown;
+
     // Explicit entry point (App.xaml compiles as Page; see csproj StartupObject). Velopack must
     // run before any WPF initialization: on install/update/uninstall its hooks handle the event
     // and exit the process, and on a normal launch after an update it finalizes the new version.
@@ -768,6 +772,7 @@ public partial class App : Application
             }
 
             mainWindow.Show();
+            _mainWindowShown = true;
 
             // A second launch of the same profile signals this handle instead of starting
             // another process; restore the window (and drop the tray icon) exactly as the
@@ -796,8 +801,10 @@ public partial class App : Application
         }
         catch (Exception ex)
         {
-            // Log the exception chain before WER kills the process so the cause
-            // survives in %APPDATA%\QuickMail\quickmail.log.
+            // Log the exception chain so the cause survives in quickmail.log. Logging is off by
+            // default (EnableLogging), and a start that failed is exactly when the log is needed
+            // and the user is about to be told to look in it (#1117): turn it on for this.
+            LogService.Enabled = true;
             for (var cur = ex; cur != null; cur = cur.InnerException)
                 LogService.Log("Startup", cur);
             throw;
@@ -933,6 +940,9 @@ public partial class App : Application
     private static void OnDispatcherUnhandledException(
         object sender, System.Windows.Threading.DispatcherUnhandledExceptionEventArgs e)
     {
+        // Before the main window is up the user is sent to the log, so it has to be written
+        // whatever the logging setting says (#1117).
+        if (!_mainWindowShown) LogService.Enabled = true;
         for (var cur = e.Exception; cur != null; cur = cur.InnerException)
             LogService.Log("Dispatcher", cur);
 
@@ -943,6 +953,30 @@ public partial class App : Application
         {
             e.Handled = true;
             Current!.Shutdown(3);
+            return;
+        }
+
+        // #1117: the main window never appeared, so there is nothing to keep alive for. Staying
+        // would leave a process with no window that holds this profile's single-instance lock:
+        // every later start signals it and exits, and QuickMail cannot be opened again until the
+        // PC is restarted. Say what happened and go.
+        if (!_mainWindowShown)
+        {
+            try
+            {
+                MessageBox.Show(
+                    "QuickMail could not start." + Environment.NewLine + Environment.NewLine +
+                    // The innermost error: the outer one is usually XAML's "Provide value on … threw
+                    // an exception", which says nothing about what was missing.
+                    $"{e.Exception.GetBaseException().GetType().Name}: {e.Exception.GetBaseException().Message}" + Environment.NewLine + Environment.NewLine +
+                    "The details are in this file:" + Environment.NewLine + LogService.LogFilePath,
+                    "QuickMail",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
+            }
+            catch { /* MessageBox itself can fail in extreme cases: still exit. */ }
+            e.Handled = true;
+            Current?.Shutdown(1);
             return;
         }
 

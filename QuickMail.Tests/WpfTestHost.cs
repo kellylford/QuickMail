@@ -113,4 +113,26 @@ internal static class WpfTestHost
             }
         });
     }
+
+    /// <summary>
+    /// Takes style dictionaries back out, as ThemeService does with ThemedControls under a Windows
+    /// contrast theme (#1116). Only for a test class in a collection with
+    /// <c>DisableParallelization = true</c>: every other window test in the run reads the same
+    /// Application, and one that runs while a dictionary is out fails for no fault of its own. Put
+    /// the dictionary back with <see cref="EnsureStyles"/> when done.
+    /// </summary>
+    public static void RemoveStyles(params string[] names)
+    {
+        EnsureApplication();
+        var app = _app!;
+        app.Dispatcher.Invoke(() =>
+        {
+            foreach (var name in names)
+            {
+                var uri = StyleUri(name);
+                foreach (var dictionary in app.Resources.MergedDictionaries.Where(d => d.Source == uri).ToList())
+                    app.Resources.MergedDictionaries.Remove(dictionary);
+            }
+        });
+    }
 }
