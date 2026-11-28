@@ -1520,6 +1520,24 @@ If it gets in your way, turn off **File → Settings → General → Composing �
 
 You can also leave the setting on and simply wait 15 seconds or so after a long paste before reviewing what you pasted.
 
+### The Message Editor
+
+The message body is edited in a newer editing control than the rest of the compose window. It was chosen for how it reads with screen readers: each word is spoken once as you type it, a blank line reads as blank, and moving by paragraph stops where it should. Everything in this guide works in it. A few things are different from the editor QuickMail used before:
+
+- **Spelling underlines are not drawn.** Spelling is still checked. Misspellings are announced as you move into them, and `Ctrl+F7`, `Alt+1` / `Alt+2` / `Alt+3`, **Shift+F10** and **F7** all work as described under [Inline Spell Check](#inline-spell-check). Suggestions come from the spell checker built into Windows.
+- **Shift+F10 on a misspelled word** offers the suggestions, **Ignore All**, and **Add to Dictionary**.
+- **Tab in a Plain Text or Markdown message** puts in a tab character, as before. **Shift+Tab** moves back to the field before the body.
+
+In HTML mode:
+
+- **Copy and Cut keep formatting and pictures.** Text copied from a message and pasted into a message keeps its headings, lists, links and pictures.
+- **Pasting formatted text** from a web page or a document keeps headings, lists, links, bold, italic, underline and strikethrough, and leaves out what a message does not carry (fonts, colors and sizes).
+- **A table has one cell on each line.** With **Announce formatting while navigating** on, QuickMail says which cell you are in, for example "Table cell, row 2, column 1". **Enter** in a cell starts a new line in that cell. The message is sent as a normal table.
+- **In a code block, Enter starts a new line of the block.** Press **Enter** on an empty last line to leave the block.
+- **After a heading, Enter starts a line of normal text.**
+
+To go back to the previous editor, turn off **File → Settings → General → Composing → Use the new message editor**. Messages you open afterwards use the previous editor.
+
 ### Attachments
 
 Attach files with `Ctrl+Shift+A` in the compose window, by pasting files from the clipboard (`Ctrl+V`), or by dragging and dropping them onto the window. A screen reader announces how many files were attached. A message you copied in the message list (`Ctrl+C`) pastes in as an attached email, and an attachment you copied from another message pastes in as a file.
@@ -2800,7 +2818,7 @@ Choose this option when you **don't mind sending an email** and want a **persona
 
 ### What's included in a report — and what's never included
 
-Alongside what you type, an in-app report (options 1 and 2) adds a short **Environment** section so a problem can be reproduced in the right context: the QuickMail version, your Windows version, the .NET runtime version, the version of the Microsoft Edge WebView2 runtime that shows messages, the active color theme, the current view, the current sort order, the message open mode (reading pane, tab, or window), and how many accounts you have set up together with the mail protocols they connect over — for example `2 (IMAP, Microsoft 365)`. Any shared mailboxes are counted separately, as in `2 (Microsoft 365), plus 1 shared mailbox`, since a shared mailbox is not one of your own accounts. That last line is counts and protocol names only: no address, server name, or account name is included.
+Alongside what you type, an in-app report (options 1 and 2) adds a short **Environment** section so a problem can be reproduced in the right context: the QuickMail version, your Windows version, the .NET runtime version, the version of the Microsoft Edge WebView2 runtime that shows messages, the active color theme, the current view, the current sort order, the message open mode (reading pane, tab, or window), which message editor your most recent message window used (new or previous), and how many accounts you have set up together with the mail protocols they connect over — for example `2 (IMAP, Microsoft 365)`. Any shared mailboxes are counted separately, as in `2 (Microsoft 365), plus 1 shared mailbox`, since a shared mailbox is not one of your own accounts. That last line is counts and protocol names only: no address, server name, or account name is included.
 
 **No message content, email addresses, account settings, passwords, or log file content is ever collected or sent.** The Preview shows the full report verbatim, so you always see exactly what is included before it leaves your computer.
 
@@ -2821,6 +2839,7 @@ Press **Ctrl+,** to open Settings. The **Sounds** tab has no access key, so reac
 - **Default compose mode** — Plain Text, Markdown, or HTML
 - **Reply to HTML messages in HTML** — on by default. A reply to a message that has formatting opens in HTML mode, with the original quoted as a quote block, instead of in the default compose mode with every quoted line beginning with `>`. See [Editing Modes](#editing-modes).
 - **Check spelling as I type** — on by default. Turn it off if a message stalls, or your screen reader misreads lines, after you paste a long text. See [Turning off spell checking as you type](#turning-off-spell-checking-as-you-type).
+- **Use the new message editor** — on by default. The editor for the message body in Plain Text, Markdown and HTML. Turn it off to go back to the previous editor; it applies to messages you open afterwards. See [The Message Editor](#the-message-editor).
 - **Auto-save drafts** — on/off and interval
 - **Confirm before sending a message** — off by default. Asks before sending or queuing mail; applies to open compose windows as soon as settings are saved.
 - **Suggest addresses as I type** — on by default, with **Suggest from my address book** and **Suggest people I've sent to** under it, both on. Turn off the first to have no address suggestions at all. See [Choosing what is suggested](#choosing-what-is-suggested).

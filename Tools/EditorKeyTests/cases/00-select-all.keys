@@ -1,0 +1,79 @@
+# When is Ctrl+A ignored? Each case presses it in one situation, several times over.
+
+== Ctrl+A after typing, five times
+text: one two
+keys: ^a
+selection-is: "one two"
+keys: {RIGHT}
+keys: ^a
+selection-is: "one two"
+keys: {LEFT}
+keys: ^a
+selection-is: "one two"
+keys: {END}
+keys: ^a
+selection-is: "one two"
+keys: {HOME}
+keys: ^a
+selection-is: "one two"
+
+== Ctrl+A after the caret was put by the test
+text: one two
+caret: after "one"
+keys: ^a
+selection-is: "one two"
+
+== Ctrl+A after a letter was typed and removed
+text: one two
+caret: end
+type: q
+keys: {BACKSPACE}
+keys: ^a
+selection-is: "one two"
+
+== Ctrl+A straight after a format switch
+modes: plain
+text: one two
+keys: ^+2
+wait: 1.5
+keys: ^a
+selection-is: "one two"
+keys: ^+3
+wait: 2
+keys: ^a
+selection-is: "one two"
+keys: ^+1
+wait: 1.5
+keys: ^a
+selection-is: "one two"
+
+== Ctrl+A after the context menu closed with Escape
+text: one two
+caret: after "one"
+keys: +{F10}
+wait: 1
+keys: {ESC}
+wait: 0.8
+keys: ^a
+selection-is: "one two"
+
+== Ctrl+A after Alt+U and Alt+Y
+text: one two
+caret: after "one"
+keys: %u
+wait: 0.5
+keys: %y
+wait: 0.8
+keys: ^a
+selection-is: "one two"
+
+== Ctrl+A then Delete empties the body, three times
+text: one two
+keys: ^a{DELETE}
+text-is:
+type: three four
+keys: ^a{DELETE}
+text-is:
+type: five
+keys: ^a{DELETE}
+text-is:

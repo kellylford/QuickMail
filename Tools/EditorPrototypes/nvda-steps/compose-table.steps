@@ -1,0 +1,102 @@
+# #1099 Stage 3: a table and a code block in HTML mode on the new editor. A new message is open,
+# with focus in the To box. The table is typed as Markdown and carried into HTML mode.
+w 4
+q +{TAB}
+w 2
+q {TAB}
+w 3
+
+# 0. Into the body, in Markdown, and the content.
+k %y
+w 3
+e Message body
+q ^+2
+w 3
+Q Intro line
+q {ENTER}
+q {ENTER}
+Q | Name | Size |
+q {ENTER}
+Q |---|---|
+q {ENTER}
+Q | Apple | Twelve |
+q {ENTER}
+Q | Pear | Forty |
+q {ENTER}
+q {ENTER}
+Q Closing line
+w 2
+k ^+3
+w 6
+e Switched to HTML mode
+
+# 1. Down through the table: one cell on each line, each read once and alone.
+k ^{HOME}
+w 3
+e Intro line
+k {DOWN}
+w 3
+e Name
+e! Size
+k {DOWN}
+w 3
+e Size
+e! Name
+k {DOWN}
+w 3
+e Apple
+e! Twelve
+k {DOWN}
+w 3
+e Twelve
+k {DOWN}
+w 3
+e Pear
+k {DOWN}
+w 3
+e Forty
+k {DOWN}
+w 3
+e Closing line
+
+# 2. Where the caret is, asked in a cell.
+k {UP}
+w 3
+e Forty
+k ^t
+w 5
+e Table cell, row 3, column 2
+k {UP}
+w 2
+k {UP}
+w 2
+k {UP}
+w 3
+e Apple
+k ^t
+w 5
+e Table cell, row 2, column 1
+
+# 3. Enter in a cell starts a second line in the same cell.
+k {END}
+w 2
+k {ENTER}
+w 3
+t red ones
+w 3
+e red
+k ^t
+w 5
+e Table cell, row 2, column 1
+k {UP}
+w 3
+e Apple
+k {DOWN}
+w 3
+e red ones
+k {DOWN}
+w 3
+e Twelve
+k ^t
+w 5
+e Table cell, row 2, column 2

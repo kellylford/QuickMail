@@ -1,0 +1,172 @@
+# Switching the message's format from the body. After every switch the keyboard must still be in
+# the body and what is typed must arrive. Each case starts in Plain Text and does its own switching.
+
+== Plain Text to Markdown
+modes: plain
+type: one
+keys: ^+2
+wait: 1.5
+mode-is: markdown
+focus-is: Message body
+typing-works
+text-is: one
+
+== Plain Text to HTML
+modes: plain
+type: one
+keys: ^+3
+wait: 2
+mode-is: html
+focus-is: Message body
+typing-works
+text-is: one
+
+== Markdown to HTML
+modes: markdown
+type: one
+keys: ^+3
+wait: 2
+mode-is: html
+focus-is: Message body
+typing-works
+
+== Markdown to Plain Text
+modes: markdown
+type: one
+keys: ^+1
+wait: 1.5
+mode-is: plain
+focus-is: Message body
+typing-works
+text-is: one
+
+== HTML to Markdown
+modes: html
+type: one
+keys: ^+2
+wait: 1.5
+mode-is: markdown
+focus-is: Message body
+typing-works
+text-is: one
+
+== HTML to Plain Text, nothing formatted
+modes: html
+type: one
+keys: ^+1
+wait: 1.5
+mode-is: plain
+focus-is: Message body
+typing-works
+text-is: one
+
+== HTML to Plain Text with formatting: answer Yes
+modes: html
+keys: ^b
+type: bold
+keys: ^b
+type: " plain"
+keys: ^+1
+wait: 1.5
+front-is: Switch to Plain Text
+keys: y
+wait: 1.5
+front-is: New Message
+mode-is: plain
+focus-is: Message body
+typing-works
+text-is: bold plain
+
+== HTML to Plain Text with formatting: answer No
+modes: html
+keys: ^b
+type: bold
+keys: ^b
+keys: ^+1
+wait: 1.5
+front-is: Switch to Plain Text
+keys: n
+wait: 1.5
+front-is: New Message
+mode-is: html
+focus-is: Message body
+typing-works
+text-is: bold
+
+== HTML to Plain Text with formatting: Escape is No
+modes: html
+keys: ^b
+type: bold
+keys: ^b
+keys: ^+1
+wait: 1.5
+front-is: Switch to Plain Text
+keys: {ESC}
+wait: 1.5
+front-is: New Message
+mode-is: html
+typing-works
+
+== Three times round every format
+modes: plain
+type: a
+keys: ^+3
+wait: 2
+typing-works
+keys: ^+1
+wait: 1.5
+typing-works
+keys: ^+2
+wait: 1.5
+typing-works
+keys: ^+3
+wait: 2
+typing-works
+keys: ^+2
+wait: 1.5
+typing-works
+keys: ^+1
+wait: 1.5
+typing-works
+keys: ^+3
+wait: 2
+typing-works
+keys: ^+1
+wait: 1.5
+typing-works
+keys: ^+2
+wait: 1.5
+typing-works
+keys: ^+3
+wait: 2
+typing-works
+keys: ^+2
+wait: 1.5
+typing-works
+keys: ^+1
+wait: 1.5
+typing-works
+text-is: a
+
+== Switching back to the same format does nothing
+modes: plain
+type: one
+keys: ^+1
+wait: 0.8
+mode-is: plain
+typing-works
+text-is: one
+
+== A switch made from the Subject box leaves focus in Subject
+modes: plain
+type: body
+keys: %u
+wait: 0.5
+keys: ^+3
+wait: 2
+mode-is: html
+focus-is: Subject
+keys: %y
+wait: 0.8
+focus-is: Message body
+typing-works

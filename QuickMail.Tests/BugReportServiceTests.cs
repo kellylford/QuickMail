@@ -238,10 +238,12 @@ public class BugReportServiceTests
             Sort  = "Newest First",
             MessageOpenMode = "Window",
             Accounts = "2 (IMAP, Microsoft 365)",
+            MessageEditor = "New",
         };
 
         var text = service.BuildReportText(report);
 
+        Assert.Contains("- Message editor: New", text);
         Assert.Contains("Theme: Parchment", text);
         Assert.Contains("View: Unread (Conversations)", text);
         Assert.Contains("Sort: Newest First", text);
@@ -288,6 +290,24 @@ public class BugReportServiceTests
         var text = service.BuildReportText(report);
 
         Assert.DoesNotContain("Message open mode:", text);
+    }
+
+    [Fact]
+    public void BuildReportText_OmitsMessageEditor_WhenContextValueEmpty()
+    {
+        var service = MakeService(_ => new HttpResponseMessage(HttpStatusCode.OK), out _);
+        var report = SampleReport();
+        report.Context = new BugReportContext
+        {
+            Theme = "Parchment",
+            View  = "All (Messages)",
+            Sort  = "Newest First",
+            // MessageEditor stays empty
+        };
+
+        var text = service.BuildReportText(report);
+
+        Assert.DoesNotContain("Message editor:", text);
     }
 
     [Fact]

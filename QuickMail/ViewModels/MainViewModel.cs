@@ -1392,7 +1392,15 @@ public partial class MainViewModel : ObservableObject, IDisposable
             _                                  => MessageOpenMode.ToString(),
         },
         Accounts = DescribeAccounts(this.Accounts),
+        MessageEditor = DescribeMessageEditor(_configService.Load().UseNewEditor),
     };
+
+    /// <summary>
+    /// Where the report's Message editor line comes from: what this run's message windows
+    /// recorded, given the setting as it is now. A seam so a test can show the line reaches the
+    /// report without depending on what other tests' windows recorded in the shared process.
+    /// </summary>
+    internal Func<bool, string> DescribeMessageEditor { get; set; } = Helpers.MessageEditorStatus.Describe;
 
     /// <summary>
     /// The account line for a bug report's Environment section: how many accounts are configured

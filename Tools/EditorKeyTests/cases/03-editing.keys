@@ -1,0 +1,152 @@
+# Typing, deleting, Enter, Tab, the clipboard, and undo.
+
+== Typed letters go in at the caret
+type: hello world
+text-is: hello world
+caret-is: end
+
+== Capital letters and punctuation are typed as themselves
+type: Hello, World! (ok?)
+text-is: Hello, World! (ok?)
+
+== Letters that are access keys elsewhere in the window are typed, not acted on
+# t, s, u, m, y, f, e are access keys or Alt shortcuts in the compose window.
+type: the best summary of my yellow fuel
+text-is: the best summary of my yellow fuel
+typing-works
+
+== Enter starts a new paragraph
+text: one two
+caret: after "one"
+keys: {ENTER}
+text-is: one\n two
+caret-is: after "one\n"
+
+== Enter at the end, then typing, puts the text on the new line
+type: first
+keys: {ENTER}
+type: second
+text-is: first\nsecond
+caret-is: end
+
+== Backspace deletes the character before the caret
+text: one two
+caret: after "one"
+keys: {BACKSPACE}
+text-is: on two
+caret-is: after "on"
+
+== Delete deletes the character after the caret
+text: one two
+caret: after "one"
+keys: {DELETE}
+text-is: onetwo
+caret-is: after "one"
+
+== Backspace at the start of a line joins it to the line above
+text: one\ntwo
+caret: before "two"
+keys: {BACKSPACE}
+text-is: onetwo
+caret-is: after "one"
+
+== Delete at the end of a line joins the next line to it
+text: one\ntwo
+caret: after "one"
+keys: {DELETE}
+text-is: onetwo
+caret-is: after "one"
+
+== Ctrl+Backspace deletes back to the start of the word
+text: one two three
+caret: after "two"
+keys: ^{BACKSPACE}
+text-is: one  three
+caret-is: after "one "
+
+== Ctrl+Delete deletes to the start of the next word
+text: one two three
+caret: before "two"
+keys: ^{DELETE}
+text-is: one three
+caret-is: before "three"
+
+== Tab puts in a tab character
+type: a
+keys: {TAB}
+type: b
+text-is: a\tb
+typing-works
+
+== Ctrl+Z brings back what was deleted
+text: one two
+caret: select " two"
+keys: {DELETE}
+text-is: one
+keys: ^z
+text-is: one two
+
+== Ctrl+Y redoes what was undone
+text: one two
+caret: select " two"
+keys: {DELETE}
+keys: ^z
+keys: ^y
+text-is: one
+
+== Ctrl+Z after Ctrl+Backspace brings the word back
+text: one two
+caret: end
+keys: ^{BACKSPACE}
+text-is: "one "
+keys: ^z
+text-is: one two
+
+== Ctrl+C then Ctrl+V copies a word
+text: one two
+caret: select "one"
+keys: ^c
+keys: {END}
+keys: ^v
+text-is: one twoone
+caret-is: end
+
+== Ctrl+X then Ctrl+V moves a word
+text: one two three
+caret: select "one "
+keys: ^x
+text-is: two three
+keys: {END}
+keys: ^v
+text-is: "two threeone "
+
+== Ctrl+V of several lines keeps them as lines
+text: a\nb\nc
+caret: start
+keys: ^a
+keys: ^c
+keys: ^{END}
+keys: {ENTER}
+keys: ^v
+text-is: a\nb\nc\na\nb\nc
+
+== The control's own formatting keys do nothing
+# RichEdit would center, right-align, change line spacing, make bullets or change case.
+text: one two
+caret: select "two"
+keys: ^e
+keys: ^r
+keys: ^j
+keys: ^1
+keys: ^2
+keys: ^5
+text-is: one two
+selection-is: "two"
+
+== Bold switched on, then Space, then a word: all of it is bold
+modes: html
+type: a
+keys: ^b
+type: " b"
+keys: ^b
+markdown-is: a **b**

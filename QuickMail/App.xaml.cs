@@ -816,6 +816,8 @@ public partial class App : Application
     }
     protected override void OnExit(ExitEventArgs e)
     {
+        // The WinUI side of the new message editor (#1099), if a message ever used it.
+        if (Controls.WinUiRuntime.IsStarted) Controls.WinUiRuntime.Shutdown();
         // Copied messages and attachments. Kept while the clipboard still offers them: Windows holds the
         // paths after QuickMail has gone, and pasting into Explorer afterwards would find nothing. The next
         // start tidies them (DeleteAbandoned). Otherwise nothing can paste them, so they go now.
@@ -935,6 +937,8 @@ public partial class App : Application
     {
         for (var cur = e.Exception; cur != null; cur = cur.InnerException)
             LogService.Log("Dispatcher", cur);
+        // Where it was thrown, with /debug: the type and message alone rarely say.
+        LogService.Debug($"Dispatcher exception stack: {e.Exception}");
 
         // ui-probe (#180): unattended — a modal error box would park the run on an
         // invisible dialog until the orchestrator's kill timeout and destroy the

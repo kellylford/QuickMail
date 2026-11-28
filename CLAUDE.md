@@ -304,6 +304,65 @@ When accessibility issues arise, the investigation should be user-centric:
 2. Ask: "What should you hear/experience instead?"
 3. Verify the fix matches the user's actual experience, not theoretical expectations
 
+## The Message Editor (hosted WinUI) — Enforced
+
+The compose body is WinUI 3's `RichEditBox` in a XAML island inside the WPF compose window
+(#1099): `Controls/WinUiEditorHost` (the host), `Controls/WinUiRuntime` (starts WinUI on first
+use), `Controls/RichEditDocument` (a formatted body, for HTML mode), `Helpers/RichBodyModel`
+(the flat form a body takes between the two), and `Views/ComposeWindow.Editor.cs` /
+`ComposeWindow.RichEditor.cs` (the wiring). **Settings → General → Composing → Use the new
+message editor** (`UseNewEditor`; `NewMessageEditor` in `config.ini`; on by default) chooses it; off, the WPF `EditorTextBox` and
+`EditorRichTextBox` run instead, and that path must keep working: it is the user's way back and
+what runs if WinUI cannot start. It was chosen because WPF's text provider is where the
+compose reading bugs were (#891, #1077, #300); do not "fix" a reading problem in the new editor
+by going back to WPF without Kelly hearing both.
+
+Every rule here was a real failure first. `Tools/EditorHostSpike/README.md` has the history.
+
+- **No Windows App SDK code may run while the setting is off.** The SDK's auto-initializers are
+  off in `Directory.Build.props`; `WinUiRuntime.EnsureStarted` does their work on first use,
+  inside the try that falls back to the WPF editor. Reference only
+  `Microsoft.WindowsAppSDK.WinUI`: the whole SDK's single-file exe does not start.
+- **Ask Windows where focus is, not WPF.** WPF's `Keyboard.FocusedElement` is sometimes null
+  while the island has focus, and then `IsKeyboardFocusWithin` is false and key events go to the
+  window alone. Use `WinUiEditorHost.HasFocus` (and `ComposeWindow.AnyBodyHasFocus` /
+  `FocusedHost`). The window's `HostedFocus_PreviewKeyDown` / `HostedFocus_KeyDown` give such
+  keys to the editor's handlers; a new key handler on the host needs no extra wiring, but a new
+  "is focus in the body?" check must not use `IsKeyboardFocusWithin` on a host.
+- **WPF sees every key before the island, except Tab.** So command keys work from the body
+  through the window's `PreviewKeyDown`, and Tab is handled inside WinUI (`TabPressed`). A key
+  WPF leaves unhandled bubbles to the window: Escape reaches the Cancel button (`IsCancel`),
+  and Ctrl+arrow is taken as focus navigation. `WinUiEditorHost.HandleKeyDown` sends the
+  editor's keys straight to it; typed characters go through `TranslateCharCore`, or WPF's access
+  keys take them ("t" moved focus to the To field).
+- **An editor made a moment ago cannot take focus.** Use `FocusWhenReady`, and lay the grid out
+  first (`ApplyComposeMode` does). Otherwise what the user types next goes to the editor that
+  was just hidden.
+- **Release the island while its container is being destroyed** (`WM_DESTROY` in `WndProc`).
+  Disposing it after the window has closed is an access violation that ends the process with
+  nothing in the log. WPF does not dispose an `HwndHost` on window close, so the window calls
+  `WinUiEditorHost.Close()` from `Closed`.
+- **WinUI raises `TextChanged` after the fact.** Never hold a flag across the call that caused
+  it. Compare the text with what was last agreed (`_syncedBody`, `_newRichLoadedText`), and
+  flush the body to the view model before anything reads it (`FlushNewEditorBody`).
+- **The control resets fonts and sizes when it first loads**, after a body loaded as the window
+  opened. `EditorLoaded` writes an unedited body again.
+- **Hidden text is not hidden from a screen reader** in this control: NVDA read it and the caret
+  walked through it. Do not store anything in hidden text. Paragraph properties RichEdit keeps
+  but does not draw are what carry structure: right indent (quote depth), keep together (code
+  block), keep with next / no line number / widow control (a table's cells, rows and tables).
+- **Tables are one cell per line, by design.** NVDA read RichEdit's own table a row at a time
+  with the cells run together. Do not switch to native tables without a listening test.
+- **Spelling underlines stay off** (`IsSpellCheckEnabled = false`) unless Kelly decides
+  otherwise: in this control they come with Windows' autocorrect, which changes typed words
+  with nothing said. Spelling goes through `WindowsSpellChecker` and `PlainTextSpelling`.
+- **Do not write `\uXXXX` escapes for special characters in these files.** They have been
+  saved as raw, invisible characters by the tooling. Use `(char)0xFFFC`.
+- **The exe's resource index is `resources.pri`**, so a renamed exe still finds WinUI's styles.
+- **Test it in the VM.** The test assembly keeps compose windows on the WPF editors
+  (`NewEditorOffInTests`); the new editor is proven by the walkthroughs and NVDA steps
+  (`Tools/EditorPrototypes/nvda-steps/`), which compare it with the WPF editor on the same keys.
+
 ## Modal Dialog Rules — Enforced
 
 These rules prevent a class of crashes (`STATUS_CALLBACK_RETURNED_THREAD_APT_CHANGED`) that

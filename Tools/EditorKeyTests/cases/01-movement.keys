@@ -1,0 +1,149 @@
+# Moving the caret. Every case runs in Plain Text, Markdown and HTML unless it says otherwise.
+# The body is "text:", the caret is put with "caret:", and after "keys:" the caret must be where
+# "caret-is:" says.
+
+== Right moves one character
+text: one two three
+caret: before "two"
+keys: {RIGHT}
+caret-is: after "one t"
+
+== Left moves one character
+text: one two three
+caret: before "two"
+keys: {LEFT}
+caret-is: after "one"
+
+== Ctrl+Right moves to the start of the next word
+text: one two three
+caret: before "one"
+keys: ^{RIGHT}
+caret-is: before "two"
+
+== Ctrl+Right twice moves two words
+text: one two three
+caret: before "one"
+keys: ^{RIGHT}^{RIGHT}
+caret-is: before "three"
+
+== Ctrl+Left moves to the start of the word the caret is in
+text: one two three
+caret: after "two th"
+keys: ^{LEFT}
+caret-is: before "three"
+
+== Ctrl+Left at the start of a word moves to the previous word
+text: one two three
+caret: before "three"
+keys: ^{LEFT}
+caret-is: before "two"
+
+== Home moves to the start of the line
+text: one two three
+caret: before "three"
+keys: {HOME}
+caret-is: start
+
+== End moves to the end of the line
+text: one two three
+caret: before "two"
+keys: {END}
+caret-is: end
+
+== End on the first of two lines stays on that line
+text: alpha beta\ngamma delta
+caret: before "beta"
+keys: {END}
+caret-is: after "alpha beta"
+
+== Home on the second of two lines stays on that line
+text: alpha beta\ngamma delta
+caret: before "delta"
+keys: {HOME}
+caret-is: before "gamma"
+
+== Down moves to the next line
+text: alpha\nbeta\ngamma
+caret: start
+keys: {DOWN}
+caret-is: before "beta"
+
+== Up moves to the previous line
+text: alpha\nbeta\ngamma
+caret: before "gamma"
+keys: {UP}
+caret-is: before "beta"
+
+== Down from a long line onto a short one goes to the short line's end
+text: a much longer line\nshort\nlast
+caret: after "a much longer"
+keys: {DOWN}
+caret-is: after "short"
+
+== Down through a blank line stops on the blank line
+text: alpha\n\ngamma
+caret: start
+keys: {DOWN}
+caret-is: after "alpha\n"
+
+== Ctrl+Home moves to the start of the body
+text: alpha\nbeta\ngamma
+caret: before "gamma"
+keys: ^{HOME}
+caret-is: start
+
+== Ctrl+End moves to the end of the body
+text: alpha\nbeta\ngamma
+caret: before "beta"
+keys: ^{END}
+caret-is: end
+
+== Ctrl+Down moves to the start of the next paragraph
+text: alpha one\nbeta two\ngamma three
+caret: after "alpha"
+keys: ^{DOWN}
+caret-is: before "beta"
+
+== Ctrl+Down twice moves two paragraphs
+text: alpha one\nbeta two\ngamma three
+caret: start
+keys: ^{DOWN}^{DOWN}
+caret-is: before "gamma"
+
+== Ctrl+Up inside a paragraph moves to its start
+text: alpha one\nbeta two\ngamma three
+caret: after "beta"
+keys: ^{UP}
+caret-is: before "beta"
+
+== Ctrl+Up at the start of a paragraph moves to the previous paragraph
+text: alpha one\nbeta two\ngamma three
+caret: before "gamma"
+keys: ^{UP}
+caret-is: before "beta"
+
+== Ctrl+Down on the last paragraph
+judgment: On the last paragraph, should Ctrl+Down go to the end of the body (as here) or stay put?
+text: alpha one\nbeta two
+caret: before "beta"
+keys: ^{DOWN}
+caret-is: end
+
+== Ctrl+Up on the first paragraph at its start stays put
+text: alpha one\nbeta two
+caret: start
+keys: ^{UP}
+caret-is: start
+
+== Page Down in a short body moves to the last line
+judgment: In a body shorter than a page, Page Down lands on the last line, keeping the column. Right?
+text: alpha\nbeta\ngamma
+caret: start
+keys: {PGDN}
+caret-is: before "gamma"
+
+== Page Up in a short body moves to the first line
+text: alpha\nbeta\ngamma
+caret: before "gamma"
+keys: {PGUP}
+caret-is: start

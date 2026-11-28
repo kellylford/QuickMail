@@ -1,0 +1,57 @@
+# #1099 Stage 3 groundwork, second probe: a hidden marker beside a picture, and Enter after a heading.
+w 4
+q {TAB}
+w 2
+q +{TAB}
+w 3
+k %y
+w 4
+# The picture line: is the hidden marker spoken? Then across it by character.
+k ^{HOME}
+w 2
+k {DOWN}
+k {DOWN}
+k {DOWN}
+k {DOWN}
+k {DOWN}
+k {DOWN}
+k {DOWN}
+w 4
+k {END}
+w 3
+k {LEFT}
+w 4
+k {LEFT}
+w 4
+k {LEFT}
+w 4
+k {RIGHT}
+w 4
+k {RIGHT}
+w 4
+# Enter at the end of the heading, then type: what style does the new line get? (see the dump)
+k ^{HOME}
+w 2
+k {END}
+w 2
+k {ENTER}
+w 3
+t after heading
+w 3
+# A new bullet: End of "Second bullet", Enter, type, Enter twice to leave the list.
+k {DOWN}
+k {DOWN}
+k {DOWN}
+w 3
+k {END}
+w 2
+k {ENTER}
+w 3
+t third
+w 3
+k {ENTER}
+w 3
+k {ENTER}
+w 3
+t out of the list
+w 3

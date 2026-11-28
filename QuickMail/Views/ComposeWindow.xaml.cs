@@ -135,8 +135,10 @@ public partial class ComposeWindow : Window
         WireRichCompose();
 
         // Wire the View confirmation callback so the VM stays out of System.Windows.
+        // YesNo alone ignores Escape in a native message box, which left a keyboard user with a
+        // question that Escape would not dismiss. With Cancel, Escape is "no".
         vm.ConfirmationRequested = (message, title) =>
-            MessageBox.Show(this, message, title, MessageBoxButton.YesNo, MessageBoxImage.Warning)
+            MessageBox.Show(this, message, title, MessageBoxButton.YesNoCancel, MessageBoxImage.Warning)
             == MessageBoxResult.Yes;
 
         // YesNo alone ignores Escape in a native message box. Cancel makes Escape leave
@@ -202,17 +204,19 @@ public partial class ComposeWindow : Window
                 // not the end of the seeded content. HTML caret is already at ContentStart
                 // after LoadHtmlIntoEditorRequested fires during ApplyDefaultComposeMode.
                 if (_vm.ComposeKind == ComposeKind.Forward && _vm.CurrentMode != ComposeMode.Html)
-                    BodyBox.CaretIndex = 0;
+                    PlainBody.CaretIndex = 0;
                 ToBox.FocusInput();
             }
             else
             {
                 FocusActiveEditor();
                 if (_vm.CurrentMode != ComposeMode.Html)
-                    BodyBox.CaretIndex = 0;
+                    PlainBody.CaretIndex = 0;
             }
         };
-        BodyBox.SelectionChanged += BodyBox_SelectionChanged;
+        // The plain body: the WPF editor, or the hosted WinUI one (#1099). After the commands are
+        // registered, since the hosted editor reports its shortcut from the registry.
+        InitializePlainBody(configService.Load());
         RichBodyBox.SelectionChanged += RichBodyBox_SelectionChanged;
         RichBodyBox.PreviewKeyDown += RichBodyBox_PreviewKeyDown;
         DataObject.AddPastingHandler(RichBodyBox, RichBodyBox_Pasting);
@@ -252,7 +256,11 @@ public partial class ComposeWindow : Window
             {
                 Interval = TimeSpan.FromSeconds(Math.Clamp(cfg.AutoSaveIntervalSeconds, 30, 600)),
             };
-            _autoSaveTimer.Tick += (_, _) => _ = _vm.AutoSaveAsync();
+            _autoSaveTimer.Tick += (_, _) =>
+            {
+                FlushNewEditorBody();
+                _ = _vm.AutoSaveAsync();
+            };
             _autoSaveTimer.Start();
             Closed += (_, _) => _autoSaveTimer.Stop();
         }
@@ -420,6 +428,7 @@ public partial class ComposeWindow : Window
 
     private void CommitAllAddressInputs()
     {
+        FlushNewEditorBody();
         foreach (var box in new[] { ToBox, CcBox, BccBox })
             box.CommitPendingInput();
     }
@@ -544,6 +553,7 @@ public partial class ComposeWindow : Window
 
     private async void OnWindowClosing(object? sender, CancelEventArgs e)
     {
+        FlushNewEditorBody();
         _vm.CancelAutoSave();
         _previewWindow?.Close();
         CloseSpellCheckDialogSilently();
@@ -644,70 +654,20 @@ public partial class ComposeWindow : Window
     // Alt+U → Subject field; Alt+M → From combo; Alt+Y → Body; Ctrl+V with files → add attachments; Escape → cancel.
     // Ctrl+Shift+P → Command Palette; F7 → Check Spelling dialog; Ctrl+F7 / Ctrl+Shift+F7 → inline misspelling navigation.
     // Ctrl+Enter → Send message (secondary shortcut alongside Alt+S).
-    private async void Window_PreviewKeyDown(object sender, KeyEventArgs e)
+    private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
     {
         NoteEditingActivity();
+        // Any key may be a command that reads the body (send, save, close).
+        FlushNewEditorBody();
 
-        // Ctrl+Shift+P: open the command palette
-        if (e.Key == Key.P && Keyboard.Modifiers == (ModifierKeys.Control | ModifierKeys.Shift))
-        {
-            OpenCommandPalette();
-            e.Handled = true;
-            return;
-        }
-
-        // Ctrl+Enter: send the message (secondary shortcut alongside Alt+S)
-        if (e.Key == Key.Return && Keyboard.Modifiers == ModifierKeys.Control)
-        {
-            CommitAllAddressInputs();
-            if (_vm.SendCommand.CanExecute(null))
-                _vm.SendCommand.Execute(null);
-            e.Handled = true;
-            return;
-        }
-
-        // Ctrl+V: if the clipboard contains files, paste them as attachments
-        if (e.Key == Key.V && Keyboard.Modifiers == ModifierKeys.Control && Clipboard.ContainsFileDropList())
-        {
-            var files = Clipboard.GetFileDropList().Cast<string>().Where(f => f != null).ToList();
-            e.Handled = true;
-            // Pasted into the body of a rich message, pictures go in the body (#729); anything
-            // else, and every file pasted anywhere else, is attached as before.
-            if (BodyBox.IsKeyboardFocusWithin || RichBodyBox.IsKeyboardFocusWithin)
-                await TakeFilesIntoBodyAsync(files);
-            else
-                await AttachFilesAsync(files);
-            return;
-        }
-
-        // Ctrl+V with a picture alone on the clipboard, in the body: describe it and put it in.
-        if (e.Key == Key.V && Keyboard.Modifiers == ModifierKeys.Control && TryPastePicture())
+        if (HandleWindowKey(e.Key, Keyboard.Modifiers))
         {
             e.Handled = true;
             return;
         }
+        if (e.Key == Key.Escape) return; // transient UI is closing itself
 
-        if (e.Key == Key.Escape)
-        {
-            // Transient UI consumes Escape itself: an open menu (focus sits on a
-            // MenuItem) or an open combo dropdown must close without closing the
-            // whole compose window. This preview handler tunnels ahead of them,
-            // so step aside instead of cancelling.
-            if (Keyboard.FocusedElement is MenuItem
-                || FromCombo.IsDropDownOpen
-                || ModeSelector.IsDropDownOpen
-                || ParagraphStyleCombo.IsDropDownOpen
-                || AutoCompletePopup.IsOpen
-                || _previewWindow != null)
-            {
-                _previewWindow?.Close();
-                return;
-            }
-            _vm.CancelCommand.Execute(null);
-            e.Handled = true;
-            return;
-        }
-        else if (e.SystemKey == Key.U && (Keyboard.Modifiers & ModifierKeys.Alt) != 0)
+        if (e.SystemKey == Key.U && (Keyboard.Modifiers & ModifierKeys.Alt) != 0)
         {
             SubjectBox.Focus();
             SubjectBox.SelectAll();
@@ -736,16 +696,99 @@ public partial class ComposeWindow : Window
         var key = e.Key == Key.System ? e.SystemKey
             : e.Key == Key.ImeProcessed ? e.ImeProcessedKey
             : e.Key;
-        var modifiers = Keyboard.Modifiers;
-        var cmd = _registry.FindByGesture(key, modifiers);
-        if (cmd != null && (cmd.IsAvailable?.Invoke() ?? true))
+        if (RunComposeCommand(key, Keyboard.Modifiers)) e.Handled = true;
+    }
+
+    /// <summary>
+    /// The window's own keys that are not registry commands: Ctrl+Shift+P, Ctrl+Enter, Ctrl+V of
+    /// files or a picture, and Escape. True when the key was dealt with. Shared by WPF's key
+    /// event and by the hosted editor's key routing, which never raises a WPF key event.
+    /// </summary>
+    private bool HandleWindowKey(Key key, ModifierKeys modifiers)
+    {
+        // Ctrl+Shift+P: open the command palette
+        if (key == Key.P && modifiers == (ModifierKeys.Control | ModifierKeys.Shift))
         {
-            LogService.Debug($"[AltMenu] registry cmd '{cmd.Id}' (modifiers={modifiers}) handled; arming suppress={((modifiers & ModifierKeys.Alt) != 0)}");
-            cmd.Execute();
-            e.Handled = true;
-            if ((modifiers & ModifierKeys.Alt) != 0)
-                _suppressNextMenuActivation = true;
+            OpenCommandPalette();
+            return true;
         }
+
+        // Ctrl+Enter: send the message (secondary shortcut alongside Alt+S)
+        if (key == Key.Return && modifiers == ModifierKeys.Control)
+        {
+            CommitAllAddressInputs();
+            if (_vm.SendCommand.CanExecute(null))
+                _vm.SendCommand.Execute(null);
+            return true;
+        }
+
+        // Ctrl+V: if the clipboard contains files, paste them as attachments
+        if (key == Key.V && modifiers == ModifierKeys.Control && Clipboard.ContainsFileDropList())
+        {
+            var files = Clipboard.GetFileDropList().Cast<string>().Where(f => f != null).ToList();
+            // Pasted into the body of a rich message, pictures go in the body (#729); anything
+            // else, and every file pasted anywhere else, is attached as before.
+            PasteFiles(files, AnyBodyHasFocus);
+            return true;
+        }
+
+        // Ctrl+V with a picture alone on the clipboard, in the body: describe it and put it in.
+        if (key == Key.V && modifiers == ModifierKeys.Control && TryPastePicture())
+            return true;
+
+        if (key == Key.Escape)
+        {
+            // Transient UI consumes Escape itself: an open menu (focus sits on a
+            // MenuItem) or an open combo dropdown must close without closing the
+            // whole compose window. This runs ahead of them, so step aside instead
+            // of cancelling.
+            if (Keyboard.FocusedElement is MenuItem
+                || FromCombo.IsDropDownOpen
+                || ModeSelector.IsDropDownOpen
+                || ParagraphStyleCombo.IsDropDownOpen
+                || AutoCompletePopup.IsOpen
+                || _newEditor?.IsMenuOpen == true
+                || _newRich?.IsMenuOpen == true
+                || _previewWindow != null)
+            {
+                _previewWindow?.Close();
+                return false;
+            }
+            _vm.CancelCommand.Execute(null);
+            return true;
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// Files pasted with Ctrl+V. Not awaited by the key that started it, so a file that cannot be
+    /// read (open in another program) is caught and said here, not lost in silence.
+    /// </summary>
+    private async void PasteFiles(System.Collections.Generic.List<string> files, bool intoBody)
+    {
+        try
+        {
+            if (intoBody) await TakeFilesIntoBodyAsync(files);
+            else await AttachFilesAsync(files);
+        }
+        catch (Exception ex) when (ex is System.IO.IOException or UnauthorizedAccessException or NotSupportedException)
+        {
+            LogService.Log("Compose: pasting files", ex);
+            AccessibilityHelper.Announce(this, "A pasted file could not be read, so it was not attached.",
+                category: AnnouncementCategory.Result);
+        }
+    }
+
+    /// <summary>Runs the compose command bound to a key, if there is one and it is available.</summary>
+    private bool RunComposeCommand(Key key, ModifierKeys modifiers)
+    {
+        var cmd = _registry.FindByGesture(key, modifiers);
+        if (cmd == null || !(cmd.IsAvailable?.Invoke() ?? true)) return false;
+        LogService.Debug($"[AltMenu] registry cmd '{cmd.Id}' (modifiers={modifiers}) handled; arming suppress={((modifiers & ModifierKeys.Alt) != 0)}");
+        cmd.Execute();
+        if ((modifiers & ModifierKeys.Alt) != 0)
+            _suppressNextMenuActivation = true;
+        return true;
     }
 
     // Belt-and-suspenders: if the WndProc hook above didn't eat the Alt key release
@@ -895,16 +938,16 @@ public partial class ComposeWindow : Window
         // "Check spelling as I type" off (#883): only F7 and Ctrl+F7 / Ctrl+Shift+F7 do.
         if (!_spellCheckEnabled && !_checkSpellingAsYouType) return;
         EnsureSpellCheckEnabled();
-        if (_vm.CurrentMode == ComposeMode.Html)
+        if (UsesWpfRich)
         {
             AnnounceSpellingAtRichPosition();
             return;
         }
 
-        var text = BodyBox.Text;
+        var text = PlainBody.Text;
         if (string.IsNullOrEmpty(text)) return;
 
-        int caret = BodyBox.CaretIndex;
+        int caret = PlainBody.CaretIndex;
         int checkIndex = (caret > 0 && caret == text.Length) ? caret - 1 : caret;
         if (checkIndex < 0 || checkIndex >= text.Length)
         {
@@ -912,8 +955,8 @@ public partial class ComposeWindow : Window
             return;
         }
 
-        var error = BodyBox.GetSpellingError(checkIndex);
-        if (error == null)
+        var errorSuggestions = PlainBody.GetSpellingSuggestions(checkIndex);
+        if (errorSuggestions == null)
         {
             ClearSpellingContext();
             return;
@@ -928,7 +971,7 @@ public partial class ComposeWindow : Window
 
         // The speller checks the pieces of a web or email address as words; they are not
         // misspellings (#902), and must not leave suggestions for Alt+1/2/3 to apply either.
-        int errorStart = BodyBox.GetSpellingErrorStart(checkIndex);
+        int errorStart = PlainBody.GetSpellingErrorStart(checkIndex);
         if (SpellScan.IsInAddress(text, errorStart >= 0 ? errorStart : checkIndex))
         {
             ClearSpellingContext();
@@ -939,7 +982,7 @@ public partial class ComposeWindow : Window
         _lastAnnouncedSpellingIndex = wordStart;
 
         var word = text.Substring(wordStart, wordEnd - wordStart);
-        var suggestions = error.Suggestions.Take(3).ToList();
+        var suggestions = errorSuggestions.Take(3).ToList();
 
         _currentSpellingWordStart = wordStart;
         _currentSpellingWordEnd = wordEnd;
@@ -1035,11 +1078,7 @@ public partial class ComposeWindow : Window
     /// </summary>
     private void BodyBox_PreviewKeyDown(object sender, KeyEventArgs e)
     {
-        _caretMovedByTyping = IsTypingKey(e.Key, e.KeyboardDevice.Modifiers);
-        if (_caretMovedByTyping && _configService.Load().AnnounceSpellingWhileTyping)
-            ResetSpellingTypingTimer();
-        else if (!_caretMovedByTyping)
-            _spellingTypingTimer?.Stop();
+        NoteBodyKeyForSpelling(e.Key, e.KeyboardDevice.Modifiers);
 
         // Alt+1/2/3: replace the current misspelled word with the corresponding suggestion.
         if ((Keyboard.Modifiers & ModifierKeys.Alt) != 0
@@ -1065,28 +1104,10 @@ public partial class ComposeWindow : Window
             }
         }
 
-        // Tab/Shift+Tab on a list line in Markdown mode: indent or dedent.
-        if (e.Key == Key.Tab && _vm.CurrentMode == ComposeMode.Markdown
-            && (Keyboard.Modifiers == ModifierKeys.None || Keyboard.Modifiers == ModifierKeys.Shift))
+        if (e.Key == Key.Tab
+            && (Keyboard.Modifiers == ModifierKeys.None || Keyboard.Modifiers == ModifierKeys.Shift)
+            && HandleBodyTab(Keyboard.Modifiers == ModifierKeys.Shift))
         {
-            var isShift = Keyboard.Modifiers == ModifierKeys.Shift;
-            var edit = isShift
-                ? MarkdownEditing.DedentListItem(BodyBox.Text, BodyBox.CaretIndex)
-                : MarkdownEditing.IndentListItem(BodyBox.Text, BodyBox.CaretIndex);
-            if (edit.HasValue)
-            {
-                ApplyMarkdownEdit(edit.Value);
-                e.Handled = true;
-                return;
-            }
-        }
-
-        // Shift+Tab when not consumed by list dedent above: move focus back to the
-        // previous header field. AcceptsTab=True blocks WPF's natural tab-navigation
-        // for Shift+Tab just as it does for forward Tab.
-        if (e.Key == Key.Tab && Keyboard.Modifiers == ModifierKeys.Shift)
-        {
-            ((UIElement)sender).MoveFocus(new TraversalRequest(FocusNavigationDirection.Previous));
             e.Handled = true;
             return;
         }
@@ -1094,6 +1115,58 @@ public partial class ComposeWindow : Window
         // Spelling keys (F7 dialog, Ctrl+F7 / Ctrl+Shift+F7 inline) dispatch
         // through the command registry in Window_PreviewKeyDown — no hardcoded
         // branch here, so user rebinds always win.
+    }
+
+    /// <summary>Whether this key is typing, for the spelling announcements that follow the caret.</summary>
+    private void NoteBodyKeyForSpelling(Key key, ModifierKeys modifiers)
+    {
+        _caretMovedByTyping = IsTypingKey(key, modifiers);
+        if (_caretMovedByTyping && _configService.Load().AnnounceSpellingWhileTyping)
+            ResetSpellingTypingTimer();
+        else if (!_caretMovedByTyping)
+            _spellingTypingTimer?.Stop();
+    }
+
+    /// <summary>
+    /// Tab and Shift+Tab in the Plain Text and Markdown body. Returns false to leave the key to
+    /// the editor. The hosted editor (#1099) calls this from inside WinUI, where Tab arrives before
+    /// WPF ever sees it; the WPF text box reaches it through <see cref="BodyBox_PreviewKeyDown"/>.
+    /// </summary>
+    private bool HandleBodyTab(bool shift)
+    {
+        if (_vm.CurrentMode == ComposeMode.Html && NewRich is { } rich) return NewRichTab(rich, shift);
+
+        // On a list line in Markdown mode: indent or dedent.
+        if (_vm.CurrentMode == ComposeMode.Markdown)
+        {
+            var edit = shift
+                ? MarkdownEditing.DedentListItem(PlainBody.Text, PlainBody.CaretIndex)
+                : MarkdownEditing.IndentListItem(PlainBody.Text, PlainBody.CaretIndex);
+            if (edit.HasValue)
+            {
+                ApplyMarkdownEdit(edit.Value);
+                return true;
+            }
+        }
+
+        // Shift+Tab when not consumed by list dedent above: move focus back to the
+        // previous header field. AcceptsTab=True blocks WPF's natural tab-navigation
+        // for Shift+Tab just as it does for forward Tab.
+        if (shift)
+        {
+            PlainBodyElement.MoveFocus(new TraversalRequest(FocusNavigationDirection.Previous));
+            return true;
+        }
+
+        // The WPF text box takes Tab as a tab character itself (AcceptsTab). The hosted editor
+        // would move focus on, so the character is put in for it.
+        if (UsesNewEditor)
+        {
+            PlainBody.SelectedText = ((char)9).ToString();
+            PlainBody.Select(PlainBody.SelectionStart + 1, 0);
+            return true;
+        }
+        return false;
     }
 
     /// <summary>
@@ -1104,15 +1177,20 @@ public partial class ComposeWindow : Window
     /// </summary>
     internal void InsertTextAtCaret(string text)
     {
+        if (_vm.CurrentMode == ComposeMode.Html && NewRich is { } rich)
+        {
+            NewRichInsertText(rich, text);
+            return;
+        }
         if (_vm.CurrentMode != ComposeMode.Html)
         {
-            int caret = BodyBox.SelectionStart;
+            int caret = PlainBody.SelectionStart;
             // Decide the line breaks from the text as it will be once the selection is replaced.
-            var remaining = BodyBox.Text.Remove(caret, BodyBox.SelectionLength);
+            var remaining = PlainBody.Text.Remove(caret, PlainBody.SelectionLength);
             var (insert, caretAfter) = TextInsertion.LinesAt(remaining, caret, text);
-            BodyBox.SelectedText = insert;
-            BodyBox.Select(caret + caretAfter, 0);
-            BodyBox.Focus();
+            PlainBody.SelectedText = insert;
+            PlainBody.Select(caret + caretAfter, 0);
+            PlainBody.Focus();
             return;
         }
 
@@ -1177,7 +1255,7 @@ public partial class ComposeWindow : Window
     /// </summary>
     internal void ReplaceCurrentPlainMisspelling(string replacement)
     {
-        var text = BodyBox.Text;
+        var text = PlainBody.Text;
         int start = _currentSpellingWordStart, end = _currentSpellingWordEnd;
         bool stillThere = start >= 0 && end > start && end <= text.Length
                           && text.AsSpan(start, end - start).SequenceEqual(_currentSpellingWord);
@@ -1197,13 +1275,13 @@ public partial class ComposeWindow : Window
         _suppressSpellingAnnouncement = true;
         try
         {
-            BodyBox.Select(start, end - start);
-            BodyBox.SelectedText = replacement;
-            BodyBox.Select(start + replacement.Length, 0);
+            PlainBody.Select(start, end - start);
+            PlainBody.SelectedText = replacement;
+            PlainBody.Select(start + replacement.Length, 0);
         }
         finally { _suppressSpellingAnnouncement = wasSuppressed; }
 
-        BodyBox.Focus();
+        PlainBody.Focus();
         AccessibilityHelper.Announce(this, $"Replaced with {replacement}.",
             category: AnnouncementCategory.Result);
         ClearSpellingContext();
@@ -1493,10 +1571,18 @@ public partial class ComposeWindow : Window
 
     private void OpenCommandPalette()
     {
+        // WPF's record of the focused element is not to be trusted while a hosted editor has
+        // focus; ask Windows first.
+        bool bodyHadFocus = FocusedHost != null;
         var previousFocus = Keyboard.FocusedElement as IInputElement;
         var palette = new CommandPaletteWindow(_registry) { Owner = this };
         palette.ShowDialog();
-        (previousFocus ?? BodyBox).Focus();
+        // A command run from the palette may have moved focus on purpose (Alt+U's, a dialog).
+        if (FocusedHost != null || (Keyboard.FocusedElement != null && !ReferenceEquals(Keyboard.FocusedElement, previousFocus)
+                                    && Keyboard.FocusedElement is not Window))
+            return;
+        if (bodyHadFocus || previousFocus == null) FocusActiveEditor();
+        else previousFocus.Focus();
     }
 
     private async void OpenPreview()
@@ -1545,15 +1631,17 @@ public partial class ComposeWindow : Window
         // that Reply/Forward seeds below it (issue #228). Recomputed each session from the live
         // editor, so user edits above the quote don't invalidate it.
         ISpellCheckSource bodySource;
-        if (_vm.CurrentMode == ComposeMode.Html)
+        if (UsesWpfRich)
         {
             var quoteStart = SpellScan.QuoteBoundaryPointer(RichBodyBox.Document);
             bodySource = new RichTextBoxSpellSource(RichBodyBox, "body", quoteStart);
         }
         else
         {
-            var quoteIdx = SpellScan.QuoteBoundaryIndex(BodyBox.Text);
-            bodySource = new TextBoxSpellSource(BodyBox, "body", quoteIdx >= 0 ? quoteIdx : null);
+            var quoteIdx = _vm.CurrentMode == ComposeMode.Html
+                ? SpellScan.RichQuoteBoundaryIndex(PlainBody.Text)
+                : SpellScan.QuoteBoundaryIndex(PlainBody.Text);
+            bodySource = new TextBoxSpellSource(PlainBody, "body", quoteIdx >= 0 ? quoteIdx : null);
         }
         var sources = new List<ISpellCheckSource>
         {
@@ -1561,7 +1649,14 @@ public partial class ComposeWindow : Window
             new TextBoxSpellSource(SubjectBox, "subject"),
         };
         var vm = new SpellCheckDialogViewModel(sources, _customDictionary);
+        // A hosted editor with focus is given focus back by name: WPF's record may be empty or stale.
+        bool bodyHadFocus = FocusedHost != null;
         var previousFocus = Keyboard.FocusedElement as IInputElement;
+        void RestoreFocus()
+        {
+            if (bodyHadFocus) FocusActiveEditor();
+            else previousFocus?.Focus();
+        }
 
         // The session drives editor selection programmatically; keep the inline
         // navigating/formatting announcements quiet until it ends. The finally
@@ -1574,7 +1669,7 @@ public partial class ComposeWindow : Window
         {
             if (!vm.MoveNext())
             {
-                FinishSpellCheckSession(vm, () => previousFocus?.Focus());
+                FinishSpellCheckSession(vm, RestoreFocus);
                 return;
             }
 
@@ -1657,21 +1752,21 @@ public partial class ComposeWindow : Window
     internal void NavigateSpellingError(bool forward)
     {
         EnsureSpellCheckEnabled();
-        if (_vm.CurrentMode == ComposeMode.Html)
+        if (UsesWpfRich)
         {
             NavigateSpellingErrorInRichBox(forward);
             return;
         }
 
-        var text = BodyBox.Text;
+        var text = PlainBody.Text;
         if (string.IsNullOrEmpty(text)) return;
 
         // TextBox.CaretIndex is the selection's START, so after Ctrl+F7 has selected a misspelling,
         // searching forward from it found the same word again. Forward starts after the selection;
         // backward from its start. With no selection both are the caret, which keeps a misspelling
         // the caret sits inside as the one found.
-        int from = forward ? BodyBox.SelectionStart + BodyBox.SelectionLength : BodyBox.SelectionStart;
-        int foundIndex = SpellScan.FindReportableErrorIndex(BodyBox, from, forward);
+        int from = forward ? PlainBody.SelectionStart + PlainBody.SelectionLength : PlainBody.SelectionStart;
+        int foundIndex = SpellScan.FindReportableErrorIndex(PlainBody, from, forward);
 
         if (foundIndex >= 0)
         {
@@ -1686,15 +1781,15 @@ public partial class ComposeWindow : Window
             _suppressSpellingAnnouncement = true;
             try
             {
-                BodyBox.SelectionStart = wordStart;
-                BodyBox.SelectionLength = wordEnd - wordStart;
-                BodyBox.Focus();
+                PlainBody.SelectionStart = wordStart;
+                PlainBody.SelectionLength = wordEnd - wordStart;
+                PlainBody.Focus();
             }
             finally { _suppressSpellingAnnouncement = wasSuppressed; }
 
             var word = text.Substring(wordStart, wordEnd - wordStart);
-            var suggestions = BodyBox.GetSpellingError(foundIndex)
-                ?.Suggestions.Take(3).ToList() ?? new List<string>();
+            var suggestions = PlainBody.GetSpellingSuggestions(foundIndex)
+                ?.Take(3).ToList() ?? new List<string>();
 
             _currentSpellingWordStart = wordStart;
             _currentSpellingWordEnd = wordEnd;
@@ -1756,7 +1851,9 @@ public partial class ComposeWindow : Window
 
     private void WireRichCompose()
     {
-        _vm.RichBodyProvider = () => RichTextDocumentConverter.Snapshot(RichBodyBox.Document);
+        _vm.RichBodyProvider = () => NewRich is { } rich
+            ? SnapshotNewRich(rich)
+            : RichTextDocumentConverter.Snapshot(RichBodyBox.Document);
         _vm.EditorPictureIdsProvider = EditorPictureIds;
 
         // The editor keeps its original FlowDocument for the window's lifetime.
@@ -1770,6 +1867,11 @@ public partial class ComposeWindow : Window
 
         _vm.LoadHtmlIntoEditorRequested += html =>
         {
+            if (EnsureNewRich() && NewRich is { } rich)
+            {
+                LoadHtmlIntoNewRich(rich, html);
+                return;
+            }
             // Programmatic load is not a user edit — don't mark the draft dirty.
             // finally: a stuck suppress flag would silently stop dirty-tracking
             // for the window's lifetime.
@@ -1825,6 +1927,7 @@ public partial class ComposeWindow : Window
     /// </summary>
     private void OnThemeChangedRefreshRichBody(object? sender, EventArgs e)
     {
+        if (_newRich != null) return; // the hosted editor takes its colors from the theme directly
         if (RichBodyBox.Document.Blocks.Count == 0) return;
 
         var html = RichTextDocumentConverter.ToHtml(RichBodyBox.Document);
@@ -1864,27 +1967,41 @@ public partial class ComposeWindow : Window
 
     private void FocusActiveEditor()
     {
-        if (_vm.CurrentMode == ComposeMode.Html)
+        if (_vm.CurrentMode == ComposeMode.Html && _newRich == null)
             RichBodyBox.Focus();
+        else if (PlainBody is WinUiEditorHost hosted)
+            hosted.FocusWhenReady();
         else
-            BodyBox.Focus();
+            PlainBody.Focus();
     }
 
     /// <summary>Reacts to a mode change: swaps editors, toolbar, fonts, and announces.</summary>
     private void ApplyComposeMode()
     {
         var mode = _vm.CurrentMode;
-        var bodyHadFocus = BodyBox.IsKeyboardFocusWithin || RichBodyBox.IsKeyboardFocusWithin;
+        var bodyHadFocus = _bodyHadFocusAtModeSwitch ?? AnyBodyHasFocus;
         _suppressFormattingAnnouncement = true;
         _lastAnnouncedBlockType = null;
 
+        // HTML mode is the hosted rich editor's when the new editor is in use (#1099), and
+        // RichBodyBox's otherwise.
+        if (mode == ComposeMode.Html) EnsureNewRich();
+        // The editor about to be hidden gives up Windows' focus first: a hidden window must
+        // never be left holding the keyboard.
+        if (mode == ComposeMode.Html) _newEditor?.ReleaseFocus();
+        else _newRich?.ReleaseFocus();
         FormattingToolbarTray.Visibility = mode == ComposeMode.Html ? Visibility.Visible : Visibility.Collapsed;
-        RichBodyBox.Visibility           = mode == ComposeMode.Html ? Visibility.Visible : Visibility.Collapsed;
-        BodyBox.Visibility               = mode == ComposeMode.Html ? Visibility.Collapsed : Visibility.Visible;
-        BodyBox.FontFamily = mode == ComposeMode.Markdown ? new FontFamily("Consolas") : new FontFamily("Segoe UI");
+        RichBodyBox.Visibility           = mode == ComposeMode.Html && _newRich == null ? Visibility.Visible : Visibility.Collapsed;
+        if (_newRich != null)
+            _newRich.Visibility          = mode == ComposeMode.Html ? Visibility.Visible : Visibility.Collapsed;
+        SetPlainBodyVisibility(mode != ComposeMode.Html);
+        SetPlainBodyFont(mode == ComposeMode.Markdown ? new FontFamily("Consolas") : new FontFamily("Segoe UI"));
 
         SyncModeSelector();
         SyncParagraphStyleCombo();
+        // An editor made or shown a moment ago cannot take focus until it has been laid out,
+        // and what the user types next must not go to the editor that was just hidden.
+        if (UsesNewEditor) BodyEditorGrid.UpdateLayout();
         if (bodyHadFocus)
             FocusActiveEditor();
 
@@ -1895,6 +2012,10 @@ public partial class ComposeWindow : Window
             _                    => "Plain Text",
         };
         AccessibilityHelper.Announce(this, $"Switched to {name} mode.", category: AnnouncementCategory.Result);
+        // The hosted editor reports the caret after this method has returned, when the flag
+        // below no longer holds it back: without this it said "Normal text" after every switch.
+        if (mode == ComposeMode.Html && NewRich is { } hosted)
+            _lastAnnouncedBlockType = BlockLabel(hosted.BlockAtCaretWithTablePosition());
         _suppressFormattingAnnouncement = false;
     }
 
@@ -1923,9 +2044,23 @@ public partial class ComposeWindow : Window
         _vm.SendCommand.Execute(null);
     }
 
-    private void MenuModePlain_Click(object sender, RoutedEventArgs e)    => _vm.SetMode(ComposeMode.PlainText);
-    private void MenuModeMarkdown_Click(object sender, RoutedEventArgs e) => _vm.SetMode(ComposeMode.Markdown);
-    private void MenuModeHtml_Click(object sender, RoutedEventArgs e)     => _vm.SetMode(ComposeMode.Html);
+    private void MenuModePlain_Click(object sender, RoutedEventArgs e)    => SwitchMode(ComposeMode.PlainText);
+    private void MenuModeMarkdown_Click(object sender, RoutedEventArgs e) => SwitchMode(ComposeMode.Markdown);
+    private void MenuModeHtml_Click(object sender, RoutedEventArgs e)     => SwitchMode(ComposeMode.Html);
+
+    // Whether the body had focus when a format switch was asked for. Read by ApplyComposeMode,
+    // which runs after the "formatting will be lost" question: by then that dialog has taken
+    // focus and given it back somewhere else, so asking then got the wrong answer about half
+    // the time and left focus in the editor that had just been hidden.
+    private bool? _bodyHadFocusAtModeSwitch;
+
+    /// <summary>Changes the format. False when the user said no to losing formatting.</summary>
+    private bool SwitchMode(ComposeMode mode)
+    {
+        _bodyHadFocusAtModeSwitch = AnyBodyHasFocus;
+        try { return _vm.SetMode(mode); }
+        finally { _bodyHadFocusAtModeSwitch = null; }
+    }
 
     /// <summary>
     /// WPF skips disabled menu items during arrow navigation, so when every
@@ -1961,7 +2096,7 @@ public partial class ComposeWindow : Window
             _ => ComposeMode.PlainText,
         };
         if (requested == _vm.CurrentMode) return;
-        if (!_vm.SetMode(requested))
+        if (!SwitchMode(requested))
             SyncModeSelector();   // user declined the confirmation — revert the selector
     }
 
@@ -1969,9 +2104,7 @@ public partial class ComposeWindow : Window
     /// True when the caret is in the body of a Markdown or HTML message: where Ctrl+K inserts a link
     /// (elsewhere it is Check Addresses, #729, as in Outlook) and Alt+Enter opens Image Properties.
     /// </summary>
-    private bool IsInRichBody() =>
-        _vm.CurrentMode != ComposeMode.PlainText
-        && (RichBodyBox.IsKeyboardFocusWithin || BodyBox.IsKeyboardFocusWithin);
+    private bool IsInRichBody() => _vm.CurrentMode != ComposeMode.PlainText && AnyBodyHasFocus;
 
     private void RegisterRichComposeCommands()
     {
@@ -1981,17 +2114,17 @@ public partial class ComposeWindow : Window
 
         _registry.Register(new CommandDefinition(
             id: "compose.setModePlain", category: "Compose", title: "Switch to Plain Text Mode",
-            execute: () => _vm.SetMode(ComposeMode.PlainText),
+            execute: () => SwitchMode(ComposeMode.PlainText),
             defaultKey: Key.D1, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift));
 
         _registry.Register(new CommandDefinition(
             id: "compose.setModeMarkdown", category: "Compose", title: "Switch to Markdown Mode",
-            execute: () => _vm.SetMode(ComposeMode.Markdown),
+            execute: () => SwitchMode(ComposeMode.Markdown),
             defaultKey: Key.D2, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift));
 
         _registry.Register(new CommandDefinition(
             id: "compose.setModeHtml", category: "Compose", title: "Switch to HTML Mode",
-            execute: () => _vm.SetMode(ComposeMode.Html),
+            execute: () => SwitchMode(ComposeMode.Html),
             defaultKey: Key.D3, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift));
 
         _registry.Register(new CommandDefinition(
@@ -2141,19 +2274,19 @@ public partial class ComposeWindow : Window
         _suppressSpellingAnnouncement = true;
         try
         {
-            BodyBox.Select(edit.ReplaceStart, edit.ReplaceLength);
-            BodyBox.SelectedText = edit.Replacement;
-            BodyBox.Select(edit.SelectionStart, edit.SelectionLength);
+            PlainBody.Select(edit.ReplaceStart, edit.ReplaceLength);
+            PlainBody.SelectedText = edit.Replacement;
+            PlainBody.Select(edit.SelectionStart, edit.SelectionLength);
         }
         finally { _suppressSpellingAnnouncement = wasSuppressed; }
-        if (!BodyBox.IsKeyboardFocusWithin)
-            BodyBox.Focus();
+        if (!PlainBody.IsKeyboardFocusWithin)
+            PlainBody.Focus();
     }
 
     private void ToggleMarkdownInline(string marker, string name)
     {
         var edit = MarkdownEditing.ToggleInline(
-            BodyBox.Text, BodyBox.SelectionStart, BodyBox.SelectionLength, marker);
+            PlainBody.Text, PlainBody.SelectionStart, PlainBody.SelectionLength, marker);
         ApplyMarkdownEdit(edit);
         AnnounceFormatting($"{name} {(edit.TurnedOn ? "on" : "off")}");
     }
@@ -2161,6 +2294,7 @@ public partial class ComposeWindow : Window
     private void ToggleBold()
     {
         if (_vm.CurrentMode == ComposeMode.Markdown) { ToggleMarkdownInline("**", "Bold"); return; }
+        if (NewRich is { } rich) { NewRichToggle(rich, rich.ToggleBold, "Bold"); return; }
         EnsureRichEditorFocused();
         EditingCommands.ToggleBold.Execute(null, RichBodyBox);
         var on = Equals(RichBodyBox.Selection.GetPropertyValue(TextElement.FontWeightProperty), FontWeights.Bold);
@@ -2170,6 +2304,7 @@ public partial class ComposeWindow : Window
     private void ToggleItalic()
     {
         if (_vm.CurrentMode == ComposeMode.Markdown) { ToggleMarkdownInline("*", "Italic"); return; }
+        if (NewRich is { } rich) { NewRichToggle(rich, rich.ToggleItalic, "Italic"); return; }
         EnsureRichEditorFocused();
         EditingCommands.ToggleItalic.Execute(null, RichBodyBox);
         var on = Equals(RichBodyBox.Selection.GetPropertyValue(TextElement.FontStyleProperty), FontStyles.Italic);
@@ -2184,6 +2319,7 @@ public partial class ComposeWindow : Window
             AnnounceFormatting("Underline is not available in Markdown. Use HTML mode for underline.");
             return;
         }
+        if (NewRich is { } rich) { NewRichToggle(rich, rich.ToggleUnderline, "Underline"); return; }
         EnsureRichEditorFocused();
         EditingCommands.ToggleUnderline.Execute(null, RichBodyBox);
         var on = SelectionHasDecoration(TextDecorationLocation.Underline);
@@ -2193,6 +2329,7 @@ public partial class ComposeWindow : Window
     private void ToggleStrikethrough()
     {
         if (_vm.CurrentMode == ComposeMode.Markdown) { ToggleMarkdownInline("~~", "Strikethrough"); return; }
+        if (NewRich is { } rich) { NewRichToggle(rich, rich.ToggleStrikethrough, "Strikethrough"); return; }
         EnsureRichEditorFocused();
         var selection = RichBodyBox.Selection;
         var current = selection.GetPropertyValue(Inline.TextDecorationsProperty) as TextDecorationCollection;
@@ -2224,11 +2361,12 @@ public partial class ComposeWindow : Window
     {
         if (_vm.CurrentMode == ComposeMode.Markdown)
         {
-            var edit = MarkdownEditing.ToggleHeading(BodyBox.Text, BodyBox.CaretIndex, level);
+            var edit = MarkdownEditing.ToggleHeading(PlainBody.Text, PlainBody.CaretIndex, level);
             ApplyMarkdownEdit(edit);
             AnnounceFormatting(edit.TurnedOn ? $"Heading {level}" : "Normal text");
             return;
         }
+        if (NewRich is { } rich) { NewRichApplyHeading(rich, level); return; }
 
         EnsureRichEditorFocused();
         var paragraphs = GetSelectedParagraphs();
@@ -2252,12 +2390,12 @@ public partial class ComposeWindow : Window
         if (_vm.CurrentMode == ComposeMode.Markdown)
         {
             ApplyMarkdownEdit(MarkdownEditing.SetNormalText(
-                BodyBox.Text, BodyBox.SelectionStart, BodyBox.SelectionLength));
+                PlainBody.Text, PlainBody.SelectionStart, PlainBody.SelectionLength));
             AnnounceFormatting("Normal text");
             return;
         }
 
-        EnsureRichEditorFocused();
+        if (NewRich != null) EnsureNewRichFocused(); else EnsureRichEditorFocused();
         ApplyParagraphStyle(ComposeParagraphStyle.Normal);
         AnnounceFormatting("Normal text");
     }
@@ -2270,11 +2408,12 @@ public partial class ComposeWindow : Window
     {
         if (_vm.CurrentMode == ComposeMode.Markdown)
         {
-            var edit = MarkdownEditing.ToggleQuote(BodyBox.Text, BodyBox.SelectionStart, BodyBox.SelectionLength);
+            var edit = MarkdownEditing.ToggleQuote(PlainBody.Text, PlainBody.SelectionStart, PlainBody.SelectionLength);
             ApplyMarkdownEdit(edit);
             AnnounceFormatting(edit.TurnedOn ? "Quote on" : "Quote off");
             return;
         }
+        if (NewRich is { } rich) { NewRichToggleQuote(rich); return; }
 
         EnsureRichEditorFocused();
         var paragraphs = GetSelectedParagraphs();
@@ -2307,6 +2446,7 @@ public partial class ComposeWindow : Window
     /// </summary>
     private void ApplyParagraphStyle(ComposeParagraphStyle style)
     {
+        if (NewRich is { } rich) { NewRichApplyParagraphStyle(rich, style); return; }
         var paragraphs = GetSelectedParagraphs();
         if (paragraphs.Count == 0) return;
 
@@ -2424,7 +2564,9 @@ public partial class ComposeWindow : Window
     private void SyncParagraphStyleCombo()
     {
         if (_vm.CurrentMode != ComposeMode.Html) return;
-        var style = RichTextBlockEditing.StyleOf(RichBodyBox.Selection.Start.Paragraph);
+        var style = NewRich is { } rich
+            ? StyleOf(rich.BlockAtCaret())
+            : RichTextBlockEditing.StyleOf(RichBodyBox.Selection.Start.Paragraph);
         var index = style is null ? -1 : (int)style.Value;
         if (ParagraphStyleCombo.SelectedIndex != index)
             ParagraphStyleCombo.SelectedIndex = index;
@@ -2478,7 +2620,10 @@ public partial class ComposeWindow : Window
         if (_vm.CurrentMode != ComposeMode.Html || ParagraphStyleCombo.SelectedIndex < 0) return;
         var chosen = (ComposeParagraphStyle)ParagraphStyleCombo.SelectedIndex;
         // Nothing is announced: the box already said the style as it was chosen.
-        if (GetSelectedParagraphs().Any(p => RichTextBlockEditing.StyleOf(p) != chosen))
+        bool differs = NewRich is { } rich
+            ? rich.SelectedBlocks().Any(b => StyleOf(b) != chosen)
+            : GetSelectedParagraphs().Any(p => RichTextBlockEditing.StyleOf(p) != chosen);
+        if (differs)
         {
             ApplyParagraphStyle(chosen);
             returnToText = true;
@@ -2492,7 +2637,9 @@ public partial class ComposeWindow : Window
         if (e.OriginalSource != ParagraphStyleMenu) return;
         int current = -1;
         if (_vm.CurrentMode == ComposeMode.Html)
-            current = RichTextBlockEditing.StyleOf(RichBodyBox.Selection.Start.Paragraph) is { } style ? (int)style : -1;
+            current = (NewRich is { } rich
+                ? StyleOf(rich.BlockAtCaret())
+                : RichTextBlockEditing.StyleOf(RichBodyBox.Selection.Start.Paragraph)) is { } style ? (int)style : -1;
         else if (_vm.CurrentMode == ComposeMode.Markdown)
             current = MarkdownStyleAtCaret();
         foreach (var item in ParagraphStyleMenu.Items.OfType<MenuItem>())
@@ -2501,7 +2648,7 @@ public partial class ComposeWindow : Window
 
     private int MarkdownStyleAtCaret()
     {
-        var block = MarkdownEditing.DescribeFormattingParts(BodyBox.Text, BodyBox.CaretIndex)[0];
+        var block = MarkdownEditing.DescribeFormattingParts(PlainBody.Text, PlainBody.CaretIndex)[0];
         if (block.StartsWith("Heading ", StringComparison.Ordinal) && block.Length > 8 && char.IsDigit(block[8]))
             return block[8] - '0';
         if (block.StartsWith("Quote", StringComparison.Ordinal)) return (int)ComposeParagraphStyle.Quote;
@@ -2530,11 +2677,12 @@ public partial class ComposeWindow : Window
         if (_vm.CurrentMode == ComposeMode.Markdown)
         {
             var edit = MarkdownEditing.ToggleListPrefix(
-                BodyBox.Text, BodyBox.SelectionStart, BodyBox.SelectionLength, ordered);
+                PlainBody.Text, PlainBody.SelectionStart, PlainBody.SelectionLength, ordered);
             ApplyMarkdownEdit(edit);
             AnnounceFormatting($"{name} {(edit.TurnedOn ? "on" : "off")}");
             return;
         }
+        if (NewRich is { } rich) { NewRichToggleList(rich, ordered); return; }
 
         EnsureRichEditorFocused();
         var command = ordered ? EditingCommands.ToggleNumbering : EditingCommands.ToggleBullets;
@@ -2546,8 +2694,9 @@ public partial class ComposeWindow : Window
     private void InsertLink()
     {
         var inMarkdown = _vm.CurrentMode == ComposeMode.Markdown;
+        if (!inMarkdown && NewRich is { } rich) { NewRichInsertLink(rich); return; }
         var selectionText = inMarkdown
-            ? BodyBox.SelectedText.Trim()
+            ? PlainBody.SelectedText.Trim()
             : RichBodyBox.Selection.Text.Trim();
         var dialog = new InsertLinkDialog(selectionText) { Owner = this };
         if (dialog.ShowDialog() != true)
@@ -2559,7 +2708,7 @@ public partial class ComposeWindow : Window
         if (inMarkdown)
         {
             var edit = MarkdownEditing.InsertLink(
-                BodyBox.Text, BodyBox.SelectionStart, BodyBox.SelectionLength,
+                PlainBody.Text, PlainBody.SelectionStart, PlainBody.SelectionLength,
                 dialog.DisplayText, dialog.Url);
             ApplyMarkdownEdit(edit);
             AnnounceFormatting("Link inserted");
@@ -2585,11 +2734,12 @@ public partial class ComposeWindow : Window
         if (_vm.CurrentMode == ComposeMode.Markdown)
         {
             var edit = MarkdownEditing.ClearFormatting(
-                BodyBox.Text, BodyBox.SelectionStart, BodyBox.SelectionLength);
+                PlainBody.Text, PlainBody.SelectionStart, PlainBody.SelectionLength);
             ApplyMarkdownEdit(edit);
             AnnounceFormatting("Formatting cleared");
             return;
         }
+        if (NewRich is { } rich) { NewRichClearFormatting(rich); return; }
 
         EnsureRichEditorFocused();
         // ClearAllProperties resets character and paragraph formatting but not our
@@ -2628,7 +2778,8 @@ public partial class ComposeWindow : Window
     internal System.Collections.Generic.List<string> GetFormattingParts()
     {
         if (_vm.CurrentMode == ComposeMode.Markdown)
-            return MarkdownEditing.DescribeFormattingParts(BodyBox.Text, BodyBox.CaretIndex);
+            return MarkdownEditing.DescribeFormattingParts(PlainBody.Text, PlainBody.CaretIndex);
+        if (NewRich is { } rich) return NewRichFormattingParts(rich);
 
         var selection = RichBodyBox.Selection;
 

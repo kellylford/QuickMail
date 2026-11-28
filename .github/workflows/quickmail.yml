@@ -442,6 +442,37 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+      # The message editor's keyboard suite (#1099, Tools/EditorKeyTests): real keystrokes at the
+      # exe just published, typed without re-activating the window, with the editor's text and
+      # caret read back through UI Automation after each. The editor's unit tests cannot see a
+      # key go to the wrong place, and that is how it failed: build 4 lost focus and typing
+      # after a format switch while every other test passed. After the uploads on purpose: the
+      # fixture generator builds the app again into the shared bin/ and obj/, and the published
+      # folders must already be final.
+      - name: Editor keyboard tests
+        shell: pwsh
+        run: |
+          $fixture = Join-Path $env:RUNNER_TEMP 'keytests-profile'
+          $tool = Join-Path $env:RUNNER_TEMP 'keytests'
+          dotnet run --project Tools/QuickMail.Fixtures -c Release -- --out $fixture
+          if ($LASTEXITCODE -ne 0) { Write-Error 'The fixture profile could not be generated.'; exit 1 }
+          dotnet build Tools/EditorKeyTests/EditorKeyTests.csproj -c Release -o $tool
+          if ($LASTEXITCODE -ne 0) { Write-Error 'The keyboard test tool did not build.'; exit 1 }
+          New-Item -ItemType Directory -Force TestResults | Out-Null
+          & (Join-Path $tool 'EditorKeyTests.exe') --exe (Join-Path $PWD 'publish\QuickMail.exe') --profile $fixture `
+              --report (Join-Path $PWD 'TestResults\editor-keytests.md') --label 'CI, no screen reader'
+          $code = $LASTEXITCODE
+          if (Test-Path TestResults\editor-keytests.md) { Get-Content TestResults\editor-keytests.md -TotalCount 60 }
+          if ($code -ne 0) { Write-Error "Editor keyboard tests failed (exit $code). The report is in the editor-keytests artifact."; exit 1 }
+
+      - name: Upload editor keyboard test report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: editor-keytests
+          path: TestResults/editor-keytests.md
+          if-no-files-found: ignore
+
       # The release tag is the single source of truth for the Velopack package version.
       # It must be SemVer (vpk rejects 4-part versions) and must match all three csproj
       # version properties, which are set independently: <Version> feeds NuGet/display

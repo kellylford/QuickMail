@@ -27,4 +27,57 @@
     <DefaultItemExcludes>$(DefaultItemExcludes);bin/**;obj/**</DefaultItemExcludes>
   </PropertyGroup>
 
+  <!--
+    Editor experiment (#1099): the WinUI 3 RichEditBox as the compose body, hosted in a XAML
+    island (QuickMail/Controls/WinUiEditorHost). The app is unpackaged and carries its own copy of
+    the Windows App SDK. See Tools/EditorHostSpike/README.md for how each of these failed without it.
+
+    They are here, not in QuickMail.csproj, because the Windows App SDK's build targets also run in
+    every project that references QuickMail (the two test projects and the fixture tool), and
+    without these those builds stop with "A framework package dependent Windows App SDK app
+    requires a package reference to Microsoft.WindowsAppSDK.Runtime". They do nothing in a project
+    with no Windows App SDK reference.
+  -->
+  <PropertyGroup>
+    <WindowsPackageType>None</WindowsPackageType>
+    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+    <!-- Self-contained mode would compile a module initializer into every project the SDK's
+         targets reach. It runs before Main: it sets two environment variables that every child
+         process inherits and loads Microsoft.WindowsAppRuntime.dll, and if that DLL is missing the
+         app does not start at all. QuickMail must run no Windows App SDK code while the new editor
+         is off, so the same two steps are done by hand, the first time an editor is hosted
+         (Controls/WinUiRuntime.EnsureStarted), where a failure falls back to the WPF editor. -->
+    <WindowsAppSdkAutoInitialize>false</WindowsAppSdkAutoInitialize>
+    <WindowsAppSdkUndockedRegFreeWinRTInitialize>false</WindowsAppSdkUndockedRegFreeWinRTInitialize>
+    <!-- The SDK's single-file check warns when that initializer is off ("requires
+         MICROSOFT_WINDOWSAPPRUNTIME_BASE_DIRECTORY to be set before program entry"), and the
+         warning has no code to suppress it by, so the whole check is off. What else it checks is
+         set above or by the SDK itself: EnableMsixTooling, WindowsPackageType None,
+         IncludeAllContentForSelfExtract, and both self-contained switches. The variable is set
+         by WinUiRuntime before the first WinUI object is made, which is all the manifest's
+         redirections need; the single-file exe is checked in the test VM. -->
+    <WindowsAppSDKSingleFileVerifyConfiguration>false</WindowsAppSDKSingleFileVerifyConfiguration>
+    <!-- Puts WinUI's resource index files (.pri) in the output; its control styles need them. -->
+    <EnableMsixTooling>true</EnableMsixTooling>
+    <!-- With the Windows App SDK in the project, the WebView2 package switches itself to its
+         WinRT projection and drops Microsoft.Web.WebView2.Wpf.dll, and every WebView2 in the
+         app's XAML stops compiling (MC3074). QuickMail's reading pane is the WPF control. -->
+    <WebView2EnableCsWinRTProjection>false</WebView2EnableCsWinRTProjection>
+    <!-- MVVMTK0045: with the Windows App SDK referenced, the MVVM Toolkit warns that every
+         [ObservableProperty] field is not AOT compatible "in WinRT scenarios". QuickMail is a WPF
+         app that is not compiled ahead of time, and none of its view models are bound from WinUI
+         XAML: the hosted editor is the only WinUI object and it is driven from code. -->
+    <NoWarn>$(NoWarn);MVVMTK0045</NoWarn>
+    <!-- Two more that only the .NET 11 SDK raises (GitHub's runners have it; global.json rolls
+         forward to the latest major), and that `-warnaserror` in the publish steps turns into
+         errors:
+         CsWinRT1032: a collection expression assigned to a read-only interface "is not supported
+         for trimming and AOT". The same case as MVVMTK0045: QuickMail is neither trimmed nor
+         compiled ahead of time, and passes none of these collections to WinRT.
+         NETSDK1244: IncludeAllContentForSelfExtract "enables a legacy compatibility mode". The
+         Windows App SDK requires it for a single-file exe (its DLLs are found through the app
+         manifest, beside the unpacked files) and sets it itself. -->
+    <NoWarn>$(NoWarn);CsWinRT1032;NETSDK1244</NoWarn>
+  </PropertyGroup>
+
 </Project>

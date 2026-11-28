@@ -1,0 +1,136 @@
+# The formatting commands in HTML mode. What the editor holds is read back as Markdown
+# ("markdown-is"), which shows the formatting in text.
+
+== Ctrl+B makes the selection bold
+modes: html
+text: one two three
+caret: select "two"
+keys: ^b
+text-is: one two three
+markdown-is: one **two** three
+
+== Ctrl+B twice leaves it as it was
+modes: html
+text: one two three
+caret: select "two"
+keys: ^b
+keys: ^b
+markdown-is: one two three
+
+== Ctrl+I makes the selection italic
+modes: html
+text: one two three
+caret: select "two"
+keys: ^i
+markdown-is: one *two* three
+
+== Ctrl+Shift+X strikes the selection through
+modes: html
+text: one two three
+caret: select "two"
+keys: ^+x
+markdown-is: one ~~two~~ three
+
+== Ctrl+B with nothing selected makes what is typed next bold
+modes: html
+type: "plain "
+keys: ^b
+type: bold
+keys: ^b
+type: " plain"
+markdown-is: plain **bold** plain
+
+== Ctrl+Alt+2 makes the paragraph a heading
+modes: html
+text: one two three
+caret: after "one"
+keys: ^%2
+text-is: one two three
+caret-is: after "one"
+typing-works
+markdown-is: ## one two three
+
+== Ctrl+Alt+2 again takes the heading off
+modes: html
+text: one two three
+caret: after "one"
+keys: ^%2
+keys: ^%2
+markdown-is: one two three
+
+== Ctrl+Alt+0 makes a heading normal text
+modes: html
+markdown: ## Title
+caret: after "Ti"
+keys: ^%0
+markdown-is: Title
+
+== Making a paragraph a quote keeps its bold words
+modes: html
+markdown: one **two** three
+caret: after "one"
+keys: ^+9
+markdown-is: > one **two** three
+
+== Ctrl+Shift+9 on a quote takes it out of the quote
+modes: html
+markdown: > one two
+caret: after "one"
+keys: ^+9
+markdown-is: one two
+
+== Ctrl+Shift+L makes a bullet and again takes it off
+modes: html
+text: one
+caret: end
+keys: ^+l
+markdown-is: - one
+keys: ^+l
+markdown-is: one
+
+== Ctrl+Shift+N makes a numbered item
+modes: html
+text: one
+caret: end
+keys: ^+n
+markdown-is: 1. one
+
+== Ctrl+Space clears formatting
+modes: html
+markdown: ## one **two** three
+caret: select "one two three"
+keys: ^{SPACE}
+markdown-is: one two three
+
+== Ctrl+K puts in a link and typing afterwards is not part of it
+modes: html
+type: "See "
+keys: ^k
+wait: 1.5
+front-is: Insert Link
+type: https://example.com/page
+keys: {TAB}
+type: the site
+keys: {ENTER}
+wait: 1.2
+front-is: New Message
+focus-is: Message body
+type: " now"
+markdown-is: See [the site](https://example.com/page) now
+
+== Ctrl+T reports formatting and leaves the caret and focus alone
+modes: html
+text: one two three
+caret: after "one"
+keys: ^t
+wait: 0.8
+caret-is: after "one"
+typing-works
+
+== Undo takes back a formatting command
+modes: html
+text: one two three
+caret: select "two"
+keys: ^b
+keys: ^z
+markdown-is: one two three

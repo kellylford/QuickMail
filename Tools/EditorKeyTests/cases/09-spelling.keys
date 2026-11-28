@@ -1,0 +1,61 @@
+# Spelling keys in the body. What is announced is checked in the screen reader runs; here the
+# keys must do their work and leave the keyboard in the body.
+
+== Alt+1 replaces the misspelled word the caret moved into
+text: I recieve mail
+caret: start
+keys: ^{RIGHT}
+wait: 1.5
+keys: %1
+wait: 0.8
+text-is: I receive mail
+focus-is: Message body
+typing-works
+
+== Ctrl+F7 selects the next misspelling
+text: good words then teh end
+caret: start
+keys: ^{F7}
+wait: 1
+selection-is: "teh"
+focus-is: Message body
+typing-works
+
+== Ctrl+Shift+F7 selects the previous misspelling
+text: good teh words then end
+caret: end
+keys: ^+{F7}
+wait: 1
+selection-is: "teh"
+typing-works
+
+== Ctrl+F7 with nothing misspelled leaves the caret where it was
+text: good words here
+caret: after "good"
+keys: ^{F7}
+wait: 1
+caret-is: after "good"
+typing-works
+
+== F7 opens Check Spelling and Escape returns the keyboard to the body
+text: I recieve mail
+caret: start
+keys: {F7}
+wait: 2
+front-is: Spelling
+keys: {ESC}
+wait: 1.2
+front-is: New Message
+focus-is: Message body
+typing-works
+
+== The context menu on a misspelled word offers a suggestion first
+text: I recieve mail
+caret: after "rec"
+keys: +{F10}
+wait: 1.2
+focus-is: receive
+keys: {ENTER}
+wait: 1
+text-is: I receive mail
+typing-works

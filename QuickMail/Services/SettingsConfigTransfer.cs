@@ -100,6 +100,7 @@ public static class SettingsConfigTransfer
         nameof(ConfigModel.DefaultComposeMode),
         nameof(ConfigModel.ReplyInHtmlToHtmlMessages),
         nameof(ConfigModel.CheckSpellingAsYouType),
+        nameof(ConfigModel.UseNewEditor),
         nameof(ConfigModel.AutoSaveDrafts),
         nameof(ConfigModel.ConfirmBeforeSend),
         nameof(ConfigModel.RememberRecipients),

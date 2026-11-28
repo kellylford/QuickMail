@@ -1,0 +1,207 @@
+# Enter and Tab in the kinds of paragraph an HTML message has.
+
+== Enter at the end of a heading starts normal text
+modes: html
+markdown: # Title
+caret: end
+keys: {ENTER}
+type: next
+markdown-is: # Title\n\nnext
+
+== Enter in the middle of a heading leaves two headings
+modes: html
+markdown: # OneTwo
+caret: after "One"
+keys: {ENTER}
+markdown-is: # One\n\n# Two
+
+== Enter in a bulleted list starts a new item
+modes: html
+markdown: - one
+caret: end
+keys: {ENTER}
+type: two
+markdown-is: - one\n- two
+
+== Enter on an empty list item leaves the list
+modes: html
+markdown: - one
+caret: end
+keys: {ENTER}
+keys: {ENTER}
+type: after
+text-is: one\nafter
+markdown-is: - one\n\nafter
+
+== Tab in a list item nests it and Shift+Tab brings it back
+modes: html
+markdown: - one\n- two
+caret: end
+keys: {TAB}
+focus-is: Message body
+markdown-is: - one\n  - two
+caret: end
+keys: +{TAB}
+focus-is: Message body
+markdown-is: - one\n- two
+typing-works
+
+== Enter in a quote continues the quote
+modes: html
+markdown: > one
+caret: end
+keys: {ENTER}
+type: two
+markdown-is: > one\n>\n> two
+
+== Enter on an empty quoted line leaves the quote
+modes: html
+markdown: > one
+caret: end
+keys: {ENTER}
+keys: {ENTER}
+type: after
+markdown-is: > one\n\nafter
+
+== Enter in a code block adds a line to the block
+modes: html
+markdown: ```\nline one\n```
+caret: after "line one"
+keys: {ENTER}
+type: line two
+text-is: line one\vline two
+markdown-is: ```\nline one\nline two\n```
+
+== Enter on an empty last line of a code block leaves the block
+modes: html
+markdown: ```\nline one\n```
+caret: after "line one"
+keys: {ENTER}
+keys: {ENTER}
+type: after
+markdown-is: ```\nline one\n```\n\nafter
+
+== A table is one cell per line
+modes: html
+markdown: | Name | Size |\n| --- | --- |\n| One | 12 |
+text-is: Name\nSize\nOne\n12\n
+caret: before "Name"
+keys: {DOWN}
+caret-is: before "Size"
+keys: {DOWN}
+caret-is: before "One"
+
+== Enter in a table cell starts a new line in the same cell
+modes: html
+markdown: | Name | Size |\n| --- | --- |\n| One | 12 |
+caret: after "One"
+keys: {ENTER}
+type: more
+# \v is a line break inside the cell's paragraph: a new paragraph (\n) would be a new cell.
+text-is: Name\nSize\nOne\vmore\n12\n
+markdown-is: | Name | Size |\n| --- | --- |\n| One more | 12 |
+
+== Backspace at the start of a table cell does not merge it with the cell before
+modes: html
+markdown: | Name | Size |\n| --- | --- |\n| One | 12 |
+caret: before "Size"
+keys: {BACKSPACE}
+markdown-is: | Name | Size |\n| --- | --- |\n| One | 12 |
+
+== Delete at the end of a table cell does not merge it with the next cell
+modes: html
+markdown: | Name | Size |\n| --- | --- |\n| One | 12 |
+caret: after "Name"
+keys: {DELETE}
+markdown-is: | Name | Size |\n| --- | --- |\n| One | 12 |
+typing-works
+
+== Inline code survives into what is sent
+modes: html
+markdown: Some `inline code` here
+text-is: Some inline code here
+markdown-is: Some `inline code` here
+
+== A code block keeps its font, so it is still a code block when sent
+modes: html
+markdown: ```\nline one\nline two\n```
+markdown-is: ```\nline one\nline two\n```
+
+== Bold switched on straight after a switch to HTML applies to what is typed
+# In a window that has just opened: the HTML editor is made by this switch and is still loading
+# when Ctrl+B is pressed.
+fresh
+modes: plain
+keys: ^+3
+keys: ^b
+type: bold
+keys: ^b
+wait: 2.5
+mode-is: html
+text-is: bold
+markdown-is: **bold**
+
+== Bold switched on straight after each switch to HTML, three times over
+modes: plain
+keys: ^+3
+keys: ^b
+type: one
+keys: ^b
+markdown-is: **one**
+keys: ^a{DELETE}
+keys: ^b
+type: two
+keys: ^b
+markdown-is: **two**
+keys: ^a{DELETE}
+keys: ^+1
+wait: 1
+keys: ^+3
+keys: ^i
+type: three
+keys: ^i
+markdown-is: *three*
+
+== Ctrl+Backspace at the start of a table cell does not merge it with the cell before
+modes: html
+markdown: | Name | Size |\n| --- | --- |\n| One | 12 |
+caret: before "Size"
+keys: ^{BACKSPACE}
+markdown-is: | Name | Size |\n| --- | --- |\n| One | 12 |
+
+== Ctrl+Delete at the end of a table cell does not merge it with the next cell
+modes: html
+markdown: | Name | Size |\n| --- | --- |\n| One | 12 |
+caret: after "Name"
+keys: ^{DELETE}
+markdown-is: | Name | Size |\n| --- | --- |\n| One | 12 |
+
+== Deleting a whole heading leaves plain text, and Undo brings the heading back
+modes: html
+markdown: # Title
+keys: ^a{DELETE}
+text-is: 
+keys: ^z
+text-is: Title
+markdown-is: # Title
+keys: ^a{DELETE}
+type: plain
+markdown-is: plain
+
+== Deleting the words of a heading to retype them keeps it a heading
+modes: html
+markdown: # Title
+caret: end
+keys: +{HOME}
+keys: {DELETE}
+type: Other
+markdown-is: # Other
+
+== Enter on an empty nested list item brings it out one level
+modes: html
+markdown: - one\n  - two
+caret: end
+keys: {ENTER}
+keys: {ENTER}
+type: three
+markdown-is: - one\n  - two\n- three

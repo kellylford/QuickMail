@@ -1,0 +1,135 @@
+# Getting into and out of the body, and getting the keyboard back after something took it.
+# "typing-works" types a letter and requires it to arrive: a focus report alone is not proof.
+
+== Alt+Y from the body keeps the keyboard in the body
+type: one
+keys: %y
+wait: 0.5
+focus-is: Message body
+typing-works
+
+== Alt+U goes to Subject and Alt+Y comes back to the caret
+text: one two
+caret: after "one"
+keys: %u
+wait: 0.5
+focus-is: Subject
+keys: %y
+wait: 0.8
+focus-is: Message body
+caret-is: after "one"
+typing-works
+
+== Shift+Tab leaves the body and Tab comes back
+text: one two
+caret: after "one"
+keys: +{TAB}
+wait: 0.5
+focus-is: Add file
+keys: {TAB}
+wait: 0.8
+focus-is: Message body
+typing-works
+
+== F6 and Shift+F6 leave the body and come back
+text: one
+keys: {F6}
+wait: 0.6
+keys: +{F6}
+wait: 0.8
+focus-is: Message body
+typing-works
+
+== Switching to another window and back returns the keyboard to the body
+# What Alt+Tab away and back does. The windows are switched by name: Alt+Tab itself goes to
+# whatever else is open on the machine, which differs between the test VM and CI.
+text: one two
+caret: after "one"
+window: main
+wait: 1.5
+window: message
+wait: 1.5
+front-is: New Message
+focus-is: Message body
+caret-is: after "one"
+typing-works
+
+== Escape closes the context menu and leaves the message open
+text: one two
+caret: after "one"
+keys: +{F10}
+wait: 1
+keys: {ESC}
+wait: 0.8
+front-is: New Message
+focus-is: Message body
+typing-works
+
+== The Applications key opens the context menu too
+text: one two
+caret: after "one"
+keys: {APPS}
+wait: 1
+focus-is: Cut
+keys: {ESC}
+wait: 0.8
+typing-works
+
+== Cut from the context menu, then the keys that follow all work
+text: one two three
+caret: select "two "
+keys: +{F10}
+wait: 1
+focus-is: Cut
+keys: {ENTER}
+wait: 1
+text-is: one three
+typing-works
+keys: ^a
+selection-is: "one three"
+
+== Select All from the context menu
+text: one two
+caret: after "one"
+keys: +{F10}
+wait: 1
+keys: {UP}
+keys: {ENTER}
+wait: 0.8
+selection-is: "one two"
+typing-works
+
+== The command palette opens and Escape returns the keyboard to the body
+text: one two
+caret: after "one"
+keys: ^+p
+wait: 1.5
+front-is: Command Palette
+keys: {ESC}
+wait: 1
+front-is: New Message
+caret-is: after "one"
+typing-works
+
+== The Alt key alone opens the menu bar and Escape returns to the body
+text: one
+keys: %f
+wait: 0.8
+keys: {ESC}
+wait: 0.5
+keys: {ESC}
+wait: 0.8
+front-is: New Message
+typing-works
+
+== Alt+letter for a control elsewhere works from the body
+# Alt+U is Subject; a letter typed there must not land in the body.
+text: body
+keys: %u
+wait: 0.5
+type: s
+keys: {BACKSPACE}
+keys: %y
+wait: 0.8
+text-is: body
+typing-works

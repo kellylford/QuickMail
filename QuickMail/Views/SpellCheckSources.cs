@@ -4,6 +4,7 @@ using System.Linq;
 using System.Text.RegularExpressions;
 using System.Windows.Controls;
 using System.Windows.Documents;
+using QuickMail.Controls;
 using QuickMail.Services;
 
 namespace QuickMail.Views;
@@ -25,7 +26,11 @@ internal static class SpellScan
     /// start of the error containing the probe index (inclusive), matching the
     /// old per-character walk's behavior of landing on the word under the probe.
     /// </summary>
-    internal static int FindErrorIndex(TextBox box, int start, bool forward)
+    internal static int FindErrorIndex(TextBox box, int start, bool forward) =>
+        FindErrorIndex(new WpfTextEditor(box), start, forward);
+
+    /// <inheritdoc cref="FindErrorIndex(TextBox, int, bool)"/>
+    internal static int FindErrorIndex(IPlainTextEditor box, int start, bool forward)
     {
         var text = box.Text;
         if (string.IsNullOrEmpty(text)) return -1;
@@ -89,6 +94,25 @@ internal static class SpellScan
         if (string.IsNullOrEmpty(text)) return -1;
         var m = PlainQuoteMarker.Match(text);
         return m.Success ? m.Index : -1;
+    }
+
+    /// <summary>
+    /// <see cref="QuoteBoundaryIndex"/> for the text of a rich (HTML) body in the hosted editor
+    /// (#1099): the start of the first line that begins with the reply or forward marker, or -1.
+    /// A quote there is a quote block, not lines starting with a greater-than sign.
+    /// </summary>
+    internal static int RichQuoteBoundaryIndex(string text)
+    {
+        if (string.IsNullOrEmpty(text)) return -1;
+        int lineStart = 0;
+        while (lineStart < text.Length)
+        {
+            int lineEnd = text.IndexOf('\n', lineStart);
+            if (lineEnd < 0) lineEnd = text.Length;
+            if (HtmlQuoteMarker.IsMatch(text[lineStart..lineEnd].TrimStart().TrimEnd('\r'))) return lineStart;
+            lineStart = lineEnd + 1;
+        }
+        return -1;
     }
 
     /// <summary>
@@ -194,7 +218,11 @@ internal static class SpellScan
     /// <see cref="FindErrorIndex"/>, passing over errors inside web and email addresses (#902).
     /// Returns -1 when every error left in the text is in an address.
     /// </summary>
-    internal static int FindReportableErrorIndex(TextBox box, int start, bool forward)
+    internal static int FindReportableErrorIndex(TextBox box, int start, bool forward) =>
+        FindReportableErrorIndex(new WpfTextEditor(box), start, forward);
+
+    /// <inheritdoc cref="FindReportableErrorIndex(TextBox, int, bool)"/>
+    internal static int FindReportableErrorIndex(IPlainTextEditor box, int start, bool forward)
     {
         var text = box.Text;
         int firstSkipped = -1;
@@ -267,13 +295,13 @@ internal static class SpellScan
 }
 
 /// <summary>
-/// Check Spelling session source over a plain <see cref="TextBox"/>
-/// (Plain Text / Markdown body, and the subject line).
+/// Check Spelling session source over a plain-text editor: a <see cref="TextBox"/> (the subject
+/// line, and the Plain Text / Markdown body) or the hosted WinUI editor (#1099).
 /// Scan order: caret → end of text, wrap → the start position, then exhausted.
 /// </summary>
 internal sealed class TextBoxSpellSource : ISpellCheckSource
 {
-    private readonly TextBox _box;
+    private readonly IPlainTextEditor _box;
     private int _scanEnd;           // exclusive upper bound; excludes quoted/forwarded text (#228)
     private bool _started;
     private bool _wrapped;
@@ -289,6 +317,9 @@ internal sealed class TextBoxSpellSource : ISpellCheckSource
     /// the body scan out of the quoted/forwarded original (issue #228). Null scans the whole box.
     /// </param>
     public TextBoxSpellSource(TextBox box, string displayName, int? scanEndExclusive = null)
+        : this(new WpfTextEditor(box), displayName, scanEndExclusive) { }
+
+    public TextBoxSpellSource(IPlainTextEditor box, string displayName, int? scanEndExclusive = null)
     {
         _box = box;
         DisplayName = displayName;
@@ -351,9 +382,8 @@ internal sealed class TextBoxSpellSource : ISpellCheckSource
                         _currentWordEnd = errStart + errLen;
                         _scanIndex = _currentWordEnd;
                         var word = text[_currentWordStart.._currentWordEnd];
-                        var error = _box.GetSpellingError(idx);
                         return new SpellingErrorInfo(word,
-                            error?.Suggestions.ToList() ?? new List<string>());
+                            _box.GetSpellingSuggestions(idx)?.ToList() ?? new List<string>());
                     }
                 }
             }
@@ -393,14 +423,7 @@ internal sealed class TextBoxSpellSource : ISpellCheckSource
         if (_currentWordStart < 0) return;
         var length = Math.Max(0, Math.Min(_currentWordEnd, _box.Text.Length) - _currentWordStart);
         _box.Select(_currentWordStart, length);
-        try
-        {
-            _box.ScrollToLine(_box.GetLineIndexFromCharacterIndex(_currentWordStart));
-        }
-        catch (ArgumentOutOfRangeException)
-        {
-            // Layout not measured yet (headless tests) — selection alone is enough.
-        }
+        _box.ScrollTo(_currentWordStart);
     }
 
     public string GetContextLine()

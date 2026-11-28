@@ -1,0 +1,102 @@
+# The formatting commands in Markdown mode put Markdown into the text.
+
+== Ctrl+B wraps the selection in bold markers
+modes: markdown
+text: one two three
+caret: select "two"
+keys: ^b
+text-is: one **two** three
+typing-works
+
+== Ctrl+B again takes the bold markers off
+modes: markdown
+text: one two three
+caret: select "two"
+keys: ^b
+keys: ^b
+text-is: one two three
+
+== Ctrl+I wraps the selection in italic markers
+modes: markdown
+text: one two three
+caret: select "two"
+keys: ^i
+text-is: one *two* three
+
+== Ctrl+Alt+2 makes the line a level 2 heading
+modes: markdown
+text: one two three
+caret: after "one"
+keys: ^%2
+text-is: ## one two three
+typing-works
+
+== Ctrl+Alt+0 takes the heading off
+modes: markdown
+text: ## one two three
+caret: after "one"
+keys: ^%0
+text-is: one two three
+
+== Ctrl+Shift+9 quotes the line
+modes: markdown
+text: one two three
+caret: after "one"
+keys: ^+9
+text-is: > one two three
+
+== Ctrl+Shift+L makes the line a bullet
+modes: markdown
+text: one two three
+caret: after "one"
+keys: ^+l
+text-is: - one two three
+
+== Ctrl+Shift+N makes the line a numbered item
+modes: markdown
+text: one two three
+caret: after "one"
+keys: ^+n
+text-is: 1. one two three
+
+== Tab on a list line indents it and Shift+Tab takes the indent off
+modes: markdown
+text: - one
+caret: end
+keys: {TAB}
+text-is: "  - one"
+focus-is: Message body
+keys: +{TAB}
+text-is: - one
+focus-is: Message body
+typing-works
+
+== Ctrl+K puts in a link
+modes: markdown
+text: See
+caret: end
+type: " "
+keys: ^k
+wait: 1.5
+front-is: Insert Link
+type: https://example.com/page
+keys: {TAB}
+type: the site
+keys: {ENTER}
+wait: 1
+front-is: New Message
+text-is: See [the site](https://example.com/page)
+typing-works
+
+== Escape in Insert Link changes nothing and returns to the body
+modes: markdown
+text: See
+caret: end
+keys: ^k
+wait: 1.5
+front-is: Insert Link
+keys: {ESC}
+wait: 1
+front-is: New Message
+text-is: See
+typing-works
