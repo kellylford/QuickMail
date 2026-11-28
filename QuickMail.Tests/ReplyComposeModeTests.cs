@@ -70,11 +70,11 @@ public class ReplyComposeModeTests
     [InlineData(ComposeKind.NewDraft, ComposeMode.PlainText, true,  ComposeMode.Html,      true,  ComposeMode.PlainText)]
     [InlineData(ComposeKind.EditTemplate, ComposeMode.PlainText, true, ComposeMode.Html,   true,  ComposeMode.PlainText)]
     public void ResolveInitialMode(ComposeKind kind, ComposeMode seeded, bool hasQuotedHtml,
-        ComposeMode defaultMode, bool replyInHtml, ComposeMode expected)
+        ComposeMode defaultMode, bool replyInOriginalFormat, ComposeMode expected)
     {
         Assert.Equal(expected,
             ComposeViewModel.ResolveInitialMode(kind, seeded, hasQuotedHtml, reopenedFromOutbox: false,
-                defaultMode, replyInHtml));
+                defaultMode, replyInOriginalFormat));
     }
 
     // A message reopened from the Outbox comes back in the mode it was written in. A queued reply
@@ -87,11 +87,11 @@ public class ReplyComposeModeTests
     [InlineData(ComposeKind.NewMessage, ComposeMode.Markdown,  ComposeMode.PlainText, true)]
     [InlineData(ComposeKind.Forward,    ComposeMode.PlainText, ComposeMode.Html,      true)]
     public void ResolveInitialMode_ReopenedFromOutbox_RestoresTheModeItWasWrittenIn(
-        ComposeKind kind, ComposeMode seeded, ComposeMode defaultMode, bool replyInHtml)
+        ComposeKind kind, ComposeMode seeded, ComposeMode defaultMode, bool replyInOriginalFormat)
     {
         Assert.Equal(seeded,
             ComposeViewModel.ResolveInitialMode(kind, seeded, hasQuotedHtml: true, reopenedFromOutbox: true,
-                defaultMode, replyInHtml));
+                defaultMode, replyInOriginalFormat));
     }
 
     [Fact]
@@ -184,11 +184,12 @@ public class ReplyComposeModeTests
     }
 
     private static (ComposeWindow Window, ComposeViewModel Vm) OpenReplyWindow(
-        MailMessageDetail detail, bool replyInHtml, string? signature = null)
+        MailMessageDetail detail, bool replyInOriginalFormat, string? signature = null,
+        ComposeMode defaultMode = ComposeMode.PlainText)
     {
         var config = new StubConfigService();
-        config.Load().DefaultComposeMode = ComposeMode.PlainText;
-        config.Load().ReplyInOriginalFormat = replyInHtml;
+        config.Load().DefaultComposeMode = defaultMode;
+        config.Load().ReplyInOriginalFormat = replyInOriginalFormat;
         var account = new AccountModel { Id = Guid.NewGuid(), IsDefault = true, Signature = signature ?? string.Empty };
         var vm = new ComposeViewModel(
             new StubSmtpService(), new SignedAccountService(account), new StubCredentialService(),
@@ -207,7 +208,7 @@ public class ReplyComposeModeTests
     public void ReplyWindow_HtmlOriginal_QuotesItAsAQuoteBlockWithNoGreaterThanSigns()
     {
         var detail = Detail("First line\nSecond line", "<p>First line</p><p>Second line</p>");
-        var (window, vm) = OpenReplyWindow(detail, replyInHtml: true);
+        var (window, vm) = OpenReplyWindow(detail, replyInOriginalFormat: true);
         try
         {
             Assert.Equal(ComposeMode.Html, vm.CurrentMode);
@@ -227,13 +228,49 @@ public class ReplyComposeModeTests
         finally { window.Close(); }
     }
 
+    // The reported case, in a real window: Default compose mode HTML, a plain-text original, the
+    // setting on. The reply must open in the plain-text editor, not the rich one.
+    [StaFact]
+    public void ReplyWindow_PlainOriginal_HtmlDefault_OpensInThePlainTextEditor()
+    {
+        var detail = Detail("Are you free?", "");
+        var (window, vm) = OpenReplyWindow(detail, replyInOriginalFormat: true, defaultMode: ComposeMode.Html);
+        try
+        {
+            Assert.Equal(ComposeMode.PlainText, vm.CurrentMode);
+            var plain = window.FindName("BodyBox") as TextBox;
+            var rich  = window.FindName("RichBodyBox") as RichTextBox;
+            Assert.NotNull(plain);
+            Assert.NotNull(rich);
+            Assert.Equal(Visibility.Visible, plain!.Visibility);
+            Assert.NotEqual(Visibility.Visible, rich!.Visibility);
+            Assert.Contains("> Are you free?", vm.Body);
+        }
+        finally { window.Close(); }
+    }
+
+    [StaFact]
+    public void ReplyWindow_PlainOriginal_HtmlDefault_SettingOff_OpensInHtml()
+    {
+        var detail = Detail("Are you free?", "");
+        var (window, vm) = OpenReplyWindow(detail, replyInOriginalFormat: false, defaultMode: ComposeMode.Html);
+        try
+        {
+            Assert.Equal(ComposeMode.Html, vm.CurrentMode);
+            var rich = window.FindName("RichBodyBox") as RichTextBox;
+            Assert.NotNull(rich);
+            Assert.Equal(Visibility.Visible, rich!.Visibility);
+        }
+        finally { window.Close(); }
+    }
+
     // The caret must start in the empty paragraph above "On ... wrote:", outside the quote, so
     // the user types their reply at the top rather than inside the quoted message.
     [StaFact]
     public void ReplyWindow_HtmlOriginal_CaretStartsInAnEmptyLineAboveTheQuote()
     {
         var detail = Detail("First line", "<p>First line</p>");
-        var (window, _) = OpenReplyWindow(detail, replyInHtml: true);
+        var (window, _) = OpenReplyWindow(detail, replyInOriginalFormat: true);
         try
         {
             var editor = window.FindName("RichBodyBox") as RichTextBox;
@@ -253,7 +290,7 @@ public class ReplyComposeModeTests
     public void ReplyWindow_HtmlOriginal_WithSignature_PutsTheSignatureAfterTheQuote()
     {
         var detail = Detail("First line", "<p>First line</p>");
-        var (window, vm) = OpenReplyWindow(detail, replyInHtml: true, signature: "Kelly\nThe Idea Place");
+        var (window, vm) = OpenReplyWindow(detail, replyInOriginalFormat: true, signature: "Kelly\nThe Idea Place");
         try
         {
             Assert.Equal(ComposeMode.Html, vm.CurrentMode);
@@ -277,7 +314,7 @@ public class ReplyComposeModeTests
     public void ReplyWindow_HtmlOriginal_SettingOff_StaysPlainTextWithQuoteMarks()
     {
         var detail = Detail("First line", "<p>First line</p>");
-        var (window, vm) = OpenReplyWindow(detail, replyInHtml: false);
+        var (window, vm) = OpenReplyWindow(detail, replyInOriginalFormat: false);
         try
         {
             Assert.Equal(ComposeMode.PlainText, vm.CurrentMode);
@@ -290,7 +327,7 @@ public class ReplyComposeModeTests
     public void ReplyWindow_PlainTextOriginal_StaysPlainText()
     {
         var detail = Detail("First line", "");
-        var (window, vm) = OpenReplyWindow(detail, replyInHtml: true);
+        var (window, vm) = OpenReplyWindow(detail, replyInOriginalFormat: true);
         try
         {
             Assert.Equal(ComposeMode.PlainText, vm.CurrentMode);

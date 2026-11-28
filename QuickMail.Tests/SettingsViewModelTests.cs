@@ -417,7 +417,7 @@ public class SettingsViewModelTests
         Assert.False(vmLoad.AnnounceSpellingSuggestions);
     }
 
-    // #1050: "Reply to HTML messages in HTML" is on unless the user turns it off.
+    // #1050: "Reply in the original message's format" is on unless the user turns it off.
     [Fact]
     public void ReplyInOriginalFormat_DefaultsOn_AndRoundTrips()
     {

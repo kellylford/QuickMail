@@ -591,7 +591,7 @@ public partial class SettingsViewModel : ObservableObject
         SuggestPeopleEmailed             = cfg.SuggestPeopleEmailed;
         AutoSaveIntervalSeconds          = cfg.AutoSaveIntervalSeconds;
         CheckSpellingAsYouType           = cfg.CheckSpellingAsYouType;
-        ReplyInOriginalFormat        = cfg.ReplyInOriginalFormat;
+        ReplyInOriginalFormat            = cfg.ReplyInOriginalFormat;
         DefaultComposeMode = cfg.DefaultComposeMode switch
         {
             Models.ComposeMode.Markdown => "markdown",
@@ -717,7 +717,7 @@ public partial class SettingsViewModel : ObservableObject
         cfg.SuggestPeopleEmailed             = SuggestPeopleEmailed;
         cfg.AutoSaveIntervalSeconds          = AutoSaveIntervalSeconds;
         cfg.CheckSpellingAsYouType           = CheckSpellingAsYouType;
-        cfg.ReplyInOriginalFormat        = ReplyInOriginalFormat;
+        cfg.ReplyInOriginalFormat            = ReplyInOriginalFormat;
         SaveSoundSettings(cfg);
         cfg.DefaultComposeMode = DefaultComposeMode switch
         {
