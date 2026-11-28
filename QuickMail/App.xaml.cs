@@ -77,6 +77,10 @@ public partial class App : Application
     // wires its activation signal to the main window.
     private static SingleInstanceService? _singleInstance;
 
+    // True once the main window has been shown. Before that an unhandled error cannot be
+    // "logged and carried on from": there is no window to carry on in (#1117).
+    private static bool _mainWindowShown;
+
     // Explicit entry point (App.xaml compiles as Page; see csproj StartupObject). Velopack must
     // run before any WPF initialization: on install/update/uninstall its hooks handle the event
     // and exit the process, and on a normal launch after an update it finalizes the new version.
@@ -768,6 +772,7 @@ public partial class App : Application
             }
 
             mainWindow.Show();
+            _mainWindowShown = true;
 
             // A second launch of the same profile signals this handle instead of starting
             // another process; restore the window (and drop the tray icon) exactly as the
@@ -946,6 +951,28 @@ public partial class App : Application
             return;
         }
 
+        // #1117: the main window never appeared, so there is nothing to keep alive for. Staying
+        // would leave a process with no window that holds this profile's single-instance lock:
+        // every later start signals it and exits, and QuickMail cannot be opened again until the
+        // PC is restarted. Say what happened and go.
+        if (ShouldExitAfterUnhandledError(_mainWindowShown))
+        {
+            try
+            {
+                MessageBox.Show(
+                    "QuickMail could not start." + Environment.NewLine + Environment.NewLine +
+                    $"{e.Exception.GetType().Name}: {e.Exception.Message}" + Environment.NewLine + Environment.NewLine +
+                    "The details are in quickmail.log in your QuickMail data folder.",
+                    "QuickMail",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
+            }
+            catch { /* MessageBox itself can fail in extreme cases: still exit. */ }
+            e.Handled = true;
+            Current?.Shutdown(1);
+            return;
+        }
+
         // Keep the process alive so the user isn't left staring at a vanished window.
         // The log captures the cause; the next user action will either succeed or
         // fault again, by which point we want it diagnosed rather than swallowed.
@@ -961,6 +988,13 @@ public partial class App : Application
 
         e.Handled = true;
     }
+
+    /// <summary>
+    /// Whether an unhandled error on the UI thread should end QuickMail. Once the main window is
+    /// up the answer is no: the error is logged and shown, and the user keeps their window. Before
+    /// that there is no window, and a process left running without one blocks every later start.
+    /// </summary>
+    internal static bool ShouldExitAfterUnhandledError(bool mainWindowShown) => !mainWindowShown;
 
     private static void OnAppDomainUnhandledException(object sender, UnhandledExceptionEventArgs e)
     {

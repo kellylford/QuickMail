@@ -51,6 +51,23 @@
         <Setter Property="IsExpanded" Value="True"/>
     </Style>
 
+    <!-- Types the views look up with BasedOn="{StaticResource {x:Type …}}" (#1116).
+         That lookup searches resource dictionaries only; it does not fall through to
+         WPF's theme style. ThemedControls.xaml styles every one of these, but
+         ThemeService withdraws ThemedControls under a Windows contrast theme, and
+         without a style HERE the lookup throws while the window is being parsed:
+         QuickMail did not start under a contrast theme at all. These are empty on
+         purpose: the control keeps WPF's contrast-aware default template and colors,
+         and ThemedControls' own style wins wherever it is merged.
+         AccessibleStylesCoverTests fails when a view looks up a type that has no
+         style in this file. -->
+    <Style TargetType="ListBox"/>
+    <Style TargetType="ListBoxItem"/>
+    <Style TargetType="ListView"/>
+    <Style TargetType="ComboBox"/>
+    <Style TargetType="MenuItem"/>
+    <Style TargetType="TreeView"/>
+
     <!-- Menu, ContextMenu, StatusBar and ToolTip take their font from WPF's default
          style for each type (the system menu/status font), and a default style beats
          the value a window passes down by inheritance — so without these four the menu
