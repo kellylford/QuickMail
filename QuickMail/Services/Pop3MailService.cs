@@ -164,6 +164,14 @@ public class Pop3MailService : IMailService
     /// </summary>
     public bool ListingIsAuthoritativeForDeletions(Guid accountId) => false;
 
+    /// <summary>
+    /// Always (#1113). Every folder here is read from the store, which holds the only copy, and
+    /// <see cref="GetFoldersAsync"/> counts every row of it. A folder listed through the Sync Range
+    /// hid mail older than the range while its unread count still included it: a user who deleted
+    /// everything a folder showed was left with "600 unread" and nothing to select.
+    /// </summary>
+    public bool FoldersLiveInLocalStore(Guid accountId) => true;
+
     // ── Folders ───────────────────────────────────────────────────────────────
 
     /// <summary>

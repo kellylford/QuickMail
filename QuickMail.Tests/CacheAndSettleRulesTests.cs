@@ -17,7 +17,7 @@ namespace QuickMail.Tests;
 /// </summary>
 public class CacheAndSettleRulesTests
 {
-    private sealed class RecordingSync(List<string> log) : ISyncService
+    internal sealed class RecordingSync(List<string> log) : ISyncService
     {
 #pragma warning disable CS0067
         public event Action<IReadOnlyList<MailMessageSummary>>? FolderSynced;

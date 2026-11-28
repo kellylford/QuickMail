@@ -190,6 +190,9 @@ public class MailServiceRouter : IMailService, IConnectionProbe
     public bool ListingIsAuthoritativeForDeletions(Guid accountId)
         => For(accountId).ListingIsAuthoritativeForDeletions(accountId);
 
+    public bool FoldersLiveInLocalStore(Guid accountId)
+        => For(accountId).FoldersLiveInLocalStore(accountId);
+
     public Task<IList<string>> GetFolderMessageIdsAsync(Guid accountId, string folderName, CancellationToken ct = default)
         => For(accountId).GetFolderMessageIdsAsync(accountId, folderName, ct);
 

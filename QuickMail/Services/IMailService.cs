@@ -96,6 +96,26 @@ public interface IMailService : IDisposable
     /// </summary>
     bool ListingIsAuthoritativeForDeletions(Guid accountId) => true;
 
+    /// <summary>
+    /// Whether this account's folders live in the local store rather than on a server, so that
+    /// listing a folder reads the store and everything listed is already stored. False for every
+    /// backend that fetches from a server mailbox.
+    ///
+    /// <para>True for POP3 (#1113), and two things follow from it in <c>MainViewModel</c>:</para>
+    /// <list type="bullet">
+    /// <item><b>View → Sync Range does not limit what a folder lists.</b> The store is the only copy of
+    /// the mail, and the folder's unread count is a count of that store. Applying the range to the list
+    /// downloads nothing less; it only hides mail the count still includes, with nothing in the folder
+    /// to act on.</item>
+    /// <item><b>A folder load is not written back to the store.</b> The rows were just read from it, and
+    /// mail collected on the call was stored as it arrived, so the write would rewrite every row of the
+    /// folder for nothing, on the UI thread, on every open.</item>
+    /// </list>
+    /// <para>This is about folder loads only: the sweep's window, and
+    /// <see cref="GetMessagesSinceDateAsync"/>'s role as POP3's download trigger, are unchanged.</para>
+    /// </summary>
+    bool FoldersLiveInLocalStore(Guid accountId) => false;
+
     Task<IList<string>> GetFolderMessageIdsAsync(Guid accountId, string folderName, CancellationToken ct = default);
 
     /// <summary>
