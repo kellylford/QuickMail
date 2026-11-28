@@ -101,19 +101,25 @@ public sealed class Pop3FolderSyncRangeTests : IDisposable
         public async Task OpenListsAsync(int timeoutMs = 15000)
         {
             await Vm.SelectFolderCommand.ExecuteAsync(CachedLists);
-            // The server refresh that replaces the cached rows is fire-and-forget.
-            await Until(() => !Vm.IsBusy &&
-                              (Vm.StatusText.EndsWith("messages loaded.", StringComparison.Ordinal) || Vm.StatusText == "No messages"),
-                        timeoutMs);
+            await LoadFinishedAsync(Vm, timeoutMs);
         }
     }
 
-    private static async Task Until(Func<bool> done, int timeoutMs = 15000)
+    /// <summary>
+    /// Waits for a folder load to finish. Opening a folder shows the cached rows first and then
+    /// replaces them with the backend's answer, in a refresh that is fire-and-forget. IsBusy stays set
+    /// until that refresh ends, so it is what says the rows on screen are the final ones: waiting for
+    /// a row count instead would pass on the cached rows, before the refresh could take any away.
+    /// </summary>
+    private static Task LoadFinishedAsync(MainViewModel vm, int timeoutMs = 15000)
+        => Until(() => !vm.IsBusy, "the folder load to finish (IsBusy to clear)", timeoutMs);
+
+    private static async Task Until(Func<bool> done, string waitingFor, int timeoutMs = 15000, Func<string>? state = null)
     {
         var sw = Stopwatch.StartNew();
         while (!done() && sw.ElapsedMilliseconds < timeoutMs)
             await Task.Delay(20, TestContext.Current.CancellationToken);
-        Assert.True(done(), $"timed out after {timeoutMs} ms");
+        Assert.True(done(), $"Gave up after {timeoutMs} ms waiting for {waitingFor}" + (state is null ? "." : $"; {state()}."));
     }
 
     private static IEnumerable<MailMessageSummary> OldAndNew(string folder) =>
@@ -128,10 +134,12 @@ public sealed class Pop3FolderSyncRangeTests : IDisposable
     // ── The cause ────────────────────────────────────────────────────────────────
 
     [Fact]
-    public async Task TheWindowedReadAndTheFolderCount_DisagreeForAFolderHoldingOldMail()
+    public async Task TheSweepsWindowedRead_SeesLessThanTheFolderCount()
     {
-        // Pins the cause rather than the fix: the sweep's windowed read is unchanged, and it does not
-        // see what GetFoldersAsync counts. That is why a folder's LIST must not be read through it.
+        // Records how things are today, not a requirement. The sweep still reads POP3 folders through
+        // the Sync Range window (this PR leaves the sweep alone), and that read sees less than
+        // GetFoldersAsync counts — the gap that, used for the folder LIST, was #1113. If the sweep's
+        // window is ever changed on purpose, change or drop this test; it guards nothing a user needs.
         var f = NewFixture();
         await f.Pop.CreateFolderAsync(Account, null, "Lists");
         var lists = (await f.Pop.GetFoldersAsync(Account)).Single(x => x.DisplayName == "Lists");
@@ -189,7 +197,8 @@ public sealed class Pop3FolderSyncRangeTests : IDisposable
         await f.Vm.DeleteMessagesAsync(f.Vm.Messages.ToList());
 
         Assert.Empty(f.Vm.Messages);
-        await Until(() => f.CachedLists.UnreadCount == 0);
+        await Until(() => f.CachedLists.UnreadCount == 0, "the Lists folder's unread count to reach 0",
+            state: () => $"it is {f.CachedLists.UnreadCount}");
         Assert.Empty(await f.Store.GetAllMessageIdsAsync(Account, f.Lists.FullName));
         Assert.Equal(5, (await f.Store.GetAllMessageIdsAsync(Account, Pop3MailService.TrashFolder)).Count);
     }
@@ -225,6 +234,144 @@ public sealed class Pop3FolderSyncRangeTests : IDisposable
         TestContext.Current.TestOutputHelper?.WriteLine($"Opened a POP3 folder of {rows} rows in {sw.ElapsedMilliseconds} ms");
     }
 
+    // ── A folder load is not written back for a store-backed account ──────────
+
+    /// <summary>
+    /// A backend whose folder loads come from wherever <see cref="Load"/> says: a POP3-shaped one
+    /// (folders in the local store, listing proves no deletion) or, with <see cref="InLocalStore"/>
+    /// false, a server-shaped one.
+    /// </summary>
+    private sealed class ShapedMail : StubImapMailServiceBase, IMailService
+    {
+        public bool InLocalStore { get; init; } = true;
+        public required List<MailFolderModel> Folders { get; init; }
+        public required Func<string, DateTime, Task<List<MailMessageSummary>>> Load { get; init; }
+
+        bool IMailService.FoldersLiveInLocalStore(Guid accountId) => InLocalStore;
+        bool IMailService.ListingIsAuthoritativeForDeletions(Guid accountId) => !InLocalStore;
+
+        public override Task<List<MailFolderModel>> GetFoldersAsync(Guid accountId, CancellationToken ct = default)
+            => Task.FromResult(Folders.ToList());
+        public override Task<List<MailMessageSummary>> GetMessagesSinceDateAsync(Guid accountId, string folderName, DateTime since, CancellationToken ct = default)
+            => Load(folderName, since);
+        public override Task<List<MailMessageSummary>> GetMessageSummariesAsync(Guid accountId, string folderName, int maxMessages, CancellationToken ct = default)
+            => Load(folderName, DateTime.MinValue);
+    }
+
+    /// <summary>A store that records every summary written to it.</summary>
+    private sealed class RecordingStore : StubLocalStoreService
+    {
+        private readonly object _gate = new();
+        private readonly List<MailMessageSummary> _written = [];
+        public List<MailMessageSummary> Written { get { lock (_gate) return [.. _written]; } }
+
+        public override Task UpsertSummariesAsync(IEnumerable<MailMessageSummary> summaries)
+        {
+            lock (_gate) _written.AddRange(summaries);
+            return Task.CompletedTask;
+        }
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task OpeningAFolder_WritesItsRowsBack_OnlyForAServerBackedAccount(bool inLocalStore)
+    {
+        // #1113 review: a POP3 folder now lists every row it holds, and those rows were just read from
+        // the store. Writing them back would rewrite the whole folder on the UI thread on every open.
+        // A server-backed account must still cache what it fetched; that half is the control, showing
+        // the recording store does see the write when there is one.
+        var inbox = new MailFolderModel { AccountId = Account, FullName = "Inbox", DisplayName = "Inbox", Kind = SpecialFolderKind.Inbox };
+        var rows  = OldAndNew("Inbox").ToList();
+        var mail  = new ShapedMail { InLocalStore = inLocalStore, Folders = [inbox], Load = (_, _) => Task.FromResult(rows.ToList()) };
+        var store = new RecordingStore();
+        store.SeededFolders[Account] = [inbox];
+        var log   = new List<string>();
+        var vm = new MainViewModel(
+            mail, new StubAccountService(), new StubCredentialService(), store,
+            new StubOAuthService(), new CacheAndSettleRulesTests.RecordingSync(log), new StubConfigService(),
+            new StubCommandRegistry(), new StubViewService(), new StubRuleService(),
+            new StubSmtpService());
+        vm.Accounts.Add(new AccountModel { Id = Account, AccountName = "Mail", Username = "me@example.com" });
+        await vm.InitialLoadAsync();
+        var writtenBefore = store.Written.Count;
+
+        await vm.SelectFolderCommand.ExecuteAsync(inbox);
+        await LoadFinishedAsync(vm);
+        // The rules pass is asked for either way: mail a POP3 Inbox collected on the open is waiting for it.
+        await Until(() => log.Contains("settle Inbox"), "the rules pass to be asked for on the Inbox",
+            state: () => $"the sync was asked: {string.Join(", ", log)}");
+
+        var written = store.Written.Skip(writtenBefore).ToList();
+        Assert.Equal(5, vm.Messages.Count);
+        if (inLocalStore)
+            Assert.Empty(written);
+        else
+            Assert.Equal(rows.Select(r => r.MessageId).Order(), written.Select(r => r.MessageId).Order());
+    }
+
+    // ── All Inboxes with a big POP3 Inbox ───────────────────────────────────────
+
+    /// <summary>
+    /// A POP3 Inbox of <paramref name="rows"/> messages, about a tenth of them in the Sync Range,
+    /// threaded the way list mail is (a few thousand subjects, replies among them).
+    /// </summary>
+    private static IEnumerable<MailMessageSummary> BigInbox(string folder, int rows) =>
+        Enumerable.Range(0, rows).Select(i =>
+        {
+            var m = Msg($"m{i}", folder, daysAgo: i % 10 == 0 ? i % 30 : 31 + i % 2000, isRead: i % 3 != 0);
+            m.Subject = (i % 2 == 0 ? "Re: " : "") + $"Thread {i % 4000}";
+            m.From    = $"Sender {i % 300} <s{i % 300}@example.com>";
+            m.InternetMessageId = $"<m{i}@example.com>";
+            return m;
+        });
+
+    /// <summary>How long All Inboxes may take. Measured first, then set; see the PR for the numbers.</summary>
+    private const int AllInboxesLimitMs = 60000;
+
+    private static int AllInboxesRows =>
+        int.TryParse(Environment.GetEnvironmentVariable("QUICKMAIL_ALLINBOXES_ROWS"), out var n) && n > 0 ? n : 30000;
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task AllInboxes_WithABigPop3Inbox_StaysQuick(bool conversations)
+    {
+        // All Inboxes has no cache phase: it shows what the fetch returns, and a POP3 Inbox now returns
+        // every row it holds. This times that load, from the real store, at a size a mailing-list
+        // subscriber can reach. QUICKMAIL_ALLINBOXES_ROWS overrides the size for a measurement run.
+        var rows = AllInboxesRows;
+        var f = NewFixture();
+        var inbox = new MailFolderModel { AccountId = Account, FullName = "Inbox", DisplayName = "Inbox", Kind = SpecialFolderKind.Inbox };
+        await f.Store.UpsertSummariesAsync(BigInbox("Inbox", rows).ToList());
+        var mail = new ShapedMail
+        {
+            Folders = [inbox],
+            Load = (folder, since) => f.Store.LoadFolderSummariesSinceAsync(
+                Account, folder, new DateTimeOffset(DateTime.SpecifyKind(since, DateTimeKind.Utc), TimeSpan.Zero)),
+        };
+        var vm = new MainViewModel(
+            mail, new StubAccountService(), new StubCredentialService(), f.Store,
+            new StubOAuthService(), new StubSyncService(), new StubConfigService(),
+            new StubCommandRegistry(), new StubViewService(), new StubRuleService(),
+            new StubSmtpService());
+        // OAuth only so ConnectAllAccountsAsync connects it without a stored password: All Inboxes
+        // fetches only from connected accounts.
+        vm.Accounts.Add(new AccountModel { Id = Account, AccountName = "POP", Username = "me@example.com", AuthType = AuthType.OAuth2Microsoft });
+        await vm.ConnectAllAccountsAsync();
+        if (conversations) vm.ViewMode = ViewMode.Conversations;
+
+        var sw = Stopwatch.StartNew();
+        await vm.SelectFolderCommand.ExecuteAsync(MainViewModel.AllInboxesFolder);
+        await Until(() => !vm.IsBusy && vm.Messages.Count == rows && (!conversations || vm.Conversations.Count > 0),
+            $"All Inboxes to show all {rows} rows" + (conversations ? " and their conversations" : ""),
+            AllInboxesLimitMs, () => $"{vm.Messages.Count} rows, {vm.Conversations.Count} conversations, busy={vm.IsBusy}");
+        sw.Stop();
+
+        TestContext.Current.TestOutputHelper?.WriteLine(
+            $"All Inboxes, one POP3 Inbox of {rows} rows{(conversations ? ", conversations view" : "")}: {sw.ElapsedMilliseconds} ms");
+    }
+
     // ── Other backends keep the window ─────────────────────────────────────────
 
     private sealed class RecordingServerMail : StubImapMailServiceBase
@@ -253,7 +400,7 @@ public sealed class Pop3FolderSyncRangeTests : IDisposable
         await vm.InitialLoadAsync();
 
         await vm.SelectFolderCommand.ExecuteAsync(inbox);
-        await Until(() => mail.Since != null);
+        await Until(() => mail.Since != null, "the folder load to ask the backend for the Inbox");
 
         Assert.False(((IMailService)mail).FoldersLiveInLocalStore(Account));
         var expected = DateTime.UtcNow.AddDays(-30);
@@ -312,7 +459,8 @@ public sealed class Pop3FolderSyncRangeTests : IDisposable
         await vm.ConnectAllAccountsAsync();
 
         await vm.SelectFolderCommand.ExecuteAsync(MainViewModel.AllMailFolder);
-        await Until(() => mail.Fetched && !vm.IsBusy && vm.Messages.Any(m => m.MessageId == "resent"));
+        await Until(() => mail.Fetched && !vm.IsBusy && vm.Messages.Any(m => m.MessageId == "resent"),
+            "All Mail to fetch from the account and show the just-collected \"resent\" row");
 
         // Before the fix, "resent" (200 days) widened the fetched range past both older rows, and the
         // merge removed them as deleted elsewhere.
