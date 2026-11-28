@@ -20,9 +20,16 @@ namespace QuickMail.Tests;
 /// Requires STA thread (via [StaFact]) but no visible window is shown.
 /// A minimal Application is created once per process if needed.
 /// </summary>
-[Collection("WpfTests")]
-public class XamlParseTests
+public abstract class XamlParseTestBase
 {
+    /// <summary>
+    /// Set by <see cref="ContrastThemeXamlParseTests"/> for the length of its run: every window
+    /// is then parsed with ThemedControls withdrawn, as ThemeService leaves things under a Windows
+    /// contrast theme (#1116). Static because the helpers here are; safe because that class is in a
+    /// collection that runs with nothing else beside it.
+    /// </summary>
+    protected static bool ContrastThemeSetup { get; set; }
+
     /// <summary>
     /// The Application and the resource dictionaries StaticResource/DynamicResource need while the
     /// XAML is parsed. The shared host owns it, on a thread that outlives the run rather than
@@ -34,8 +41,18 @@ public class XamlParseTests
     /// CalendarContextMenuTests or SelectorItemAccessibilityTests alongside it — which is what any
     /// `dotnet test --filter` narrow enough to exclude them does.
     /// </summary>
-    private static void EnsureApplication() =>
-        WpfTestHost.EnsureStyles("AccessibleStyles", "ThemedControls");
+    private static void EnsureApplication()
+    {
+        if (ContrastThemeSetup)
+        {
+            WpfTestHost.EnsureStyles("AccessibleStyles");
+            WpfTestHost.RemoveStyles("ThemedControls");
+        }
+        else
+        {
+            WpfTestHost.EnsureStyles("AccessibleStyles", "ThemedControls");
+        }
+    }
 
     private static void ParseXamlFile(string relativePathFromAssembly)
     {
@@ -511,4 +528,37 @@ public class XamlParseTests
             new StubLocalStoreService(), new StubSyncService(), new StubConfigService(),
             new StubCommandRegistry(), new StubContactService(), new StubTemplateService());
     }
+}
+/// <summary>Every window parses with QuickMail's own control styling in place.</summary>
+[Collection("WpfTests")]
+public class XamlParseTests : XamlParseTestBase
+{
+}
+
+/// <summary>
+/// #1116: every window parses with ThemedControls withdrawn, which is how ThemeService leaves the
+/// application under a Windows contrast theme. QuickMail did not start in that state: MainWindow
+/// looked up a style only ThemedControls defined. This runs the whole of the parse suite again in
+/// that state, so a window that comes to depend on ThemedControls for a type key, a named key or an
+/// x:Static key fails here, not on a user's PC.
+///
+/// The collection disables parallelization, so nothing else is using the shared Application while
+/// ThemedControls is out of it. It is put back when the class is done.
+/// </summary>
+[Collection(nameof(ContrastThemeXamlParseTests))]
+public class ContrastThemeXamlParseTests : XamlParseTestBase, IDisposable
+{
+    public ContrastThemeXamlParseTests() => ContrastThemeSetup = true;
+
+    public void Dispose()
+    {
+        ContrastThemeSetup = false;
+        WpfTestHost.EnsureStyles("AccessibleStyles", "ThemedControls");
+        GC.SuppressFinalize(this);
+    }
+}
+
+[CollectionDefinition(nameof(ContrastThemeXamlParseTests), DisableParallelization = true)]
+public class ContrastThemeXamlParseCollection
+{
 }

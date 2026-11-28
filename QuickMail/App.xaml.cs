@@ -801,8 +801,10 @@ public partial class App : Application
         }
         catch (Exception ex)
         {
-            // Log the exception chain before WER kills the process so the cause
-            // survives in %APPDATA%\QuickMail\quickmail.log.
+            // Log the exception chain so the cause survives in quickmail.log. Logging is off by
+            // default (EnableLogging), and a start that failed is exactly when the log is needed
+            // and the user is about to be told to look in it (#1117): turn it on for this.
+            LogService.Enabled = true;
             for (var cur = ex; cur != null; cur = cur.InnerException)
                 LogService.Log("Startup", cur);
             throw;
@@ -938,6 +940,9 @@ public partial class App : Application
     private static void OnDispatcherUnhandledException(
         object sender, System.Windows.Threading.DispatcherUnhandledExceptionEventArgs e)
     {
+        // Before the main window is up the user is sent to the log, so it has to be written
+        // whatever the logging setting says (#1117).
+        if (!_mainWindowShown) LogService.Enabled = true;
         for (var cur = e.Exception; cur != null; cur = cur.InnerException)
             LogService.Log("Dispatcher", cur);
 
@@ -955,14 +960,16 @@ public partial class App : Application
         // would leave a process with no window that holds this profile's single-instance lock:
         // every later start signals it and exits, and QuickMail cannot be opened again until the
         // PC is restarted. Say what happened and go.
-        if (ShouldExitAfterUnhandledError(_mainWindowShown))
+        if (!_mainWindowShown)
         {
             try
             {
                 MessageBox.Show(
                     "QuickMail could not start." + Environment.NewLine + Environment.NewLine +
-                    $"{e.Exception.GetType().Name}: {e.Exception.Message}" + Environment.NewLine + Environment.NewLine +
-                    "The details are in quickmail.log in your QuickMail data folder.",
+                    // The innermost error: the outer one is usually XAML's "Provide value on … threw
+                    // an exception", which says nothing about what was missing.
+                    $"{e.Exception.GetBaseException().GetType().Name}: {e.Exception.GetBaseException().Message}" + Environment.NewLine + Environment.NewLine +
+                    "The details are in this file:" + Environment.NewLine + LogService.LogFilePath,
                     "QuickMail",
                     MessageBoxButton.OK,
                     MessageBoxImage.Error);
@@ -988,13 +995,6 @@ public partial class App : Application
 
         e.Handled = true;
     }
-
-    /// <summary>
-    /// Whether an unhandled error on the UI thread should end QuickMail. Once the main window is
-    /// up the answer is no: the error is logged and shown, and the user keeps their window. Before
-    /// that there is no window, and a process left running without one blocks every later start.
-    /// </summary>
-    internal static bool ShouldExitAfterUnhandledError(bool mainWindowShown) => !mainWindowShown;
 
     private static void OnAppDomainUnhandledException(object sender, UnhandledExceptionEventArgs e)
     {

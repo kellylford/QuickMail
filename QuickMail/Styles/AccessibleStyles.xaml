@@ -51,22 +51,51 @@
         <Setter Property="IsExpanded" Value="True"/>
     </Style>
 
-    <!-- Types the views look up with BasedOn="{StaticResource {x:Type …}}" (#1116).
-         That lookup searches resource dictionaries only; it does not fall through to
-         WPF's theme style. ThemedControls.xaml styles every one of these, but
-         ThemeService withdraws ThemedControls under a Windows contrast theme, and
-         without a style HERE the lookup throws while the window is being parsed:
-         QuickMail did not start under a contrast theme at all. These are empty on
-         purpose: the control keeps WPF's contrast-aware default template and colors,
-         and ThemedControls' own style wins wherever it is merged.
-         AccessibleStylesCoverTests fails when a view looks up a type that has no
-         style in this file. -->
+    <!-- Every type ThemedControls.xaml styles has a style in THIS file too (#1116).
+
+         ThemeService withdraws ThemedControls under a Windows contrast theme so WPF's
+         contrast-aware templates take over. This file is what is left. A view that
+         writes BasedOn="{StaticResource {x:Type ListView}}" then needs to find a
+         ListView style here: for ListView that lookup was not answered by WPF's own
+         theme, MainWindow threw while it was being parsed, and QuickMail did not start
+         under a contrast theme at all. The same fault had been patched one type at a
+         time before (DateTimeField, the menu and status bar fonts, GridViewColumnHeader).
+
+         So the rule is no longer "whichever types a view happens to need". It is: the
+         set of types styled here is a superset of the set styled in ThemedControls.
+         ContrastThemeStyleCoverTests holds that, and ContrastThemeXamlParseTests parses
+         every window with ThemedControls out.
+
+         These are empty on purpose. An empty implicit style changes nothing a user
+         sees: the control keeps WPF's default template and its contrast theme colors,
+         and ThemedControls' own style wins wherever it is merged, which is after this
+         file. The one setter, on ListBoxItem, gives list rows the same focus ring
+         ListViewItem and TreeViewItem get above. -->
+    <Style TargetType="ListBoxItem">
+        <Setter Property="FocusVisualStyle" Value="{StaticResource FocusVisual}"/>
+    </Style>
     <Style TargetType="ListBox"/>
-    <Style TargetType="ListBoxItem"/>
     <Style TargetType="ListView"/>
     <Style TargetType="ComboBox"/>
+    <Style TargetType="ComboBoxItem"/>
     <Style TargetType="MenuItem"/>
     <Style TargetType="TreeView"/>
+    <Style TargetType="RadioButton"/>
+    <Style TargetType="ToggleButton"/>
+    <Style TargetType="PasswordBox"/>
+    <Style TargetType="RichTextBox"/>
+    <Style TargetType="Label"/>
+    <Style TargetType="Hyperlink"/>
+    <Style TargetType="GroupBox"/>
+    <Style TargetType="Expander"/>
+    <Style TargetType="TabControl"/>
+    <Style TargetType="TabItem"/>
+    <Style TargetType="ProgressBar"/>
+    <Style TargetType="ScrollBar"/>
+    <Style TargetType="Separator"/>
+    <Style TargetType="GridSplitter"/>
+    <Style TargetType="ToolBar"/>
+    <Style TargetType="ToolBarTray"/>
 
     <!-- Menu, ContextMenu, StatusBar and ToolTip take their font from WPF's default
          style for each type (the system menu/status font), and a default style beats
