@@ -387,8 +387,9 @@ public class ConfigService : IConfigService
                             _          => Models.ComposeMode.PlainText,
                         };
                         break;
-                    case "replyinhtmltohtmlmessages":
-                        config.ReplyInHtmlToHtmlMessages = ParseBool(value);
+                    case "replyinoriginalformat":
+                    case "replyinhtmltohtmlmessages": // its name in 0.8.75 and 0.8.76
+                        config.ReplyInOriginalFormat = ParseBool(value);
                         break;
                     case "checkspellingasyoutype":
                         config.CheckSpellingAsYouType = ParseBool(value);
@@ -976,10 +977,12 @@ public class ConfigService : IConfigService
         sb.AppendLine("# Values: plain, markdown, html.");
         sb.AppendLine();
 
-        sb.AppendLine($"ReplyInHtmlToHtmlMessages = {(config.ReplyInHtmlToHtmlMessages ? "on" : "off")}");
-        sb.AppendLine("# A reply to a message that has HTML opens in HTML, quoting the original as a");
-        sb.AppendLine("# quote block instead of lines starting \"> \", whatever DefaultComposeMode says.");
-        sb.AppendLine("# Replies to plain-text messages use DefaultComposeMode. Values: on, off.");
+        sb.AppendLine($"ReplyInOriginalFormat = {(config.ReplyInOriginalFormat ? "on" : "off")}");
+        sb.AppendLine("# Replies follow the original message's format, whatever DefaultComposeMode says.");
+        sb.AppendLine("# A reply to an HTML message opens in HTML, quoting the original as a quote block");
+        sb.AppendLine("# instead of lines starting \"> \". A reply to a plain-text message opens in plain");
+        sb.AppendLine("# text (Markdown if that is the default). Off, replies use DefaultComposeMode.");
+        sb.AppendLine("# Values: on, off.");
         sb.AppendLine();
 
         sb.AppendLine($"CheckSpellingAsYouType = {(config.CheckSpellingAsYouType ? "on" : "off")}");

@@ -1810,7 +1810,7 @@ public partial class ComposeWindow : Window
     private void ApplyDefaultComposeMode()
     {
         var config = _configService.Load();
-        var targetMode = _vm.InitialMode(config.DefaultComposeMode, config.ReplyInHtmlToHtmlMessages);
+        var targetMode = _vm.InitialMode(config.DefaultComposeMode, config.ReplyInOriginalFormat);
 
         if (targetMode == ComposeMode.PlainText) return;
         _vm.SetMode(targetMode);

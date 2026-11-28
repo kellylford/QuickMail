@@ -336,12 +336,15 @@ public class ConfigModel
     public ComposeMode DefaultComposeMode { get; set; } = ComposeMode.PlainText;
 
     /// <summary>
-    /// A reply to a message that has HTML opens in HTML mode whatever <see cref="DefaultComposeMode"/>
-    /// says, so the original is quoted as a real quote block rather than as lines starting "&gt; "
-    /// (#1050). Forwards of HTML messages already open in HTML. Replies to plain-text messages
-    /// still use the default mode. On by default.
+    /// Replies follow the original message's format whatever <see cref="DefaultComposeMode"/> says.
+    /// A reply to a message that has HTML opens in HTML, so the original is quoted as a real quote
+    /// block rather than as lines starting "&gt; " (#1050). A reply to a plain-text message does not
+    /// open in HTML: an HTML default becomes Plain Text; Plain Text and Markdown are kept. Forwards
+    /// of HTML messages open in HTML regardless. On by default. Stored as
+    /// <c>ReplyInOriginalFormat</c>; 0.8.75 and 0.8.76 wrote it as <c>ReplyInHtmlToHtmlMessages</c>,
+    /// which is still read.
     /// </summary>
-    public bool ReplyInHtmlToHtmlMessages { get; set; } = true;
+    public bool ReplyInOriginalFormat { get; set; } = true;
 
     /// <summary>
     /// Spell-check compose text in the background as it is typed or pasted. Off, compose windows
