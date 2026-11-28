@@ -58,7 +58,8 @@ public class ConfigServiceSaveTests
         var profile = MakeTempProfile();
         Directory.CreateDirectory(profile.ProfileDir);
         var path = Path.Combine(profile.ProfileDir, "config.ini");
-        File.WriteAllText(path, "ReplyInHtmlToHtmlMessages = off\n");
+        // Keys are read only under [global], as every config.ini QuickMail writes has.
+        File.WriteAllText(path, "[global]\nReplyInHtmlToHtmlMessages = off\n");
         var service = new ConfigService(profile);
 
         var config = service.Load();
