@@ -90,6 +90,7 @@ public partial class ComposeWindow
 #pragma warning restore CA1031
         {
             LogService.Log("The new message editor could not start; using the standard editor", ex);
+            MessageEditorStatus.NoteFellBack();
             return false;
         }
 
@@ -266,6 +267,7 @@ public partial class ComposeWindow
     private void OnNewEditorHostingFailed(Exception ex)
     {
         LogService.Log("The new message editor could not be hosted; using the standard editor", ex);
+        MessageEditorStatus.NoteFellBack();
         if (_newEditor is not { } host) return;
         bool hadFocus = host.HasFocus;
         // Releasing closes the rich editor too; put HTML mode back on the WPF editor first, or

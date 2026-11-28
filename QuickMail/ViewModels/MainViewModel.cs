@@ -1392,6 +1392,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             _                                  => MessageOpenMode.ToString(),
         },
         Accounts = DescribeAccounts(this.Accounts),
+        MessageEditor = Helpers.MessageEditorStatus.Describe(_configService.Load().UseNewEditor),
     };
 
     /// <summary>

@@ -49,4 +49,12 @@ public sealed class BugReportContext
     /// text is published verbatim into a public issue.</para>
     /// </summary>
     public string Accounts { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Which editor the message body uses in this run: the new one, or the previous one and why
+    /// (turned off in Settings, or the new one could not start). The two editors share almost no
+    /// code, so a report about writing a message cannot be triaged without it. One of three fixed
+    /// strings from <see cref="Helpers.MessageEditorStatus.Describe"/>.
+    /// </summary>
+    public string MessageEditor { get; set; } = string.Empty;
 }

@@ -198,6 +198,8 @@ public partial class BugReportService : IBugReportService, IDisposable
                 sb.AppendLine($"- Message open mode: {ctx.MessageOpenMode}");
             if (!string.IsNullOrWhiteSpace(ctx.Accounts))
                 sb.AppendLine($"- Accounts: {ctx.Accounts}");
+            if (!string.IsNullOrWhiteSpace(ctx.MessageEditor))
+                sb.AppendLine($"- Message editor: {ctx.MessageEditor}");
         }
 
         return sb.ToString();
