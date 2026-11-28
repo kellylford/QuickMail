@@ -173,7 +173,7 @@ public partial class ComposeWindow
 #pragma warning restore CA1031
         {
             LogService.Log("The new message editor could not start for HTML mode; using the standard editor", ex);
-            MessageEditorStatus.NoteFellBack();
+            MessageEditorStatus.NoteHtmlFellBack();
             return false;
         }
 
@@ -298,8 +298,8 @@ public partial class ComposeWindow
     private void OnNewRichHostingFailed(Exception ex)
     {
         LogService.Log("The new message editor could not be hosted for HTML mode; using the standard editor", ex);
-        MessageEditorStatus.NoteFellBack();
         if (_newRich is not { } host) return;
+        MessageEditorStatus.NoteHtmlFellBack();
         bool hadFocus = host.HasFocus;
         host.PreviewKeyDown -= BodyBox_PreviewKeyDown;
         host.Close();

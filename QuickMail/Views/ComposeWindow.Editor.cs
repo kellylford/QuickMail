@@ -56,8 +56,15 @@ public partial class ComposeWindow
 
     private void InitializePlainBody(ConfigModel config)
     {
-        if (NewEditorAllowed && config.UseNewEditor && TryCreateNewEditor())
+        // What this window actually gets goes on record for bug reports: the setting can change
+        // while the window is open, and the new editor may fail to start.
+        bool wanted = NewEditorAllowed && config.UseNewEditor;
+        if (wanted && TryCreateNewEditor())
+        {
+            MessageEditorStatus.NoteMessageOpened(settingOn: true, usesNewEditor: true);
             return;
+        }
+        MessageEditorStatus.NoteMessageOpened(settingOn: wanted, usesNewEditor: false);
 
         _plainBody = new WpfTextEditor(BodyBox);
         BodyBox.SelectionChanged += BodyBox_SelectionChanged;
@@ -90,7 +97,6 @@ public partial class ComposeWindow
 #pragma warning restore CA1031
         {
             LogService.Log("The new message editor could not start; using the standard editor", ex);
-            MessageEditorStatus.NoteFellBack();
             return false;
         }
 
@@ -267,8 +273,8 @@ public partial class ComposeWindow
     private void OnNewEditorHostingFailed(Exception ex)
     {
         LogService.Log("The new message editor could not be hosted; using the standard editor", ex);
-        MessageEditorStatus.NoteFellBack();
         if (_newEditor is not { } host) return;
+        MessageEditorStatus.NoteFellBack();
         bool hadFocus = host.HasFocus;
         // Releasing closes the rich editor too; put HTML mode back on the WPF editor first, or
         // it would be left with an editor that has been closed.
