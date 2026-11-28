@@ -189,23 +189,27 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
     /// <summary>
     /// The editing mode this compose window should open in. Drafts and messages reopened from the
     /// Outbox restore the mode they were written in, an HTML forward opens in HTML, templates stay
-    /// plain text, a reply to a message that has HTML opens in HTML when
-    /// <paramref name="replyInHtmlToHtmlMessages"/> is on (#1050), and everything else uses
-    /// <paramref name="defaultMode"/>. Call once, before the first <see cref="SetMode"/>: the
-    /// reply's quoted HTML is consumed when the editor loads it.
+    /// plain text, a reply follows the original's format when <paramref name="replyInOriginalFormat"/>
+    /// is on (#1050), and everything else uses <paramref name="defaultMode"/>. Call once, before the
+    /// first <see cref="SetMode"/>: the reply's quoted HTML is consumed when the editor loads it.
     /// </summary>
-    public ComposeMode InitialMode(ComposeMode defaultMode, bool replyInHtmlToHtmlMessages) =>
+    public ComposeMode InitialMode(ComposeMode defaultMode, bool replyInOriginalFormat) =>
         ResolveInitialMode(ComposeKind, _seededMode, _seededHtmlBody != null, _outboxId != null,
-            defaultMode, replyInHtmlToHtmlMessages);
+            defaultMode, replyInOriginalFormat);
 
     /// <summary>The decision behind <see cref="InitialMode"/>, kept pure so it can be tested directly.</summary>
     /// <param name="reopenedFromOutbox">
     /// A queued message keeps its Kind (a queued reply is still a Reply) and the HTML it was
     /// written with, so without this a reply queued in Markdown would come back in HTML.
     /// </param>
+    /// <param name="replyInOriginalFormat">
+    /// On, a reply to a message that has HTML opens in HTML, and a reply to a plain-text message
+    /// does not open in HTML: an HTML default becomes Plain Text, while a Plain Text or Markdown
+    /// default is kept, since both are written as plain text. Off, replies use the default.
+    /// </param>
     public static ComposeMode ResolveInitialMode(
         ComposeKind kind, ComposeMode seededMode, bool hasQuotedHtml, bool reopenedFromOutbox,
-        ComposeMode defaultMode, bool replyInHtmlToHtmlMessages)
+        ComposeMode defaultMode, bool replyInOriginalFormat)
     {
         if (reopenedFromOutbox
             || kind is ComposeKind.EditDraft or ComposeKind.NewDraft
@@ -213,8 +217,13 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
             return seededMode;
         if (kind == ComposeKind.EditTemplate)
             return ComposeMode.PlainText;
-        if ((kind is ComposeKind.Reply or ComposeKind.ReplyAll) && hasQuotedHtml && replyInHtmlToHtmlMessages)
-            return ComposeMode.Html;
+        if ((kind is ComposeKind.Reply or ComposeKind.ReplyAll) && replyInOriginalFormat)
+        {
+            if (hasQuotedHtml)
+                return ComposeMode.Html;
+            if (defaultMode == ComposeMode.Html)
+                return ComposeMode.PlainText;
+        }
         return defaultMode;
     }
 

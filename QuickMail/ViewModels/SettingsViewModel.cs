@@ -246,9 +246,9 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     private string _defaultComposeMode = "plain";
 
-    /// <summary>Replies to HTML messages open in HTML (#1050). Bound to the Composing checkbox.</summary>
+    /// <summary>Replies open in the original message's format (#1050). Bound to the Composing checkbox.</summary>
     [ObservableProperty]
-    private bool _replyInHtmlToHtmlMessages = true;
+    private bool _replyInOriginalFormat = true;
 
     /// <summary>Background spell checking in compose (#883). Bound to the Composing checkbox.</summary>
     [ObservableProperty]
@@ -591,7 +591,7 @@ public partial class SettingsViewModel : ObservableObject
         SuggestPeopleEmailed             = cfg.SuggestPeopleEmailed;
         AutoSaveIntervalSeconds          = cfg.AutoSaveIntervalSeconds;
         CheckSpellingAsYouType           = cfg.CheckSpellingAsYouType;
-        ReplyInHtmlToHtmlMessages        = cfg.ReplyInHtmlToHtmlMessages;
+        ReplyInOriginalFormat        = cfg.ReplyInOriginalFormat;
         DefaultComposeMode = cfg.DefaultComposeMode switch
         {
             Models.ComposeMode.Markdown => "markdown",
@@ -717,7 +717,7 @@ public partial class SettingsViewModel : ObservableObject
         cfg.SuggestPeopleEmailed             = SuggestPeopleEmailed;
         cfg.AutoSaveIntervalSeconds          = AutoSaveIntervalSeconds;
         cfg.CheckSpellingAsYouType           = CheckSpellingAsYouType;
-        cfg.ReplyInHtmlToHtmlMessages        = ReplyInHtmlToHtmlMessages;
+        cfg.ReplyInOriginalFormat        = ReplyInOriginalFormat;
         SaveSoundSettings(cfg);
         cfg.DefaultComposeMode = DefaultComposeMode switch
         {

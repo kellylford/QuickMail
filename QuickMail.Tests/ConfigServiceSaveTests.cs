@@ -31,7 +31,7 @@ public class ConfigServiceSaveTests
     // #1050: on unless turned off, a config.ini written before it existed still means "on",
     // and "off" survives a restart.
     [Fact]
-    public void ReplyInHtmlToHtmlMessages_DefaultsOn_AndRoundTripsOff()
+    public void ReplyInOriginalFormat_DefaultsOn_AndRoundTripsOff()
     {
         var profile = MakeTempProfile();
         Directory.CreateDirectory(profile.ProfileDir);
@@ -40,14 +40,35 @@ public class ConfigServiceSaveTests
 
         var config = service.Load();
         Assert.Equal(ComposeMode.PlainText, config.DefaultComposeMode);
-        Assert.True(config.ReplyInHtmlToHtmlMessages);
+        Assert.True(config.ReplyInOriginalFormat);
 
-        config.ReplyInHtmlToHtmlMessages = false;
+        config.ReplyInOriginalFormat = false;
         service.Save(config);
 
-        Assert.False(new ConfigService(profile).Load().ReplyInHtmlToHtmlMessages);
-        Assert.Contains("ReplyInHtmlToHtmlMessages = off",
+        Assert.False(new ConfigService(profile).Load().ReplyInOriginalFormat);
+        Assert.Contains("ReplyInOriginalFormat = off",
             File.ReadAllText(Path.Combine(profile.ProfileDir, "config.ini")));
+    }
+
+    // 0.8.75 and 0.8.76 wrote the setting as ReplyInHtmlToHtmlMessages. Someone who turned it off
+    // there keeps it off, and the next save writes the new name only.
+    [Fact]
+    public void ReplyInOriginalFormat_ReadsItsOldName_AndSavesTheNewOne()
+    {
+        var profile = MakeTempProfile();
+        Directory.CreateDirectory(profile.ProfileDir);
+        var path = Path.Combine(profile.ProfileDir, "config.ini");
+        File.WriteAllText(path, "ReplyInHtmlToHtmlMessages = off\n");
+        var service = new ConfigService(profile);
+
+        var config = service.Load();
+        Assert.False(config.ReplyInOriginalFormat);
+
+        service.Save(config);
+        var saved = File.ReadAllText(path);
+        Assert.Contains("ReplyInOriginalFormat = off", saved);
+        Assert.DoesNotContain("ReplyInHtmlToHtmlMessages", saved);
+        Assert.False(new ConfigService(profile).Load().ReplyInOriginalFormat);
     }
 
     // #883: the setting must survive a restart, and a config.ini written before it existed
