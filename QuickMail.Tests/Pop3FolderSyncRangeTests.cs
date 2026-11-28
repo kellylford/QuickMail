@@ -326,8 +326,12 @@ public sealed class Pop3FolderSyncRangeTests : IDisposable
             return m;
         });
 
-    /// <summary>How long All Inboxes may take. Measured first, then set; see the PR for the numbers.</summary>
-    private const int AllInboxesLimitMs = 60000;
+    /// <summary>
+    /// How long All Inboxes may take for <see cref="AllInboxesRows"/> rows. Measured in the test VM on
+    /// 2026-11-27 at 30,000 rows: 285 ms for the list, 661 ms with conversations view on. Five
+    /// seconds leaves room for a slow CI runner and still fails well before anything quadratic would.
+    /// </summary>
+    private const int AllInboxesLimitMs = 5000;
 
     private static int AllInboxesRows =>
         int.TryParse(Environment.GetEnvironmentVariable("QUICKMAIL_ALLINBOXES_ROWS"), out var n) && n > 0 ? n : 30000;
@@ -370,6 +374,7 @@ public sealed class Pop3FolderSyncRangeTests : IDisposable
 
         TestContext.Current.TestOutputHelper?.WriteLine(
             $"All Inboxes, one POP3 Inbox of {rows} rows{(conversations ? ", conversations view" : "")}: {sw.ElapsedMilliseconds} ms");
+        Assert.True(sw.ElapsedMilliseconds < AllInboxesLimitMs, $"took {sw.ElapsedMilliseconds} ms, limit {AllInboxesLimitMs} ms");
     }
 
     // ── Other backends keep the window ─────────────────────────────────────────
